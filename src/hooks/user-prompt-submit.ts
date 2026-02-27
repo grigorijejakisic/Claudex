@@ -611,7 +611,7 @@ runHook(HOOK_NAME, async (input) => {
             trigger: 'auto-75pct',
             gaugeReading: gauge,
             gsdState,
-            db,
+            db: db ?? undefined,
           });
           if (result) {
             logToFile(HOOK_NAME, 'INFO', `Checkpoint written: ${result.checkpointId} at ${(gauge.utilization * 100).toFixed(0)}%`);

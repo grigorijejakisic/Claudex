@@ -67,10 +67,14 @@ export function normalizeFts5Query(
   if (mode === 'OR') {
     const parts: string[] = [];
     for (let i = 0; i < processed.length; i++) {
-      parts.push(processed[i]);
+      const current = processed[i]!;
+      parts.push(current);
       // Insert OR joiner only between two non-operator tokens
-      if (i < processed.length - 1 && !FTS5_OPERATORS.has(processed[i]) && !FTS5_OPERATORS.has(processed[i + 1])) {
-        parts.push('OR');
+      if (i < processed.length - 1) {
+        const next = processed[i + 1]!;
+        if (!FTS5_OPERATORS.has(current) && !FTS5_OPERATORS.has(next)) {
+          parts.push('OR');
+        }
       }
     }
     return parts.join(' ');

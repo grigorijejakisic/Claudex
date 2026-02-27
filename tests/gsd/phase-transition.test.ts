@@ -465,11 +465,12 @@ describe('handlePhaseEnd', () => {
   });
 
   it('12. never throws and returns failure result on unrecoverable errors', () => {
-    const badProjectDir = path.join(tmpDir, '\u0000invalid');
+    const brokenDb = new Database(':memory:');
+    brokenDb.close();
 
     let result: HandlerResult | undefined;
     expect(() => {
-      result = handlePhaseEnd(makeArgs({ projectDir: badProjectDir }));
+      result = handlePhaseEnd(makeArgs({ db: brokenDb }));
     }).not.toThrow();
 
     expect(result).toBeDefined();
@@ -557,4 +558,3 @@ describe('handlePlanComplete', () => {
     expect(result!.success).toBe(false);
   });
 });
-
