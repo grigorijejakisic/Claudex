@@ -20,6 +20,15 @@ import type { PostToolUseInput } from '../shared/types.js';
 
 const HOOK_NAME = 'post-tool-use';
 
+/**
+ * Incremental checkpoint state — tracks which token thresholds have been crossed.
+ * Stored as a simple JSON file alongside other session state.
+ */
+interface IncrementalCheckpointState {
+  last_threshold_index: number;  // index into INCREMENTAL_THRESHOLDS (-1 = none crossed)
+  last_checkpoint_epoch: number; // ms timestamp of last checkpoint write
+}
+
 runHook(HOOK_NAME, async (input) => {
   const postInput = input as PostToolUseInput;
   const sessionId = postInput.session_id || 'unknown';
@@ -178,6 +187,81 @@ runHook(HOOK_NAME, async (input) => {
       }
     } catch (err) {
       logToFile(HOOK_NAME, 'DEBUG', 'Thread accumulation failed (non-fatal)', err);
+    }
+  }
+
+  // Step 5: Incremental checkpoint — check token utilization and write checkpoint
+  // at defined thresholds. Replaces the old single-fire-at-compact model with
+  // multiple smaller checkpoints for 1M context windows.
+  if (scope.type === 'project') {
+    try {
+      const transcriptPath = postInput.transcript_path;
+      if (transcriptPath) {
+        const { readTokenGauge, INCREMENTAL_THRESHOLDS } = await import('../lib/token-gauge.js');
+        const gauge = readTokenGauge(transcriptPath, 1_000_000);
+
+        if (gauge.status === 'ok') {
+          const totalTokens = gauge.usage.input_tokens + gauge.usage.cache_creation_input_tokens + gauge.usage.cache_read_input_tokens;
+
+          // Find highest threshold crossed
+          let crossedIndex = -1;
+          for (let i = INCREMENTAL_THRESHOLDS.length - 1; i >= 0; i--) {
+            if (totalTokens >= INCREMENTAL_THRESHOLDS[i]!) {
+              crossedIndex = i;
+              break;
+            }
+          }
+
+          if (crossedIndex >= 0) {
+            // Read previous state
+            const projectDir = scope.path;
+            const stateFilePath = path.join(projectDir, 'context', 'state', sessionId, '.incremental-cp.json');
+            let prevState: IncrementalCheckpointState = { last_threshold_index: -1, last_checkpoint_epoch: 0 };
+            try {
+              if (fs.existsSync(stateFilePath)) {
+                prevState = JSON.parse(fs.readFileSync(stateFilePath, 'utf-8'));
+              }
+            } catch { /* start fresh */ }
+
+            // Only write if we crossed a NEW threshold
+            if (crossedIndex > prevState.last_threshold_index) {
+              const { writeCheckpoint } = await import('../checkpoint/writer.js');
+              const { getDatabase } = await import('../db/connection.js');
+              const cpDb = getDatabase();
+
+              try {
+                const scopeStr = `project:${scope.name}`;
+                const result = writeCheckpoint({
+                  projectDir,
+                  sessionId,
+                  scope: scopeStr,
+                  trigger: 'incremental',
+                  gaugeReading: gauge,
+                  db: cpDb ?? undefined,
+                });
+
+                if (result) {
+                  // Update state
+                  const newState: IncrementalCheckpointState = {
+                    last_threshold_index: crossedIndex,
+                    last_checkpoint_epoch: Date.now(),
+                  };
+                  const stateDir = path.dirname(stateFilePath);
+                  fs.mkdirSync(stateDir, { recursive: true });
+                  fs.writeFileSync(stateFilePath, JSON.stringify(newState), 'utf-8');
+
+                  logToFile(HOOK_NAME, 'INFO',
+                    `Incremental checkpoint written at ${(totalTokens / 1000).toFixed(0)}k tokens (threshold ${crossedIndex + 1}/${INCREMENTAL_THRESHOLDS.length}): ${result.checkpointId}`);
+                }
+              } finally {
+                if (cpDb) try { cpDb.close(); } catch { /* best effort */ }
+              }
+            }
+          }
+        }
+      }
+    } catch (err) {
+      logToFile(HOOK_NAME, 'DEBUG', 'Incremental checkpoint failed (non-fatal)', err);
     }
   }
 

@@ -41,6 +41,20 @@ const DEFAULT_WINDOW_SIZE = 200_000;
 const GAUGE_BAR_WIDTH = 10;
 const BOM = '\uFEFF';
 
+/**
+ * Incremental checkpoint thresholds (absolute token counts).
+ * First threshold matches old 200k compact point (~167k).
+ * Subsequent thresholds at ~133k intervals.
+ */
+export const INCREMENTAL_THRESHOLDS = [
+  167_000,  // ~83.5% of 200k — matches old compact behavior
+  300_000,  // ~30% of 1M
+  450_000,  // ~45% of 1M
+  600_000,  // ~60% of 1M
+  750_000,  // ~75% of 1M
+  900_000,  // ~90% of 1M
+] as const;
+
 const ZERO_USAGE: TokenUsage = {
   input_tokens: 0,
   output_tokens: 0,

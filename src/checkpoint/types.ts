@@ -25,7 +25,7 @@ export interface CheckpointMeta {
   scope: string;                                  // "global" | "project:{name}"
   created_at: string;                             // ISO-8601
   created_at_epoch_ms: number;                    // milliseconds (ensureEpochMs)
-  trigger: 'auto-75pct' | 'auto-80pct' | 'manual' | 'pre-compact' | 'session-end' | 'plan-complete';
+  trigger: 'auto-75pct' | 'auto-80pct' | 'manual' | 'pre-compact' | 'session-end' | 'plan-complete' | 'incremental';
   writer_version: string;                         // Claudex semver
   token_usage: {
     input_tokens: number;
