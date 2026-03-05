@@ -351,6 +351,10 @@ export interface ClaudexConfig {
     provider: 'fts5' | 'openai' | 'local';
     openai?: { apiKey?: string; model?: string };
   };
+  checkpoint?: {
+    /** Override auto-detected context window size (in tokens). */
+    window_size?: number;
+  };
 }
 
 /** Default configuration values */
@@ -388,6 +392,9 @@ export const DEFAULT_CONFIG: ClaudexConfig = {
   vector: {
     enabled: false,
     provider: 'fts5',
+  },
+  checkpoint: {
+    window_size: undefined,
   },
 };
 

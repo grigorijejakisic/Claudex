@@ -10,7 +10,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import * as os from 'node:os';
-import { readTokenGauge, formatGauge } from '../../src/lib/token-gauge.js';
+import { readTokenGauge, formatGauge, detectWindowSize, getIncrementalThresholds, readTokenGaugeWithDetection } from '../../src/lib/token-gauge.js';
 import type { GaugeReading } from '../../src/lib/token-gauge.js';
 
 // =============================================================================
@@ -55,6 +55,24 @@ function makeUserLine(text = 'Hello'): string {
     message: {
       role: 'user',
       content: [{ type: 'text', text }],
+    },
+  });
+}
+
+/** Build a JSONL line for an assistant message with model name and usage data. */
+function makeAssistantLineWithModel(inputTokens: number, model: string, outputTokens = 500): string {
+  return JSON.stringify({
+    type: 'assistant',
+    message: {
+      model,
+      role: 'assistant',
+      content: [{ type: 'text', text: 'Hello' }],
+      usage: {
+        input_tokens: inputTokens,
+        output_tokens: outputTokens,
+        cache_creation_input_tokens: 0,
+        cache_read_input_tokens: 0,
+      },
     },
   });
 }
@@ -295,5 +313,110 @@ describe('readTokenGauge', () => {
     expect(result.status).toBe('unavailable');
     expect(result.threshold).toBe('unavailable');
     expect(result.utilization).toBe(0);
+  });
+});
+
+describe('detectWindowSize', () => {
+  it('returns 200k regardless of model (conservative default)', () => {
+    const tp = writeTranscript('opus.jsonl', [
+      makeAssistantLineWithModel(100_000, 'claude-opus-4-6'),
+    ]);
+    expect(detectWindowSize(tp)).toBe(200_000);
+  });
+
+  it('config override takes priority', () => {
+    expect(detectWindowSize(undefined, 500_000)).toBe(500_000);
+  });
+
+  it('returns 200k for undefined/missing transcript', () => {
+    expect(detectWindowSize(undefined)).toBe(200_000);
+    expect(detectWindowSize('')).toBe(200_000);
+  });
+});
+
+describe('getIncrementalThresholds', () => {
+  it('returns 2 thresholds for 200k window (light touch)', () => {
+    const thresholds = getIncrementalThresholds(200_000);
+    expect(thresholds).toHaveLength(2);
+    expect(thresholds).toEqual([150_000, 180_000]);
+  });
+
+  it('returns 6 thresholds for 1M window (full coverage)', () => {
+    const thresholds = getIncrementalThresholds(1_000_000);
+    expect(thresholds).toHaveLength(6);
+    expect(thresholds).toEqual([150_000, 300_000, 450_000, 600_000, 750_000, 900_000]);
+  });
+
+  it('returns 6 thresholds for any window > 200k', () => {
+    const thresholds = getIncrementalThresholds(500_000);
+    expect(thresholds).toHaveLength(6);
+    expect(thresholds[0]).toBe(75_000); // 15% of 500k
+  });
+});
+
+describe('readTokenGaugeWithDetection', () => {
+  it('returns 200k window for opus model below 195k tokens', () => {
+    const tp = writeTranscript('opus-low.jsonl', [
+      makeAssistantLineWithModel(100_000, 'claude-opus-4-6'),
+    ]);
+    const result = readTokenGaugeWithDetection(tp);
+    expect(result.status).toBe('ok');
+    expect(result.window_size).toBe(200_000);
+  });
+
+  it('upgrades to 1M when opus model exceeds 195k tokens', () => {
+    const line = JSON.stringify({
+      type: 'assistant',
+      message: {
+        model: 'claude-opus-4-6',
+        role: 'assistant',
+        content: [{ type: 'text', text: 'Hi' }],
+        usage: {
+          input_tokens: 1,
+          output_tokens: 500,
+          cache_creation_input_tokens: 50_000,
+          cache_read_input_tokens: 150_000,
+        },
+      },
+    });
+    const tp = writeTranscript('opus-high.jsonl', [line]);
+    const result = readTokenGaugeWithDetection(tp);
+    expect(result.status).toBe('ok');
+    expect(result.window_size).toBe(1_000_000);
+    // 200001 tokens / 1M = ~20% utilization
+    expect(result.utilization).toBeCloseTo(0.2, 1);
+  });
+
+  it('stays 200k for haiku even above 195k (not 1M capable)', () => {
+    const line = JSON.stringify({
+      type: 'assistant',
+      message: {
+        model: 'claude-haiku-4-5-20251001',
+        role: 'assistant',
+        content: [{ type: 'text', text: 'Hi' }],
+        usage: {
+          input_tokens: 1,
+          output_tokens: 500,
+          cache_creation_input_tokens: 100_000,
+          cache_read_input_tokens: 100_000,
+        },
+      },
+    });
+    const tp = writeTranscript('haiku-high.jsonl', [line]);
+    const result = readTokenGaugeWithDetection(tp);
+    expect(result.window_size).toBe(200_000);
+  });
+
+  it('config override takes priority over everything', () => {
+    const tp = writeTranscript('override.jsonl', [
+      makeAssistantLineWithModel(100_000, 'claude-opus-4-6'),
+    ]);
+    const result = readTokenGaugeWithDetection(tp, 500_000);
+    expect(result.window_size).toBe(500_000);
+  });
+
+  it('returns unavailable for missing transcript', () => {
+    const result = readTokenGaugeWithDetection(undefined);
+    expect(result.status).toBe('unavailable');
   });
 });

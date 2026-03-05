@@ -134,6 +134,15 @@ export function validateConfig(config: ClaudexConfig): ClaudexConfig {
     }
   }
 
+  // Validate checkpoint
+  if (config.checkpoint) {
+    if (config.checkpoint.window_size !== undefined) {
+      if (!Number.isFinite(config.checkpoint.window_size) || config.checkpoint.window_size < 100_000 || config.checkpoint.window_size > 2_000_000) {
+        config.checkpoint.window_size = undefined;
+      }
+    }
+  }
+
   // Validate vector
   if (config.vector) {
     if (typeof config.vector.enabled !== 'boolean') {

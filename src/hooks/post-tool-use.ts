@@ -21,12 +21,14 @@ import type { PostToolUseInput } from '../shared/types.js';
 const HOOK_NAME = 'post-tool-use';
 
 /**
- * Incremental checkpoint state — tracks which token thresholds have been crossed.
+ * Incremental checkpoint state — tracks which dynamic thresholds have been crossed.
  * Stored as a simple JSON file alongside other session state.
+ * Tracks window_size so thresholds reset when window size changes (e.g. 200k → 1M).
  */
 interface IncrementalCheckpointState {
-  last_threshold_index: number;  // index into INCREMENTAL_THRESHOLDS (-1 = none crossed)
+  last_threshold_index: number;  // index into getIncrementalThresholds() result (-1 = none crossed)
   last_checkpoint_epoch: number; // ms timestamp of last checkpoint write
+  window_size?: number;          // window size thresholds were computed for — reset on change
 }
 
 runHook(HOOK_NAME, async (input) => {
@@ -191,22 +193,23 @@ runHook(HOOK_NAME, async (input) => {
   }
 
   // Step 5: Incremental checkpoint — check token utilization and write checkpoint
-  // at defined thresholds. Replaces the old single-fire-at-compact model with
-  // multiple smaller checkpoints for 1M context windows.
+  // at dynamic thresholds (via getIncrementalThresholds()). 200k gets 2 thresholds,
+  // 1M gets 6 thresholds. Window size changes trigger threshold state reset.
   if (scope.type === 'project') {
     try {
       const transcriptPath = postInput.transcript_path;
       if (transcriptPath) {
-        const { readTokenGauge, INCREMENTAL_THRESHOLDS } = await import('../lib/token-gauge.js');
-        const gauge = readTokenGauge(transcriptPath, 1_000_000);
+        const { readTokenGaugeWithDetection, getIncrementalThresholds } = await import('../lib/token-gauge.js');
+        const gauge = readTokenGaugeWithDetection(transcriptPath, config?.checkpoint?.window_size);
+        const thresholds = getIncrementalThresholds(gauge.window_size);
 
         if (gauge.status === 'ok') {
           const totalTokens = gauge.usage.input_tokens + gauge.usage.cache_creation_input_tokens + gauge.usage.cache_read_input_tokens;
 
           // Find highest threshold crossed
           let crossedIndex = -1;
-          for (let i = INCREMENTAL_THRESHOLDS.length - 1; i >= 0; i--) {
-            if (totalTokens >= INCREMENTAL_THRESHOLDS[i]!) {
+          for (let i = thresholds.length - 1; i >= 0; i--) {
+            if (totalTokens >= thresholds[i]!) {
               crossedIndex = i;
               break;
             }
@@ -223,38 +226,51 @@ runHook(HOOK_NAME, async (input) => {
               }
             } catch { /* start fresh */ }
 
-            // Only write if we crossed a NEW threshold
-            if (crossedIndex > prevState.last_threshold_index) {
-              const { writeCheckpoint } = await import('../checkpoint/writer.js');
-              const { getDatabase } = await import('../db/connection.js');
-              const cpDb = getDatabase();
-
-              try {
-                const scopeStr = `project:${scope.name}`;
-                const result = writeCheckpoint({
-                  projectDir,
-                  sessionId,
-                  scope: scopeStr,
-                  trigger: 'incremental',
-                  gaugeReading: gauge,
-                  db: cpDb ?? undefined,
-                });
-
-                if (result) {
-                  // Update state
-                  const newState: IncrementalCheckpointState = {
-                    last_threshold_index: crossedIndex,
-                    last_checkpoint_epoch: Date.now(),
-                  };
-                  const stateDir = path.dirname(stateFilePath);
-                  fs.mkdirSync(stateDir, { recursive: true });
-                  fs.writeFileSync(stateFilePath, JSON.stringify(newState), 'utf-8');
-
-                  logToFile(HOOK_NAME, 'INFO',
-                    `Incremental checkpoint written at ${(totalTokens / 1000).toFixed(0)}k tokens (threshold ${crossedIndex + 1}/${INCREMENTAL_THRESHOLDS.length}): ${result.checkpointId}`);
+            // Only write if we crossed a NEW threshold (or window size changed)
+            const windowSizeChanged = prevState.window_size !== undefined && prevState.window_size !== gauge.window_size;
+            if (crossedIndex > prevState.last_threshold_index || windowSizeChanged) {
+              // If window size changed, reset — recompute crossedIndex against new thresholds
+              if (windowSizeChanged) {
+                crossedIndex = -1;
+                for (let j = thresholds.length - 1; j >= 0; j--) {
+                  if (totalTokens >= thresholds[j]!) { crossedIndex = j; break; }
                 }
-              } finally {
-                if (cpDb) try { cpDb.close(); } catch { /* best effort */ }
+              }
+
+              // Only proceed if a threshold is actually crossed (crossedIndex may be -1 after reset)
+              if (crossedIndex >= 0) {
+                const { writeCheckpoint } = await import('../checkpoint/writer.js');
+                const { getDatabase } = await import('../db/connection.js');
+                const cpDb = getDatabase();
+
+                try {
+                  const scopeStr = `project:${scope.name}`;
+                  const result = writeCheckpoint({
+                    projectDir,
+                    sessionId,
+                    scope: scopeStr,
+                    trigger: 'incremental',
+                    gaugeReading: gauge,
+                    db: cpDb ?? undefined,
+                  });
+
+                  if (result) {
+                    // Update state (includes window_size for change detection)
+                    const newState: IncrementalCheckpointState = {
+                      last_threshold_index: crossedIndex,
+                      last_checkpoint_epoch: Date.now(),
+                      window_size: gauge.window_size,
+                    };
+                    const stateDir = path.dirname(stateFilePath);
+                    fs.mkdirSync(stateDir, { recursive: true });
+                    fs.writeFileSync(stateFilePath, JSON.stringify(newState), 'utf-8');
+
+                    logToFile(HOOK_NAME, 'INFO',
+                      `Incremental checkpoint written at ${(totalTokens / 1000).toFixed(0)}k tokens (threshold ${crossedIndex + 1}/${thresholds.length}): ${result.checkpointId}`);
+                  }
+                } finally {
+                  if (cpDb) try { cpDb.close(); } catch { /* best effort */ }
+                }
               }
             }
           }

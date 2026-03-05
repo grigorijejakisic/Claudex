@@ -4,6 +4,7 @@ import * as path from 'node:path';
 import * as os from 'node:os';
 import { extractObservation } from '../../src/lib/observation-extractor.js';
 import { recordFileTouch, readFilesTouched } from '../../src/checkpoint/state-files.js';
+import { getIncrementalThresholds } from '../../src/lib/token-gauge.js';
 import type { Scope } from '../../src/shared/types.js';
 
 // Mock logger and metrics (state-files.ts uses these)
@@ -177,5 +178,106 @@ describe('PostToolUse Step 3.7: files-touched state updates', () => {
     const content = fs.readFileSync(expectedFile, 'utf-8');
     expect(content).toContain('/src/test.ts');
     expect(content).toContain('Write');
+  });
+});
+
+// =============================================================================
+// Incremental checkpoint threshold state tests
+// =============================================================================
+
+/**
+ * Mirrors IncrementalCheckpointState from post-tool-use.ts (local interface).
+ * Tests the JSON state file format and window_size change detection logic.
+ */
+interface IncrementalCheckpointState {
+  last_threshold_index: number;
+  last_checkpoint_epoch: number;
+  window_size?: number;
+}
+
+describe('PostToolUse Step 5: incremental checkpoint threshold state', () => {
+  it('threshold state file round-trips with window_size', () => {
+    const stateDir = path.join(tmpDir, 'context', 'state', TEST_SESSION);
+    fs.mkdirSync(stateDir, { recursive: true });
+    const stateFilePath = path.join(stateDir, '.incremental-cp.json');
+
+    const state: IncrementalCheckpointState = {
+      last_threshold_index: 1,
+      last_checkpoint_epoch: Date.now(),
+      window_size: 200_000,
+    };
+    fs.writeFileSync(stateFilePath, JSON.stringify(state), 'utf-8');
+
+    const loaded: IncrementalCheckpointState = JSON.parse(fs.readFileSync(stateFilePath, 'utf-8'));
+    expect(loaded.last_threshold_index).toBe(1);
+    expect(loaded.window_size).toBe(200_000);
+  });
+
+  it('detects window_size change from 200k to 1M', () => {
+    const prevState: IncrementalCheckpointState = {
+      last_threshold_index: 1,
+      last_checkpoint_epoch: Date.now() - 60_000,
+      window_size: 200_000,
+    };
+
+    const newWindowSize = 1_000_000;
+    const windowSizeChanged = prevState.window_size !== undefined && prevState.window_size !== newWindowSize;
+    expect(windowSizeChanged).toBe(true);
+  });
+
+  it('does not flag window_size change when sizes match', () => {
+    const prevState: IncrementalCheckpointState = {
+      last_threshold_index: 0,
+      last_checkpoint_epoch: Date.now() - 30_000,
+      window_size: 200_000,
+    };
+
+    const newWindowSize = 200_000;
+    const windowSizeChanged = prevState.window_size !== undefined && prevState.window_size !== newWindowSize;
+    expect(windowSizeChanged).toBe(false);
+  });
+
+  it('does not flag window_size change when previous state has no window_size (legacy)', () => {
+    // Simulates a state file written before window_size tracking was added
+    const prevState: IncrementalCheckpointState = {
+      last_threshold_index: 0,
+      last_checkpoint_epoch: Date.now() - 30_000,
+      // window_size intentionally omitted (legacy state)
+    };
+
+    const newWindowSize = 1_000_000;
+    const windowSizeChanged = prevState.window_size !== undefined && prevState.window_size !== newWindowSize;
+    expect(windowSizeChanged).toBe(false);
+  });
+
+  it('recomputes crossedIndex on window_size change', () => {
+    // Simulate: was at 200k threshold index 1 (90%), now window is 1M
+    const totalTokens = 185_000; // above 200k's 90% (180k), but not above 1M's 15% (150k)... actually 185k > 150k
+    const newThresholds = getIncrementalThresholds(1_000_000);
+
+    // Recompute: find highest threshold crossed with new thresholds
+    let crossedIndex = -1;
+    for (let i = newThresholds.length - 1; i >= 0; i--) {
+      if (totalTokens >= newThresholds[i]!) { crossedIndex = i; break; }
+    }
+
+    // 185k >= 150k (15% of 1M), so crossedIndex should be 0
+    expect(crossedIndex).toBe(0);
+    expect(newThresholds[0]).toBe(150_000);
+  });
+
+  it('dynamic thresholds differ by window size', () => {
+    const thresholds200k = getIncrementalThresholds(200_000);
+    const thresholds1M = getIncrementalThresholds(1_000_000);
+
+    // 200k: 2 thresholds (75%, 90%)
+    expect(thresholds200k).toHaveLength(2);
+    expect(thresholds200k[0]).toBe(150_000); // 75% of 200k
+    expect(thresholds200k[1]).toBe(180_000); // 90% of 200k
+
+    // 1M: 6 thresholds (15%, 30%, 45%, 60%, 75%, 90%)
+    expect(thresholds1M).toHaveLength(6);
+    expect(thresholds1M[0]).toBe(150_000);   // 15% of 1M
+    expect(thresholds1M[5]).toBe(900_000);   // 90% of 1M
   });
 });

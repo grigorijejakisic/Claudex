@@ -340,8 +340,12 @@ export function writeCheckpoint(input: WriteCheckpointInput): WriteCheckpointRes
     fs.writeFileSync(latestTmpPath, `ref: ${checkpointId}.yaml\n`, 'utf-8');
     fs.renameSync(latestTmpPath, latestPath);
 
-    // Archive state files after successful write
-    archiveStateFiles(input.projectDir, input.sessionId, checkpointId);
+    // Don't archive state on incremental checkpoints — state accumulates
+    // across incrementals so each checkpoint captures the full session state.
+    // Only archive on final checkpoints (pre-compact, session-end, auto-75pct).
+    if (input.trigger !== 'incremental') {
+      archiveStateFiles(input.projectDir, input.sessionId, checkpointId);
+    }
 
     // Estimate token cost
     const tokenEstimate = estimateCheckpointTokens(checkpoint);

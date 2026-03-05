@@ -42,18 +42,37 @@ const GAUGE_BAR_WIDTH = 10;
 const BOM = '\uFEFF';
 
 /**
- * Incremental checkpoint thresholds (absolute token counts).
- * First threshold matches old 200k compact point (~167k).
- * Subsequent thresholds at ~133k intervals.
+ * Models known to support 1M context windows.
+ * Used for heuristic detection: model must be capable AND observed tokens > 195k.
  */
-export const INCREMENTAL_THRESHOLDS = [
-  167_000,  // ~83.5% of 200k — matches old compact behavior
-  300_000,  // ~30% of 1M
-  450_000,  // ~45% of 1M
-  600_000,  // ~60% of 1M
-  750_000,  // ~75% of 1M
-  900_000,  // ~90% of 1M
-] as const;
+const MODELS_1M_CAPABLE: string[] = [
+  'claude-opus-4',
+  'claude-sonnet-4',
+];
+
+const WINDOW_1M = 1_000_000;
+
+function is1MCapableModel(model: string): boolean {
+  return MODELS_1M_CAPABLE.some(prefix => model.startsWith(prefix));
+}
+
+/**
+ * Compute incremental checkpoint thresholds for a given window size.
+ * 200k: 2 checkpoints (75%, 90%) — minimal overhead, similar to old behavior.
+ * >200k: 6 checkpoints (15%, 30%, 45%, 60%, 75%, 90%) — full incremental coverage.
+ */
+export function getIncrementalThresholds(windowSize: number): number[] {
+  const percentages = windowSize > DEFAULT_WINDOW_SIZE
+    ? [0.15, 0.30, 0.45, 0.60, 0.75, 0.90]   // 1M: full coverage
+    : [0.75, 0.90];                              // 200k: light touch
+  return percentages.map(pct => Math.round(windowSize * pct));
+}
+
+/**
+ * @deprecated Use getIncrementalThresholds(windowSize) instead.
+ * Kept for backwards compatibility — now returns 200k thresholds (2 entries).
+ */
+export const INCREMENTAL_THRESHOLDS = getIncrementalThresholds(DEFAULT_WINDOW_SIZE);
 
 const ZERO_USAGE: TokenUsage = {
   input_tokens: 0,
@@ -111,45 +130,74 @@ export function formatGauge(utilization: number, inputTokens: number, windowSize
 // =============================================================================
 
 /**
- * Extract TokenUsage from the last assistant message in a JSONL transcript.
- * Reads backwards to find the most recent entry with message.usage.input_tokens.
- * Handles:
- * - Partial/malformed trailing line (actively being written)
- * - CRLF line endings
- * - BOM at start of file
+ * Scan transcript JSONL backwards and extract data from the last assistant message.
+ * Single read, returns both model name and usage.
+ * Handles: partial/malformed trailing lines, CRLF, BOM.
  */
-function extractLastUsage(content: string): TokenUsage | null {
-  // Strip BOM if present
+function extractLastAssistantData(content: string): { model: string | null; usage: TokenUsage | null } {
   let text = content;
-  if (text.startsWith(BOM)) {
-    text = text.slice(1);
-  }
+  if (text.startsWith(BOM)) text = text.slice(1);
 
-  // Split into lines, filter empties
   const lines = text.split(/\r?\n/).filter(line => line.trim().length > 0);
 
-  // Scan backwards — most recent lines are most relevant
+  let model: string | null = null;
+  let usage: TokenUsage | null = null;
+
   for (let i = lines.length - 1; i >= 0; i--) {
     try {
       const parsed = JSON.parse(lines[i]!);
+      const msg = parsed?.message;
+      if (!msg) continue;
 
-      // Look for message.usage.input_tokens
-      const usage = parsed?.message?.usage;
-      if (usage && typeof usage.input_tokens === 'number') {
-        return {
-          input_tokens: usage.input_tokens,
-          output_tokens: typeof usage.output_tokens === 'number' ? usage.output_tokens : 0,
-          cache_creation_input_tokens: typeof usage.cache_creation_input_tokens === 'number' ? usage.cache_creation_input_tokens : 0,
-          cache_read_input_tokens: typeof usage.cache_read_input_tokens === 'number' ? usage.cache_read_input_tokens : 0,
+      // Capture model from first assistant message found
+      if (!model && msg.model && typeof msg.model === 'string') {
+        model = msg.model;
+      }
+
+      // Capture usage from first message with input_tokens
+      if (!usage && msg.usage && typeof msg.usage.input_tokens === 'number') {
+        usage = {
+          input_tokens: msg.usage.input_tokens,
+          output_tokens: typeof msg.usage.output_tokens === 'number' ? msg.usage.output_tokens : 0,
+          cache_creation_input_tokens: typeof msg.usage.cache_creation_input_tokens === 'number' ? msg.usage.cache_creation_input_tokens : 0,
+          cache_read_input_tokens: typeof msg.usage.cache_read_input_tokens === 'number' ? msg.usage.cache_read_input_tokens : 0,
         };
       }
+
+      // Both found — done
+      if (model && usage) break;
     } catch {
       // Malformed line — skip and try next
       continue;
     }
   }
 
-  return null;
+  return { model, usage };
+}
+
+/** Thin wrapper for backward compat — delegates to extractLastAssistantData. */
+function extractLastUsage(content: string): TokenUsage | null {
+  return extractLastAssistantData(content).usage;
+}
+
+// =============================================================================
+// Window Size Detection
+// =============================================================================
+
+/**
+ * Detect context window size. Conservative: always returns 200k unless config override.
+ *
+ * Model-based detection was removed because knowing a model is 1M-capable
+ * doesn't mean the session has 1M activated. Use readTokenGaugeWithDetection()
+ * for heuristic 1M detection based on observed token counts.
+ *
+ * @param _transcriptPath - Path to the transcript JSONL (unused, kept for API compat)
+ * @param configOverride - Explicit window size from ~/.claudex/config.json
+ * @returns Detected window size in tokens
+ */
+export function detectWindowSize(_transcriptPath: string | undefined, configOverride?: number): number {
+  if (configOverride && configOverride > 0) return configOverride;
+  return DEFAULT_WINDOW_SIZE;
 }
 
 // =============================================================================
@@ -224,5 +272,62 @@ export function readTokenGauge(transcriptPath: string | undefined, windowSize?: 
   } finally {
     const duration = Date.now() - start;
     recordMetric('token_gauge_read', duration);
+  }
+}
+
+/**
+ * Read token gauge with automatic window size detection. Single transcript read.
+ *
+ * Strategy:
+ * 1. Config override → use that window size (delegates to readTokenGauge)
+ * 2. Read transcript once, extract model + usage
+ * 3. If model is 1M-capable AND observed tokens > 195k → confirmed 1M
+ * 4. Otherwise → 200k (conservative default)
+ *
+ * This replaces the pattern of calling detectWindowSize() + readTokenGauge() separately.
+ * NEVER throws. Always returns a GaugeReading.
+ */
+export function readTokenGaugeWithDetection(
+  transcriptPath: string | undefined,
+  configWindowSize?: number,
+): GaugeReading {
+  const start = Date.now();
+
+  // Config override is authoritative — delegate to readTokenGauge
+  if (configWindowSize && configWindowSize > 0) {
+    return readTokenGauge(transcriptPath, configWindowSize);
+  }
+
+  try {
+    if (!transcriptPath || !fs.existsSync(transcriptPath)) {
+      return { ...UNAVAILABLE_READING };
+    }
+
+    let stat: fs.Stats;
+    try { stat = fs.statSync(transcriptPath); } catch { return { ...UNAVAILABLE_READING }; }
+    if (stat.size === 0) return { ...UNAVAILABLE_READING };
+
+    let content: string;
+    try { content = fs.readFileSync(transcriptPath, 'utf-8'); } catch { return { ...UNAVAILABLE_READING }; }
+
+    // Single parse for both model and usage
+    const { model, usage } = extractLastAssistantData(content);
+    if (!usage) return { ...UNAVAILABLE_READING };
+
+    const totalInput = usage.input_tokens + usage.cache_creation_input_tokens + usage.cache_read_input_tokens;
+
+    // Determine window size: 1M only when model is capable AND tokens prove it
+    const modelIs1MCapable = model ? is1MCapableModel(model) : false;
+    const windowSize = (modelIs1MCapable && totalInput > 195_000) ? WINDOW_1M : DEFAULT_WINDOW_SIZE;
+
+    const utilization = windowSize > 0 ? totalInput / windowSize : 0;
+    const threshold = classifyThreshold(utilization);
+    const formatted = formatGauge(utilization, totalInput, windowSize);
+
+    return { status: 'ok', usage, window_size: windowSize, utilization, formatted, threshold };
+  } catch {
+    return { ...UNAVAILABLE_READING };
+  } finally {
+    recordMetric('token_gauge_read_with_detection', Date.now() - start);
   }
 }

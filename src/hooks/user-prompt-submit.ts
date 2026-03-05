@@ -19,7 +19,7 @@ import { loadConfig } from '../shared/config.js';
 import { assembleContext } from '../lib/context-assembler.js';
 import { getDatabase } from '../db/connection.js';
 import { readGsdState, findActivePlanFile, extractPlanMustHaves, countCompletedRequirements } from '../gsd/state-reader.js';
-import { readTokenGauge } from '../lib/token-gauge.js';
+import { readTokenGaugeWithDetection } from '../lib/token-gauge.js';
 import { writeCheckpoint } from '../checkpoint/writer.js';
 import { readDecisions, readQuestions } from '../checkpoint/state-files.js';
 import { PATHS } from '../shared/paths.js';
@@ -119,9 +119,9 @@ runHook(HOOK_NAME, async (input) => {
     return {};
   }
 
-  // 3.3. Token gauge from transcript
+  // 3.3. Token gauge from transcript (single-pass: reads transcript once, auto-detects window size)
   const transcriptPath = promptInput.transcript_path;
-  const gauge: GaugeReading = readTokenGauge(transcriptPath, 200_000);
+  const gauge: GaugeReading = readTokenGaugeWithDetection(transcriptPath, config?.checkpoint?.window_size);
   logToFile(HOOK_NAME, 'DEBUG', `Token gauge: ${gauge.formatted} (${gauge.threshold})`);
 
   // 3.5. Read GSD state (fast-path: skip if not a project or no .planning/STATE.md)

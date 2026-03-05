@@ -324,6 +324,9 @@ describe('loadConfig', () => {
           model: 'text-embedding-3-small',
         },
       },
+      checkpoint: {
+        window_size: undefined,
+      },
     };
     fs.writeFileSync(TEST_CONFIG_PATH, JSON.stringify(validConfig), 'utf-8');
 

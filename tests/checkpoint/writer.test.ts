@@ -243,6 +243,46 @@ describe('checkpoint writer', () => {
     expect(fs.existsSync(path.join(archivedDir, 'decisions.yaml'))).toBe(true);
   });
 
+  it('does not archive state files when trigger is incremental', () => {
+    appendDecision(tmpDir, 'test-session-1', {
+      id: 'd1', what: 'Incremental test', why: 'Testing', when: '2026-02-24T14:00:00Z', reversible: true,
+    });
+
+    const stateDir = path.join(tmpDir, 'context', 'state', 'test-session-1');
+    expect(fs.existsSync(stateDir)).toBe(true);
+
+    const result = writeCheckpoint(makeBaseInput({ trigger: 'incremental' }));
+    expect(result).not.toBeNull();
+
+    // State dir should STILL exist — incremental triggers don't archive
+    expect(fs.existsSync(stateDir)).toBe(true);
+    expect(fs.existsSync(path.join(stateDir, 'decisions.yaml'))).toBe(true);
+
+    // No archived dir should be created for this checkpoint
+    const archivedDir = path.join(tmpDir, 'context', 'state', 'archived', result!.checkpointId);
+    expect(fs.existsSync(archivedDir)).toBe(false);
+  });
+
+  it('archives state files for non-incremental triggers', () => {
+    appendDecision(tmpDir, 'test-session-1', {
+      id: 'd1', what: 'Pre-compact test', why: 'Testing', when: '2026-02-24T14:00:00Z', reversible: true,
+    });
+
+    const stateDir = path.join(tmpDir, 'context', 'state', 'test-session-1');
+    expect(fs.existsSync(stateDir)).toBe(true);
+
+    const result = writeCheckpoint(makeBaseInput({ trigger: 'pre-compact' }));
+    expect(result).not.toBeNull();
+
+    // State dir should be gone — pre-compact triggers archive
+    expect(fs.existsSync(stateDir)).toBe(false);
+
+    // Archived dir should exist
+    const archivedDir = path.join(tmpDir, 'context', 'state', 'archived', result!.checkpointId);
+    expect(fs.existsSync(archivedDir)).toBe(true);
+    expect(fs.existsSync(path.join(archivedDir, 'decisions.yaml'))).toBe(true);
+  });
+
   it('missing state files produce checkpoint with empty sections (not crash)', () => {
     // No state files populated — write should still succeed
     const result = writeCheckpoint(makeBaseInput());

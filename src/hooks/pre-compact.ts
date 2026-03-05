@@ -22,7 +22,7 @@ import { getDatabase } from '../db/connection.js';
 import { insertReasoning } from '../db/reasoning.js';
 import { getCheckpointState, upsertCheckpointState } from '../db/checkpoint.js';
 import { getObservationsSince } from '../db/observations.js';
-import { readTokenGauge } from '../lib/token-gauge.js';
+import { readTokenGaugeWithDetection } from '../lib/token-gauge.js';
 import { writeCheckpoint } from '../checkpoint/writer.js';
 import { redactSensitive } from '../lib/redaction.js';
 import type Database from 'better-sqlite3';
@@ -399,7 +399,7 @@ runHook('pre-compact', async (input: HookStdin) => {
         } catch { /* latest.yaml doesn't exist — should write */ }
 
         if (shouldWrite) {
-          const gauge = readTokenGauge(transcript_path, 200_000);
+          const gauge = readTokenGaugeWithDetection(transcript_path);
           const scopeStr = scope.type === 'project' ? `project:${scope.name}` : 'global';
           const result = writeCheckpoint({
             projectDir,
