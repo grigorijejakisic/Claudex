@@ -70,12 +70,13 @@ function logHeader(msg: string): void {
  */
 function detectRepoRoot(): string {
   const scriptUrl = new URL(import.meta.url);
-  const scriptDir = path.dirname(
+  const rawPath = decodeURIComponent(
     process.platform === 'win32'
       ? scriptUrl.pathname.slice(1) // strip leading / on Windows file URLs
       : scriptUrl.pathname,
   );
-  // scriptDir is .../Claudex/dist  →  repo root is parent
+  const scriptDir = path.dirname(rawPath);
+  // scriptDir is .../Claudex/dist  ->  repo root is parent
   return path.resolve(scriptDir, '..');
 }
 
