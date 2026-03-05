@@ -1,4 +1,4 @@
-[![License: AGPL-3.0](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](LICENSE)
+[![License: MIT + Commons Clause](https://img.shields.io/badge/License-MIT%20%2B%20Commons%20Clause-blue.svg)](LICENSE)
 
 # Claudex
 
@@ -483,4 +483,4 @@ Claudex/
 
 ## License
 
-This project is licensed under the GNU Affero General Public License v3.0 — see the [LICENSE](LICENSE) file for details. You are free to use, modify, and distribute this software, provided that all derivative works are also licensed under AGPL-3.0.
+This project is licensed under the MIT License with Commons Clause — see the [LICENSE](LICENSE) file for details. You are free to use, copy, modify, and distribute this software. You may not sell it as a standalone product or service.
