@@ -163,16 +163,27 @@ function writeProjectsJson(): { written: boolean; path: string } {
  * hooks are preserved. Always overwrites — hooks always point to current install.
  */
 
-const CLAUDEX_HOOK_BASENAMES = [
-  'session-start', 'session-end', 'user-prompt-submit',
-  'pre-flush', 'post-tool-use', 'pre-compact',
-  'cm-post-tool-use', 'cm-pre-compact', 'cm-stop',
-] as const;
+const BASE_HOOK_BASENAMES: string[] = Object.values(HOOK_MAP).flat();
+
+const CM_HOOK_BASENAMES: string[] = [
+  ...Object.values(CM_ADAPTER_HOOK_MAP).flat(),
+  'cm-stop', // built but no Claude Code hook event for it
+];
+
+const ALL_CLAUDEX_HOOK_BASENAMES: string[] = [...BASE_HOOK_BASENAMES, ...CM_HOOK_BASENAMES];
 
 function isClaudexHookCommand(cmd: string): boolean {
-  return CLAUDEX_HOOK_BASENAMES.some(n =>
-    cmd.includes(`${n}.mjs`) || cmd.includes(`${n}.cmd`) || cmd.includes(`${n}.sh`),
-  );
+  return ALL_CLAUDEX_HOOK_BASENAMES.some(name => {
+    const pattern = `${name}.mjs`;
+    return cmd.includes(`dist/${pattern}`) || cmd.endsWith(pattern);
+  });
+}
+
+function isCmAdapterHookCommand(cmd: string): boolean {
+  return CM_HOOK_BASENAMES.some(name => {
+    const pattern = `${name}.mjs`;
+    return cmd.includes(`dist/${pattern}`) || cmd.endsWith(pattern);
+  });
 }
 
 function patchSettings(repoRoot: string, includeCmAdapter = false): { patched: string[]; settingsPath: string } {
@@ -191,6 +202,11 @@ function patchSettings(repoRoot: string, includeCmAdapter = false): { patched: s
 
   const patched: string[] = [];
 
+  // When --cm-adapter is not passed, preserve any existing CM adapter hooks
+  const shouldStripHook = includeCmAdapter
+    ? (cmd: string) => isClaudexHookCommand(cmd)
+    : (cmd: string) => isClaudexHookCommand(cmd) && !isCmAdapterHookCommand(cmd);
+
   for (const [event, wrapperNames] of Object.entries(HOOK_MAP)) {
     const hookCommands = wrapperNames.map(name => ({
       type: 'command' as const,
@@ -203,8 +219,9 @@ function patchSettings(repoRoot: string, includeCmAdapter = false): { patched: s
     const entries = hooks[event] as Array<{ matcher?: string; hooks?: Array<{ type: string; command: string }> }>;
 
     // Strip Claudex hooks from each existing group; drop groups that become empty
+    // When --cm-adapter is not passed, CM adapter hooks are preserved
     const nonClaudex = entries
-      .map(g => ({ ...g, hooks: (g.hooks ?? []).filter(h => !isClaudexHookCommand(h.command ?? '')) }))
+      .map(g => ({ ...g, hooks: (g.hooks ?? []).filter(h => !shouldStripHook(h.command ?? '')) }))
       .filter(g => g.hooks.length > 0);
 
     // Claudex entry first, then preserved non-Claudex groups

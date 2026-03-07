@@ -48,6 +48,32 @@ describe('normalizeLearningFingerprint', () => {
 
   it('combines all normalizations', () => {
     // Leading `  - **` is stripped by ^[\s\-*\u2022.]+ regex, leaving "Bold**  text   here  "
-    expect(normalizeLearningFingerprint('  - **Bold**  text   here  ')).toBe('bold** text here');
+    // Then bold stripping removes remaining **, leaving "bold text here"
+    expect(normalizeLearningFingerprint('  - **Bold**  text   here  ')).toBe('bold text here');
+  });
+
+  // ── Markdown stripping ────────────────────────────────────────────
+  it('strips bold markdown so "**bold** text" matches "bold text"', () => {
+    expect(normalizeLearningFingerprint('**bold** text')).toBe(
+      normalizeLearningFingerprint('bold text'),
+    );
+  });
+
+  it('strips italic markdown (*) so "*italic* approach" matches "italic approach"', () => {
+    expect(normalizeLearningFingerprint('use *italic* approach')).toBe(
+      normalizeLearningFingerprint('use italic approach'),
+    );
+  });
+
+  it('strips inline code markdown so "`npm install`" matches "npm install"', () => {
+    expect(normalizeLearningFingerprint('run `npm install`')).toBe(
+      normalizeLearningFingerprint('run npm install'),
+    );
+  });
+
+  it('strips underscore italic markdown so "_text_" matches "text"', () => {
+    expect(normalizeLearningFingerprint('use _italic_ style')).toBe(
+      normalizeLearningFingerprint('use italic style'),
+    );
   });
 });

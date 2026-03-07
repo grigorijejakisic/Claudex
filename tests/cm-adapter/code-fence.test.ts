@@ -92,4 +92,23 @@ describe('linesOutsideCodeFences', () => {
     expect(result).toHaveLength(1);
     expect(result[0]!.trimmed).toBe('before');
   });
+
+  // ── CRLF handling ─────────────────────────────────────────────────
+  it('handles CRLF line endings', () => {
+    const text = 'line1\r\n```\r\ncode\r\n```\r\nline2';
+    const result = collect(text);
+    expect(result).toHaveLength(2);
+    expect(result[0]!.trimmed).toBe('line1');
+    expect(result[1]!.trimmed).toBe('line2');
+  });
+
+  it('handles mixed LF and CRLF line endings', () => {
+    const text = 'line1\r\nline2\nline3\r\n```\r\nfenced\n```\nline4';
+    const result = collect(text);
+    expect(result).toHaveLength(4);
+    expect(result[0]!.trimmed).toBe('line1');
+    expect(result[1]!.trimmed).toBe('line2');
+    expect(result[2]!.trimmed).toBe('line3');
+    expect(result[3]!.trimmed).toBe('line4');
+  });
 });

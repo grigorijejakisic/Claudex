@@ -1,7 +1,5 @@
-import { vi, describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { vi, describe, it, expect, beforeEach } from 'vitest';
 import * as fs from 'node:fs';
-import * as path from 'node:path';
-import * as os from 'node:os';
 
 // We need to mock fs methods used by readCoordinationConfig
 vi.mock('node:fs', async () => {
@@ -10,14 +8,19 @@ vi.mock('node:fs', async () => {
     ...actual,
     existsSync: vi.fn(),
     readFileSync: vi.fn(),
+    statSync: vi.fn(),
+    lstatSync: vi.fn(),
   };
 });
 
-import { readCoordinationConfig } from '../../src/shared/coordination.js';
+import {
+  readCoordinationConfig,
+  _resetCoordinationCache,
+  isOwnedByClaudex,
+  type CoordinationConfig,
+} from '../../src/shared/coordination.js';
 
-const COORDINATION_PATH = path.join(os.homedir(), '.echo', 'coordination.json');
-
-const STANDALONE_DEFAULTS = {
+const STANDALONE_DEFAULTS: CoordinationConfig = {
   version: 1,
   checkpoint_primary: 'claudex',
   injection_budget: { claudex: 4000, context_manager: 0, total: 4000 },
@@ -29,9 +32,18 @@ const STANDALONE_DEFAULTS = {
 };
 
 describe('readCoordinationConfig', () => {
+  let mtimeCounter = 0;
+
   beforeEach(() => {
     vi.mocked(fs.existsSync).mockReset();
     vi.mocked(fs.readFileSync).mockReset();
+    vi.mocked(fs.statSync).mockReset();
+    vi.mocked(fs.lstatSync).mockReset();
+    _resetCoordinationCache();
+    // Default: each call gets a unique mtime so caching doesn't interfere with existing tests
+    vi.mocked(fs.statSync).mockImplementation(() => ({ mtimeMs: ++mtimeCounter }) as unknown as fs.Stats);
+    // Default: not a symlink
+    vi.mocked(fs.lstatSync).mockImplementation(() => ({ isSymbolicLink: () => false }) as unknown as fs.Stats);
   });
 
   it('returns standalone defaults when file is missing', () => {
@@ -189,5 +201,134 @@ describe('readCoordinationConfig', () => {
     expect(result.thread_tracking).toBe('context_manager');
     expect(result.learnings).toBe('context_manager');
     expect(result.gauge_display).toBe('context_manager');
+  });
+
+  it('returns cached result when mtime is unchanged', () => {
+    const config = { version: 5, tool_tracking: 'both' };
+    vi.mocked(fs.existsSync).mockReturnValue(true);
+    vi.mocked(fs.statSync).mockReturnValue({ mtimeMs: 1000 } as unknown as fs.Stats);
+    vi.mocked(fs.readFileSync).mockReturnValue(JSON.stringify(config));
+
+    const first = readCoordinationConfig();
+    const second = readCoordinationConfig();
+
+    expect(first.version).toBe(5);
+    expect(second).toBe(first); // same reference — cached
+    expect(vi.mocked(fs.readFileSync)).toHaveBeenCalledTimes(1);
+  });
+
+  it('re-reads file when mtime changes', () => {
+    vi.mocked(fs.existsSync).mockReturnValue(true);
+    vi.mocked(fs.statSync)
+      .mockReturnValueOnce({ mtimeMs: 1000 } as unknown as fs.Stats)
+      .mockReturnValueOnce({ mtimeMs: 2000 } as unknown as fs.Stats);
+    vi.mocked(fs.readFileSync)
+      .mockReturnValueOnce(JSON.stringify({ version: 1 }))
+      .mockReturnValueOnce(JSON.stringify({ version: 2 }));
+
+    const first = readCoordinationConfig();
+    const second = readCoordinationConfig();
+
+    expect(first.version).toBe(1);
+    expect(second.version).toBe(2);
+    expect(vi.mocked(fs.readFileSync)).toHaveBeenCalledTimes(2);
+  });
+
+  // --- Budget clamping ---
+
+  it('clamps excessively large budget to MAX_BUDGET (8000)', () => {
+    vi.mocked(fs.existsSync).mockReturnValue(true);
+    vi.mocked(fs.readFileSync).mockReturnValue(JSON.stringify({
+      injection_budget: { claudex: 50000, context_manager: 50000, total: 100000 },
+    }));
+
+    const result = readCoordinationConfig();
+    expect(result.injection_budget.claudex).toBe(8000);
+    expect(result.injection_budget.context_manager).toBe(8000);
+  });
+
+  it('clamps too-small budget to MIN_BUDGET (256)', () => {
+    vi.mocked(fs.existsSync).mockReturnValue(true);
+    vi.mocked(fs.readFileSync).mockReturnValue(JSON.stringify({
+      injection_budget: { claudex: 10, context_manager: 10, total: 4000 },
+    }));
+
+    const result = readCoordinationConfig();
+    expect(result.injection_budget.claudex).toBe(256);
+    expect(result.injection_budget.context_manager).toBe(256);
+  });
+
+  it('preserves budget of 0 (disabled) without clamping', () => {
+    vi.mocked(fs.existsSync).mockReturnValue(true);
+    vi.mocked(fs.readFileSync).mockReturnValue(JSON.stringify({
+      injection_budget: { claudex: 0, context_manager: 0, total: 4000 },
+    }));
+
+    const result = readCoordinationConfig();
+    expect(result.injection_budget.claudex).toBe(0);
+    expect(result.injection_budget.context_manager).toBe(0);
+  });
+
+  // --- Symlink rejection ---
+
+  it('returns defaults when coordination.json is a symlink', () => {
+    vi.mocked(fs.existsSync).mockReturnValue(true);
+    vi.mocked(fs.lstatSync).mockReturnValue({
+      isSymbolicLink: () => true,
+    } as unknown as fs.Stats);
+
+    const result = readCoordinationConfig();
+    expect(result).toEqual(STANDALONE_DEFAULTS);
+  });
+
+  // --- Version validation ---
+
+  it('rejects fractional version number and falls back to default', () => {
+    vi.mocked(fs.existsSync).mockReturnValue(true);
+    vi.mocked(fs.readFileSync).mockReturnValue(JSON.stringify({
+      version: 1.5,
+    }));
+
+    const result = readCoordinationConfig();
+    expect(result.version).toBe(1); // fallback
+  });
+
+  it('rejects version: 0 and falls back to default', () => {
+    vi.mocked(fs.existsSync).mockReturnValue(true);
+    vi.mocked(fs.readFileSync).mockReturnValue(JSON.stringify({
+      version: 0,
+    }));
+
+    const result = readCoordinationConfig();
+    expect(result.version).toBe(1); // fallback
+  });
+
+  it('rejects negative version and falls back to default', () => {
+    vi.mocked(fs.existsSync).mockReturnValue(true);
+    vi.mocked(fs.readFileSync).mockReturnValue(JSON.stringify({
+      version: -3,
+    }));
+
+    const result = readCoordinationConfig();
+    expect(result.version).toBe(1); // fallback
+  });
+});
+
+describe('isOwnedByClaudex', () => {
+  it('returns true when field is owned by claudex', () => {
+    expect(isOwnedByClaudex(STANDALONE_DEFAULTS, 'checkpoint_primary')).toBe(true);
+    expect(isOwnedByClaudex(STANDALONE_DEFAULTS, 'thread_tracking')).toBe(true);
+    expect(isOwnedByClaudex(STANDALONE_DEFAULTS, 'tool_tracking')).toBe(true);
+    expect(isOwnedByClaudex(STANDALONE_DEFAULTS, 'learnings')).toBe(true);
+  });
+
+  it('returns false when field is owned by context_manager', () => {
+    const config: CoordinationConfig = {
+      ...STANDALONE_DEFAULTS,
+      checkpoint_primary: 'context_manager',
+      learnings: 'context_manager',
+    };
+    expect(isOwnedByClaudex(config, 'checkpoint_primary')).toBe(false);
+    expect(isOwnedByClaudex(config, 'learnings')).toBe(false);
   });
 });

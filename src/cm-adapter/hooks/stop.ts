@@ -8,9 +8,9 @@
  * Coordination: runs when learnings is "context_manager" (covers decisions too).
  */
 
-import * as fs from 'node:fs';
 import { runHook, logToFile } from '../../hooks/_infrastructure.js';
 import { readCoordinationConfig } from '../../shared/coordination.js';
+import { readTranscriptTail } from '../../shared/transcript-tail.js';
 import { ensureStateDir, appendDecision } from '../state-files.js';
 import { extractDecisionFromResponse, isConfirmationMessage } from '../decision-extractor.js';
 import { scanAndCaptureOpenItems } from '../open-items.js';
@@ -18,65 +18,25 @@ import type { StopInput } from '../../shared/types.js';
 
 const HOOK_NAME = 'cm-stop';
 
-/** Parse last N bytes of transcript for user/assistant messages in the current turn. */
+/** Extract last user/assistant turn from transcript using shared tail reader. */
 function extractLastTurnMessages(
   transcriptPath: string,
 ): { userText: string; assistantText: string } | null {
-  try {
-    if (!fs.existsSync(transcriptPath)) return null;
+  const entries = readTranscriptTail(transcriptPath);
+  if (entries.length === 0) return null;
 
-    const fd = fs.openSync(transcriptPath, 'r');
-    let text: string;
-    try {
-      const stat = fs.fstatSync(fd);
-      const readSize = Math.min(30000, stat.size);
-      const buf = Buffer.alloc(readSize);
-      fs.readSync(fd, buf, 0, readSize, stat.size - readSize);
-      text = buf.toString('utf-8');
-    } finally {
-      fs.closeSync(fd);
+  let lastUserText = '';
+  let lastAssistantText = '';
+  for (const entry of entries) {
+    if (entry.role === 'user') {
+      lastUserText = entry.text;
+      lastAssistantText = '';
+    } else if (entry.role === 'assistant' && entry.text) {
+      lastAssistantText = entry.text;
     }
-
-    const lines = text.split('\n').filter(l => l.trim().length > 0);
-
-    // Find last user and assistant messages
-    let lastUserText = '';
-    let lastAssistantText = '';
-
-    for (const line of lines) {
-      try {
-        const entry = JSON.parse(line);
-        const role = entry?.message?.role as string | undefined;
-        const content = entry?.message?.content;
-
-        if (!role || !content) continue;
-
-        let messageText = '';
-        if (typeof content === 'string') {
-          messageText = content;
-        } else if (Array.isArray(content)) {
-          messageText = content
-            .filter((b: Record<string, unknown>) => b?.type === 'text')
-            .map((b: Record<string, unknown>) => (b?.text as string) ?? '')
-            .join('\n');
-        }
-
-        if (role === 'user') {
-          lastUserText = messageText;
-          lastAssistantText = ''; // Reset — we want the assistant AFTER this user
-        } else if (role === 'assistant' && messageText) {
-          lastAssistantText = messageText;
-        }
-      } catch {
-        // Skip partial/malformed lines
-      }
-    }
-
-    if (!lastAssistantText) return null;
-    return { userText: lastUserText, assistantText: lastAssistantText };
-  } catch {
-    return null;
   }
+
+  return lastAssistantText ? { userText: lastUserText, assistantText: lastAssistantText } : null;
 }
 
 runHook(HOOK_NAME, async (input) => {
@@ -104,9 +64,9 @@ runHook(HOOK_NAME, async (input) => {
     decision = extractDecisionFromResponse(messages.assistantText);
   }
 
-  // Only ensure state dir if we have data to write
-  const hasOpenItems = messages.assistantText.length > 0;
-  if (!decision && !hasOpenItems) return {};
+  // Only ensure state dir if we have assistant text to scan for decisions/open-items
+  const hasAssistantText = messages.assistantText.length > 0;
+  if (!decision && !hasAssistantText) return {};
 
   try {
     await ensureStateDir(sessionId);

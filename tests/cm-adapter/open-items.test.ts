@@ -16,21 +16,25 @@ describe('scanAndCaptureOpenItems', () => {
 
   it('captures unchecked checkbox items', async () => {
     await scanAndCaptureOpenItems('test-session', '- [ ] TODO item here');
+    expect(mockBatchAppend).toHaveBeenCalledTimes(1);
     expect(mockBatchAppend).toHaveBeenCalledWith('test-session', ['- [ ] TODO item here']);
   });
 
   it('captures indented unchecked checkboxes', async () => {
     await scanAndCaptureOpenItems('test-session', '  - [ ] nested checkbox');
+    expect(mockBatchAppend).toHaveBeenCalledTimes(1);
     expect(mockBatchAppend).toHaveBeenCalledWith('test-session', ['- [ ] nested checkbox']);
   });
 
   it('captures bullet with action keyword "need to"', async () => {
     await scanAndCaptureOpenItems('test-session', '- need to fix the parser');
+    expect(mockBatchAppend).toHaveBeenCalledTimes(1);
     expect(mockBatchAppend).toHaveBeenCalledWith('test-session', ['- need to fix the parser']);
   });
 
   it('captures numbered item with action keyword "TODO"', async () => {
     await scanAndCaptureOpenItems('test-session', '1. TODO: implement dedup');
+    expect(mockBatchAppend).toHaveBeenCalledTimes(1);
     expect(mockBatchAppend).toHaveBeenCalledWith('test-session', ['1. TODO: implement dedup']);
   });
 
@@ -102,5 +106,25 @@ describe('scanAndCaptureOpenItems', () => {
       '- need to fix second thing',
       '- [ ] Third checkbox',
     ]);
+  });
+
+  it('filters out items containing secret patterns', async () => {
+    const text = [
+      '- [ ] TODO set token= sk-abcdefghijklmnopqrstuvwx',
+      '- [ ] TODO fix the parser',
+      '- need to update password= hunter2',
+      '- [ ] TODO check AKIAIOSFODNN7EXAMPLE key',
+    ].join('\n');
+    await scanAndCaptureOpenItems('test-session', text);
+    expect(mockBatchAppend).toHaveBeenCalledTimes(1);
+    expect(mockBatchAppend).toHaveBeenCalledWith('test-session', [
+      '- [ ] TODO fix the parser',
+    ]);
+  });
+
+  it('filters out items with GitHub personal access tokens', async () => {
+    await scanAndCaptureOpenItems('test-session', '- [ ] TODO use ghp_ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghij');
+    expect(mockBatchAppend).toHaveBeenCalledTimes(1);
+    expect(mockBatchAppend).toHaveBeenCalledWith('test-session', []);
   });
 });

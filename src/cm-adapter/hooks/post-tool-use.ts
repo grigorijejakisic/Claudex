@@ -14,6 +14,11 @@ import type { PostToolUseInput } from '../../shared/types.js';
 
 const HOOK_NAME = 'cm-post-tool-use';
 
+function sanitizePath(p: string): string {
+  // Strip control characters (except tab), cap length
+  return p.replace(/[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]/g, '').slice(0, 500);
+}
+
 runHook(HOOK_NAME, async (input) => {
   const coordination = readCoordinationConfig();
   if (coordination.tool_tracking !== 'context_manager' && coordination.tool_tracking !== 'both') {
@@ -33,15 +38,17 @@ runHook(HOOK_NAME, async (input) => {
   }
 
   // Track tool + file in a single read/write cycle
-  const filePath =
+  const rawPath =
     typeof toolInput.path === 'string'
       ? toolInput.path
       : typeof toolInput.file_path === 'string'
         ? toolInput.file_path
         : null;
+  const filePath = rawPath ? sanitizePath(rawPath) : null;
 
+  const WRITE_TOOLS = new Set(['Write', 'Edit', 'NotebookEdit']);
   const kind = filePath
-    ? (toolName === 'Read' || toolName === 'Grep' || toolName === 'Glob' ? 'read' : 'modified')
+    ? (WRITE_TOOLS.has(toolName) ? 'modified' : 'read')
     : undefined;
 
   try {

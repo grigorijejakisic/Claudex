@@ -1,5 +1,5 @@
 /**
- * CM Adapter — State File I/O
+ * CM adapter in-session state persistence layer. Distinct from core checkpoint state-files (src/checkpoint/).
  *
  * Ported from OpenClaw Context Manager's context-state.ts.
  * Reads/writes decisions, open_items, learnings, resources
@@ -11,6 +11,7 @@ import * as path from 'node:path';
 import { isSemanticDuplicate } from './dedup.js';
 import { normalizeLearningFingerprint } from './fingerprint.js';
 import { sanitizeSessionId, isContainedPath } from '../shared/paths.js';
+import { readJsonFile, writeJsonFile } from '../shared/fs-helpers.js';
 import {
   ECHO_HOME,
   MAX_DECISIONS,
@@ -26,6 +27,7 @@ const STATE_ROOT = path.join(ECHO_HOME, 'context', 'state');
 function resolveStateDir(sessionId: string): string {
   const safe = sanitizeSessionId(sessionId);
   if (!safe) throw new Error('Invalid session ID');
+  if (safe !== sessionId) throw new Error('Invalid session ID: contains disallowed characters');
   const dir = path.join(STATE_ROOT, safe);
   if (!isContainedPath(dir, STATE_ROOT)) {
     throw new Error('Session ID resolves outside state root');
@@ -37,22 +39,9 @@ function emptyResources(): StateFiles['resources'] {
   return { files: [], tools_used: [] };
 }
 
-async function readJsonFile<T>(filePath: string, fallback: T): Promise<T> {
-  try {
-    const raw = await fs.promises.readFile(filePath, 'utf-8');
-    return JSON.parse(raw) as T;
-  } catch {
-    return fallback;
-  }
-}
-
-async function writeJsonFile(filePath: string, data: unknown): Promise<void> {
-  await fs.promises.writeFile(filePath, JSON.stringify(data, null, 2), 'utf-8');
-}
-
 export async function ensureStateDir(sessionId: string): Promise<string> {
   const dir = resolveStateDir(sessionId);
-  await fs.promises.mkdir(dir, { recursive: true });
+  await fs.promises.mkdir(dir, { recursive: true, mode: 0o700 });
   return dir;
 }
 
@@ -87,6 +76,7 @@ export async function appendDecision(
   sessionId: string,
   decision: { what: string; when: string },
 ): Promise<void> {
+  await ensureStateDir(sessionId);
   const dir = resolveStateDir(sessionId);
   const filePath = path.join(dir, 'decisions.json');
 
@@ -100,6 +90,7 @@ export async function appendDecision(
 }
 
 export async function appendOpenItem(sessionId: string, item: string): Promise<void> {
+  await ensureStateDir(sessionId);
   const dir = resolveStateDir(sessionId);
   const filePath = path.join(dir, 'open_items.json');
 
@@ -114,6 +105,7 @@ export async function appendOpenItem(sessionId: string, item: string): Promise<v
 export async function batchAppendOpenItems(sessionId: string, newItems: string[]): Promise<void> {
   if (newItems.length === 0) return;
 
+  await ensureStateDir(sessionId);
   const dir = resolveStateDir(sessionId);
   const filePath = path.join(dir, 'open_items.json');
 
@@ -132,6 +124,7 @@ export async function appendLearning(
   sessionId: string,
   learning: { text: string; when: string },
 ): Promise<void> {
+  await ensureStateDir(sessionId);
   const dir = resolveStateDir(sessionId);
   const filePath = path.join(dir, 'learnings.json');
 
@@ -146,7 +139,10 @@ export async function appendLearning(
 }
 
 export function scoreFileAccess(file: FileAccess, now: Date = new Date()): number {
-  const ageMinutes = Math.max(0, (now.getTime() - new Date(file.last_accessed).getTime()) / 60000);
+  const lastAccessed = new Date(file.last_accessed).getTime();
+  const ageMinutes = Number.isNaN(lastAccessed)
+    ? 0
+    : Math.max(0, (now.getTime() - lastAccessed) / 60000);
   const recency = Math.exp(-0.003 * ageMinutes);
   const kindBonus = file.kind === 'modified' ? 1.5 : 1.0;
   return file.access_count * recency * kindBonus;
@@ -158,14 +154,17 @@ export async function appendResourceUsage(
   filePath?: string | null,
   kind?: 'read' | 'modified',
 ): Promise<void> {
+  await ensureStateDir(sessionId);
   const dir = resolveStateDir(sessionId);
   const resourcesPath = path.join(dir, 'resources.json');
 
   const resources = await readJsonFile<StateFiles['resources']>(resourcesPath, emptyResources());
+  let changed = false;
 
   // Track tool
   if (!resources.tools_used.includes(toolName) && resources.tools_used.length < MAX_TOOLS) {
     resources.tools_used.push(toolName);
+    changed = true;
   }
 
   // Track file
@@ -176,28 +175,42 @@ export async function appendResourceUsage(
     if (existing) {
       existing.access_count++;
       existing.last_accessed = now;
+      changed = true;
       if (kind === 'modified' && existing.kind === 'read') {
         existing.kind = 'modified';
       }
     } else {
       if (resources.files.length >= MAX_FILES) {
         const nowDate = new Date();
-        resources.files.sort((a, b) => scoreFileAccess(b, nowDate) - scoreFileAccess(a, nowDate));
-        resources.files.pop();
+        let minIdx = 0;
+        let minScore = scoreFileAccess(resources.files[0]!, nowDate);
+        for (let i = 1; i < resources.files.length; i++) {
+          const s = scoreFileAccess(resources.files[i]!, nowDate);
+          if (s < minScore) { minScore = s; minIdx = i; }
+        }
+        resources.files.splice(minIdx, 1);
       }
       resources.files.push({ path: filePath, access_count: 1, last_accessed: now, kind });
+      changed = true;
     }
   }
 
+  if (!changed) return;
   await writeJsonFile(resourcesPath, resources);
 }
 
-export async function resetStateFiles(sessionId: string): Promise<void> {
+export async function resetStateFiles(
+  sessionId: string,
+  fields?: StateFileField[],
+): Promise<void> {
   const dir = resolveStateDir(sessionId);
-  await Promise.all([
-    writeJsonFile(path.join(dir, 'decisions.json'), []),
-    writeJsonFile(path.join(dir, 'resources.json'), emptyResources()),
-    writeJsonFile(path.join(dir, 'open_items.json'), []),
-    writeJsonFile(path.join(dir, 'learnings.json'), []),
-  ]).catch(() => {});
+  const filesToReset = fields
+    ? fields.filter(f => f !== 'thread')
+    : (['decisions', 'open_items', 'learnings', 'resources'] as const);
+
+  await Promise.all(
+    filesToReset.map(f =>
+      writeJsonFile(path.join(dir, `${f}.json`), f === 'resources' ? emptyResources() : []),
+    ),
+  );
 }

@@ -14,6 +14,7 @@ import * as path from 'node:path';
 import * as yaml from 'js-yaml';
 import { runHook, logToFile } from './_infrastructure.js';
 import { detectScope } from '../shared/scope-detector.js';
+import { readCoordinationConfig } from '../shared/coordination.js';
 import type { StopInput } from '../shared/types.js';
 
 const HOOK_NAME = 'stop';
@@ -288,13 +289,17 @@ runHook(HOOK_NAME, async (input) => {
     const signals = detectDecisionSignals(transcriptPath);
 
     // 3. Capture assistant action gist into thread
-    try {
-      const gist = extractAssistantGist(signals);
-      const { appendExchange } = await import('../checkpoint/state-files.js');
-      appendExchange(projectDir, sessionId, { role: 'agent', gist });
-      logToFile(HOOK_NAME, 'DEBUG', `Thread: appended agent gist: "${gist}"`);
-    } catch (err) {
-      logToFile(HOOK_NAME, 'DEBUG', 'Thread gist append failed (non-fatal)', err);
+    // Gate: skip when context_manager owns thread_tracking
+    const coordination = readCoordinationConfig();
+    if (coordination.thread_tracking === 'claudex') {
+      try {
+        const gist = extractAssistantGist(signals);
+        const { appendExchange } = await import('../checkpoint/state-files.js');
+        appendExchange(projectDir, sessionId, { role: 'agent', gist });
+        logToFile(HOOK_NAME, 'DEBUG', `Thread: appended agent gist: "${gist}"`);
+      } catch (err) {
+        logToFile(HOOK_NAME, 'DEBUG', 'Thread gist append failed (non-fatal)', err);
+      }
     }
 
     // 4. Read nudge state and increment turn counter

@@ -1,12 +1,17 @@
 /**
  * CM Adapter — 4-Tier Decision Extraction
  *
+ * @experimental These modules support cm-stop hook which is not yet
+ * registerable in Claude Code. Built for future use when Stop hook
+ * registration is supported.
+ *
  * Ported from OpenClaw Context Manager's extractDecisionFromResponse.
  * Extracts meaningful decision lines from assistant responses using
  * tiered heuristics with quality gates.
  */
 
 import { linesOutsideCodeFences } from './code-fence.js';
+import { truncateText } from '../shared/text-utils.js';
 
 const ACTION_VERBS = new Set([
   'use', 'add', 'remove', 'replace', 'create', 'implement', 'switch', 'move',
@@ -31,10 +36,6 @@ function passesQualityGate(text: string): boolean {
   if (text.trimEnd().endsWith('?')) return false;
   if (!hasActionVerb(text) && !hasStructuralMarker(text)) return false;
   return true;
-}
-
-function truncate(text: string, maxLen: number): string {
-  return text.length <= maxLen ? text : text.slice(0, maxLen - 3) + '...';
 }
 
 /**
@@ -89,7 +90,7 @@ export function extractDecisionFromResponse(text: string): string | null {
 
   for (const c of candidates) {
     if (passesQualityGate(c.line)) {
-      return truncate(c.line, 200);
+      return truncateText(c.line, 200);
     }
   }
 
@@ -106,8 +107,7 @@ export function isConfirmationMessage(userText: string): boolean {
   if (trimmed.endsWith('?')) return false;
   if (/\b(no|don't|stop|wait|cancel)\b/i.test(trimmed)) return false;
 
-  const isShort = trimmed.length < 15;
   const hasConfirmKeyword = /\b(yes|go|do it|ship it|pick|approve|proceed|let's go|sounds good|go ahead|implement|fix|ok|okay|sure|agreed|confirm|da|ja|oui|si|sim|vai)\b/i.test(trimmed);
 
-  return (isShort || hasConfirmKeyword) && trimmed.length < 50;
+  return hasConfirmKeyword && trimmed.length < 50;
 }

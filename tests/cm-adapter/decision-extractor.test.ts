@@ -169,6 +169,23 @@ describe('extractDecisionFromResponse', () => {
     expect(result).toBe(decision);
     expect(result!.length).toBeLessThanOrEqual(200);
   });
+
+  // ── Tier 1 untested prefixes ──────────────────────────────────────
+  it('should extract Approach: prefix', () => {
+    expect(extractDecisionFromResponse('Approach: use dependency injection for services')).toBeTruthy();
+  });
+
+  // ── Tier 2 untested prefixes ──────────────────────────────────────
+  it.each([
+    'I will split the module into smaller functions',
+    'We will deploy to staging first',
+    "I'm going to change the database schema",
+    "We're going to implement caching at the API layer",
+    'The fix is to add null checks before dereferencing',
+    'The solution is to use a connection pool',
+  ])('should extract Tier 2 intent: %s', (input) => {
+    expect(extractDecisionFromResponse(input)).toBeTruthy();
+  });
 });
 
 describe('isConfirmationMessage', () => {
@@ -185,7 +202,7 @@ describe('isConfirmationMessage', () => {
     expect(isConfirmationMessage('sounds good')).toBe(true);
   });
 
-  it('returns true for short non-keyword text "ok"', () => {
+  it('returns true for "ok"', () => {
     expect(isConfirmationMessage('ok')).toBe(true);
   });
 
@@ -259,7 +276,28 @@ describe('isConfirmationMessage', () => {
     expect(isConfirmationMessage('yes, go ahead and implement it')).toBe(true);
   });
 
-  it('returns true for short non-keyword text under 15 chars', () => {
-    expect(isConfirmationMessage('yep')).toBe(true);
+  // ── Negative: short non-keyword text should NOT confirm ──────────
+  it('returns false for "later" (short, no keyword)', () => {
+    expect(isConfirmationMessage('later')).toBe(false);
+  });
+
+  it('returns false for "maybe" (short, no keyword)', () => {
+    expect(isConfirmationMessage('maybe')).toBe(false);
+  });
+
+  it('returns false for "hmm" (short, no keyword)', () => {
+    expect(isConfirmationMessage('hmm')).toBe(false);
+  });
+
+  it('returns false for "k" (short, no keyword)', () => {
+    expect(isConfirmationMessage('k')).toBe(false);
+  });
+
+  it('returns false for "what" (short, no keyword)', () => {
+    expect(isConfirmationMessage('what')).toBe(false);
+  });
+
+  it('returns false for "yep" (short, no keyword)', () => {
+    expect(isConfirmationMessage('yep')).toBe(false);
   });
 });

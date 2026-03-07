@@ -10,7 +10,7 @@
  * Yields each non-empty, non-fence line with leading whitespace trimmed.
  */
 export function* linesOutsideCodeFences(text: string): Generator<{ raw: string; trimmed: string }> {
-  const lines = text.split('\n');
+  const lines = text.split(/\r?\n/);
   let inCodeFence = false;
   for (const raw of lines) {
     const trimmed = raw.trimStart();

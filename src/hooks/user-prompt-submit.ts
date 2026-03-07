@@ -58,17 +58,20 @@ runHook(HOOK_NAME, async (input) => {
   logToFile(HOOK_NAME, 'DEBUG', `Scope: ${scope.type === 'project' ? `project:${scope.name}` : 'global'}`);
 
   // 2.0. Resolve configurable token budget (coordination config overrides default)
-  // Coordination is read once and used for: (a) injection_budget fallback (line ~64),
-  // and (b) checkpoint_primary gate (line ~444). Both are needed on most invocations.
+  // Coordination is read once and used for: (a) injection_budget (line ~64),
+  // (b) thread_tracking gate (line ~71), and (c) checkpoint_primary gate (line ~444).
   const config = loadConfig();
   const coordination = readCoordinationConfig();
-  const CONTEXT_TOKEN_BUDGET = config.hooks?.context_token_budget
-    ?? coordination.injection_budget.claudex
-    ?? DEFAULT_CONTEXT_TOKEN_BUDGET;
+  // Prefer coordination budget if explicitly configured (differs from standalone default of 4000),
+  // otherwise fall back to user config or the built-in default.
+  const CONTEXT_TOKEN_BUDGET = coordination.injection_budget.claudex !== DEFAULT_CONTEXT_TOKEN_BUDGET
+    ? coordination.injection_budget.claudex
+    : (config.hooks?.context_token_budget ?? DEFAULT_CONTEXT_TOKEN_BUDGET);
 
   // 2.1. Thread accumulation — capture user message gist + detect approvals
   // Runs BEFORE short-prompt gate so "yes"/"ok" approvals are captured
-  if (scope.type === 'project' && typeof promptText === 'string' && promptText.length > 0) {
+  // Gate: skip when context_manager owns thread_tracking
+  if (coordination.thread_tracking === 'claudex' && scope.type === 'project' && typeof promptText === 'string' && promptText.length > 0) {
     try {
       const { extractGist, detectDecisionSignal } = await import('../lib/decision-detector.js');
       const { appendExchange, appendDecision } = await import('../checkpoint/state-files.js');

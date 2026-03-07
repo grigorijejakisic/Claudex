@@ -1,6 +1,24 @@
 import { describe, it, expect } from 'vitest';
-import { scoreFileAccess } from '../../src/cm-adapter/state-files.js';
+import { scoreFileAccess, ensureStateDir } from '../../src/cm-adapter/state-files.js';
 import type { FileAccess } from '../../src/cm-adapter/types.js';
+
+describe('resolveStateDir validation', () => {
+  it('rejects session IDs with path traversal characters', async () => {
+    await expect(ensureStateDir('../etc/passwd')).rejects.toThrow('Invalid session ID: contains disallowed characters');
+  });
+
+  it('rejects session IDs with slashes', async () => {
+    await expect(ensureStateDir('foo/bar')).rejects.toThrow('Invalid session ID: contains disallowed characters');
+  });
+
+  it('rejects session IDs with spaces', async () => {
+    await expect(ensureStateDir('foo bar')).rejects.toThrow('Invalid session ID: contains disallowed characters');
+  });
+
+  it('rejects session IDs with dots', async () => {
+    await expect(ensureStateDir('foo.bar')).rejects.toThrow('Invalid session ID: contains disallowed characters');
+  });
+});
 
 describe('scoreFileAccess', () => {
   const now = new Date('2026-03-07T12:00:00Z');
@@ -82,5 +100,17 @@ describe('scoreFileAccess', () => {
 
     const score = scoreFileAccess(file, now);
     expect(score).toBeCloseTo(Math.exp(-0.3), 4);
+  });
+
+  it('treats malformed last_accessed as zero age (max recency)', () => {
+    const file = makeFile({
+      last_accessed: 'not-a-date',
+      access_count: 2,
+      kind: 'read',
+    });
+
+    const score = scoreFileAccess(file, now);
+    // NaN timestamp → ageMinutes = 0 → recency = exp(0) = 1
+    expect(score).toBeCloseTo(2, 5);
   });
 });

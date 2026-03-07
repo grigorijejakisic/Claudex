@@ -26,13 +26,24 @@ for (const file of [
   }
 }
 
-const namedEntryPoints: Record<string, string> = {
-  ...discoverEntryPoints(path.join('src', 'hooks')),
-  ...discoverEntryPoints(path.join('src', 'cm-adapter', 'hooks'), 'cm-'),
-  ...cliEntryPoints,
-};
+const hookEntries = discoverEntryPoints(path.join('src', 'hooks'));
+// CM adapter hooks — includes cm-stop.mjs which is built for future use
+// when Claude Code supports Stop hook registration via settings.json
+const cmEntries = discoverEntryPoints(path.join('src', 'cm-adapter', 'hooks'), 'cm-');
 
-// Check for duplicate names (would indicate a prefix collision)
+// Check for duplicate names (prefix collision between hook dirs)
+for (const name of Object.keys(cmEntries)) {
+  if (name in hookEntries || name in cliEntryPoints) {
+    throw new Error(`Entry point name collision: "${name}" exists in multiple directories: ${cmEntries[name]} and ${hookEntries[name] || cliEntryPoints[name]}`);
+  }
+}
+for (const name of Object.keys(cliEntryPoints)) {
+  if (name in hookEntries) {
+    throw new Error(`Entry point name collision: "${name}" exists in multiple directories: ${cliEntryPoints[name]} and ${hookEntries[name]}`);
+  }
+}
+
+const namedEntryPoints: Record<string, string> = { ...hookEntries, ...cmEntries, ...cliEntryPoints };
 const allEntryPoints = Object.values(namedEntryPoints);
 
 if (allEntryPoints.length === 0) {

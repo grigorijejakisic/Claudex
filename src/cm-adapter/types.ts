@@ -32,7 +32,7 @@ export interface CrossSessionLearning {
 
 export interface CrossSessionLearningsStore {
   version: 1;
-  max_entries: 50;
+  max_entries: number;
   learnings: CrossSessionLearning[];
 }
 

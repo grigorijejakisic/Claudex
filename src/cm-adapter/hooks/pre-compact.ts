@@ -43,17 +43,24 @@ runHook(HOOK_NAME, async (input) => {
       await promoteLearnings(stateFiles.learnings, checkpointId, sessionId);
       logToFile(HOOK_NAME, 'INFO',
         `Promoted ${stateFiles.learnings.length} learnings to cross-session store`);
+      // Only reset learnings after successful promotion
+      try {
+        await resetStateFiles(sessionId, ['learnings']);
+        logToFile(HOOK_NAME, 'DEBUG', 'Learnings state reset after promotion');
+      } catch (err) {
+        logToFile(HOOK_NAME, 'WARN', 'Learnings reset failed', err);
+      }
     } catch (err) {
-      logToFile(HOOK_NAME, 'WARN', 'Learnings promotion failed', err);
+      logToFile(HOOK_NAME, 'WARN', 'Learnings promotion failed — state NOT reset', err);
     }
   }
 
-  // Reset state files for next context window
+  // Reset non-learnings state (safe to reset regardless)
   try {
-    await resetStateFiles(sessionId);
-    logToFile(HOOK_NAME, 'DEBUG', 'State files reset after compaction');
+    await resetStateFiles(sessionId, ['decisions', 'open_items', 'resources']);
+    logToFile(HOOK_NAME, 'DEBUG', 'Non-learnings state reset');
   } catch (err) {
-    logToFile(HOOK_NAME, 'WARN', 'State files reset failed', err);
+    logToFile(HOOK_NAME, 'WARN', 'State reset failed', err);
   }
 
   return {};

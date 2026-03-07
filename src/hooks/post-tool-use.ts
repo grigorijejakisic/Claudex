@@ -51,6 +51,16 @@ runHook(HOOK_NAME, async (input) => {
   // Step 1: Detect scope
   const scope = detectScope(cwd);
 
+  // Step 1.5: Check coordination ownership before expensive extraction
+  const claudexOwnsToolTracking = coordination.tool_tracking !== 'context_manager';
+  const claudexOwnsThread = coordination.thread_tracking === 'claudex';
+  const claudexOwnsCheckpoint = coordination.checkpoint_primary === 'claudex';
+
+  if (!claudexOwnsToolTracking && !claudexOwnsThread && !claudexOwnsCheckpoint) {
+    // Nothing for Claudex to do — skip extraction entirely
+    return {};
+  }
+
   // Step 2: Extract observation (returns null for filtered/trivial tools)
   let observation;
   try {
@@ -63,9 +73,6 @@ runHook(HOOK_NAME, async (input) => {
   if (!observation) {
     return {};
   }
-
-  // Gate: skip observation/pressure tracking when context_manager owns tool_tracking
-  const claudexOwnsToolTracking = coordination.tool_tracking !== 'context_manager';
 
   // Acquire DB once for Steps 3 + 3.5, close after both complete
   let db: import('better-sqlite3').Database | null = null;
