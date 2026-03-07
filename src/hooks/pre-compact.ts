@@ -25,6 +25,7 @@ import { getObservationsSince } from '../db/observations.js';
 import { readTokenGaugeWithDetection } from '../lib/token-gauge.js';
 import { writeCheckpoint } from '../checkpoint/writer.js';
 import { redactSensitive } from '../lib/redaction.js';
+import { readCoordinationConfig } from '../shared/coordination.js';
 import type Database from 'better-sqlite3';
 
 /**
@@ -383,8 +384,14 @@ runHook('pre-compact', async (input: HookStdin) => {
       // =====================================================================
       // Structured YAML checkpoint — safety net for the checkpoint system
       // Catches the case where UserPromptSubmit's 80% trigger didn't fire
+      // Skipped when coordination config delegates checkpoint to context_manager
       // =====================================================================
-      try {
+      const coordination = readCoordinationConfig();
+      if (coordination.checkpoint_primary !== 'claudex') {
+        logToFile(HOOK_NAME, 'DEBUG', `Checkpoint primary is "${coordination.checkpoint_primary}" — skipping full structured checkpoint`);
+      }
+
+      if (coordination.checkpoint_primary === 'claudex') try {
         const projectDir = scope.type === 'project' ? scope.path : PATHS.home;
 
         // Debounce: skip if latest.yaml modified <60s ago (UserPromptSubmit already wrote)

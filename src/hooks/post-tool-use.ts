@@ -14,6 +14,7 @@ import { runHook, logToFile } from './_infrastructure.js';
 import { detectScope } from '../shared/scope-detector.js';
 import { extractObservation } from '../lib/observation-extractor.js';
 import { loadConfig } from '../shared/config.js';
+import { readCoordinationConfig } from '../shared/coordination.js';
 import { recordFileTouch } from '../checkpoint/state-files.js';
 import { PATHS } from '../shared/paths.js';
 import type { PostToolUseInput } from '../shared/types.js';
@@ -41,6 +42,7 @@ runHook(HOOK_NAME, async (input) => {
 
   // Gate: skip observation capture when explicitly disabled in config
   const config = loadConfig();
+  const coordination = readCoordinationConfig();
   if (config.observation?.enabled === false) {
     logToFile(HOOK_NAME, 'DEBUG', 'Observation capture disabled by config');
     return {};
@@ -62,85 +64,90 @@ runHook(HOOK_NAME, async (input) => {
     return {};
   }
 
+  // Gate: skip observation/pressure tracking when context_manager owns tool_tracking
+  const claudexOwnsToolTracking = coordination.tool_tracking !== 'context_manager';
+
   // Acquire DB once for Steps 3 + 3.5, close after both complete
   let db: import('better-sqlite3').Database | null = null;
-  try {
-    const { getDatabase } = await import('../db/connection.js');
-    db = getDatabase();
-  } catch (err) {
-    logToFile(HOOK_NAME, 'WARN', 'SQLite unavailable, skipping storage (Tier 2 degradation)', err);
-  }
-
-  // Step 3: Store in SQLite
-  if (!db) {
-    logToFile(HOOK_NAME, 'WARN', 'Database connection failed, skipping observation storage (Tier 2 degradation)');
-  } else {
+  if (claudexOwnsToolTracking) {
     try {
-      const { storeObservation } = await import('../db/observations.js');
-      const { incrementObservationCount } = await import('../db/sessions.js');
-
-      const result = storeObservation(db, observation);
-      if (result.id !== -1) {
-        incrementObservationCount(db, sessionId);
-        logToFile(HOOK_NAME, 'DEBUG', `Observation stored (id=${result.id}) tool=${toolName}`);
-      } else {
-        logToFile(HOOK_NAME, 'WARN', `storeObservation returned error sentinel for tool=${toolName}`);
-      }
+      const { getDatabase } = await import('../db/connection.js');
+      db = getDatabase();
     } catch (err) {
-      logToFile(HOOK_NAME, 'WARN', 'Observation storage failed (non-fatal)', err);
+      logToFile(HOOK_NAME, 'WARN', 'SQLite unavailable, skipping storage (Tier 2 degradation)', err);
     }
-  }
 
-  // Step 3.5: Accumulate local pressure scores from file observations
-  if (observation && db) {
-    try {
-      const { accumulatePressureScore } = await import('../db/pressure.js');
-      const project = scope.type === 'project' ? scope.name : undefined;
+    // Step 3: Store in SQLite
+    if (!db) {
+      logToFile(HOOK_NAME, 'WARN', 'Database connection failed, skipping observation storage (Tier 2 degradation)');
+    } else {
+      try {
+        const { storeObservation } = await import('../db/observations.js');
+        const { incrementObservationCount } = await import('../db/sessions.js');
 
-      // Tool-weighted increments — only accumulate for known file-bearing tools
-      const TOOL_INCREMENTS: Record<string, number> = {
-        Write: 0.15, Edit: 0.15,  // mutative = high signal
-        Read: 0.05,               // discovery = medium signal
-        Grep: 0.02,               // search hit = low signal
-      };
-
-      const increment = TOOL_INCREMENTS[toolName];
-      if (increment !== undefined) {
-        // Accumulate for all touched files (dedupe: same file in both modified + read)
-        const allFiles = [...new Set([
-          ...(observation.files_modified || []),
-          ...(observation.files_read || []),
-        ])];
-
-        for (const filePath of allFiles) {
-          accumulatePressureScore(db, filePath, project, increment);
+        const result = storeObservation(db, observation);
+        if (result.id !== -1) {
+          incrementObservationCount(db, sessionId);
+          logToFile(HOOK_NAME, 'DEBUG', `Observation stored (id=${result.id}) tool=${toolName}`);
+        } else {
+          logToFile(HOOK_NAME, 'WARN', `storeObservation returned error sentinel for tool=${toolName}`);
         }
+      } catch (err) {
+        logToFile(HOOK_NAME, 'WARN', 'Observation storage failed (non-fatal)', err);
+      }
+    }
 
-        if (allFiles.length > 0) {
-          logToFile(HOOK_NAME, 'DEBUG', `Accumulated pressure for ${allFiles.length} files (tool=${toolName}, increment=${increment})`);
+    // Step 3.5: Accumulate local pressure scores from file observations
+    if (observation && db) {
+      try {
+        const { accumulatePressureScore } = await import('../db/pressure.js');
+        const project = scope.type === 'project' ? scope.name : undefined;
+
+        // Tool-weighted increments — only accumulate for known file-bearing tools
+        const TOOL_INCREMENTS: Record<string, number> = {
+          Write: 0.15, Edit: 0.15,  // mutative = high signal
+          Read: 0.05,               // discovery = medium signal
+          Grep: 0.02,               // search hit = low signal
+        };
+
+        const increment = TOOL_INCREMENTS[toolName];
+        if (increment !== undefined) {
+          // Accumulate for all touched files (dedupe: same file in both modified + read)
+          const allFiles = [...new Set([
+            ...(observation.files_modified || []),
+            ...(observation.files_read || []),
+          ])];
+
+          for (const filePath of allFiles) {
+            accumulatePressureScore(db, filePath, project, increment);
+          }
+
+          if (allFiles.length > 0) {
+            logToFile(HOOK_NAME, 'DEBUG', `Accumulated pressure for ${allFiles.length} files (tool=${toolName}, increment=${increment})`);
+          }
         }
+      } catch (err) {
+        logToFile(HOOK_NAME, 'DEBUG', 'Pressure accumulation failed (non-fatal)', err);
       }
-    } catch (err) {
-      logToFile(HOOK_NAME, 'DEBUG', 'Pressure accumulation failed (non-fatal)', err);
     }
-  }
 
-  // Step 3.7: Update incremental state (files-touched for checkpoint system)
-  if (observation.files_modified && observation.files_modified.length > 0) {
-    try {
-      const projectDir = scope.type === 'project' ? scope.path : PATHS.home;
-      for (const filePath of observation.files_modified) {
-        recordFileTouch(projectDir, sessionId, filePath, toolName, observation.title);
+    // Step 3.7: Update incremental state (files-touched for checkpoint system)
+    if (observation.files_modified && observation.files_modified.length > 0) {
+      try {
+        const projectDir = scope.type === 'project' ? scope.path : PATHS.home;
+        for (const filePath of observation.files_modified) {
+          recordFileTouch(projectDir, sessionId, filePath, toolName, observation.title);
+        }
+        logToFile(HOOK_NAME, 'DEBUG', `State: recorded ${observation.files_modified.length} file touches`);
+      } catch (err) {
+        logToFile(HOOK_NAME, 'DEBUG', 'State file update failed (non-fatal)', err);
       }
-      logToFile(HOOK_NAME, 'DEBUG', `State: recorded ${observation.files_modified.length} file touches`);
-    } catch (err) {
-      logToFile(HOOK_NAME, 'DEBUG', 'State file update failed (non-fatal)', err);
     }
-  }
 
-  // Close DB after Steps 3 + 3.5
-  if (db) {
-    try { db.close(); } catch { /* best effort */ }
+    // Close DB after Steps 3 + 3.5
+    if (db) {
+      try { db.close(); } catch { /* best effort */ }
+    }
   }
 
   // Step 4: REMOVED — flat-file observation mirror killed.
@@ -151,7 +158,8 @@ runHook(HOOK_NAME, async (input) => {
   // Rolling window: trims to last 14 when reaching 20 exchanges (hysteresis pattern)
   // Optimization: only parse full YAML when file size suggests >= 20 exchanges.
   // Each exchange is ~60-120 bytes in YAML; 20 exchanges ~1.5KB+ with header.
-  if (observation && scope.type === 'project') {
+  // Gate: skip when context_manager owns thread_tracking
+  if (observation && scope.type === 'project' && coordination.thread_tracking === 'claudex') {
     try {
       const projectDir = scope.path;
       const actionGist = `${toolName}: ${observation.title}`.slice(0, 100);
@@ -195,7 +203,8 @@ runHook(HOOK_NAME, async (input) => {
   // Step 5: Incremental checkpoint — check token utilization and write checkpoint
   // at dynamic thresholds (via getIncrementalThresholds()). 200k gets 2 thresholds,
   // 1M gets 6 thresholds. Window size changes trigger threshold state reset.
-  if (scope.type === 'project') {
+  // Gate: skip when context_manager is checkpoint primary
+  if (scope.type === 'project' && coordination.checkpoint_primary === 'claudex') {
     try {
       const transcriptPath = postInput.transcript_path;
       if (transcriptPath) {

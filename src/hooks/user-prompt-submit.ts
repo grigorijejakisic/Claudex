@@ -16,6 +16,7 @@ import * as path from 'node:path';
 import { runHook, logToFile } from './_infrastructure.js';
 import { detectScope } from '../shared/scope-detector.js';
 import { loadConfig } from '../shared/config.js';
+import { readCoordinationConfig } from '../shared/coordination.js';
 import { assembleContext } from '../lib/context-assembler.js';
 import { getDatabase } from '../db/connection.js';
 import { readGsdState, findActivePlanFile, extractPlanMustHaves, countCompletedRequirements } from '../gsd/state-reader.js';
@@ -56,9 +57,12 @@ runHook(HOOK_NAME, async (input) => {
   const scope = detectScope(cwd);
   logToFile(HOOK_NAME, 'DEBUG', `Scope: ${scope.type === 'project' ? `project:${scope.name}` : 'global'}`);
 
-  // 2.0. Resolve configurable token budget
+  // 2.0. Resolve configurable token budget (coordination config overrides default)
   const config = loadConfig();
-  const CONTEXT_TOKEN_BUDGET = config.hooks?.context_token_budget ?? DEFAULT_CONTEXT_TOKEN_BUDGET;
+  const coordination = readCoordinationConfig();
+  const CONTEXT_TOKEN_BUDGET = config.hooks?.context_token_budget
+    ?? coordination.injection_budget.claudex
+    ?? DEFAULT_CONTEXT_TOKEN_BUDGET;
 
   // 2.1. Thread accumulation — capture user message gist + detect approvals
   // Runs BEFORE short-prompt gate so "yes"/"ok" approvals are captured
@@ -436,7 +440,9 @@ runHook(HOOK_NAME, async (input) => {
     }
 
     // 8.7. Write checkpoint if utilization ≥75%
-    if (gauge.status === 'ok' && (gauge.threshold === 'checkpoint' || gauge.threshold === 'critical')) {
+    // Guard: skip when context_manager is checkpoint primary (coordination config)
+    if (coordination.checkpoint_primary === 'claudex'
+      && gauge.status === 'ok' && (gauge.threshold === 'checkpoint' || gauge.threshold === 'critical')) {
       try {
         const projectDir = scope.type === 'project' ? scope.path : PATHS.home;
         const latestPath = path.join(projectDir, 'context', 'checkpoints', 'latest.yaml');
