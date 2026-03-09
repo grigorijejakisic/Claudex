@@ -1,0 +1,73 @@
+You are reviewing a proposed architecture for Claudex v3 — a unified context management system that merges two predecessor systems.
+
+## Step 1: Understand the predecessors
+
+Read these analysis files that were produced by deep codebase exploration:
+
+1. C:\Users\Grigorije\Desktop\Projects\claudex-analysis.md — Full Claudex v2 analysis (639 lines)
+2. C:\Users\Grigorije\Desktop\Projects\openclaw-analysis.md — Full OpenClaw analysis (616 lines)
+
+Also read the existing fusion design that preceded this architecture:
+3. C:\Users\Grigorije\Desktop\Projects\openclaw-main\context\specs\memory-fusion\DESIGN.md
+
+And read these key source files to understand the actual implementations:
+
+Claudex v2 (hook-based context management for Claude Code):
+- C:\Users\Grigorije\Desktop\Projects\Claudex v2\Claudex\src\hooks\_infrastructure.ts
+- C:\Users\Grigorije\Desktop\Projects\Claudex v2\Claudex\src\hooks\user-prompt-submit.ts
+- C:\Users\Grigorije\Desktop\Projects\Claudex v2\Claudex\src\lib\context-assembler.ts
+- C:\Users\Grigorije\Desktop\Projects\Claudex v2\Claudex\src\lib\observation-extractor.ts
+- C:\Users\Grigorije\Desktop\Projects\Claudex v2\Claudex\src\lib\decay-engine.ts
+- C:\Users\Grigorije\Desktop\Projects\Claudex v2\Claudex\src\shared\coordination.ts
+- C:\Users\Grigorije\Desktop\Projects\Claudex v2\Claudex\src\checkpoint\writer.ts
+
+OpenClaw Context Manager (bridge-based plugin):
+- C:\Users\Grigorije\.openclaw\extensions\openclaw-context\src\context-manager.ts
+- C:\Users\Grigorije\.openclaw\extensions\openclaw-context\src\context-state.ts
+- C:\Users\Grigorije\.openclaw\extensions\openclaw-context\src\context-enrichment.ts
+- C:\Users\Grigorije\.openclaw\extensions\openclaw-context\src\context-learnings.ts
+- C:\Users\Grigorije\.openclaw\extensions\openclaw-context\src\context-dedup.ts
+- C:\Users\Grigorije\.openclaw\extensions\openclaw-context\src\context-checkpoint-inject.ts
+
+## Step 2: Review the architecture
+
+Read the proposed unified architecture:
+- C:\Users\Grigorije\Desktop\Projects\CLAUDEXv3\ARCHITECTURE.md
+
+## Step 3: Write your review
+
+Write a thorough architectural review to C:\Users\Grigorije\Desktop\Projects\CLAUDEXv3\CODEX_REVIEW.md
+
+Your review must cover:
+
+### A. What's Missing or Underspecified
+- Are there edge cases the architecture doesn't address?
+- Are any interfaces incomplete?
+- Are there operational concerns (deployment, monitoring, debugging) that are glossed over?
+- Is the migration path realistic and complete?
+
+### B. Architectural Flaws or Risks
+- Are there design decisions that will cause problems at scale or in practice?
+- Are there hidden coupling points?
+- Is the adapter abstraction actually clean, or does it leak?
+- Are there race conditions, deadlocks, or data consistency risks?
+- Does the "boundary-only injection" strategy actually hold up? What about mid-session topic changes?
+
+### C. Concrete Improvements
+- Specific changes you'd make to the schema, interfaces, or pipeline
+- Things that should be added
+- Things that should be simplified further
+- Alternative approaches worth considering
+
+### D. Grade (A-F)
+- Grade the architecture with justification
+- Compare to the predecessor systems — is this actually better?
+- Would you implement this as written?
+
+### E. Upgrade Ideas
+- What could take this from good to great?
+- Are there patterns from other systems (memsearch, claude-mem, etc.) worth incorporating?
+- What about Claude Code's native auto-memory — how should v3 interact with it?
+- Future-proofing: what happens when Claude Code adds native context management?
+
+Be rigorous, be specific, be constructive. This is the blueprint for a real system that will be implemented.
