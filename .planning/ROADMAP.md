@@ -226,7 +226,7 @@ Then: Phase 10 then Phase 11 (sequential)
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 0. Repository Setup | 0/2 | Not started | - |
+| 0. Repository Setup | 1/2 | In Progress|  |
 | 1. Storage Layer | 0/3 | Not started | - |
 | 2. Extraction Pipeline | 0/2 | Not started | - |
 | 3. Intelligence Core | 0/2 | Not started | - |
