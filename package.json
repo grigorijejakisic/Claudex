@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "build": "bun run build.ts",
-    "test": "bun test"
+    "test": "vitest run"
   },
   "dependencies": {
     "better-sqlite3": "^11.7.0",
