@@ -1,8 +1,10 @@
 # Claudex v3 — Unified Context Management System
 
-**Date**: 2026-03-09
-**Status**: Architecture Design (pre-implementation)
+**Date**: 2026-03-10
+**Revision**: v1.2.1 (standalone-first, observability, embedding-enhanced intelligence, Ollama enrichment, checkpoint state-machine DDL)
+**Status**: Architecture Design (implementation-ready)
 **Author**: Claude Opus 4.6 + Grigorije
+**Reviewer**: Codex GPT-5 (CODEX_REVIEW.md v1.0 B-, CODEX_REVIEW_V12.md v1.2 B+, v1.2.1 cleanup applied)
 **Predecessors**: Claudex v2 (hook-based), OpenClaw Context Manager (bridge-based)
 
 ---
@@ -17,13 +19,18 @@ Both systems evolved independently to solve the same problem: giving an LLM pers
 
 ### 1.2 Design Principles
 
-1. **One system, two deployment targets** — same core, different adapters for CC hooks vs OpenClaw bridge
-2. **Boundary-only injection** — full context assembly at session-start and post-compaction only; most turns get zero injected context
-3. **SQLite is the state bus** — ephemeral hook processes share state through the database, not files
-4. **Mutual exclusion at deployment** — you deploy the CC adapter OR the OpenClaw adapter, never both simultaneously
-5. **Enrichment is optional** — heuristic checkpoint data is high-quality; LLM refinement is a nice-to-have
-6. **Defensive non-throwing** — every public function catches errors and returns safe defaults; hooks never crash the host
-7. **Flat-file mirroring** — human is never locked out; every critical state has a readable file mirror
+1. **Standalone-first** — v3 works as a fresh install with zero prior state. No predecessor required. `claudex setup` creates everything from scratch. Migration from v2 is an optional one-time path for existing users.
+2. **One system, two deployment targets** — same core, different adapters for CC hooks vs OpenClaw bridge
+3. **Capability-aware adapters** — core receives host-neutral events; adapters declare their capabilities; intelligence modules check capabilities before using host-specific features
+4. **Boundary-only injection with embedding-enhanced topic detection** — full assembly at session-start and post-compaction; embedding similarity detects mid-session topic shifts; small pivot blocks injected on shifts; most turns get zero injection
+5. **SQLite is the state bus** — ephemeral hook processes share state through the database, not files; multi-step writes wrapped in explicit transactions
+6. **Mutual exclusion at deployment** — you deploy the CC adapter OR the OpenClaw adapter, never both simultaneously
+7. **Enrichment everywhere** — LLM enrichment runs on OpenClaw (in-process API access) AND on CC (via local Ollama, no deadlock). Quality parity across both adapters.
+8. **Observability by design** — every subsystem emits structured telemetry. Injection audit trail, hook latency, dedup rates, checkpoint lifecycle — all queryable from SQLite.
+9. **Model-agnostic intelligence** — decision capture and topic detection work across Claude, MiniMax, GLM, DeepSeek, and other model families. No patterns hardcoded to one model's voice.
+10. **Defensive non-throwing** — every public function catches errors and returns safe defaults; hooks never crash the host
+11. **Flat-file mirroring** — human is never locked out; every critical state has a readable file mirror
+12. **One codebase, all platforms** — platform differences handled by `process.platform` checks in 2-3 locations, not separate codebases
 
 ---
 
@@ -98,24 +105,116 @@ Both systems evolved independently to solve the same problem: giving an LLM pers
 
 ## 3. Runtime Adapter Layer
 
-### 3.1 The RuntimeAdapter Interface
+### 3.1 Capability-Aware Event Model
+
+> **v1.1 change**: Replaced host-leaking optional fields with explicit capability declaration.
+> Adapters declare what they can provide; core intelligence modules check capabilities before
+> using host-specific features. This keeps the core host-neutral while preserving full access
+> to each host's strengths.
 
 ```typescript
-interface RuntimeAdapter {
-  // Called once when session begins
-  sessionInit(ctx: SessionContext): Promise<InjectPayload>;
+// ============================================================
+// Runtime Capabilities — declared once per adapter at init
+// ============================================================
+interface RuntimeCapabilities {
+  hasFullMessageHistory: boolean;   // Can provide conversation messages (OpenClaw: yes, CC: no)
+  hasNativeContextUsage: boolean;   // Can provide exact token counts from SDK (OpenClaw: yes, CC: no)
+  hasTranscriptAccess: boolean;     // Can read transcript JSONL for gauge (CC: yes, OpenClaw: no)
+  supportsSystemInjection: boolean; // Can inject system messages mid-turn (both: yes)
+  supportsAsyncEnrichment: boolean; // Can call LLM API without deadlock (OpenClaw: yes, CC: yes via Ollama)
+  hasLocalEmbeddings: boolean;      // Can compute embeddings locally (both: yes if Ollama + nomic available)
+  supportsTurnEndEvent: boolean;    // Fires afterTurn at end of agent turn (OpenClaw: yes, CC: yes via Stop)
+}
 
-  // Called on each user prompt (CC) or context event (OpenClaw)
-  beforePrompt(prompt: string, ctx: PromptContext): Promise<InjectPayload>;
+// CC Hook Adapter declares:
+const CC_CAPABILITIES: RuntimeCapabilities = {
+  hasFullMessageHistory: false,
+  hasNativeContextUsage: false,
+  hasTranscriptAccess: true,
+  supportsSystemInjection: true,
+  supportsAsyncEnrichment: true,   // v1.2: via local Ollama (localhost:11434), NOT CC's CLIProxyAPI
+  hasLocalEmbeddings: true,        // v1.2: via Ollama nomic-embed-text (auto-detected at init)
+  supportsTurnEndEvent: true,      // via Stop hook mapped to after_turn
+};
 
-  // Called after each tool completes
-  afterTool(event: ToolEvent): Promise<void>;
+// OpenClaw Bridge Adapter declares:
+const OPENCLAW_CAPABILITIES: RuntimeCapabilities = {
+  hasFullMessageHistory: true,
+  hasNativeContextUsage: true,
+  hasTranscriptAccess: false,
+  supportsSystemInjection: true,
+  supportsAsyncEnrichment: true,   // via in-process completeSimple OR local Ollama
+  hasLocalEmbeddings: true,        // v1.2: via Ollama nomic-embed-text (auto-detected at init)
+  supportsTurnEndEvent: true,
+};
 
-  // Called before context compaction
-  beforeCompact(ctx: CompactContext): Promise<void>;
+// ============================================================
+// Runtime Events — host-neutral event envelope
+// ============================================================
+interface RuntimeEvent {
+  kind: 'session_init' | 'before_prompt' | 'after_tool' | 'after_turn' | 'before_compact' | 'session_end';
+  sessionId: string;
+  cwd: string;
+  timestamp: number;        // Unix epoch ms
+  payload: EventPayload;    // Discriminated by kind
+}
 
-  // Called when session ends
-  sessionEnd(reason: EndReason): Promise<void>;
+type EventPayload =
+  | SessionInitPayload
+  | BeforePromptPayload
+  | AfterToolPayload
+  | AfterTurnPayload
+  | BeforeCompactPayload
+  | SessionEndPayload;
+
+interface SessionInitPayload {
+  kind: 'session_init';
+  source: 'startup' | 'resume' | 'clear' | 'bridge_init';
+}
+
+interface BeforePromptPayload {
+  kind: 'before_prompt';
+  prompt: string;
+  isPostCompaction: boolean;
+  // Provided by adapters that have the capability:
+  tokenUsage?: TokenUsage;        // From hasNativeContextUsage OR hasTranscriptAccess
+  messageHistory?: Message[];     // From hasFullMessageHistory (OpenClaw only)
+}
+
+interface AfterToolPayload {
+  kind: 'after_tool';
+  toolName: string;
+  toolInput: Record<string, unknown>;
+  toolOutput?: Record<string, unknown>;
+}
+
+interface AfterTurnPayload {
+  kind: 'after_turn';
+  // Only fired by adapters with supportsTurnEndEvent
+  // Used for thread tracking, decision capture from full turn
+  lastAssistantText?: string;
+  lastUserText?: string;
+}
+
+interface BeforeCompactPayload {
+  kind: 'before_compact';
+  trigger: 'auto' | 'manual';
+  // Provided by adapters with hasFullMessageHistory:
+  messagesToSummarize?: Message[];
+  turnPrefixMessages?: Message[];
+}
+
+interface SessionEndPayload {
+  kind: 'session_end';
+  reason: 'clear' | 'logout' | 'prompt_input_exit' | 'bridge_end';
+}
+
+// Shared types
+interface TokenUsage {
+  inputTokens: number;
+  outputTokens: number;
+  contextWindowTokens: number;
+  utilization: number;  // 0.0 - 1.0
 }
 
 interface InjectPayload {
@@ -124,62 +223,62 @@ interface InjectPayload {
   sources: string[];     // Which data sources contributed
 }
 
-interface SessionContext {
-  sessionId: string;
-  cwd: string;
-  source: 'startup' | 'resume' | 'clear' | 'bridge_init';
-  transcriptPath?: string;   // CC only
-  sessionKey?: string;       // OpenClaw only
+// ============================================================
+// Core Engine — processes events, checks capabilities
+// ============================================================
+interface ClaudexCore {
+  readonly capabilities: RuntimeCapabilities;
+
+  // Process any runtime event — single dispatch point
+  handleEvent(event: RuntimeEvent): Promise<InjectPayload | void>;
+
+  // Lifecycle
+  close(): void;
 }
 
-interface PromptContext {
-  sessionId: string;
-  cwd: string;
-  isPostCompaction: boolean;
-  transcriptPath?: string;   // CC only — for token gauge
-  contextUsage?: {           // OpenClaw only — from SDK
-    inputTokens: number;
-    outputTokens: number;
-    contextWindowTokens: number;
-  };
-}
-
-interface ToolEvent {
-  sessionId: string;
-  toolName: string;
-  toolInput: Record<string, unknown>;
-  toolOutput?: Record<string, unknown>;
-  cwd: string;
-}
-
-interface CompactContext {
-  sessionId: string;
-  cwd: string;
-  trigger: 'auto' | 'manual';
-  transcriptPath?: string;
-  // OpenClaw-specific: access to messages being dropped
-  messagesToSummarize?: Message[];
-  turnPrefixMessages?: Message[];
-}
-
-type EndReason = 'clear' | 'logout' | 'prompt_input_exit' | 'bridge_end';
+// Usage in core:
+// if (this.capabilities.hasFullMessageHistory) {
+//   // Use messageHistory for richer decision extraction
+// } else {
+//   // Fall back to heuristic extraction from prompt text only
+// }
+//
+// if (this.capabilities.supportsAsyncEnrichment) {
+//   // Run LLM enrichment during compaction
+// } else {
+//   // Skip — heuristic checkpoint is canonical
+// }
 ```
+
+**How capability checks work in practice:**
+
+| Intelligence Feature | Required Capability | Fallback Without It |
+|---|---|---|
+| Rich decision extraction from full conversation | `hasFullMessageHistory` | Model-agnostic heuristics on prompt text only (v1.2: works across model families) |
+| Exact token gauge | `hasNativeContextUsage` | Transcript JSONL parsing via `hasTranscriptAccess` |
+| LLM checkpoint enrichment | `supportsAsyncEnrichment` | Heuristic-only checkpoint (v1.2: both adapters support enrichment — CC via Ollama, OpenClaw via native API or Ollama) |
+| Embedding-based topic detection | `hasLocalEmbeddings` | Keyword Jaccard fallback (functional but less accurate) |
+| Embedding-based decision classification | `hasLocalEmbeddings` | Regex-only heuristics (functional, model-agnostic patterns) |
+| Turn-end thread tracking | `supportsTurnEndEvent` | Thread updated in `after_tool` cycle (slightly delayed, still accurate) |
+| Full-context thread snapshot | `hasFullMessageHistory` | Rolling gist window from prompt + tool actions |
 
 ### 3.2 CC Hook Adapter
 
-Maps Claude Code's 7 lifecycle hooks to the 5 RuntimeAdapter operations.
+Maps Claude Code's lifecycle hooks to RuntimeEvents. Declares `CC_CAPABILITIES` at init.
 
-| CC Hook Event | Adapter Method | Notes |
-|---|---|---|
-| `SessionStart` | `sessionInit()` | Returns `additionalContext` via stdout |
-| `UserPromptSubmit` | `beforePrompt()` | Returns `systemMessage` via stdout |
-| `PostToolUse` | `afterTool()` | Returns `{}` (no injection) |
-| `PreCompact` | `beforeCompact()` | Returns `{}` (no injection) |
-| `SessionEnd` | `sessionEnd()` | Returns `{}` (no injection) |
+| CC Hook Event | RuntimeEvent kind | Injection? | Notes |
+|---|---|---|---|
+| `SessionStart` | `session_init` | Yes (`additionalContext`) | Full assembly on cold start |
+| `UserPromptSubmit` | `before_prompt` | Conditional (`systemMessage`) | Full assembly only if post-compaction or topic shift; gauge at >=70%; otherwise empty |
+| `PostToolUse` | `after_tool` | No | Observation extraction, pressure accumulation, checkpoint threshold check |
+| `Stop` | `after_turn` | No | Thread tracking, decision capture from turn summary. **v1.1: restored** (was dropped in v1.0, needed for turn-end signals on CC where bridge `message_end` isn't available) |
+| `PreCompact` | `before_compact` | No | Checkpoint write, learning promotion |
+| `SessionEnd` | `session_end` | No | Finalization, decay, cleanup |
 
 **Dropped CC hooks** (compared to Claudex v2):
-- `Stop` — decision nudge replaced by heuristic capture in `afterTool()`
 - `PreFlush` — wrapper concept never materialized
+
+**Note on `Stop` hook (v1.1)**: Restored because CC has no `message_end` equivalent. The `Stop` hook fires at the end of each agent turn, providing the `after_turn` event needed for thread tracking and decision capture. Without it, CC's `supportsTurnEndEvent` would be false and thread quality would regress. With the Stop hook mapped, CC gets `supportsTurnEndEvent: true` in its capabilities.
 
 **Ephemeral process lifecycle**:
 ```
@@ -195,28 +294,60 @@ CC fires hook
 
 Each invocation is ~50-100ms for non-injection hooks, ~200-500ms for injection hooks (FTS5 query + assembly).
 
+**End-to-end latency budget per user turn** (CC adapter):
+
+| Hook | Fires when | Target | What it does |
+|---|---|---|---|
+| `UserPromptSubmit` | Every turn | **< 100ms** (most turns), **< 500ms** (injection turns) | Topic-shift check + gauge, or full assembly if boundary/shift |
+| `PostToolUse` | Each tool call | **< 100ms** per call | Observation extraction + pressure update + thread update |
+| `Stop` | Turn end | **< 150ms** | Decision capture + thread snapshot + checkpoint threshold check |
+
+**Aggregate SLA**: Total Claudex overhead per user turn must stay under **600ms** in the common case (no injection, 3-5 tool calls). Injection turns (session-start, post-compaction, topic-shift) are allowed up to **1000ms** since they carry 4000 tokens of context value. Compaction turns (PreCompact) are allowed up to **3000ms** due to checkpoint write + optional Ollama enrichment — this is acceptable because compaction itself takes 5-15 seconds.
+
+**Monitoring**: Telemetry table tracks `latency_ms` per hook invocation. Aggregate SLA is verifiable via:
+```sql
+SELECT session_id,
+  SUM(latency_ms) as turn_total_ms,
+  COUNT(*) as hook_count
+FROM telemetry
+WHERE event_kind = 'hook_invocation' AND session_id = ?
+GROUP BY json_extract(detail, '$.turn_id')
+HAVING turn_total_ms > 600;
+```
+
 **Implementation file**: `src/adapters/cc-hooks/index.ts`
 
 ```typescript
 // Pseudocode for CC hook adapter
 import { readStdin, writeStdout } from './infrastructure';
-import { createCore } from '../../core';
+import { createCore, CC_CAPABILITIES } from '../../core';
 
-const hookMap: Record<string, keyof RuntimeAdapter> = {
-  SessionStart: 'sessionInit',
-  UserPromptSubmit: 'beforePrompt',
-  PostToolUse: 'afterTool',
-  PreCompact: 'beforeCompact',
-  SessionEnd: 'sessionEnd',
+const hookToEventKind: Record<string, RuntimeEvent['kind']> = {
+  SessionStart: 'session_init',
+  UserPromptSubmit: 'before_prompt',
+  PostToolUse: 'after_tool',
+  Stop: 'after_turn',
+  PreCompact: 'before_compact',
+  SessionEnd: 'session_end',
 };
 
 async function main() {
   const input = await readStdin();
-  const core = createCore(); // opens DB, loads config
-  const method = hookMap[input.hook_event_name];
+  const eventKind = hookToEventKind[input.hook_event_name];
+  if (!eventKind) { writeStdout({}); return; }
+
+  const core = createCore(CC_CAPABILITIES); // opens DB, loads config, sets capabilities
 
   try {
-    const result = await core[method](mapInputToContext(input));
+    const event: RuntimeEvent = {
+      kind: eventKind,
+      sessionId: input.session_id,
+      cwd: input.cwd,
+      timestamp: Date.now(),
+      payload: buildPayload(eventKind, input), // maps CC stdin fields to event payload
+    };
+
+    const result = await core.handleEvent(event);
     writeStdout(mapResultToOutput(input.hook_event_name, result));
   } catch (e) {
     writeStdout({}); // never crash — defensive non-throwing
@@ -228,15 +359,15 @@ async function main() {
 
 ### 3.3 OpenClaw Bridge Adapter
 
-Maps Pi SDK extension events to the 5 RuntimeAdapter operations via globalThis Symbol bridge.
+Maps Pi SDK extension events to RuntimeEvents. Declares `OPENCLAW_CAPABILITIES` at init.
 
-| Pi SDK Event | Adapter Method | Notes |
-|---|---|---|
-| Bridge `onInit` | `sessionInit()` | Registers runtime, returns checkpoint for injection |
-| `context` event | `beforePrompt()` | Has full message history access |
-| `tool_result` event | `afterTool()` | Tool output available directly |
-| `session_before_compact` | `beforeCompact()` | Has messagesToSummarize + turnPrefixMessages |
-| `message_end` event | (no direct map) | Used for thread tracking — folded into afterTool cycle |
+| Pi SDK Event | RuntimeEvent kind | Injection? | Notes |
+|---|---|---|---|
+| Bridge `onInit` | `session_init` | Yes (enqueueSystemEvent) | Full assembly for session restore |
+| `context` event | `before_prompt` | Conditional | Full assembly if post-compaction; provides `messageHistory` + `tokenUsage` |
+| `tool_result` event | `after_tool` | No | Tool output available directly from SDK |
+| `message_end` event | `after_turn` | No | Thread tracking, decision capture from full turn |
+| `session_before_compact` | `before_compact` | No | Checkpoint + enrichment (supportsAsyncEnrichment=true) |
 
 **Bridge registration** (core-side, ~30 lines):
 
@@ -268,27 +399,78 @@ function createClaudexExtension(sessionKey: string): PiExtension {
 **Plugin-side registration** (in `~/.openclaw/extensions/claudex-v3/index.ts`):
 
 ```typescript
-import { createCore } from 'claudex-v3/core';
+import { createCore, OPENCLAW_CAPABILITIES } from 'claudex-v3/core';
 
 const BRIDGE_KEY = Symbol.for('claudex.v3.bridge');
 
 export function activate(api: OpenClawPluginApi) {
-  const core = createCore({ persistent: true }); // keeps DB open
+  const core = createCore(OPENCLAW_CAPABILITIES); // persistent mode, DB stays open
 
   (globalThis as any)[BRIDGE_KEY] = {
-    onInit: (ctx) => core.sessionInit(mapBridgeInit(ctx)),
-    onContext: (ctx) => core.beforePrompt(extractPrompt(ctx), mapContext(ctx)),
-    onToolResult: (ctx) => core.afterTool(mapToolEvent(ctx)),
-    onMessageEnd: (ctx) => core.trackThread(ctx), // thread tracking only
-    onCompact: (ctx, prep, runtime) => core.beforeCompact(mapCompact(ctx, prep, runtime)),
+    onInit(ctx) {
+      return core.handleEvent({
+        kind: 'session_init', sessionId: ctx.sessionKey, cwd: ctx.cwd,
+        timestamp: Date.now(), payload: { kind: 'session_init', source: 'bridge_init' },
+      });
+    },
+    onContext(ctx) {
+      return core.handleEvent({
+        kind: 'before_prompt', sessionId: ctx.sessionKey, cwd: ctx.cwd,
+        timestamp: Date.now(), payload: {
+          kind: 'before_prompt',
+          prompt: extractPrompt(ctx),
+          isPostCompaction: ctx.isPostCompaction ?? false,
+          tokenUsage: mapTokenUsage(ctx.getContextUsage()),
+          messageHistory: ctx.messages,  // full history — hasFullMessageHistory
+        },
+      });
+    },
+    onToolResult(ctx) {
+      return core.handleEvent({
+        kind: 'after_tool', sessionId: ctx.sessionKey, cwd: ctx.cwd,
+        timestamp: Date.now(), payload: {
+          kind: 'after_tool', toolName: ctx.toolName,
+          toolInput: ctx.toolInput, toolOutput: ctx.toolOutput,
+        },
+      });
+    },
+    onTurnEnd(ctx) {
+      return core.handleEvent({
+        kind: 'after_turn', sessionId: ctx.sessionKey, cwd: ctx.cwd,
+        timestamp: Date.now(), payload: {
+          kind: 'after_turn',
+          lastAssistantText: ctx.lastAssistantText,
+          lastUserText: ctx.lastUserText,
+        },
+      });
+    },
+    onCompact(ctx, prep, runtime) {
+      return core.handleEvent({
+        kind: 'before_compact', sessionId: ctx.sessionKey, cwd: ctx.cwd,
+        timestamp: Date.now(), payload: {
+          kind: 'before_compact', trigger: 'auto',
+          messagesToSummarize: prep.messagesToSummarize,
+          turnPrefixMessages: prep.turnPrefixMessages,
+        },
+      });
+    },
   };
 
-  // Register cleanup
-  api.registerHook('session_end', () => core.sessionEnd('bridge_end'));
+  api.registerHook('session_end', () =>
+    core.handleEvent({
+      kind: 'session_end', sessionId: 'current', cwd: process.cwd(),
+      timestamp: Date.now(), payload: { kind: 'session_end', reason: 'bridge_end' },
+    })
+  );
 }
 ```
 
-**Key difference from v2 bridge**: Only 1 Symbol key, 5 callbacks, 0 injected utilities. The plugin imports from the claudex-v3 package directly instead of receiving 15 utilities via bridge.utils. This makes the contract explicit and type-safe.
+**Key differences from v2 bridge**:
+- Only 1 Symbol key, 6 callbacks (added `onTurnEnd`), 0 injected utilities
+- Plugin imports from claudex-v3 package directly — no utility injection, explicit and type-safe
+- Adapter declares `OPENCLAW_CAPABILITIES` at init; core checks capabilities before using host features
+- `onCompact` passes `messagesToSummarize` + `turnPrefixMessages` because `hasFullMessageHistory` is true
+- LLM enrichment runs during compaction because `supportsAsyncEnrichment` is true
 
 ### 3.4 Mutual Exclusion
 
@@ -310,12 +492,36 @@ Detection is implicit: the bridge adapter only activates if the plugin is loaded
 **Mode**: WAL (Write-Ahead Logging) for concurrent reads during hook execution
 **PRAGMAs**: `synchronous=NORMAL`, `cache_size=10000`, `foreign_keys=ON`, `journal_mode=WAL`
 
-### 4.2 Schema (v3 migration from v2)
+#### Transaction Policy (v1.1)
+
+Multi-step writes are wrapped in explicit transactions to guarantee all-or-nothing state transitions:
+
+```typescript
+// afterTool: observation + pressure + thread + checkpoint_tracking in one transaction
+db.transaction(() => {
+  insertObservation(obs);
+  updatePressureScore(filePath, toolWeight);
+  updateThreadState(sessionId, agentGist);
+  updateCheckpointTracking(sessionId, observationCount);
+})();
+
+// beforeCompact: checkpoint + learnings + state reset in one transaction
+db.transaction(() => {
+  writeCheckpointMeta(checkpointId, sessionId);
+  promoteLearnings(sessionLearnings);
+  resetSessionDecisions(sessionId);
+  resetThreadState(sessionId);
+  markPostCompactPending(sessionId);
+})();
+```
+
+This prevents partial state (e.g., observation stored but pressure not updated) on process crash or timeout.
+
+### 4.2 Schema
 
 ```sql
 -- ============================================================
 -- TABLE: observations
--- Source: Claudex v2 (kept as-is, core value proposition)
 -- Purpose: Structured tool use observations with FTS5 search
 -- ============================================================
 CREATE TABLE IF NOT EXISTS observations (
@@ -331,7 +537,7 @@ CREATE TABLE IF NOT EXISTS observations (
   title TEXT NOT NULL,
   content TEXT NOT NULL,
   importance INTEGER NOT NULL CHECK (importance BETWEEN 1 AND 5),
-  files_modified TEXT DEFAULT '',  -- comma-separated paths
+  files_modified TEXT NOT NULL DEFAULT '[]' CHECK (json_valid(files_modified)),  -- JSON array of paths
   timestamp_epoch INTEGER NOT NULL DEFAULT (unixepoch()),
   access_count INTEGER NOT NULL DEFAULT 0,
   last_accessed_at_epoch INTEGER,
@@ -370,7 +576,6 @@ CREATE INDEX IF NOT EXISTS idx_obs_deleted ON observations(deleted_at_epoch);
 
 -- ============================================================
 -- TABLE: sessions
--- Source: Claudex v2 (kept as-is)
 -- Purpose: Session lifecycle tracking
 -- ============================================================
 CREATE TABLE IF NOT EXISTS sessions (
@@ -388,7 +593,6 @@ CREATE TABLE IF NOT EXISTS sessions (
 
 -- ============================================================
 -- TABLE: pressure_scores
--- Source: Claudex v2 (simplified — no WARM tier)
 -- Purpose: File attention scoring for HOT file surfacing
 -- ============================================================
 CREATE TABLE IF NOT EXISTS pressure_scores (
@@ -403,19 +607,21 @@ CREATE TABLE IF NOT EXISTS pressure_scores (
 );
 
 -- ============================================================
--- TABLE: learnings (NEW — replaces JSON files from OpenClaw CM)
--- Source: OpenClaw Context Manager context-learnings.ts
+-- TABLE: learnings
 -- Purpose: Cross-session operational learnings with promotion
 -- ============================================================
+-- v1.1 fix: NULL doesn't participate in SQLite UNIQUE constraints.
+-- Use COALESCE sentinel '__global__' to make global learnings deduplicate correctly.
 CREATE TABLE IF NOT EXISTS learnings (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
-  project TEXT,                            -- NULL = global
-  agent_id TEXT NOT NULL DEFAULT 'default', -- for multi-agent scoping
-  fingerprint TEXT NOT NULL,               -- normalized text for dedup
-  content TEXT NOT NULL,                   -- the learning itself
+  project TEXT NOT NULL DEFAULT '__global__', -- '__global__' for non-project-scoped
+  agent_id TEXT NOT NULL DEFAULT 'default',   -- for multi-agent scoping
+  fingerprint TEXT NOT NULL,                  -- normalized text for dedup
+  content TEXT NOT NULL,                      -- the learning itself
   promotion_count INTEGER NOT NULL DEFAULT 1,
   first_seen_epoch INTEGER NOT NULL DEFAULT (unixepoch()),
   last_promoted_epoch INTEGER NOT NULL DEFAULT (unixepoch()),
+  updated_at_epoch INTEGER NOT NULL DEFAULT (unixepoch()),
   UNIQUE(project, agent_id, fingerprint)
 );
 
@@ -423,20 +629,20 @@ CREATE INDEX IF NOT EXISTS idx_learnings_promo
   ON learnings(project, agent_id, promotion_count DESC);
 
 -- ============================================================
--- TABLE: decisions (NEW — replaces YAML incremental files)
--- Source: OpenClaw Context Manager context-state.ts
+-- TABLE: decisions
 -- Purpose: Heuristically captured decisions within a session
 -- ============================================================
 CREATE TABLE IF NOT EXISTS decisions (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   session_id TEXT NOT NULL,
-  project TEXT,
+  project TEXT NOT NULL DEFAULT '__global__',
   content TEXT NOT NULL,
   source TEXT NOT NULL CHECK (source IN (
     'confirmation', 'direction', 'rejection', 'explicit'
   )),
   fingerprint TEXT NOT NULL,          -- for semantic dedup
   timestamp_epoch INTEGER NOT NULL DEFAULT (unixepoch()),
+  updated_at_epoch INTEGER NOT NULL DEFAULT (unixepoch()),
   UNIQUE(session_id, fingerprint)     -- no dupes within a session
 );
 
@@ -444,29 +650,30 @@ CREATE INDEX IF NOT EXISTS idx_decisions_session
   ON decisions(session_id, timestamp_epoch DESC);
 
 -- ============================================================
--- TABLE: thread_state (NEW — replaces YAML thread files)
--- Source: Combined from both systems
+-- TABLE: thread_state
 -- Purpose: Rolling conversation thread for checkpoint building
 -- ============================================================
 CREATE TABLE IF NOT EXISTS thread_state (
   session_id TEXT PRIMARY KEY,
   topic TEXT,                          -- current work topic
   summary TEXT,                        -- rolling summary
-  key_exchanges TEXT NOT NULL DEFAULT '[]', -- JSON array of {role, gist}
+  key_exchanges TEXT NOT NULL DEFAULT '[]'
+    CHECK (json_valid(key_exchanges)), -- JSON array of {role, gist}
   updated_at_epoch INTEGER NOT NULL DEFAULT (unixepoch())
 );
 
 -- ============================================================
--- TABLE: checkpoint_tracking (NEW — replaces .incremental-cp.json)
--- Source: Claudex v2 checkpoint_state + OpenClaw threshold tracking
+-- TABLE: checkpoint_tracking
 -- Purpose: Track checkpoint state per session
 -- ============================================================
 CREATE TABLE IF NOT EXISTS checkpoint_tracking (
   session_id TEXT PRIMARY KEY,
   last_checkpoint_epoch INTEGER,
-  thresholds_hit TEXT NOT NULL DEFAULT '[]',  -- JSON array of hit thresholds
+  thresholds_hit TEXT NOT NULL DEFAULT '[]'
+    CHECK (json_valid(thresholds_hit)),        -- JSON array of hit threshold values
   observation_count INTEGER NOT NULL DEFAULT 0,
-  post_compact_pending INTEGER NOT NULL DEFAULT 0  -- boolean flag
+  post_compact_pending INTEGER NOT NULL DEFAULT 0,  -- boolean flag
+  updated_at_epoch INTEGER NOT NULL DEFAULT (unixepoch())
 );
 
 -- ============================================================
@@ -476,39 +683,109 @@ CREATE TABLE IF NOT EXISTS schema_versions (
   version INTEGER PRIMARY KEY,
   applied_at_epoch INTEGER NOT NULL DEFAULT (unixepoch())
 );
+
+-- ============================================================
+-- TABLE: checkpoint_meta (v1.2 — DB-first checkpoint lifecycle)
+-- Purpose: Per-checkpoint state machine for write/recovery
+-- ============================================================
+CREATE TABLE IF NOT EXISTS checkpoint_meta (
+  checkpoint_id TEXT PRIMARY KEY,         -- ULID (monotonic, sortable)
+  session_id TEXT NOT NULL,
+  trigger TEXT NOT NULL CHECK (trigger IN ('threshold', 'compaction', 'session_end')),
+  status TEXT NOT NULL DEFAULT 'pending'
+    CHECK (status IN ('pending', 'committed', 'mirrored')),
+  data TEXT,                              -- checkpoint JSON (populated at 'committed')
+  mirror_path TEXT,                       -- file path (populated at 'mirrored')
+  error TEXT,                             -- error message if write failed
+  created_at_epoch INTEGER NOT NULL DEFAULT (unixepoch()),
+  updated_at_epoch INTEGER NOT NULL DEFAULT (unixepoch())
+);
+
+CREATE INDEX IF NOT EXISTS idx_cpmeta_session
+  ON checkpoint_meta(session_id, created_at_epoch DESC);
+CREATE INDEX IF NOT EXISTS idx_cpmeta_status
+  ON checkpoint_meta(status, updated_at_epoch);
 ```
 
-### 4.3 Migration from Claudex v2
+### 4.3 Database Initialization (v1.2 — standalone-first)
+
+> **v1.2 change**: v3 is standalone-first. Fresh `claudex setup` creates the full schema from scratch — no predecessor required. Migration from Claudex v2 is an optional one-time path for existing users who want to preserve their observation history.
+
+#### 4.3.1 Fresh Install (Primary Path)
+
+```typescript
+function initializeDatabase(dbPath: string): Database {
+  const db = new Database(dbPath);
+  db.pragma('journal_mode = WAL');
+  db.pragma('synchronous = NORMAL');
+  db.pragma('cache_size = 10000');
+  db.pragma('foreign_keys = ON');
+
+  // Create all tables from Section 4.2 schema
+  db.exec(SCHEMA_V3);
+
+  // Create telemetry table from Section 10c
+  db.exec(TELEMETRY_SCHEMA);
+
+  // Record schema version
+  db.exec(`INSERT OR IGNORE INTO schema_versions (version) VALUES (300)`);
+
+  return db;
+}
+```
+
+`claudex setup` detects no existing database → creates `~/.claudex/db/claudex.db` with the full v3 schema. No questions asked, no prior state required. The user is immediately operational.
+
+#### 4.3.2 Migration from Claudex v2 (Optional)
+
+If `claudex setup` detects an existing v2 database (`~/.claudex/claudex.db` or `~/.claudex/db/claudex.db` with schema version < 300), it offers migration:
+
+```
+Existing Claudex v2 database detected.
+  Observations: 1,247 | Pressure scores: 83 | Sessions: 41
+  Migrate v2 data into v3? [y/N]
+```
+
+If the user declines, v3 creates a fresh database alongside (the v2 database is untouched). If the user accepts:
 
 ```sql
--- Migration 100: Claudex v3 schema additions
--- Preserves all existing v2 data, adds new tables
+-- Migration 100: v2 → v3 schema additions
+-- Pre-condition: backup of claudex.db already created by setup CLI
 
--- 1. Add new tables (learnings, decisions, thread_state, checkpoint_tracking)
--- (CREATE TABLE IF NOT EXISTS — safe to re-run)
+-- 1. Add new tables (CREATE IF NOT EXISTS — safe to re-run)
+-- learnings, decisions, thread_state, checkpoint_tracking, telemetry
 
--- 2. Drop unused tables
-DROP TABLE IF EXISTS reasoning_chains;
-DROP TABLE IF EXISTS reasoning_fts;
-DROP TABLE IF EXISTS consensus_decisions;
-DROP TABLE IF EXISTS consensus_fts;
-DROP TABLE IF EXISTS audit_log;
+-- 2. Archive unused v2 tables (rename, don't drop — rollback safety)
+ALTER TABLE reasoning_chains RENAME TO _archived_reasoning_chains;
+ALTER TABLE reasoning_fts RENAME TO _archived_reasoning_fts;
+ALTER TABLE consensus_decisions RENAME TO _archived_consensus_decisions;
+ALTER TABLE consensus_fts RENAME TO _archived_consensus_fts;
+ALTER TABLE audit_log RENAME TO _archived_audit_log;
+-- Archived tables can be dropped after 30 days of stable v3 operation
 
--- 3. Simplify pressure_scores (remove WARM)
-UPDATE pressure_scores
-  SET temperature = 'COLD'
-  WHERE temperature = 'WARM';
+-- 3. Simplify pressure_scores (remove WARM tier)
+UPDATE pressure_scores SET temperature = 'COLD' WHERE temperature = 'WARM';
 
--- 4. Migrate checkpoint_state to checkpoint_tracking
+-- 4. Migrate checkpoint_state → checkpoint_tracking
 INSERT INTO checkpoint_tracking (session_id, last_checkpoint_epoch, observation_count)
-  SELECT session_id, last_epoch, 0
-  FROM checkpoint_state
-  WHERE NOT EXISTS (SELECT 1 FROM checkpoint_tracking WHERE checkpoint_tracking.session_id = checkpoint_state.session_id);
-DROP TABLE IF EXISTS checkpoint_state;
+  SELECT session_id, last_epoch, 0 FROM checkpoint_state
+  WHERE NOT EXISTS (
+    SELECT 1 FROM checkpoint_tracking
+    WHERE checkpoint_tracking.session_id = checkpoint_state.session_id
+  );
+ALTER TABLE checkpoint_state RENAME TO _archived_checkpoint_state;
 
--- 5. Record migration
-INSERT INTO schema_versions (version) VALUES (100);
+-- 5. Migrate files_modified from comma-separated to JSON array
+UPDATE observations
+  SET files_modified = '["' || REPLACE(files_modified, ',', '","') || '"]'
+  WHERE files_modified != '' AND files_modified NOT LIKE '[%';
+UPDATE observations SET files_modified = '[]' WHERE files_modified = '';
+
+-- 6. Record migration
+INSERT INTO schema_versions (version) VALUES (300);
 ```
+
+**Rollback**: Swap back to v2 hooks in `~/.claude/settings.json`. v2 ignores `_archived_*` tables and new v3 tables. The only irreversible change is `files_modified` format — v2 would need a one-line change to parse JSON instead of comma-split. The setup CLI creates a backup before migrating.
 
 ### 4.4 Flat-File Layout
 
@@ -535,7 +812,7 @@ INSERT INTO schema_versions (version) VALUES (100);
 {project}/context/                       # Per-project context (in project repo)
   checkpoints/
     latest.yaml                          # Reference to latest checkpoint
-    YYYY-MM-DD_cpN.yaml                  # Checkpoint files (schema v3)
+    YYYY-MM-DD_{ulid}.yaml               # Checkpoint files (schema v3, ULID-based)
   handoffs/
     ACTIVE.md                            # Active work handoff
     auto_handoff_*.md                    # Failsafe auto-handoffs
@@ -641,42 +918,119 @@ Claudex v2 captured everything and 84% of observations never surfaced (access_co
 
 ## 6. Intelligence Layer
 
-### 6.1 Decision Capture (from OpenClaw CM)
+### 6.1 Decision Capture (model-agnostic, v1.2)
 
-4-tier heuristic extraction from assistant messages, running during `afterTool()` when the tool is a text-producing action:
+> **v1.2 change**: Decision heuristics redesigned to work across model families (Claude, MiniMax,
+> GLM, DeepSeek, Qwen, etc.). Previous patterns were tuned for Claude's voice ("we should",
+> "let's", "I'll") which other models may not use. v1.2 uses structural patterns that work
+> regardless of phrasing, plus optional embedding classification when `hasLocalEmbeddings` is true.
+
+**Trigger**: Primary capture runs during `after_turn` (full turn text available — best signal). Supplemental capture runs during `after_tool` for high-confidence Tier 1 (user confirmations) and Tier 4 (explicit markers) only, since these don't need full-turn context. `before_prompt` does NOT capture decisions — it consumes them for assembly.
+
+**Two-stage extraction**:
+
+#### Stage 1: Structural heuristics (always active, model-agnostic)
 
 **Tier 1 — Explicit confirmation** (highest confidence):
-- Pattern: User message matches `^(yes|yeah|ok|go|approved|confirmed|do it|proceed|looks good|lgtm|ship it)`
+- Pattern: User message matches `^(yes|yeah|yep|ok|go|approved|confirmed|do it|proceed|looks good|lgtm|ship it|agreed|correct|exactly|perfect|that works)`
 - Captures: The preceding assistant proposal as a confirmed decision
 - Source tag: `confirmation`
+- Model-agnostic: user confirmations are human-generated, not model-dependent
 
 **Tier 2 — Direction-setting** (high confidence):
-- Pattern: Assistant message contains `we should`, `let's`, `the approach is`, `I'll`, `the plan is`, `going with`
+- Structural patterns (work across all models):
+  - Sentence starts with a verb in future/imperative: `^(use|implement|create|add|remove|replace|switch|migrate|keep|drop|split|merge|deploy|configure|set|enable|disable)\b`
+  - Contains comparison resolution: `instead of`, `rather than`, `over`, `not .* but`
+  - Contains commitment language: `will .* (use|implement|do|create|go with)`, `going to`, `the (plan|approach|strategy|design) is`
+  - Contains recommendation: `(should|recommend|suggest|propose|best to|better to|prefer)`
 - Quality gate: Must be >= 20 chars, not inside a code fence, not a filler phrase
 - Source tag: `direction`
 
 **Tier 3 — Rejection** (medium confidence):
-- Pattern: User message contains `no,`, `don't`, `actually,`, `instead`, `not that`, `wrong`
+- Pattern: User message contains `no,`, `don't`, `actually,`, `instead`, `not that`, `wrong`, `stop`, `revert`, `undo`, `that's not`, `scratch that`
 - Captures: What was rejected + what was chosen instead (if stated)
 - Source tag: `rejection`
+- Model-agnostic: rejections are human-generated
 
 **Tier 4 — Explicit decision markers** (highest confidence):
-- Pattern: Message contains `DECISION:`, `decided:`, `we agreed`, `final answer`
+- Pattern: Message contains `DECISION:`, `decided:`, `we agreed`, `final answer`, `conclusion:`, `verdict:`, `going with:`, `chosen approach:`
 - Source tag: `explicit`
+- Model-agnostic: explicit markers are conventions, not model-specific
 
-**Filler rejection**: Drops decisions matching common non-decisions: "I'll read the file", "let me check", "looking at this", "I see", greetings, acknowledgments.
+**Filler rejection** (expanded for multi-model compatibility):
+Drops candidates matching: reading/checking actions ("let me read", "looking at", "checking", "I see", "examining"), navigation actions ("opening", "searching", "running"), greetings, acknowledgments, and any candidate under 15 chars.
 
-**Code fence skip**: Any decision candidate that's entirely within a code fence (``` blocks) is dropped.
+**Code fence skip**: Any decision candidate entirely within a code fence is dropped.
+
+#### Stage 2: Embedding classification (when `hasLocalEmbeddings` is true)
+
+When local embeddings are available (Ollama + nomic-embed-text), Stage 1 candidates are validated:
+
+```typescript
+async classifyDecision(candidate: string, context: string): Promise<number> {
+  // Embed the candidate
+  const candidateEmb = await this.embed(candidate);
+
+  // Compare against decision templates (precomputed at init)
+  const templates = [
+    "We decided to use X instead of Y",
+    "The approach is to implement X",
+    "Confirmed: we will proceed with X",
+    "Rejected Y in favor of X",
+    "Architecture decision: X for the storage layer",
+  ];
+
+  const similarities = templates.map(t => cosineSimilarity(candidateEmb, this.templateEmbeddings[t]));
+  const maxSim = Math.max(...similarities);
+
+  // Also compare against non-decision templates (negative examples)
+  const antiTemplates = [
+    "Let me read the file",
+    "I'll check that for you",
+    "Looking at the code now",
+    "Running the tests",
+  ];
+  const antiSims = antiTemplates.map(t => cosineSimilarity(candidateEmb, this.templateEmbeddings[t]));
+  const maxAntiSim = Math.max(...antiSims);
+
+  // Return confidence: positive similarity minus negative similarity
+  return maxSim - maxAntiSim;
+}
+
+// Usage: only store if confidence > 0.15 (tunable)
+const confidence = await this.classifyDecision(candidate, context);
+if (confidence > 0.15) {
+  await this.storeDecision(candidate, source, confidence);
+}
+```
+
+**Why two stages**: Stage 1 (regex) is fast and free — runs on every turn. Stage 2 (embeddings) costs ~5ms per candidate via local Ollama. Stage 1 generates candidates; Stage 2 filters false positives. When embeddings aren't available, Stage 1 alone is still functional.
 
 **Semantic dedup before storage**: See Section 6.3.
 
-### 6.2 Thread Tracking (combined from both systems)
+### 6.2 Thread Tracking
 
-Continuous thread state maintained in the `thread_state` table:
+Continuous thread state maintained in the `thread_state` table. Thread tracking builds the "what's happening" narrative used by checkpoints and topic-shift detection.
 
-**Topic tracking**: Extracted from the first substantive user message each session. Updated when the user shifts topic (detected by low keyword overlap with current topic).
+#### Trigger Points
 
-**Key exchanges**: Rolling window of 8 most recent user→agent exchange pairs:
+| Event | What happens | Data source |
+|---|---|---|
+| `after_tool` | Accumulate user prompt + tool action into pending exchange buffer | `AfterToolPayload.toolName`, `AfterToolPayload.toolInput` |
+| `after_turn` | Flush buffer: extract gists, append to key_exchanges, update topic if shifted, update summary | `AfterTurnPayload.lastAssistantText`, `AfterTurnPayload.lastUserText` |
+| Checkpoint write | Snapshot current thread state into checkpoint YAML | `thread_state` table |
+
+The split matters: `after_tool` fires multiple times per turn (once per tool call), accumulating raw data. `after_turn` fires once at turn end with full text available, which is when gists are extracted and the thread is updated. This avoids partial-turn updates that would produce incoherent summaries.
+
+#### Topic Tracking
+
+Extracted from the first substantive user message each session (skip greetings, short confirmations). Updated when topic-shift detection fires (Section 7.3.1). Topic is a short phrase (5-15 words) summarizing the current work focus.
+
+**Extraction method**: When `hasLocalEmbeddings` is true, topic is inferred by finding the most salient noun phrase in the prompt. When embeddings are unavailable, falls back to first sentence extraction with stop-word removal.
+
+#### Key Exchanges
+
+Rolling window of 8 most recent user→agent exchange pairs:
 ```json
 [
   {"role": "user", "gist": "Fix the auth token refresh bug"},
@@ -686,11 +1040,29 @@ Continuous thread state maintained in the `thread_state` table:
 ]
 ```
 
-**Gist extraction**: Max 120 chars per gist. Sentence-boundary truncation. For agent gists: if assistant message is tool-calls only, extract tool names (`[called Read, Edit, Write]`).
+**When gists vs full text**: Gists are always used in `key_exchanges` (120 char max). Full text is never stored in thread state — it would bloat the checkpoint. The gist is the thread's representation; the full text lives in the host's conversation history (accessible via `hasFullMessageHistory` on OpenClaw, or in CC's transcript JSONL).
 
-**Thread summary**: Updated at each checkpoint write. Combines topic + key_exchanges into a 2-3 sentence narrative. Example: "Working on OAuth token refresh in OpenClaw gateway. Fixed stale auth profile snapshot bug. Now implementing PKCE flow for headless bootstrap."
+#### Gist Extraction Rules
 
-### 6.3 Semantic Deduplication (from OpenClaw CM)
+| Source | Method | Example |
+|---|---|---|
+| User message (< 120 chars) | Use as-is | "Fix the auth token refresh bug" |
+| User message (> 120 chars) | Sentence-boundary truncation, keep first complete sentence | "I need you to fix the auth..." → "I need you to fix the auth token refresh bug." |
+| Agent message (has prose) | First sentence extraction, max 120 chars | "Found root cause: runtimeAuthStoreSnapshots Map caches at startup..." |
+| Agent message (tool-calls only) | Tool name list | "[called Read, Edit, Write on src/auth.ts]" |
+| Agent message (mixed) | First prose sentence, ignore tool calls | "Fixed the stale snapshot bug." (tools omitted) |
+
+#### Thread Summary
+
+Updated at each checkpoint write (not every turn — too expensive for a narrative). Combines topic + key_exchanges into a 2-3 sentence narrative.
+
+**Construction**: Mechanical concatenation, not LLM-generated. Format: `"{topic}. {last 2-3 agent gists joined}. {open items if any}."`
+
+Example: "Working on OAuth token refresh in OpenClaw gateway. Fixed stale auth profile snapshot bug. Now implementing PKCE flow for headless bootstrap."
+
+If enrichment is available, the LLM may refine this summary during checkpoint enrichment (Section 6.4). The mechanical version is the baseline; the enriched version is best-effort improvement.
+
+### 6.3 Semantic Deduplication
 
 Applied to decisions and learnings before storage. 3-tier matching:
 
@@ -731,9 +1103,9 @@ function isSubstring(a: string, b: string): boolean {
 
 If any tier matches, the newer entry is a duplicate and is skipped (for decisions) or promotes the existing entry (for learnings — increment promotion_count).
 
-### 6.4 LLM Enrichment (from OpenClaw CM, optional)
+### 6.4 LLM Enrichment (v1.2 — both adapters)
 
-Runs during `beforeCompact()` AFTER the mechanical checkpoint is built. Requires API access (CC's CLIProxyAPI at `http://127.0.0.1:8317/v1/messages` or OpenClaw's `completeSimple`).
+Runs during `beforeCompact()` AFTER the mechanical checkpoint is built. Uses local Ollama (CC adapter) or native API / Ollama (OpenClaw adapter). See "Enrichment everywhere" below for provider selection.
 
 **Input**: Mechanical checkpoint data (decisions, thread, open_items, learnings captured heuristically).
 
@@ -756,7 +1128,7 @@ Current checkpoint:
 Return JSON with the same fields. Any field you don't want to change, return as-is.
 ```
 
-**Safety-net merge** (the key pattern from OpenClaw CM):
+**Safety-net merge**:
 ```typescript
 function mergeEnrichment(heuristic: Checkpoint, enriched: Partial<Checkpoint>): Checkpoint {
   const result = { ...heuristic };
@@ -788,9 +1160,47 @@ function mergeEnrichment(heuristic: Checkpoint, enriched: Partial<Checkpoint>): 
 }
 ```
 
-**If API unavailable**: Skip enrichment entirely. The heuristic checkpoint is already high-quality after v2 tuning fixes. Enrichment is an optimization, not a requirement.
+**Enrichment everywhere (v1.2)**:
 
-### 6.5 Cross-Session Learnings (from OpenClaw CM)
+> **v1.2 change**: CC enrichment is no longer disabled. The deadlock was caused by calling CC's
+> own CLIProxyAPI (`http://127.0.0.1:8317`) from inside a hook CC is waiting on. The fix: use
+> local Ollama (`http://localhost:11434`) instead — it's a completely separate process, zero
+> deadlock risk. Both adapters now have `supportsAsyncEnrichment: true`.
+
+- **OpenClaw adapter**: Enrichment via `completeSimple` (in-process API) or Ollama (fallback). Runs during compaction.
+- **CC hook adapter**: Enrichment via **local Ollama** (`localhost:11434/v1/chat/completions`). The hook calls Ollama, not CC. No deadlock. Runs during PreCompact hook.
+- **Ollama model selection**: When `ollama_model` is `"auto"`, selects the smallest available local model (enrichment is structured data refinement, not code generation — even `glm-4.7-flash:q4_K_M` is sufficient). Users can override via `enrichment.ollama_model` in config to target a specific model.
+- **Provider preference on OpenClaw**: When both native API and Ollama are available, OpenClaw prefers native API (higher quality, already in-process) and uses Ollama only as offline/fallback. Configurable via `enrichment.provider`: `"auto"` (native > Ollama), `"ollama"` (force local), `"native"` (force API).
+- **Fallback**: If Ollama is not running or no model is loaded, enrichment silently skips. Heuristic checkpoint is still valid. Enrichment is best-effort enhancement, never a hard dependency.
+
+```typescript
+// Enrichment provider selection (in core init)
+async function detectEnrichmentProvider(): Promise<EnrichmentProvider | null> {
+  // 1. Try Ollama (works for both CC and OpenClaw)
+  try {
+    const resp = await fetch('http://localhost:11434/api/tags');
+    const { models } = await resp.json();
+    if (models.length > 0) {
+      // Prefer smallest loaded model — enrichment doesn't need quality
+      const model = models.sort((a, b) => a.size - b.size)[0];
+      return { type: 'ollama', model: model.name, baseUrl: 'http://localhost:11434' };
+    }
+  } catch { /* Ollama not running — continue */ }
+
+  // 2. Try OpenClaw's completeSimple (only available in bridge adapter)
+  if (this.capabilities.hasFullMessageHistory) {
+    return { type: 'openclaw-native' };
+  }
+
+  // 3. No enrichment available — heuristic checkpoint is canonical
+  return null;
+}
+```
+
+- Core checks `this.capabilities.supportsAsyncEnrichment` AND `enrichmentProvider !== null`. Both must be true.
+- Quality parity: CC and OpenClaw users get the same enriched checkpoints. No more second-class CC experience.
+
+### 6.5 Cross-Session Learnings
 
 Learnings are operational patterns that recur across sessions. Unlike observations (what happened) or decisions (what was chosen), learnings capture HOW to do things.
 
@@ -877,7 +1287,7 @@ Priority 8: Recent high-quality observations (importance >= 3, last 24h)
   → Compact references (title + category + timestamp)
 ```
 
-**Post-redaction reclaim** (from Claudex v2):
+**Post-redaction reclaim**:
 After redaction pass, if redacted content is shorter than pre-redaction, re-attempt previously-skipped lower-priority sections with the freed budget.
 
 **Reference mode**: When remaining budget < 500 tokens after priority 5, all subsequent sections switch to compact references (one-line summaries) instead of full content.
@@ -885,21 +1295,37 @@ After redaction pass, if redacted content is shorter than pre-redaction, re-atte
 ### 7.3 Regular Prompt Assembly (Most Turns)
 
 ```typescript
-async beforePrompt(prompt: string, ctx: PromptContext): Promise<InjectPayload> {
-  // 1. Get token utilization
-  const gauge = await this.getTokenGauge(ctx);
+async handleBeforePrompt(event: RuntimeEvent): Promise<InjectPayload> {
+  const payload = event.payload as BeforePromptPayload;
 
-  // 2. Check if post-compaction
-  if (ctx.isPostCompaction) {
-    return this.fullAssembly(prompt, ctx, gauge);
+  // 1. Get token utilization (capability-aware)
+  const gauge = await this.getTokenGauge(event, payload);
+
+  // 2. Check if post-compaction → full assembly
+  if (payload.isPostCompaction) {
+    return this.fullAssembly(payload.prompt, event, gauge);
   }
 
-  // 3. Background work (no injection)
-  await this.captureDecisions(prompt);         // heuristic decision extraction
-  await this.updateThread(prompt);             // thread state update
-  await this.checkCheckpointThreshold(gauge);  // write checkpoint if threshold hit
+  // 3. Background work (no injection, inside transaction)
+  this.db.transaction(() => {
+    this.captureDecisions(payload.prompt, payload.messageHistory);
+    this.updateThread(payload.prompt);
+    this.checkCheckpointThreshold(event.sessionId, gauge);
+  })();
 
-  // 4. Gauge injection at >= 70% only
+  // 4. Topic-shift detection → micro-injection (v1.1)
+  const topicShift = await this.detectTopicShift(payload.prompt, event.sessionId);
+  if (topicShift.shifted) {
+    // Small "context pivot" block — NOT full 4k assembly
+    // Injects: new topic acknowledgment + relevant learnings + hot files for new topic
+    const pivot = await this.buildTopicPivot(topicShift.newTopic, event);
+    // Budget: max 800 tokens for pivot block
+    if (pivot.tokenEstimate <= 800) {
+      return pivot;
+    }
+  }
+
+  // 5. Gauge injection at >= 70% only
   if (gauge.utilization >= 0.70) {
     return {
       content: `# Token Gauge\nUtilization: ${Math.round(gauge.utilization * 100)}% (${gauge.inputTokens.toLocaleString()} / ${gauge.windowSize.toLocaleString()})`,
@@ -908,10 +1334,87 @@ async beforePrompt(prompt: string, ctx: PromptContext): Promise<InjectPayload> {
     };
   }
 
-  // 5. Most turns: zero injection
+  // 6. Most turns: zero injection
   return { content: '', tokenEstimate: 0, sources: [] };
 }
 ```
+
+### 7.3.1 Topic-Shift Detection (v1.2 — embedding-enhanced)
+
+> **v1.2 change**: Topic-shift detection upgraded from keyword Jaccard (crude, high false-positive
+> rate) to embedding cosine similarity when `hasLocalEmbeddings` is true. Embeddings capture
+> semantic similarity — "fix the auth bug" and "OAuth token refresh" register as the same topic
+> even though they share zero keywords. Jaccard remains as fallback when embeddings are unavailable.
+
+Detects when the user pivots to a different task mid-session:
+
+```typescript
+async detectTopicShift(prompt: string, sessionId: string): Promise<TopicShiftResult> {
+  const thread = await this.db.getThreadState(sessionId);
+  if (!thread?.topic) return { shifted: false };
+
+  // 1. Explicit pivot signals (always checked first — cheapest, highest precision)
+  const explicitPivot = /^(now let's|next[,:]|switch to|moving on|let's work on|different topic|new task|back to|forget that|actually[,:]? (?:let's|can we|I need))/i.test(prompt.trim());
+  if (explicitPivot) {
+    const newTopic = await this.inferTopic(prompt);
+    return { shifted: true, newTopic, previousTopic: thread.topic, confidence: 1.0, method: 'explicit' };
+  }
+
+  // 2. Embedding similarity (preferred — semantic understanding)
+  if (this.capabilities.hasLocalEmbeddings && this.embeddingProvider) {
+    const topicEmb = await this.embedWithCache(thread.topic);    // cached per session
+    const promptEmb = await this.embed(prompt);                   // ~5ms via Ollama
+    const similarity = cosineSimilarity(topicEmb, promptEmb);
+
+    // Sliding window: also compare against last 3 user prompts (smooths noise)
+    const recentSimilarities = await this.getRecentPromptSimilarities(promptEmb, sessionId, 3);
+    const avgRecent = recentSimilarities.length > 0
+      ? recentSimilarities.reduce((a, b) => a + b, 0) / recentSimilarities.length
+      : similarity;
+
+    // Topic shift if both current topic AND recent conversation are dissimilar
+    if (similarity < 0.35 && avgRecent < 0.40) {
+      const newTopic = await this.inferTopic(prompt);
+      return { shifted: true, newTopic, previousTopic: thread.topic, confidence: 1.0 - similarity, method: 'embedding' };
+    }
+
+    return { shifted: false };
+  }
+
+  // 3. Keyword Jaccard fallback (when no embeddings available)
+  const currentKeywords = extractKeywords(thread.topic);
+  const promptKeywords = extractKeywords(prompt);
+  const overlap = keywordJaccard(currentKeywords, promptKeywords);
+
+  if (overlap < 0.15) {
+    const newTopic = await this.inferTopic(prompt);
+    return { shifted: true, newTopic, previousTopic: thread.topic, confidence: 1.0 - overlap, method: 'jaccard' };
+  }
+
+  return { shifted: false };
+}
+```
+
+**Why embedding similarity > keyword Jaccard:**
+
+| Scenario | Jaccard | Embedding |
+|---|---|---|
+| "Fix the auth bug" vs "OAuth token refresh" | 0.0 (no shared keywords) → **false positive shift** | 0.72 (semantically similar) → **correctly: no shift** |
+| "Deploy to production" vs "Write unit tests for auth" | 0.0 → **correct shift** | 0.18 → **correct shift** |
+| "Implement the parser" vs "Now implement the parser tests" | 0.67 → **correctly: no shift** | 0.81 → **correctly: no shift** |
+| "Debug memory leak" vs "What's for lunch?" | 0.0 → **correct shift** | 0.05 → **correct shift** |
+
+**Embedding cache**: Topic embedding is computed once per topic change and cached in memory. Prompt embeddings cost ~5ms each via local Ollama (nomic-embed-text). No external API calls.
+
+**Sliding window**: Comparing against the last 3 user prompts prevents single-message noise (e.g., user asks a quick tangential question then continues the main topic). Shift only triggers when the conversation has actually moved.
+
+**Topic pivot injection content** (max 800 tokens):
+1. Topic transition marker: "Switching context: {oldTopic} → {newTopic}"
+2. Top 3 learnings relevant to new topic (by FTS5 match against learnings table)
+3. HOT files relevant to new topic (by FTS5 match against observation file paths)
+4. Last checkpoint's relevant decisions (if any match new topic)
+
+This is NOT a full assembly — it's a lightweight context pivot that costs ~200-400 tokens on average.
 
 ### 7.4 Token Gauge
 
@@ -935,7 +1438,7 @@ Utilization: 73% (146,000 / 200,000)
 schema: claudex/checkpoint
 version: 3
 meta:
-  checkpoint_id: "2026-03-09_cp4"    # Date + sequential counter
+  checkpoint_id: "2026-03-09_01JQXYZ..."  # Date prefix + ULID (generated in code, not dir scan)
   session_id: "abc123..."
   scope: "project:openclaw-main"
   trigger: auto-threshold | compaction | session-end
@@ -1007,11 +1510,18 @@ gsd: null  # or GSD state if active
 
 **Debounce**: 60 seconds minimum between non-compaction checkpoint writes (prevents spam during rapid tool use).
 
-### 8.3 Write Flow
+### 8.3 Write Flow (v1.2 — ULID + DB-first state machine)
+
+> **v1.2 change**: Checkpoint IDs are now ULIDs generated in code, not sequential counters from
+> directory scan. This eliminates race conditions under concurrent writers. The checkpoint lifecycle
+> follows a DB-first state machine: `pending → committed → mirrored`. The file is written AFTER
+> the DB records the checkpoint, ensuring recovery is always possible even if the file write fails.
 
 ```
 Trigger fires (threshold / compaction / session-end)
-  → Read current state from DB:
+  → Generate ULID for checkpoint_id (monotonic, sortable, no directory scan)
+  → INSERT into checkpoint_meta: status='pending', checkpoint_id, session_id, trigger
+  → Read current state from DB (inside transaction):
     - decisions: SELECT FROM decisions WHERE session_id=? ORDER BY timestamp DESC LIMIT 15
     - thread: SELECT FROM thread_state WHERE session_id=?
     - open_items: extracted from assistant messages (TODO/FIXME patterns)
@@ -1019,25 +1529,47 @@ Trigger fires (threshold / compaction / session-end)
     - files: HOT from pressure_scores, read from observation file touches
     - gsd: read .planning/STATE.md if exists
   → Build checkpoint YAML (mechanical, no LLM)
-  → [If compaction trigger AND API available]: LLM enrichment + safety-net merge
-  → atomicWriteFile to {project}/context/checkpoints/{id}.yaml
+  → UPDATE checkpoint_meta: status='committed', data=checkpoint_json
+  → [If enrichment available]: LLM enrichment (Ollama or native API) + safety-net merge
+  → [If enrichment succeeded]: UPDATE checkpoint_meta: data=enriched_json
+  → atomicWriteFile to {project}/context/checkpoints/{date}_{ulid}.yaml
   → Update latest.yaml reference
+  → UPDATE checkpoint_meta: status='mirrored'
   → [If compaction]: promote learnings to cross-session store
   → [If compaction]: reset session-scoped state (decisions, thread for fresh start)
   → Record threshold as hit in checkpoint_tracking
+  → Emit telemetry: checkpoint_write event (see Section 10c)
 ```
 
-### 8.4 Recovery Chain (from Claudex v2)
+**State machine guarantees:**
+- `pending` → write started but not complete. On crash recovery: discard.
+- `committed` → data is in SQLite. File may not exist yet. On recovery: re-mirror from DB.
+- `mirrored` → file exists, DB and file are consistent. Normal state.
 
-3-hop maximum, cycle-safe:
+**ULID benefits:**
+- Monotonically sortable (replaces mtime-based dir scan)
+- No collision under concurrent writers (128-bit, 48-bit timestamp + 80-bit random)
+- Human-readable file names: `2026-03-09_01JQXYZ4K9BPGF.yaml`
+- Tiny dependency: `ulid` package is 1.2KB, zero dependencies
+
+### 8.4 Recovery Chain
+
+Two-layer recovery: DB-first, file fallback.
 
 ```
 loadCheckpoint(projectDir):
-  1. Read latest.yaml → parse "ref: {filename}" → load that file
-  2. If latest.yaml missing/corrupt: dir scan all *.yaml, sort by mtime desc, take first
-  3. Follow previous_checkpoint links (basename only, max 3 hops, track seen set for cycles)
-  4. Return first successfully parsed checkpoint, or null
+  1. DB recovery (v1.2): query checkpoint_meta for latest 'committed' or 'mirrored' row
+     - If 'committed' but not 'mirrored': re-mirror from data column → atomicWriteFile → update to 'mirrored'
+     - If 'mirrored': read from mirror_path (fast path)
+     - If 'pending': discard (incomplete write)
+  2. File fallback (if DB unavailable or empty):
+     a. Read latest.yaml → parse "ref: {filename}" → load that file
+     b. If latest.yaml missing/corrupt: dir scan all *.yaml, sort by mtime desc, take first
+     c. Follow previous_checkpoint links (basename only, max 3 hops, track seen set for cycles)
+  3. Return first successfully parsed checkpoint, or null
 ```
+
+DB recovery runs at `sessionInit()` — any `committed` rows left from a crash are re-mirrored before the session starts. File fallback exists for the case where the DB itself is corrupted or unavailable (three-tier degradation principle).
 
 ### 8.5 Selective Loading
 
@@ -1049,7 +1581,7 @@ loadCheckpoint(projectDir):
 
 ---
 
-## 9. Decay Engine (from Claudex v2)
+## 9. Decay Engine
 
 ### 9.1 EI (Effective Importance) Formula
 
@@ -1119,7 +1651,7 @@ WHERE timestamp_epoch < unixepoch() - (? * 86400)
 
 ---
 
-## 10. GSD Integration (from Claudex v2)
+## 10. GSD Integration
 
 Read-only integration with the GSD planning system:
 
@@ -1146,6 +1678,166 @@ gsd:
 
 ---
 
+## 10b. Claude Code Native Auto-Memory Interaction (v1.1)
+
+> **v1.1 addition**: Explicit policy for how Claudex v3 interacts with CC's built-in
+> auto-memory (`~/.claude/projects/.../memory/MEMORY.md`).
+
+### Policy: Claudex v3 is authoritative operational memory; CC auto-memory is model-managed
+
+| Aspect | Policy |
+|---|---|
+| **Reading MEMORY.md** | v3 MAY read MEMORY.md as a context source during full assembly (Priority 2, project context). It treats MEMORY.md content as user-curated instructions, not as a competing memory store. |
+| **Writing MEMORY.md** | v3 NEVER writes to MEMORY.md directly. The model manages its own auto-memory. v3 injects context via hook `systemMessage`/`additionalContext` only. |
+| **Publishing learnings** | Optionally, v3 can surface top cross-session learnings in a `systemMessage` that suggests the model save them to MEMORY.md. The model decides whether to act on this. v3 never forces writes. |
+| **Conflict resolution** | If MEMORY.md contains information that contradicts v3's stored observations/learnings, v3 defers to MEMORY.md (user-curated > auto-captured). v3's observations are supplementary context, not corrections. |
+| **Future-proofing** | When CC adds stronger native context management (richer hooks, built-in checkpoints, native memory API), v3 should degrade gracefully: disable redundant subsystems via feature flags, retain only genuinely novel capabilities (observation extraction, FTS5 search, cross-session learnings, decision capture). |
+
+### Feature Flags for Graceful Degradation
+
+```json
+{
+  "features": {
+    "observation_capture": true,    // Disable if CC adds native observation tracking
+    "checkpoint_system": true,      // Disable if CC adds native checkpoints
+    "token_gauge": true,            // Disable if CC exposes utilization API
+    "fts5_search": true,            // Disable if CC adds native memory search
+    "decision_capture": true,       // Probably never redundant — CC-unique
+    "learnings_promotion": true     // Probably never redundant — CC-unique
+  }
+}
+```
+
+This ensures v3 degrades into "high-signal memory compiler + checkpoint mirror + analytics" rather than breaking when CC evolves.
+
+---
+
+## 10c. Observability Subsystem (v1.2)
+
+> **v1.2 addition**: Every subsystem emits structured telemetry to a dedicated SQLite table.
+> This replaces ad-hoc logging with queryable, auditable data that answers "what did Claudex do
+> on this turn and why?"
+
+### Telemetry Table
+
+```sql
+CREATE TABLE IF NOT EXISTS telemetry (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  session_id TEXT NOT NULL,
+  event_kind TEXT NOT NULL CHECK (event_kind IN (
+    'hook_invocation',      -- adapter received a host event
+    'injection',            -- context was injected (or skipped)
+    'observation_capture',  -- observation extracted and stored (or filtered)
+    'decision_capture',     -- decision candidate detected (stored or rejected)
+    'checkpoint_write',     -- checkpoint lifecycle event
+    'enrichment',           -- LLM enrichment attempted
+    'topic_shift',          -- topic shift detected (or not)
+    'dedup',                -- semantic dedup match (or miss)
+    'decay_prune',          -- observation pruned by decay engine
+    'error'                 -- any caught error
+  )),
+  detail TEXT NOT NULL DEFAULT '{}' CHECK (json_valid(detail)),  -- event-specific JSON payload
+  latency_ms REAL,                    -- wall-clock time for this operation
+  timestamp_epoch INTEGER NOT NULL DEFAULT (unixepoch())
+);
+
+CREATE INDEX IF NOT EXISTS idx_telemetry_session ON telemetry(session_id, timestamp_epoch DESC);
+CREATE INDEX IF NOT EXISTS idx_telemetry_kind ON telemetry(event_kind, timestamp_epoch DESC);
+```
+
+### Event Detail Schemas
+
+```typescript
+// hook_invocation: every adapter event
+{ hook: 'UserPromptSubmit', duration_ms: 142, result: 'inject' | 'skip' | 'error' }
+
+// injection: what was injected and why
+{ trigger: 'session_start' | 'post_compaction' | 'topic_shift' | 'gauge',
+  sections_included: ['identity', 'checkpoint', 'learnings', 'fts5'],
+  sections_skipped: ['gsd'],        // and why
+  total_tokens: 3200,
+  budget_remaining: 800 }
+
+// observation_capture: observation stored or filtered
+{ tool: 'Edit', category: 'code', importance: 3, stored: true }
+{ tool: 'Read', filtered_reason: 'below_quality_gate', stored: false }
+
+// decision_capture: decision detected
+{ content: "Use ULID for checkpoint IDs", source: 'direction',
+  stage1_match: true, stage2_confidence: 0.72, stored: true }
+{ content: "Let me read the file", stage1_match: true,
+  stage2_confidence: -0.3, stored: false, reason: 'filler_rejected' }
+
+// checkpoint_write: lifecycle tracking
+{ checkpoint_id: '01JQXYZ...', trigger: 'compaction',
+  state: 'pending' | 'committed' | 'mirrored',
+  enrichment_attempted: true, enrichment_succeeded: true,
+  enrichment_provider: 'ollama:glm-4.7-flash:q4_K_M',
+  write_duration_ms: 85 }
+
+// topic_shift: detection result
+{ method: 'embedding' | 'jaccard' | 'explicit', similarity: 0.12,
+  shifted: true, old_topic: 'auth bug', new_topic: 'deploy pipeline',
+  pivot_tokens: 340 }
+
+// dedup: semantic dedup outcome
+{ type: 'decision' | 'learning', tier: 'exact' | 'jaccard' | 'substring',
+  similarity: 0.85, action: 'skip' | 'promote' }
+
+// error: caught errors (never thrown, always logged)
+{ subsystem: 'enrichment', error: 'Ollama connection refused', fallback: 'heuristic_only' }
+```
+
+### Querying Telemetry
+
+```sql
+-- Why was this injected on the last prompt?
+SELECT detail FROM telemetry
+WHERE session_id = ? AND event_kind = 'injection'
+ORDER BY timestamp_epoch DESC LIMIT 1;
+
+-- Hook latency stats for this session (avg, max, count)
+SELECT
+  json_extract(detail, '$.hook') as hook,
+  COUNT(*) as count,
+  ROUND(AVG(latency_ms), 1) as avg_ms,
+  ROUND(MAX(latency_ms), 1) as max_ms
+FROM telemetry
+WHERE session_id = ? AND event_kind = 'hook_invocation'
+GROUP BY json_extract(detail, '$.hook');
+
+-- Decision capture precision (how many candidates were stored vs rejected?)
+SELECT
+  json_extract(detail, '$.stored') as stored,
+  COUNT(*) as count
+FROM telemetry
+WHERE event_kind = 'decision_capture' AND session_id = ?
+GROUP BY stored;
+
+-- Checkpoint lifecycle (any stuck in non-mirrored state?)
+SELECT
+  json_extract(detail, '$.checkpoint_id') as checkpoint_id,
+  json_extract(detail, '$.state') as state,
+  timestamp_epoch
+FROM telemetry
+WHERE event_kind = 'checkpoint_write'
+  AND json_extract(detail, '$.state') != 'mirrored'
+ORDER BY timestamp_epoch DESC;
+```
+
+### Retention
+
+Telemetry rows are pruned at `sessionEnd()` AND at `sessionInit()` (catches growth from crashes where `sessionEnd` never fired):
+- Keep last 7 days of telemetry
+- Keep last 1000 error events regardless of age
+- Telemetry table is excluded from flat-file mirroring (it's diagnostic, not user-facing)
+
+### Implementation
+
+Every subsystem calls `this.telemetry.emit(kind, detail, latency)` at its natural completion point. The `emit` method is non-throwing and non-blocking (INSERT is fast in WAL mode). This is ~1 line of code per call site, not a framework.
+
+---
+
 ## 11. Configuration
 
 ### 11.1 Config File (`~/.claudex/config.json`)
@@ -1157,7 +1849,8 @@ gsd:
   "injection": {
     "budget_tokens": 4000,
     "boundary_only": true,
-    "gauge_threshold": 0.70
+    "gauge_threshold": 0.70,
+    "topic_shift_budget": 800
   },
   "observations": {
     "enabled": true,
@@ -1166,17 +1859,46 @@ gsd:
     "prune_count": 50
   },
   "checkpoint": {
-    "debounce_seconds": 60,
-    "enrichment_enabled": false,
-    "enrichment_api_url": "http://127.0.0.1:8317/v1/messages"
+    "debounce_seconds": 60
   },
   "learnings": {
     "max_per_project": 50,
-    "surface_count": 10
+    "surface_count": 10,
+    "publish_to_memory_md": false
+  },
+  "enrichment": {
+    "enabled": true,
+    "provider": "auto",
+    "ollama_base_url": "http://localhost:11434",
+    "ollama_model": "auto",
+    "timeout_ms": 10000
+  },
+  "embeddings": {
+    "enabled": true,
+    "provider": "ollama",
+    "model": "nomic-embed-text",
+    "ollama_base_url": "http://localhost:11434",
+    "topic_shift_threshold": 0.35,
+    "topic_shift_window": 3,
+    "decision_confidence_threshold": 0.15
+  },
+  "observability": {
+    "enabled": true,
+    "retention_days": 7,
+    "retain_error_count": 1000
   },
   "gsd": {
     "enabled": true,
     "phase_boost": 0.10
+  },
+  "features": {
+    "observation_capture": true,
+    "checkpoint_system": true,
+    "token_gauge": true,
+    "fts5_search": true,
+    "decision_capture": true,
+    "learnings_promotion": true,
+    "telemetry": true
   },
   "adapter": "auto"
 }
@@ -1215,7 +1937,7 @@ CLAUDEXv3/
   src/
     core/                               # Storage and data access
       storage.ts                        # SQLite connection, WAL, PRAGMAs, close
-      migrations.ts                     # Schema migrations (v2→v3 + fresh)
+      migrations.ts                     # Schema creation (fresh install) + optional v2 migration
       observations.ts                   # Observation CRUD + FTS5 queries
       learnings.ts                      # Cross-session learnings CRUD
       decisions.ts                      # Decision CRUD
@@ -1240,12 +1962,22 @@ CLAUDEXv3/
       redaction.ts                      # Three-layer redaction engine
       quality-gate.ts                   # Per-tool quality gates
 
-    intelligence/                       # Heuristic intelligence (from OpenClaw CM)
-      decision-capture.ts               # 4-tier heuristic decision extraction
+    intelligence/                       # Heuristic intelligence
+      decision-capture.ts               # Model-agnostic 2-stage decision extraction (v1.2)
       thread-tracker.ts                 # Continuous thread snapshot
       semantic-dedup.ts                 # 3-tier deduplication
-      enrichment.ts                     # Optional LLM enrichment + safety-net merge
+      enrichment.ts                     # LLM enrichment via Ollama or native API (v1.2)
       learnings-promoter.ts             # Session → cross-session learning promotion
+      topic-shift.ts                    # Embedding-enhanced topic detection (v1.2)
+
+    embeddings/                         # Local embedding support (v1.2)
+      embedding-provider.ts             # Ollama nomic-embed-text client
+      cosine.ts                         # Cosine similarity + sliding window
+      templates.ts                      # Decision/non-decision classification templates
+
+    observability/                      # Structured telemetry (v1.2)
+      telemetry.ts                      # Emit + query + prune interface
+      types.ts                          # Event detail type definitions
 
     assembly/                           # Context assembly pipeline
       assembler.ts                      # Priority-budgeted assembly orchestrator
@@ -1287,6 +2019,7 @@ CLAUDEXv3/
       session-start.ts                  # SessionStart → sessionInit
       user-prompt-submit.ts             # UserPromptSubmit → beforePrompt
       post-tool-use.ts                  # PostToolUse → afterTool
+      stop.ts                           # Stop → afterTurn
       pre-compact.ts                    # PreCompact → beforeCompact
       session-end.ts                    # SessionEnd → sessionEnd
 
@@ -1296,7 +2029,7 @@ CLAUDEXv3/
       plugin-entry.ts                   # OpenClaw plugin activate() function
 
   cli/
-    setup.ts                            # Setup CLI: patches ~/.claude/settings.json
+    setup.ts                            # Setup CLI: creates DB, patches settings.json, optional v2 migration
 
   tests/                                # Test suite (vitest)
     core/
@@ -1309,14 +2042,14 @@ CLAUDEXv3/
     integration/
 ```
 
-**Module count**: ~45 source files (vs. Claudex v2's ~37 + OpenClaw CM's ~12 = 49 combined). Net reduction through deduplication.
+**Module count**: ~52 source files (vs. Claudex v2's ~37 + OpenClaw CM's ~12 = 49 combined). Slight increase from v1.2 additions (embeddings, observability, topic-shift), but no duplication — each module is a distinct concern.
 
 **Dependencies**:
 - `better-sqlite3` ^11.7.0 — native SQLite binding (external in esbuild)
 - `js-yaml` ^4.1.1 — YAML parsing for checkpoints
 - Dev: `vitest`, `esbuild`, `tsx`, `typescript`
 
-**Build output**: `dist/` with 5 hook bundles (session-start.mjs, user-prompt-submit.mjs, post-tool-use.mjs, pre-compact.mjs, session-end.mjs) + setup.mjs + openclaw-plugin.mjs
+**Build output**: `dist/` with 6 hook bundles (session-start.mjs, user-prompt-submit.mjs, post-tool-use.mjs, stop.mjs, pre-compact.mjs, session-end.mjs) + setup.mjs + openclaw-plugin.mjs
 
 ---
 
@@ -1343,83 +2076,99 @@ CLAUDEXv3/
 
 ---
 
-## 14. Migration Plan
+## 14. Implementation Plan (v1.2 — standalone-first)
+
+> **v1.2 change**: Rewritten from "migration plan" to "implementation plan." v3 is built as a standalone system. Predecessor code is referenced for design patterns and logic, not copied wholesale. The optional v2 migration path is a single task in Phase 1, not the plan's organizing principle.
 
 ### Phase 0: Repository Setup
 1. Create `CLAUDEXv3/` with package.json, tsconfig.json, build.ts
-2. Copy shared utilities from Claudex v2: paths.ts, scope-detector.ts, fs-helpers.ts, text-utils.ts
-3. Copy and adapt: config.ts (merge coordination fields), types.ts (unified type system)
-4. Set up vitest
+2. Implement shared utilities: paths.ts, scope-detector.ts, fs-helpers.ts, text-utils.ts, constants.ts (reference Claudex v2 for proven patterns)
+3. Implement config.ts (v3 config schema with enrichment, embeddings, observability settings)
+4. Implement types.ts (unified type system: RuntimeEvent, RuntimeCapabilities, InjectPayload, etc.)
+5. Set up vitest + TypeScript strict mode
 
 ### Phase 1: Storage Layer
-1. Implement storage.ts with WAL mode + PRAGMAs
-2. Implement migrations.ts (fresh schema + v2→v3 migration path)
+1. Implement storage.ts — WAL mode, PRAGMAs, connection lifecycle
+2. Implement migrations.ts — fresh v3 schema creation (primary path) + optional v2→v3 migration (Section 4.3)
 3. Implement all CRUD modules: observations.ts, learnings.ts, decisions.ts, thread.ts, pressure.ts, sessions.ts, checkpoint-tracking.ts
-4. Port FTS5 queries from Claudex v2 (including temporal re-ranking)
-5. Write tests for all CRUD operations
+4. Implement FTS5 queries (BM25 + temporal re-ranking)
+5. Implement telemetry.ts (observability subsystem from Section 10c)
+6. Write tests for all CRUD operations + fresh install + v2 migration
 
 ### Phase 2: Extraction Pipeline
-1. Copy extractor.ts and all per-tool extractors from Claudex v2
-2. Copy redaction.ts from Claudex v2
+1. Implement extractor.ts dispatcher and all per-tool extractors (reference Claudex v2's proven extraction logic)
+2. Implement redaction.ts (three-layer engine)
 3. Implement quality-gate.ts (enhanced gates from Section 5.5)
-4. Wire extractors to new observations.ts CRUD
+4. Wire extractors to observations.ts CRUD + telemetry
 5. Write tests
 
-### Phase 3: Intelligence Layer
-1. Port decision-capture.ts from OpenClaw CM's `context-state.ts` (decision extraction portion)
-2. Port semantic-dedup.ts from OpenClaw CM's `context-dedup.ts`
-3. Implement thread-tracker.ts (combined from both systems' thread tracking)
-4. Port enrichment.ts from OpenClaw CM's `context-enrichment.ts`
-5. Port learnings-promoter.ts from OpenClaw CM's `context-learnings.ts`
-6. Write tests for each module
+### Phase 3: Intelligence Layer — Core
+1. Implement decision-capture.ts — model-agnostic 2-stage extraction (Section 6.1: regex patterns + embedding classification)
+2. Implement semantic-dedup.ts — 3-tier dedup (reference OpenClaw CM's `context-dedup.ts`)
+3. Implement thread-tracker.ts — combined rolling gist + snapshot (reference both systems)
+4. Implement learnings-promoter.ts — session → cross-session promotion with dedup (reference OpenClaw CM)
+5. Write tests for each module
 
-### Phase 4: Assembly Pipeline
-1. Port assembler.ts from Claudex v2's `context-assembler.ts`
-2. Rewrite sections.ts for v3 priorities (boundary-only injection)
-3. Port token-estimator.ts
-4. Implement boundary-only logic (full assembly vs gauge-only vs empty)
+### Phase 4: Intelligence Layer — v1.2 Additions
+1. Implement embedding-provider.ts — Ollama nomic-embed-text client with graceful fallback
+2. Implement cosine.ts — cosine similarity + sliding window comparisons
+3. Implement templates.ts — decision/non-decision classification template embeddings
+4. Implement topic-shift.ts — embedding-enhanced detection with Jaccard fallback (Section 7.3.1)
+5. Implement enrichment.ts — auto-detect Ollama, CC-safe enrichment, safety-net merge (Section 6.4)
+6. Write tests (with and without Ollama available)
+
+### Phase 5: Assembly Pipeline
+1. Implement assembler.ts — priority-budgeted section assembly
+2. Implement sections.ts — v3 section priorities (boundary-only injection)
+3. Implement token-estimator.ts
+4. Implement boundary-only logic (full assembly vs topic-shift micro-injection vs gauge-only vs empty)
 5. Write tests
 
-### Phase 5: Checkpoint System
-1. Define v3 schema types
-2. Port writer.ts from Claudex v2 (adapted for v3 schema, pulling from DB instead of YAML state files)
-3. Port loader.ts from Claudex v2 (3-hop recovery, adapted for v3)
-4. Implement inject.ts (checkpoint → injection markdown)
+### Phase 6: Checkpoint System
+1. Define v3 schema types (ULID-based IDs)
+2. Implement writer.ts — DB-first state machine: pending → committed → mirrored (Section 8.3)
+3. Implement loader.ts — 3-hop recovery chain
+4. Implement inject.ts — checkpoint → injection markdown renderer
 5. Write tests
 
-### Phase 6: Supporting Subsystems
-1. Port token-gauge.ts from Claudex v2
-2. Port decay-engine.ts from Claudex v2
-3. Port state-reader.ts from Claudex v2 (GSD integration)
+### Phase 7: Supporting Subsystems
+1. Implement token-gauge.ts — transcript-derived (CC) or SDK-derived (OpenClaw), capability-aware
+2. Implement decay-engine.ts — EI formula + co-occurrence + pruning
+3. Implement state-reader.ts — GSD .planning/ filesystem reader
 4. Write tests
 
-### Phase 7: CC Hook Adapter
-1. Port infrastructure.ts from Claudex v2's `_infrastructure.ts`
-2. Implement 5 hook entry points mapping to RuntimeAdapter
-3. Implement setup.ts CLI for settings.json patching
+### Phase 8: CC Hook Adapter
+1. Implement infrastructure.ts — stdin/stdout JSON protocol, latency budget
+2. Implement 6 hook entry points (session-start, user-prompt-submit, post-tool-use, stop, pre-compact, session-end) mapping to RuntimeAdapter
+3. Implement setup.ts CLI — `claudex setup` creates DB, patches `~/.claude/settings.json`, optional v2 migration
 4. Build and test with real CC hooks
 
-### Phase 8: OpenClaw Bridge Adapter
-1. Implement bridge-adapter.ts (globalThis registration)
-2. Implement plugin-entry.ts (OpenClaw plugin activate function)
-3. Update OpenClaw's extensions.ts bridge (4 lines of changes)
+### Phase 9: OpenClaw Bridge Adapter
+1. Implement bridge-adapter.ts — globalThis registration + callback mapping
+2. Implement plugin-entry.ts — OpenClaw plugin `activate()` function
+3. Update OpenClaw's `extensions.ts` bridge (minimal changes)
 4. Build and test with real OpenClaw gateway
 
-### Phase 9: Integration Testing
+### Phase 10: Integration Testing
 1. End-to-end CC hook flow (session-start → prompts → tool-use → compact → session-end)
 2. End-to-end OpenClaw bridge flow (init → context → tool_result → compact)
-3. Cross-session learnings persistence
-4. Checkpoint write → session restart → checkpoint restore
-5. FTS5 search quality (BM25 + temporal re-ranking)
-6. Pressure scoring and HOT file surfacing
-7. Decay engine pruning behavior
+3. Fresh install flow (`claudex setup` on clean machine → fully operational)
+4. Cross-session learnings persistence across sessions
+5. Checkpoint write → session restart → checkpoint restore (3-hop recovery)
+6. Topic-shift detection (embedding + fallback) producing correct micro-injections
+7. Enrichment via Ollama on CC adapter (no deadlock, correct fallback)
+8. FTS5 search quality (BM25 + temporal re-ranking)
+9. Observability queries (telemetry table populated, queryable)
+10. Pressure scoring and HOT file surfacing
+11. Decay engine pruning behavior
 
-### Phase 10: Deployment
-1. Deploy CC hooks on Windows (replace Claudex v2)
-2. Deploy OpenClaw plugin (replace openclaw-context extension)
-3. Verify both adapters independently
-4. Monitor for one week
-5. Archive Claudex v2 and openclaw-context plugin
+### Phase 11: Deployment
+1. Deploy CC hooks on Windows (`claudex setup` — fresh install)
+2. Deploy OpenClaw plugin (plugin install — fresh install)
+3. Verify both adapters independently on fresh installs
+4. Optionally run v2 migration for existing Claudex users
+5. Monitor for one week
+6. Archive Claudex v2 and openclaw-context plugin
 
 ---
 
@@ -1462,15 +2211,33 @@ When LLM refines heuristic data, uncovered heuristic entries are preserved via l
 
 ## 16. Open Questions for Implementation
 
-1. **OpenClaw plugin packaging**: Should the OpenClaw adapter be published as a separate npm package, or bundled as a build target from the same repo? Recommendation: same repo, separate build target (`dist/openclaw-plugin.mjs`).
+### Resolved in v1.1
 
-2. **Enrichment API on CC**: CLIProxyAPI at `http://127.0.0.1:8317/v1/messages` requires CC to be running. During PreCompact, CC IS running (it fired the hook). But the hook process making an HTTP call back to CC while CC is waiting for the hook to complete — is this a deadlock? Need to verify CC's hook timeout behavior. Safe alternative: skip enrichment on CC, only enrich on OpenClaw (where the agent runtime has direct API access).
+1. ~~**Enrichment API on CC**~~: **RESOLVED v1.1** — Initially disabled on CC. **RESOLVED v1.2** — CC enrichment enabled via local Ollama (Section 6.4). No CLIProxyAPI call = no deadlock.
 
-3. **better-sqlite3 on OpenClaw's jiti loader**: The jiti native module limitation means the OpenClaw plugin can't transitively load better-sqlite3 through jiti. Solution: pre-compile the plugin to .cjs (same workaround as the current mem0 plugin). The build.ts should produce `dist/openclaw-plugin.cjs` with better-sqlite3 marked external.
+2. ~~**Concurrent DB access**~~: **RESOLVED** — Multi-step writes wrapped in explicit transactions (Section 4.1). Session tracking moved to SQLite `sessions` table. File-based `index.json` kept as flat-file mirror only (written after DB commit, not used for coordination).
 
-4. **Concurrent DB access**: CC hooks are ephemeral but could overlap (UserPromptSubmit fires while PostToolUse is still running). WAL mode handles this, but the session-index file lock (JSON file) might contend. Consider moving session tracking entirely to SQLite to eliminate the file lock.
+3. ~~**CC native auto-memory interaction**~~: **RESOLVED** — Explicit policy in Section 10b. v3 reads but never writes MEMORY.md. Feature flags for graceful degradation.
 
-5. **v2 data migration**: When v3 first opens a v2 database, it should run the migration automatically. All existing observations, pressure scores, and sessions should be preserved. The migration drops unused tables but never deletes user data.
+### Resolved in v1.2
+
+4. ~~**v2 data migration**~~: **RESOLVED** — v3 is standalone-first. Fresh install creates full schema from scratch. v2 migration is optional, user-prompted, with backup. See Section 4.3.
+
+5. ~~**Topic-shift false positives**~~: **RESOLVED** — Embedding cosine similarity via nomic-embed-text replaces keyword-only Jaccard. Sliding window smoothing prevents single-message noise. Jaccard retained as fallback. See Section 7.3.1.
+
+6. ~~**Checkpoint ID races**~~: **RESOLVED** — ULID replaces directory-scan sequential counter. Monotonic, collision-free under concurrent writers. DB-first state machine guarantees recovery. See Section 8.3.
+
+7. ~~**Decision capture model dependency**~~: **RESOLVED** — Two-stage extraction with structural regex patterns (model-agnostic) + embedding classification. Works across Claude, MiniMax, GLM, DeepSeek. See Section 6.1.
+
+### Still Open
+
+8. **OpenClaw plugin packaging**: Same repo, separate build target (`dist/openclaw-plugin.cjs`). Pre-compile with esbuild, better-sqlite3 marked external. Same workaround as current mem0 plugin. **Decision: confirmed, implement as described.**
+
+9. **better-sqlite3 on OpenClaw's jiti loader**: Pre-compile to `.cjs` with `createRequire()` for native module resolution. Proven pattern (mem0 plugin uses it). **Decision: confirmed.**
+
+10. **Session index contention**: If multiple CC instances start simultaneously, the file-locked `index.json` append could contend. v3 mitigates by making SQLite the primary session store and `index.json` a best-effort mirror. If the mirror write fails, the session is still registered in SQLite.
+
+11. **Ollama availability on CI**: Embedding and enrichment tests need Ollama. Options: mock the HTTP client in unit tests, run Ollama in CI for integration tests, or accept that embedding/enrichment integration tests are manual-only. **Leaning: mock in unit tests, manual integration.**
 
 ---
 
@@ -1478,39 +2245,54 @@ When LLM refines heuristic data, uncovered heuristic entries are preserved via l
 
 Claudex v3 is successful when:
 
-1. **Feature parity**: Everything that worked in Claudex v2 + OpenClaw CM works in v3
-2. **Single codebase**: No separate coordination contract, no dual checkpoints, no dual injection
-3. **Both adapters work**: CC hooks on Windows, OpenClaw bridge on gateway, independently verified
-4. **Boundary-only injection measurably faster**: Per-prompt overhead drops from ~200-500ms (v2) to near-zero on regular prompts
-5. **Cross-session learnings surface**: Top learnings from previous sessions appear in session-start context
-6. **Decision capture works**: Confirmed decisions appear in checkpoints without manual logging
-7. **Tests pass**: Full test suite covering all core modules, adapters, and integration scenarios
-8. **Human readable**: Checkpoints, daily logs, session logs, and handoffs remain human-readable flat files
+1. **Fresh install works**: `claudex setup` on a clean machine creates a fully operational system — no predecessor required
+2. **Feature parity**: Everything that worked in Claudex v2 + OpenClaw CM works in v3
+3. **Single codebase**: No coordination contract, no dual checkpoints, no dual injection. One repo, both platforms.
+4. **Both adapters work**: CC hooks on Windows/Linux, OpenClaw bridge on gateway, independently verified
+5. **Boundary-only injection measurably faster**: Per-prompt overhead drops from ~200-500ms (v2) to near-zero on regular prompts
+6. **Topic-shift detection works**: Mid-session topic changes produce correct context pivots (< 800 tokens), embedding-enhanced when Ollama available, Jaccard fallback otherwise
+7. **Enrichment on both adapters**: CC enriches via Ollama, OpenClaw enriches via native API or Ollama — quality parity, no deadlocks
+8. **Cross-session learnings surface**: Top learnings from previous sessions appear in session-start context
+9. **Decision capture is model-agnostic**: Confirmed decisions captured across Claude, MiniMax, GLM, DeepSeek without model-specific patterns
+10. **Capability-aware adapters**: Core intelligence degrades gracefully based on declared capabilities, not host-specific branching
+11. **Observability is queryable**: Telemetry table answers "what did Claudex do on this turn?" with structured data
+12. **Transactions guarantee consistency**: No partial state from interrupted multi-step writes
+13. **Tests pass**: Full test suite covering all core modules, adapters, and integration scenarios
+14. **Human readable**: Checkpoints, daily logs, session logs, and handoffs remain human-readable flat files
+15. **Optional v2 migration works**: Existing Claudex users can migrate data, or start fresh — their choice
 
 ---
 
 ## Appendix A: Comparison Table
 
-| Capability | Claudex v2 | OpenClaw CM | Claudex v3 |
+| Capability | Claudex v2 | OpenClaw CM | Claudex v3 (v1.2) |
 |---|---|---|---|
-| Runtime model | Ephemeral hooks | In-process bridge | Both (adapter pattern) |
-| Storage | SQLite + flat files | JSON/YAML files | SQLite + flat file mirrors |
+| Install model | Requires v1 history | Requires OpenClaw | **Standalone-first** — `claudex setup` on clean machine, optional v2 migration |
+| Runtime model | Ephemeral hooks | In-process bridge | Both (capability-aware adapter pattern) |
+| Adapter contract | Host-specific hook handlers | globalThis bridge + 15 injected utils | Host-neutral RuntimeEvent + RuntimeCapabilities |
+| Storage | SQLite + flat files | JSON/YAML files | SQLite + flat file mirrors + explicit transactions |
 | Search | FTS5 (BM25 + temporal) | None | FTS5 (BM25 + temporal) |
-| Observation extraction | Yes (10 tool types) | No | Yes (10 tool types, improved gates) |
-| Decision capture | Manual (nudge system) | Heuristic (4-tier) | Heuristic (4-tier) |
-| Thread tracking | Per-tool gist rolling window | Per-context snapshot | Combined (continuous + snapshot) |
+| Observation extraction | Yes (10 tool types) | No | Yes (10 tool types, improved quality gates) |
+| Decision capture | Manual (nudge system) | Heuristic (4-tier, Claude-tuned) | **Model-agnostic 2-stage** (regex + embedding classification) |
+| Thread tracking | Per-tool gist rolling window | Per-context snapshot | Combined (continuous + snapshot + afterTurn) |
 | Semantic dedup | None | 3-tier (normalize, Jaccard, substring) | 3-tier |
-| LLM enrichment | None | Yes (completeSimple) | Optional (adapter-dependent) |
+| LLM enrichment | None | Yes (completeSimple) | **Both adapters** — CC via Ollama, OpenClaw via native API or Ollama |
 | Cross-session learnings | None | Promotion-count JSON | Promotion-count SQLite |
-| Checkpoint schema | v2 (11 sections) | v2 (8 sections) | v3 (unified, 9 sections) |
+| Checkpoint IDs | Sequential (directory scan) | Single file | **ULID** (monotonic, collision-free) |
+| Checkpoint lifecycle | Write-and-hope | Write-and-hope | **DB-first state machine** (pending → committed → mirrored) |
 | Checkpoint recovery | 3-hop chain | Single file | 3-hop chain |
-| Context injection | Per-prompt (~4000 tokens) | Per-context (variable) | Boundary-only (session-start + post-compact) |
-| Token gauge | Transcript-derived | SDK ctx.getContextUsage() | Both (adapter-dependent) |
+| Context injection | Per-prompt (~4000 tokens) | Per-context (variable) | Boundary-only + topic-shift micro-injection |
+| Topic-shift detection | None | None | **Embedding cosine similarity** + Jaccard fallback |
+| Local embeddings | None | None | **Ollama nomic-embed-text** (topic detection + decision classification) |
+| Token gauge | Transcript-derived | SDK ctx.getContextUsage() | Capability-aware (transcript OR SDK) |
+| Observability | Ad-hoc logging | None | **Structured telemetry** (SQLite, queryable, retention-managed) |
 | Decay engine | EI formula + co-occurrence | None | EI formula + co-occurrence |
-| Pressure scoring | Hologram 3-tier → DB fallback | File access with recency decay | DB-only (tool-weighted) |
+| Pressure scoring | Hologram 3-tier → DB fallback | File access with recency decay | DB-only (tool-weighted, no sidecar) |
 | GSD integration | Yes (read-only) | No | Yes (read-only) |
 | Redaction | Three-layer | None | Three-layer |
 | Coordination | ~/.echo/coordination.json | globalThis bridge | None needed (one system) |
+| CC auto-memory | Not addressed | Not addressed | Explicit policy (read, never write, feature flags) |
+| Platform support | Windows (Linux fork separate) | Linux/Windows | One codebase, all platforms |
 | Flat-file human access | Yes | Partial (JSON/YAML) | Yes (YAML checkpoints, MD logs) |
 
 ---
