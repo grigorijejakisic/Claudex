@@ -17,7 +17,7 @@ Claudex v3 is a unified context management system delivering persistent LLM memo
 - Wave 4: Phase 8 + Phase 9 (2 parallel streams after core complete)
 - Sequential: Phase 10 then Phase 11
 
-- [ ] **Phase 0: Repository Setup** - Project scaffolding, shared utilities, type system, build tooling
+- [x] **Phase 0: Repository Setup** - Project scaffolding, shared utilities, type system, build tooling (completed 2026-03-10)
 - [ ] **Phase 1: Storage Layer** - SQLite database, full schema, CRUD modules, FTS5, telemetry
 - [ ] **Phase 2: Extraction Pipeline** - Per-tool observation extractors, redaction, quality gates
 - [ ] **Phase 3: Intelligence Core** - Decision capture (regex stage), dedup, thread tracking, learnings
@@ -226,7 +226,7 @@ Then: Phase 10 then Phase 11 (sequential)
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 0. Repository Setup | 1/2 | In Progress|  |
+| 0. Repository Setup | 2/2 | Complete   | 2026-03-10 |
 | 1. Storage Layer | 0/3 | Not started | - |
 | 2. Extraction Pipeline | 0/2 | Not started | - |
 | 3. Intelligence Core | 0/2 | Not started | - |
