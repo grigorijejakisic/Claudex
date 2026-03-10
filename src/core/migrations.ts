@@ -220,19 +220,23 @@ export function initializeSchema(db: Database): void {
  * @see Architecture Section 4.3.2
  */
 export function migrateFromV2(db: Database, v2DbPath: string): void {
-  const migrate = db.transaction(() => {
-    // 1. ATTACH v2 database
-    db.exec(`ATTACH DATABASE '${v2DbPath}' AS v2`);
+  // 1. ATTACH v2 database (must be outside transaction)
+  db.exec(`ATTACH DATABASE '${v2DbPath}' AS v2`);
 
-    try {
+  try {
+    const migrate = db.transaction(() => {
       // 2. Create new v3 tables (IF NOT EXISTS — safe re-run)
       db.exec(SCHEMA_V3);
       db.exec(TELEMETRY_SCHEMA);
 
       // 3. Copy observations, sessions, pressure_scores from v2
+      // Note: files_modified may be comma-separated in v2, which fails json_valid CHECK.
+      // We copy with files_modified defaulting to '[]' and fix in step 7.
       db.exec(`
         INSERT OR IGNORE INTO observations (id, session_id, project, tool_name, category, title, content, importance, files_modified, timestamp_epoch, access_count, last_accessed_at_epoch, deleted_at_epoch)
-        SELECT id, session_id, project, tool_name, category, title, content, importance, files_modified, timestamp_epoch, access_count, last_accessed_at_epoch, deleted_at_epoch
+        SELECT id, session_id, project, tool_name, category, title, content, importance,
+          CASE WHEN json_valid(files_modified) THEN files_modified ELSE '[]' END,
+          timestamp_epoch, access_count, last_accessed_at_epoch, deleted_at_epoch
         FROM v2.observations
       `);
 
@@ -242,9 +246,12 @@ export function migrateFromV2(db: Database, v2DbPath: string): void {
         FROM v2.sessions
       `);
 
+      // Convert WARM -> COLD during copy (v3 only allows HOT/COLD)
       db.exec(`
         INSERT OR IGNORE INTO pressure_scores (file_path, project, raw_pressure, temperature, last_touched_epoch, decay_rate)
-        SELECT file_path, project, raw_pressure, temperature, last_touched_epoch, decay_rate
+        SELECT file_path, project, raw_pressure,
+          CASE WHEN temperature IN ('HOT', 'COLD') THEN temperature ELSE 'COLD' END,
+          last_touched_epoch, decay_rate
         FROM v2.pressure_scores
       `);
 
@@ -280,9 +287,10 @@ export function migrateFromV2(db: Database, v2DbPath: string): void {
       }
 
       // 7. Fix files_modified from comma-separated to JSON array
+      // Read original non-JSON values from v2 and convert to JSON arrays in v3
       const rows = db
         .prepare(
-          "SELECT id, files_modified FROM observations WHERE files_modified NOT LIKE '[%'"
+          "SELECT id, files_modified FROM v2.observations WHERE NOT json_valid(files_modified)"
         )
         .all() as Array<{ id: number; files_modified: string }>;
 
@@ -301,13 +309,13 @@ export function migrateFromV2(db: Database, v2DbPath: string): void {
       db.prepare(
         'INSERT OR IGNORE INTO schema_versions (version) VALUES (?)'
       ).run(SCHEMA_VERSION);
-    } finally {
-      // 9. DETACH v2 database
-      db.exec('DETACH DATABASE v2');
-    }
-  });
+    });
 
-  migrate();
+    migrate();
+  } finally {
+    // 9. DETACH v2 database (must be outside transaction)
+    db.exec('DETACH DATABASE v2');
+  }
 }
 
 /**
