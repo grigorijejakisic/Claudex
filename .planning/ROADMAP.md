@@ -41,11 +41,11 @@ Claudex v3 is a unified context management system delivering persistent LLM memo
   2. Shared types (RuntimeEvent, RuntimeCapabilities, InjectPayload) compile and are importable by any module
   3. Utility modules (paths, scope-detector, fs-helpers, text-utils) exist with defensive non-throwing error handling
   4. Project builds on both Windows and Linux without platform-specific workarounds (2-3 process.platform checks only)
-**Plans**: TBD
+**Plans**: 2 plans
 
 Plans:
-- [ ] 00-01: TBD
-- [ ] 00-02: TBD
+- [ ] 00-01-PLAN.md -- Project scaffolding, build toolchain, core type system, constants
+- [ ] 00-02-PLAN.md -- Shared utility modules (paths, scope-detector, fs-helpers, text-utils, config)
 
 ### Phase 1: Storage Layer
 **Goal**: A fully operational SQLite database that any subsystem can store and query data against, with complete v3 schema and structured observability
