@@ -73,11 +73,11 @@ Plans:
   2. Secrets, absolute paths, and PII are redacted before storage (three-layer redaction)
   3. Low-signal observations (empty results, trivial reads) are filtered out by quality gates
   4. Stored observations include files_modified as valid JSON arrays
-**Plans**: TBD
+**Plans**: 2 plans
 
 Plans:
-- [ ] 02-01: TBD
-- [ ] 02-02: TBD
+- [ ] 02-01-PLAN.md -- Redaction engine, quality gates, importance scoring, category classification
+- [ ] 02-02-PLAN.md -- Per-tool extractors (10 tools) + dispatcher pipeline with dedup
 
 ### Phase 3: Intelligence Core
 **Goal**: The system captures decisions, tracks conversation threads, deduplicates content, and promotes cross-session learnings -- all without requiring embeddings
