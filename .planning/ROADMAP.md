@@ -57,12 +57,12 @@ Plans:
   3. FTS5 search returns relevant observations ranked by BM25 with temporal re-ranking
   4. Telemetry events can be emitted from any module and queried via standard SQL
   5. All queries filter by project scope (no cross-project data leakage)
-**Plans**: TBD
+**Plans**: 3 plans
 
 Plans:
-- [ ] 01-01: TBD
-- [ ] 01-02: TBD
-- [ ] 01-03: TBD
+- [ ] 01-01-PLAN.md -- Database foundation: SQLite connection lifecycle, complete v3 schema DDL, v2 migration SQL
+- [ ] 01-02-PLAN.md -- Observation CRUD with FTS5 temporal search + telemetry subsystem
+- [ ] 01-03-PLAN.md -- Remaining CRUD modules: sessions, decisions, learnings, thread, pressure, checkpoint-tracking
 
 ### Phase 2: Extraction Pipeline
 **Goal**: Tool usage observations are automatically captured, scored, redacted, and stored with quality filtering
@@ -227,7 +227,7 @@ Then: Phase 10 then Phase 11 (sequential)
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 0. Repository Setup | 2/2 | Complete   | 2026-03-10 |
-| 1. Storage Layer | 0/3 | Not started | - |
+| 1. Storage Layer | 0/3 | Planned | - |
 | 2. Extraction Pipeline | 0/2 | Not started | - |
 | 3. Intelligence Core | 0/2 | Not started | - |
 | 4. Intelligence v1.2 | 0/2 | Not started | - |
