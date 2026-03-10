@@ -49,7 +49,7 @@
 
 - [ ] **ASMB-01**: Boundary-only injection — full assembly at session-start and post-compaction only
 - [ ] **ASMB-02**: Topic-shift micro-injection (max 800 tokens pivot block)
-- [ ] **ASMB-03**: Priority-budgeted sections (identity → checkpoint → learnings → decisions → pressure → GSD → FTS5 → recent)
+- [ ] **ASMB-03**: Priority-budgeted sections (identity -> checkpoint -> learnings -> decisions -> pressure -> GSD -> FTS5 -> recent)
 - [ ] **ASMB-04**: Token gauge injection at >= 70% utilization
 - [ ] **ASMB-05**: Post-redaction budget reclaim
 - [ ] **ASMB-06**: Most turns produce zero injection (gauge-only or empty)
@@ -57,11 +57,11 @@
 ### Checkpoint
 
 - [ ] **CHKP-01**: ULID-based checkpoint IDs (monotonic, collision-free)
-- [ ] **CHKP-02**: DB-first write flow: INSERT pending → build YAML → UPDATE committed → enrich → write file → UPDATE mirrored
+- [ ] **CHKP-02**: DB-first write flow: INSERT pending -> build YAML -> UPDATE committed -> enrich -> write file -> UPDATE mirrored
 - [ ] **CHKP-03**: Checkpoint schema v3 with 9 sections (meta, working, decisions, files, thread, open_items, learnings, gsd)
 - [ ] **CHKP-04**: Write triggers at utilization thresholds, compaction, and session-end
 - [ ] **CHKP-05**: 60-second debounce between non-compaction writes
-- [ ] **CHKP-06**: 3-hop recovery chain: DB recovery first, file fallback (latest.yaml → dir scan → hop chain)
+- [ ] **CHKP-06**: 3-hop recovery chain: DB recovery first, file fallback (latest.yaml -> dir scan -> hop chain)
 - [ ] **CHKP-07**: Selective loading presets (ALWAYS, RESUME, GSD)
 - [ ] **CHKP-08**: Atomic file writes (tmp + rename, Windows EPERM fallback)
 
@@ -78,12 +78,12 @@
 
 - [ ] **ADPT-01**: CC hook adapter maps 6 hooks to RuntimeEvent (SessionStart, UserPromptSubmit, PostToolUse, Stop, PreCompact, SessionEnd)
 - [ ] **ADPT-02**: CC adapter declares CC_CAPABILITIES correctly (all fields from Section 3.1)
-- [ ] **ADPT-03**: CC ephemeral process lifecycle: stdin JSON → SQLite → stdout JSON → exit
+- [ ] **ADPT-03**: CC ephemeral process lifecycle: stdin JSON -> SQLite -> stdout JSON -> exit
 - [ ] **ADPT-04**: OpenClaw bridge adapter registers via globalThis Symbol
 - [ ] **ADPT-05**: OpenClaw adapter declares OPENCLAW_CAPABILITIES correctly
 - [ ] **ADPT-06**: OpenClaw plugin activate() function works as standard plugin install
 - [ ] **ADPT-07**: `claudex setup` CLI creates DB, patches ~/.claude/settings.json, offers optional v2 migration
-- [ ] **ADPT-08**: Adapter auto-detection from environment (bridge exists → OpenClaw, else → CC)
+- [ ] **ADPT-08**: Adapter auto-detection from environment (bridge exists -> OpenClaw, else -> CC)
 
 ### Observability
 
@@ -102,7 +102,7 @@
 ### Quality
 
 - [ ] **QUAL-01**: Defensive non-throwing — every public function catches errors, returns safe defaults
-- [ ] **QUAL-02**: Three-tier degradation (full → checkpoint-only → identity-only)
+- [ ] **QUAL-02**: Three-tier degradation (full -> checkpoint-only -> identity-only)
 - [ ] **QUAL-03**: Flat-file mirroring for all critical state
 - [ ] **QUAL-04**: Scope-aware isolation (all queries filter by project)
 - [ ] **QUAL-05**: One codebase, all platforms (2-3 process.platform checks)
@@ -208,10 +208,10 @@
 | QUAL-06 | Phase 10 | Pending |
 
 **Coverage:**
-- v1 requirements: 62 total
-- Mapped to phases: 62
+- v1 requirements: 70 total
+- Mapped to phases: 70
 - Unmapped: 0
 
 ---
 *Requirements defined: 2026-03-10*
-*Last updated: 2026-03-10 after initialization*
+*Last updated: 2026-03-10 after roadmap creation*
