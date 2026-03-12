@@ -20,7 +20,7 @@ Claudex v3 is a unified context management system delivering persistent LLM memo
 - [x] **Phase 0: Repository Setup** - Project scaffolding, shared utilities, type system, build tooling (completed 2026-03-10)
 - [x] **Phase 1: Storage Layer** - SQLite database, full schema, CRUD modules, FTS5, telemetry (completed 2026-03-10)
 - [ ] **Phase 2: Extraction Pipeline** - Per-tool observation extractors, redaction, quality gates
-- [ ] **Phase 3: Intelligence Core** - Decision capture (regex stage), dedup, thread tracking, learnings
+- [x] **Phase 3: Intelligence Core** - Decision capture (regex stage), dedup, thread tracking, learnings (completed 2026-03-12)
 - [ ] **Phase 4: Intelligence v1.2** - Embeddings, enrichment, topic-shift detection, embedding classification
 - [ ] **Phase 5: Assembly Pipeline** - Boundary-only injection, priority-budgeted sections, token estimation
 - [ ] **Phase 6: Checkpoint System** - ULID IDs, DB-first state machine, 3-hop recovery, atomic writes
@@ -89,11 +89,11 @@ Plans:
   3. Thread tracker maintains rolling topic, summary, and 8-exchange key_exchanges window
   4. Duplicate observations and decisions are detected and merged via 3-tier dedup (normalized exact, Jaccard, substring)
   5. Learnings accumulate promotion counts across sessions with max 50 per project
-**Plans**: TBD
+**Plans**: 2 plans
 
 Plans:
-- [ ] 03-01: TBD
-- [ ] 03-02: TBD
+- [ ] 03-01-PLAN.md -- 3-tier semantic deduplication engine (normalized exact, keyword Jaccard with Porter stemmer, substring containment)
+- [ ] 03-02-PLAN.md -- Decision capture (Stage 1 regex, 4 tiers), thread tracker (exchange accumulation, gist extraction), learnings promoter (dedup + 50-cap)
 
 ### Phase 4: Intelligence v1.2
 **Goal**: Embedding-powered intelligence enhances decision classification, topic-shift detection, and checkpoint enrichment when Ollama is available, with full graceful fallback
@@ -229,7 +229,7 @@ Then: Phase 10 then Phase 11 (sequential)
 | 0. Repository Setup | 2/2 | Complete   | 2026-03-10 |
 | 1. Storage Layer | 3/3 | Complete   | 2026-03-10 |
 | 2. Extraction Pipeline | 0/2 | Not started | - |
-| 3. Intelligence Core | 0/2 | Not started | - |
+| 3. Intelligence Core | 2/2 | Complete   | 2026-03-12 |
 | 4. Intelligence v1.2 | 0/2 | Not started | - |
 | 5. Assembly Pipeline | 0/2 | Not started | - |
 | 6. Checkpoint System | 0/2 | Not started | - |
