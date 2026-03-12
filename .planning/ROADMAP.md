@@ -21,10 +21,10 @@ Claudex v3 is a unified context management system delivering persistent LLM memo
 - [x] **Phase 1: Storage Layer** - SQLite database, full schema, CRUD modules, FTS5, telemetry (completed 2026-03-10)
 - [ ] **Phase 2: Extraction Pipeline** - Per-tool observation extractors, redaction, quality gates
 - [x] **Phase 3: Intelligence Core** - Decision capture (regex stage), dedup, thread tracking, learnings (completed 2026-03-12)
-- [ ] **Phase 4: Intelligence v1.2** - Embeddings, enrichment, topic-shift detection, embedding classification
-- [ ] **Phase 5: Assembly Pipeline** - Boundary-only injection, priority-budgeted sections, token estimation
-- [ ] **Phase 6: Checkpoint System** - ULID IDs, DB-first state machine, 3-hop recovery, atomic writes
-- [ ] **Phase 7: Supporting Subsystems** - Token gauge, decay engine, GSD state reader
+- [x] **Phase 4: Intelligence v1.2** - Embeddings, enrichment, topic-shift detection, embedding classification (completed 2026-03-12)
+- [x] **Phase 5: Assembly Pipeline** - Boundary-only injection, priority-budgeted sections, token estimation (completed 2026-03-12)
+- [x] **Phase 6: Checkpoint System** - ULID IDs, DB-first state machine, 3-hop recovery, atomic writes (completed 2026-03-12)
+- [x] **Phase 7: Supporting Subsystems** - Token gauge, decay engine, GSD state reader (completed 2026-03-12)
 - [ ] **Phase 8: CC Hook Adapter** - 6 hook entry points, stdin/stdout protocol, claudex setup CLI
 - [ ] **Phase 9: OpenClaw Bridge Adapter** - globalThis registration, plugin activate(), bridge callbacks
 - [ ] **Phase 10: Integration Testing** - End-to-end flows, performance SLAs, observability validation
@@ -104,11 +104,11 @@ Plans:
   2. Topic-shift detection fires when embedding similarity drops below 0.35 with avgRecent below 0.40
   3. LLM enrichment refines heuristic checkpoint data without dropping any heuristic entries (safety-net merge)
   4. When Ollama is unavailable, all embedding/enrichment features degrade gracefully (system still works, uses regex-only and Jaccard fallback)
-**Plans**: TBD
+**Plans**: 2 plans
 
 Plans:
-- [ ] 04-01: TBD
-- [ ] 04-02: TBD
+- [ ] 04-01-PLAN.md -- Embedding foundation: Ollama nomic-embed-text client, cosine similarity, decision template embeddings
+- [ ] 04-02-PLAN.md -- Topic-shift detection, decision capture Stage 2, LLM enrichment with safety-net merge
 
 ### Phase 5: Assembly Pipeline
 **Goal**: Context is injected at session boundaries and topic shifts only, with priority-budgeted sections and near-zero overhead on regular turns
@@ -120,11 +120,11 @@ Plans:
   3. Assembly sections follow priority order: identity, checkpoint, learnings, decisions, pressure, GSD, FTS5, recent
   4. Most turns produce zero injection (gauge-only or empty), verified by telemetry
   5. Three-tier degradation works: full assembly, checkpoint-only, identity-only (never crashes)
-**Plans**: TBD
+**Plans**: 2 plans
 
 Plans:
-- [ ] 05-01: TBD
-- [ ] 05-02: TBD
+- [ ] 05-01-PLAN.md -- Token estimator (re-export) and 10 stateless section formatters (identity, project, checkpoint, learnings, hot files, GSD, FTS5, recent, gauge, topic pivot)
+- [ ] 05-02-PLAN.md -- Assembly orchestrator: priority-budgeted full assembly, regular prompt (boundary-only), topic-shift pivot, gauge injection, three-tier degradation, post-redaction reclaim
 
 ### Phase 6: Checkpoint System
 **Goal**: Session state is reliably persisted and recoverable across crashes, compaction events, and session restarts
@@ -136,11 +136,11 @@ Plans:
   3. Recovery chain restores state: DB first, then latest.yaml, then directory scan, then hop chain (3-hop)
   4. Checkpoint writes are debounced (60-second minimum between non-compaction writes)
   5. File writes are atomic (tmp + rename with Windows EPERM fallback)
-**Plans**: TBD
+**Plans**: 2 plans
 
 Plans:
-- [ ] 06-01: TBD
-- [ ] 06-02: TBD
+- [ ] 06-01-PLAN.md -- Checkpoint types (CheckpointV3 schema) and DB-first writer (ULID IDs, state machine, thresholds, debounce, YAML, enrichment)
+- [ ] 06-02-PLAN.md -- Two-layer recovery loader (DB-first + file fallback + 3-hop chain, selective presets) and inject renderer (checkpoint-to-markdown)
 
 ### Phase 7: Supporting Subsystems
 **Goal**: Token utilization is tracked, stale data decays, and GSD planning state is surfaced in context
@@ -151,11 +151,11 @@ Plans:
   2. Token gauge injection appears at >= 70% utilization
   3. Decay engine calculates EI scores (importance * recency * access * co-occurrence) and soft-deletes entries over threshold
   4. GSD state reader surfaces .planning/ phase and plan status with +0.10 priority boost
-**Plans**: TBD
+**Plans**: 2 plans
 
 Plans:
-- [ ] 07-01: TBD
-- [ ] 07-02: TBD
+- [ ] 07-01-PLAN.md -- Token gauge (transcript/SDK), window detector (200k/1M), decay engine (EI formula + pruning + retention), stratified pressure decay
+- [ ] 07-02-PLAN.md -- GSD state reader (.planning/ filesystem) + types
 
 ### Phase 8: CC Hook Adapter
 **Goal**: Claudex v3 runs as Claude Code lifecycle hooks with a working setup CLI for fresh installs
@@ -230,10 +230,10 @@ Then: Phase 10 then Phase 11 (sequential)
 | 1. Storage Layer | 3/3 | Complete   | 2026-03-10 |
 | 2. Extraction Pipeline | 0/2 | Not started | - |
 | 3. Intelligence Core | 2/2 | Complete   | 2026-03-12 |
-| 4. Intelligence v1.2 | 0/2 | Not started | - |
-| 5. Assembly Pipeline | 0/2 | Not started | - |
-| 6. Checkpoint System | 0/2 | Not started | - |
-| 7. Supporting Subsystems | 0/2 | Not started | - |
+| 4. Intelligence v1.2 | 2/2 | Complete   | 2026-03-12 |
+| 5. Assembly Pipeline | 2/2 | Complete   | 2026-03-12 |
+| 6. Checkpoint System | 2/2 | Complete   | 2026-03-12 |
+| 7. Supporting Subsystems | 2/2 | Complete   | 2026-03-12 |
 | 8. CC Hook Adapter | 0/2 | Not started | - |
 | 9. OpenClaw Bridge Adapter | 0/1 | Not started | - |
 | 10. Integration Testing | 0/2 | Not started | - |

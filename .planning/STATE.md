@@ -5,23 +5,23 @@
 See: .planning/PROJECT.md (updated 2026-03-10)
 
 **Core value:** LLMs retain operational context across sessions and compaction events without manual effort
-**Current focus:** Phase 3 - Intelligence Core (COMPLETE)
+**Current focus:** Phase 5 - Assembly Pipeline (COMPLETE)
 
 ## Current Position
 
-Phase: 3 of 11 (Intelligence Core) -- COMPLETE
+Phase: 5 of 11 (Assembly Pipeline) -- COMPLETE
 Plan: 2 of 2 in current phase -- COMPLETE
-Status: Phase 3 Complete -- Ready for Wave 2 parallel phases (4, 6, 7)
-Last activity: 2026-03-12 -- Completed 03-02 decision capture, thread tracker, learnings promoter
+Status: Phase 5 Complete -- Token estimator, section formatters, assembly orchestrator all done
+Last activity: 2026-03-12 -- Completed 05-02 assembly orchestrator
 
-Progress: [▓▓▓▓▓░░░░░] 35%
+Progress: [▓▓▓▓▓▓▓▓░░] 73%
 
 ## Performance Metrics
 
 **Velocity:**
-- Total plans completed: 9
+- Total plans completed: 17
 - Average duration: 4min
-- Total execution time: 32min
+- Total execution time: 57min
 
 **By Phase:**
 
@@ -31,9 +31,13 @@ Progress: [▓▓▓▓▓░░░░░] 35%
 | 01 | 3 | 11min | 4min |
 | 02 | 2 | 8min | 4min |
 | 03 | 2 | 7min | 4min |
+| 04 | 2 | 7min | 4min |
+| 06 | 2 | 6min | 3min |
+| 05 | 2 | 7min | 4min |
+| 07 | 2 | 5min | 3min |
 
 **Recent Trend:**
-- Last 5 plans: 3min, 4min, 4min, 3min, 4min
+- Last 5 plans: 3min, 3min, 2min, 3min, 4min
 - Trend: stable
 
 *Updated after each plan completion*
@@ -45,6 +49,14 @@ Progress: [▓▓▓▓▓░░░░░] 35%
 | Phase 02 P02 | 4min | 2 tasks | 14 files |
 | Phase 03 P01 | 3min | 1 task | 2 files |
 | Phase 03 P02 | 4min | 3 tasks | 6 files |
+| Phase 04 P01 | 3min | 2 tasks | 6 files |
+| Phase 04 P02 | 4min | 3 tasks | 6 files |
+| Phase 06 P01 | 3min | 2 tasks | 4 files |
+| Phase 06 P02 | 3min | 2 tasks | 4 files |
+| Phase 07 P01 | 3min | 2 tasks | 8 files |
+| Phase 07 P02 | 2min | 1 task | 3 files |
+| Phase 05 P01 | 3min | 2 tasks | 4 files |
+| Phase 05 P02 | 4min | 1 task | 2 files |
 
 ## Accumulated Context
 
@@ -85,6 +97,35 @@ Recent decisions affecting current work:
 - [03-02]: Tier 3 rejection regex uses lookahead (?=\s|$) instead of trailing \b for punctuation patterns
 - [03-02]: Thread tracker collapses tool entries; only user/agent roles in key_exchanges
 - [03-02]: Topic set once per session, not overwritten
+- [04-01]: EmbeddingProvider caches availability to avoid repeated health checks
+- [04-01]: Model name matching allows prefix (nomic-embed-text:latest matches nomic-embed-text)
+- [04-01]: Template init all-or-nothing: any embed fail returns null
+- [04-02]: Topic-shift Layer 1 always first (cheapest, highest precision)
+- [04-02]: Sliding window avgRecent uses 0 when empty (conservative)
+- [04-02]: Decision capture fail-open on embed failure (candidate kept)
+- [04-02]: Enrichment safety-net: LLM can never silently drop heuristic data
+- [04-02]: detectEnrichmentProvider auto: Ollama first, then OpenClaw native
+- [06-01]: ULID via ulid package (26-char Crockford base32, monotonic, collision-free)
+- [06-01]: extractOpenItems captures text after TODO/FIXME/HACK/still need/need to patterns
+- [06-01]: Writer reads decisions (LIMIT 15), thread_state, hot files, learnings in single flow
+- [06-01]: Enrichment failure is non-fatal (heuristic checkpoint preserved)
+- [06-02]: recoverFromDb: committed rows re-mirrored, pending rows deleted
+- [06-02]: followHopChain: Set<string> for cycle detection, max 3 hops
+- [06-02]: applyPreset: ALWAYS = meta+working+topic, RESUME = all except gsd, GSD = full
+- [07-01]: Token gauge reads tail ~8KB of transcript JSONL for efficient CC path
+- [07-01]: Window detector returns 1M only for claude-opus-4/sonnet-4 with >195k observed tokens
+- [07-01]: EI formula: baseWeight * accessFactor * decayFactor * connectivityBonus (4 factors)
+- [07-01]: Pruning immune: importance >= 5, or access_count >= 3 within 180 days
+- [07-01]: Pressure decay: stratified HOT 7d, COLD 3d half-lives, reclassify at 0.851
+- [07-02]: parseStateMd handles both "Phase: N of M" and "Phase: N" formats
+- [07-02]: getPhaseFiles extracts files_modified from YAML frontmatter for pressure boost
+- [05-01]: Token estimator re-exports from shared/text-utils.ts (no code duplication)
+- [05-01]: formatHotFilesSection filters by 0.851 threshold inside the formatter
+- [05-01]: formatTopicPivotSection caps learnings at 3 items
+- [05-02]: Three-tier degradation: full assembly -> checkpoint-only (loadFromFile) -> identity-only -> empty
+- [05-02]: Post-redaction reclaim re-attempts at most one skipped section
+- [05-02]: Reference mode activates when remaining budget < 500 after priority 5
+- [05-02]: assembleRegularPrompt priority: post-compaction > topic-shift > gauge > zero
 
 ### Pending Todos
 
@@ -97,14 +138,14 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-03-12
-Stopped at: Completed 03-02-PLAN.md (Phase 03 complete)
-Resume file: .planning/phases/03-intelligence-core/03-02-SUMMARY.md
+Stopped at: Completed 05-02-PLAN.md (Phase 05 complete)
+Resume file: .planning/phases/05-assembly-pipeline/05-02-SUMMARY.md
 
 ## Claudex Metrics
 <!-- AUTO-GENERATED by Claudex. Do not edit manually. -->
 | Metric | Value |
 |--------|-------|
-| Observations | 405 |
-| Top Files | `<project>/ARCHITECTURE.md` (HOT 1.00), `<project>/.planning/STATE.md` (HOT 1.00), `C:\Users\[USER]\.claude\teams\auto-gsd-pipeline\inboxes\team-lead.json` (HOT 0.90), `<project>/context/sessions/2026-03-10_session-2.md` (HOT 0.86), `<project>/src/core/migrations.ts` (WARM 0.68) |
-| Coverage | 100% (93/93 files tracked) |
-| Updated | 2026-03-12T10:17:24.227Z |
+| Observations | 438 |
+| Top Files | `<project>/.planning/STATE.md` (HOT 1.00), `<project>/ARCHITECTURE.md` (HOT 1.00), `C:\Users\[USER]\.claude\teams\auto-gsd-pipeline\inboxes\team-lead.json` (HOT 0.90), `<project>/context/sessions/2026-03-10_session-2.md` (HOT 0.86), `<project>/.planning/ROADMAP.md` (HOT 0.72) |
+| Coverage | 100% (107/107 files tracked) |
+| Updated | 2026-03-12T10:51:42.650Z |
