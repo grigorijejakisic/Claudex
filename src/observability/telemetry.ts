@@ -15,6 +15,7 @@ export interface TelemetryRow {
   event_kind: EventKind;
   detail: TelemetryDetail;
   latency_ms: number | null;
+  adapter: string;
   timestamp_epoch: number;
 }
 
@@ -25,6 +26,7 @@ interface TelemetryRawRow {
   event_kind: string;
   detail: string;
   latency_ms: number | null;
+  adapter: string;
   timestamp_epoch: number;
 }
 
@@ -37,13 +39,14 @@ export function emitTelemetry(
   sessionId: string,
   eventKind: EventKind,
   detail: TelemetryDetail,
-  latencyMs?: number
+  latencyMs?: number,
+  adapter?: string
 ): void {
   try {
     db.prepare(
-      `INSERT INTO telemetry (session_id, event_kind, detail, latency_ms)
-       VALUES (?, ?, ?, ?)`
-    ).run(sessionId, eventKind, JSON.stringify(detail), latencyMs ?? null);
+      `INSERT INTO telemetry (session_id, event_kind, detail, latency_ms, adapter)
+       VALUES (?, ?, ?, ?, ?)`
+    ).run(sessionId, eventKind, JSON.stringify(detail), latencyMs ?? null, adapter ?? 'unknown');
   } catch {
     // Intentionally swallowed — non-throwing per spec
   }
@@ -77,10 +80,11 @@ export function emitInjectionTelemetry(
  * Queries telemetry events with optional filters.
  * Returns results ordered by timestamp_epoch DESC.
  * Parses detail JSON back to typed objects.
+ * If adapter is provided, scopes to that adapter; if omitted, returns all.
  */
 export function queryTelemetry(
   db: Database,
-  opts: { sessionId?: string; eventKind?: EventKind; limit?: number }
+  opts: { sessionId?: string; eventKind?: EventKind; adapter?: string; limit?: number }
 ): TelemetryRow[] {
   const conditions: string[] = [];
   const params: unknown[] = [];
@@ -92,6 +96,10 @@ export function queryTelemetry(
   if (opts.eventKind) {
     conditions.push('event_kind = ?');
     params.push(opts.eventKind);
+  }
+  if (opts.adapter) {
+    conditions.push('adapter = ?');
+    params.push(opts.adapter);
   }
 
   const whereClause =

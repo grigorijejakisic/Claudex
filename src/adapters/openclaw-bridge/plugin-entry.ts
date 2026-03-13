@@ -34,6 +34,7 @@ export function activate(api: OpenClawPluginApi): void {
       scope,
       sessionId: '', // Set by onInit when session starts
       cwd,
+      adapter: 'openclaw',
     };
 
     const bridge = createBridgeCallbacks(bctx);
@@ -60,7 +61,7 @@ export function activate(api: OpenClawPluginApi): void {
           hook: 'session_end',
           duration_ms: elapsed,
           result: 'skip' as const,
-        }, elapsed);
+        }, elapsed, 'openclaw');
       } catch {
         // Non-throwing -- session_end must not crash
       } finally {

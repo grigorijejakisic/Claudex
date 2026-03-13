@@ -65,6 +65,8 @@ export interface BridgeContext {
   scope: string | null;
   sessionId: string;
   cwd: string;
+  /** Adapter identity for multi-adapter isolation. */
+  adapter: 'openclaw';
   /** Cached embedding resources — reused across callbacks, invalidated on config change. */
   embeddingCache?: EmbeddingCache;
 }
@@ -203,6 +205,7 @@ export function createBridgeCallbacks(bctx: BridgeContext): ClaudexBridge {
           scope: bctx.scope ?? undefined,
           cwd: ctx.cwd,
           source: 'openclaw-bridge',
+          adapter: 'openclaw',
         });
 
         await recoverFromDb(bctx.db);
@@ -228,14 +231,14 @@ export function createBridgeCallbacks(bctx: BridgeContext): ClaudexBridge {
           hook: 'onInit',
           duration_ms: elapsed,
           result: payload.content ? 'inject' as const : 'skip' as const,
-        }, elapsed);
+        }, elapsed, 'openclaw');
 
         return payload.content ? payload : undefined;
       } catch (e) {
         emitTelemetry(bctx.db, bctx.sessionId, 'error', {
           subsystem: 'bridge:onInit',
           error: String(e),
-        });
+        }, undefined, 'openclaw');
         return undefined;
       }
     },
@@ -301,14 +304,14 @@ export function createBridgeCallbacks(bctx: BridgeContext): ClaudexBridge {
           hook: 'onContext',
           duration_ms: elapsed,
           result: payload.content ? 'inject' as const : 'skip' as const,
-        }, elapsed);
+        }, elapsed, 'openclaw');
 
         return payload.content ? payload : undefined;
       } catch (e) {
         emitTelemetry(bctx.db, bctx.sessionId, 'error', {
           subsystem: 'bridge:onContext',
           error: String(e),
-        });
+        }, undefined, 'openclaw');
         return undefined;
       }
     },
@@ -354,12 +357,12 @@ export function createBridgeCallbacks(bctx: BridgeContext): ClaudexBridge {
           hook: 'onToolResult',
           duration_ms: elapsed,
           result: 'skip' as const,
-        }, elapsed);
+        }, elapsed, 'openclaw');
       } catch (e) {
         emitTelemetry(bctx.db, bctx.sessionId, 'error', {
           subsystem: 'bridge:onToolResult',
           error: String(e),
-        });
+        }, undefined, 'openclaw');
       }
     },
 
@@ -407,12 +410,12 @@ export function createBridgeCallbacks(bctx: BridgeContext): ClaudexBridge {
           hook: 'onTurnEnd',
           duration_ms: elapsed,
           result: 'skip' as const,
-        }, elapsed);
+        }, elapsed, 'openclaw');
       } catch (e) {
         emitTelemetry(bctx.db, bctx.sessionId, 'error', {
           subsystem: 'bridge:onTurnEnd',
           error: String(e),
-        });
+        }, undefined, 'openclaw');
       }
     },
 
@@ -450,12 +453,12 @@ export function createBridgeCallbacks(bctx: BridgeContext): ClaudexBridge {
           hook: 'onCompact',
           duration_ms: elapsed,
           result: 'skip' as const,
-        }, elapsed);
+        }, elapsed, 'openclaw');
       } catch (e) {
         emitTelemetry(bctx.db, bctx.sessionId, 'error', {
           subsystem: 'bridge:onCompact',
           error: String(e),
-        });
+        }, undefined, 'openclaw');
       }
     },
   };

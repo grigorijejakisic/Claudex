@@ -21,12 +21,13 @@ export interface HookInput {
   [key: string]: unknown;
 }
 
-/** Bootstrap result: DB + config + project scope. */
+/** Bootstrap result: DB + config + project scope + adapter identity. */
 export interface BootstrapResult {
   db: Database;
   config: ClaudexConfig;
   project: string;
   scope: string | null;
+  adapter: 'cc-hooks';
 }
 
 /** Hook handler function signature. */
@@ -101,7 +102,7 @@ export function bootstrapHook(input: HookInput): BootstrapResult {
   const scope = detectProjectScope(input.cwd);
   const project = getProjectId(input.cwd, scope);
 
-  return { db, config, project, scope };
+  return { db, config, project, scope, adapter: 'cc-hooks' };
 }
 
 /**
@@ -154,7 +155,7 @@ export function wrapHook(hookName: string, handler: HookHandler): () => Promise<
         hook: hookName,
         duration_ms: elapsed,
         result: hasInjection ? 'inject' as const : 'skip' as const,
-      }, elapsed);
+      }, elapsed, 'cc-hooks');
 
       writeStdout(output);
     } catch (err) {
@@ -165,7 +166,7 @@ export function wrapHook(hookName: string, handler: HookHandler): () => Promise<
           emitTelemetry(ctx.db, input?.session_id ?? '', 'error', {
             subsystem: `cc-hooks/${hookName}`,
             error: err instanceof Error ? err.message : String(err),
-          }, elapsed);
+          }, elapsed, 'cc-hooks');
         } catch {
           // Best effort — if telemetry fails too, just continue
         }
