@@ -1,75 +1,93 @@
 ---
 schema: claudex/handoff
 version: 1
-id: v3-post-team-polish
-session_id: manual-2026-03-13-1
+id: v3-context-efficiency-and-migration
+session_id: manual-2026-03-13-2
 scope: project:claudex-v3
 status: active
-created_at: 2026-03-13T00:00:00Z
-updated_at: 2026-03-13T00:00:00Z
+created_at: 2026-03-13T02:30:00Z
+updated_at: 2026-03-13T02:30:00Z
 ---
 
-# Handoff: Claudex v3 — Post-Team Polish + Production Data Items
+# Handoff: V3 Context Efficiency + V2 Migration & Termination
+
+**Priority: HIGH**
 
 ## Current State
-All 12 phases implemented. A+ team completed (7 workers, 2 waves). 942 tests passing across 62 files. Build clean (9 entry points). V3 hooks deployed to `~/.claude/settings.json` with `.cjs` extension fix. NOT yet committed to git or pushed.
+All phases implemented, 26 unified review fixes applied, 994 tests passing, build clean, pushed to GitHub (`4fdaaaa`). V3 hooks active in `~/.claude/settings.json`. V2 hooks manually stripped. Three setup bugs fixed (case-insensitive detection, v2 schema upgrade, active files cap).
 
-## Immediate: Commit & Push
-- Stage all src/, tests, planning docs, context, review reports
-- Commit covering: phases 3-11 + review fixes + A+ team improvements
-- Push to **Corleanus** GitHub account (dedicated CLAUDEXv3 repo)
+**Problem discovered this session:** V3 burns through context far too fast. Root causes identified:
+1. V2 + V3 hooks were BOTH firing (fixed — v2 stripped)
+2. Checkpoint "Active Files" dumped 50+ stale entries (fixed — capped at 15+20)
+3. Full identity + GSD state injected on every post-compaction (not yet optimized)
+4. V2 data not properly migrated — v2 and v3 share same DB path with incompatible schemas
 
-## Immediate: Smoke Test
-- Start new Claude Code session (outside this project)
-- Verify: session-start hook fires, observations captured, pre-compact assembles context
-- Check `~/.claudex/db/claudex.db` gets created/used
-- If broken: remove v3 entries from settings.json (30-second rollback to v2)
+## HIGH PRIORITY: V2 Migration & Termination
 
-## Deferred: Needs Production Data (do after 1 week of real usage)
-1. **v2 migration real test** — run actual migration with the v2 database (15,053 observations, 137 sessions, 1,966 pressure scores). Verify data integrity after migration.
-2. **Error telemetry review** — query telemetry table for recurring errors, slow hooks, failed enrichments. Tune thresholds.
-3. **Assembly output tuning** — after seeing real injected context in live sessions, adjust section priorities, token budgets, and degradation tier thresholds.
-4. **Topic drift detection tuning** — tune embedding cosine thresholds and Jaccard fallback sensitivity after real-world topic shift data.
+### Migration
+- V2 DB at `~/.claudex/db/claudex.db` (15,593 observations, 138 sessions, 2,005 pressure scores)
+- V3 uses the SAME path — currently a hybrid (v2 schema + v3 data accumulating)
+- `migrateFromV2()` in `migrations.ts` exists but has a same-DB guard that prevents it from running when source=target
+- Need to: backup v2 DB, create fresh v3 DB, migrate data properly, verify integrity
+- Schema differences: v2 `started_at_epoch` vs v3 `created_at_epoch`, v2 has extra columns (`id`, `started_at`, `ended_at` on sessions), v2 missing `source` column
+- `upgradeV2SchemaInPlace()` handles column rename — may be sufficient, but verify all tables
 
-## Completed A+ Items (this session)
-- [x] #1 Windows path edge cases (54 new tests, all pass)
-- [x] #2 Concurrent hook locking (`busy_timeout=5000` added)
-- [x] #6 OpenClaw bridge embedding caching (~8-9x network reduction)
-- [x] #7 Prepared statement caching (WeakMap-based `cachedPrepare`)
-- [x] #8 Batch DB operations (transactions for pressure decay, checkpoint tracking)
-- [x] #9 Composite indexes (6 new indexes on hot query patterns)
-- [x] #10 Test refactoring (shared harness, 11 extractor files split, tautological cleanup)
-- [x] #11 Tool catalog centralization (`src/shared/tool-catalog.ts`)
-- [x] #12 Adapter shared lifecycle extraction (8 functions, ~146 lines dedup)
-- [x] #13 Native enrichment path removed (dead code cleanup)
-- [x] #14 Embedding batch API (`embedBatch()` for Ollama)
-- [x] #15 Cross-session learning dashboard (`src/cli/dashboard.ts`, 4 subcommands)
-- [x] #17 Checkpoint compression (optional gzip, backward-compatible)
+### V2 Termination
+- Delete v2 project directory (`C:/Users/Grigorije/Desktop/Projects/Claudex v2/`) or archive it
+- Confirm no references to v2 paths remain in settings.json (already verified clean)
+- Remove v2 from `~/.claudex/projects.json` if listed
+- v2 dist files at `C:/Users/Grigorije/Desktop/Projects/Claudex v2/Claudex/dist/*.mjs` — no longer needed
 
-## Additional Fixes (this session)
-- `.cjs` build extension fix (ESM/CJS conflict with `"type": "module"`)
-- `enabled` field passthrough to `detectEnrichmentProvider` in bridge onCompact
-- `compactTestConfig` updated from removed `provider: 'native'` to `enabled: false`
+## HIGH PRIORITY: Context Efficiency Audit
 
-## Key Context
-- Architecture: ARCHITECTURE.md (2330 lines, authoritative spec)
-- Previous review: UNIFIED_REVIEW_REPORT.md (grade D before fixes, B+ after)
-- Quality JSON: unified_review_quality.json (dimension scores)
-- Build: `bun run build` → 9 entry points in dist/ (`.cjs` format)
-- Tests: `npx vitest run` → 942 passing across 62 files
-- GitHub: Push to **Corleanus** account
+V3 must not waste a single unnecessary token. Every injection path needs audit:
 
-## Blockers
-None. Ready to commit, push, and smoke test.
+### Injection Points to Audit
+1. **SessionStart hook** — `assembleFullContext()` fires with full budget. Check what's included, trim what's redundant
+2. **UserPromptSubmit hook** — `assembleRegularPrompt()`. Post-compaction fires full assembly. Normal turns should inject ZERO unless topic shift or gauge threshold
+3. **PreCompact hook** — sets `post_compact_pending=1`. Verify this flag gets cleared properly
+4. **PostToolUse hook** — observation capture. Check if it adds system-reminder bloat
 
-## Compact Checkpoint — 23:44:54
-- Observations: 197 since last checkpoint
-- Files touched: <project>/context/handoffs/ACTIVE.md, <project>/src/tests/extraction/extractor.test.ts, <project>/src/tests/adapters/openclaw-bridge/plugin-entry.test.ts, <project>/src/tests/extraction/extractors/cross-cutting.test.ts, <project>/src/tests/extraction/extractors/notebook-edit-extractor.test.ts, <project>/src/tests/extraction/extractors/task-extractor.test.ts, <project>/src/tests/extraction/extractors/web-search-extractor.test.ts, <project>/src/tests/extraction/extractors/web-fetch-extractor.test.ts, <project>/src/tests/extraction/extractors/glob-extractor.test.ts, <project>/src/tests/extraction/extractors/grep-extractor.test.ts
+### Known Bloat Sources
+- **Identity section**: Full USER.md (~40 lines) injected on every post-compaction. Consider: inject only on session-start, skip on post-compaction (Claude already has it in context)
+- **GSD State**: Large block with phase details. Already available via `.planning/STATE.md`. May be redundant in injection
+- **Checkpoint Active Files**: Now capped (15+20) but still renders stale files from previous sessions. Consider: only include files touched in CURRENT session
+- **Read files list**: Accumulates across entire session including agent reads. Grows unbounded in long sessions with many agents
 
-## Compact Checkpoint — 00:37:37
-- Observations: 226 since last checkpoint
-- Files touched: <project>/unified_review_quality.json, <project>/UNIFIED_REVIEW_REPORT.md, <project>/context/reasoning/w1-redaction-consumers.md, <project>/context/reasoning/data-flow-audit.md, <project>/context/reasoning/w5-extraction-storage-audit.md, <project>/context/reasoning/w2-assembly-audit.md, <project>/context/reasoning/w4-intelligence-audit.md, C:/Users/[USER]/AppData/Local/Temp/unified-review/runner.js, <project>/context/reasoning/w3-checkpoint-audit.md, C:/Users/[USER]/AppData/Local/Temp/unified-review/run-one.sh
+### Token Budget Targets
+- Session-start injection: ≤2000 tokens (identity + checkpoint + essentials)
+- Post-compaction injection: ≤1500 tokens (checkpoint + gauge, NO identity re-injection)
+- Regular turn: 0 tokens (unless topic shift or gauge threshold)
+- Topic shift: ≤800 tokens (already configured)
 
-## Compact Checkpoint — 00:55:46
-- Observations: 92 since last checkpoint
-- Files touched: <project>/src/tests/core/network-safety.test.ts, <project>/src/tests/extraction/extractor.test.ts, <project>/src/tests/intelligence/enrichment.test.ts, <project>/src/tests/core/sessions.test.ts, <project>/src/tests/intelligence/decision-capture.test.ts, <project>/src/tests/core/crud-modules.test.ts, <project>/src/shared/fetch-utils.test.ts, <project>/src/tests/core/observations.test.ts, <project>/src/tests/extraction/scoring.test.ts, <project>/src/embeddings/embedding-provider.ts
+### Metrics to Track
+- Tokens injected per message (log in telemetry)
+- Context utilization curve across session (how fast do we hit 50%, 75%, 90%)
+- Number of compactions per session (fewer = better context efficiency)
+
+## DEFERRED: Production Data Items (after 1 week real usage)
+1. V2 migration real test with full data integrity verification
+2. Error telemetry review — query for recurring errors, slow hooks
+3. Assembly output tuning — section priorities, token budgets, degradation thresholds
+4. Topic drift detection tuning — embedding cosine thresholds, Jaccard sensitivity
+
+## Completed This Session
+- [x] 26 unified review fixes (6 workers, all verified, 994/994 tests)
+- [x] Committed and pushed phases 3-11 + fixes (`426724e`)
+- [x] V2 hooks stripped from settings.json (6 entries removed)
+- [x] `setup.ts` case-insensitive hook detection fix
+- [x] `migrations.ts` upgradeV2SchemaInPlace (started_at_epoch → created_at_epoch)
+- [x] `inject.ts` Active Files cap (15 hot + 20 read)
+- [x] `claudex setup` runs cleanly
+- [x] Data flow audit team results: `context/reasoning/data-flow-audit.md` + 5 worker reports
+
+## Key Files
+- `src/cli/setup.ts` — setup entry point, hook patching
+- `src/core/migrations.ts` — schema DDL, v2 migration, upgrade-in-place
+- `src/assembly/assembler.ts` — injection orchestrator (full, regular, topic pivot)
+- `src/assembly/sections.ts` — section formatters
+- `src/checkpoint/inject.ts` — checkpoint-to-markdown renderer
+- `src/adapters/cc-hooks/user-prompt-submit.ts` — regular prompt hook
+- `src/adapters/cc-hooks/session-start.ts` — session start hook
+- `~/.claudex/db/claudex.db` — the shared v2/v3 database
+- `~/.claude/settings.json` — hook registration (v3 only now)
