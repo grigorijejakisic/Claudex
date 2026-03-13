@@ -13,6 +13,7 @@ export interface SessionRow {
   project: string | null;
   cwd: string | null;
   source: string | null;
+  adapter: string;
   status: string;
   observation_count: number;
   created_at_epoch: number;
@@ -30,17 +31,19 @@ export function createSession(
     project?: string;
     cwd?: string;
     source?: string;
+    adapter?: string;
   }
 ): void {
   cachedPrepare(db,
-    `INSERT INTO sessions (session_id, scope, project, cwd, source)
-     VALUES (?, ?, ?, ?, ?)`
+    `INSERT INTO sessions (session_id, scope, project, cwd, source, adapter)
+     VALUES (?, ?, ?, ?, ?, ?)`
   ).run(
     session.session_id,
     session.scope ?? null,
     session.project ?? null,
     session.cwd ?? null,
-    session.source ?? null
+    session.source ?? null,
+    session.adapter ?? 'unknown'
   );
 }
 
@@ -105,4 +108,37 @@ export function incrementObservationCount(
     `UPDATE sessions SET observation_count = observation_count + 1
      WHERE session_id = ?`
   ).run(sessionId);
+}
+
+/**
+ * Returns recent sessions, optionally filtered by adapter and/or project.
+ * If adapter is provided, only sessions from that adapter are returned.
+ * If adapter is omitted, returns all sessions (cross-adapter view).
+ */
+export function getRecentSessions(
+  db: Database,
+  opts?: { adapter?: string; project?: string; limit?: number }
+): SessionRow[] {
+  const conditions: string[] = [];
+  const params: unknown[] = [];
+
+  if (opts?.adapter) {
+    conditions.push('adapter = ?');
+    params.push(opts.adapter);
+  }
+  if (opts?.project) {
+    conditions.push('project = ?');
+    params.push(opts.project);
+  }
+
+  const whereClause = conditions.length > 0
+    ? `WHERE ${conditions.join(' AND ')}`
+    : '';
+  const limit = opts?.limit ?? 50;
+
+  return cachedPrepare(db,
+    `SELECT * FROM sessions ${whereClause}
+     ORDER BY created_at_epoch DESC
+     LIMIT ?`
+  ).all(...params, limit) as SessionRow[];
 }

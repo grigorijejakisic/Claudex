@@ -18,6 +18,7 @@ const main = wrapHook('SessionStart', async (input, ctx) => {
     scope: ctx.scope ?? undefined,
     cwd: input.cwd,
     source: 'cc-hooks',
+    adapter: 'cc-hooks',
   });
 
   await recoverFromDb(ctx.db);

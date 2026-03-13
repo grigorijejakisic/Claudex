@@ -227,6 +227,28 @@ CREATE INDEX IF NOT EXISTS idx_telemetry_kind ON telemetry(event_kind, timestamp
 `;
 
 /**
+ * Adds `adapter` column to session-scoped tables (sessions, telemetry).
+ * Uses ALTER TABLE ADD COLUMN with try/catch for idempotency — safe to call
+ * when column already exists. DEFAULT 'unknown' preserves existing rows.
+ * @see Multi-adapter isolation design
+ */
+function addAdapterColumns(db: Database): void {
+  // sessions.adapter
+  try {
+    db.exec("ALTER TABLE sessions ADD COLUMN adapter TEXT DEFAULT 'unknown'");
+  } catch {
+    // Column already exists — idempotent
+  }
+
+  // telemetry.adapter
+  try {
+    db.exec("ALTER TABLE telemetry ADD COLUMN adapter TEXT DEFAULT 'unknown'");
+  } catch {
+    // Column already exists — idempotent
+  }
+}
+
+/**
  * Upgrades v2 tables in-place when v3 opens the same database file.
  * Adds missing columns and renames changed ones so CREATE INDEX succeeds.
  * Idempotent — safe to call on a fresh or already-upgraded DB.
@@ -262,6 +284,7 @@ export function initializeSchema(db: Database): void {
   upgradeV2SchemaInPlace(db);
   db.exec(SCHEMA_V3);
   db.exec(TELEMETRY_SCHEMA);
+  addAdapterColumns(db);
 
   db.prepare('INSERT OR IGNORE INTO schema_versions (version) VALUES (?)').run(
     SCHEMA_VERSION
