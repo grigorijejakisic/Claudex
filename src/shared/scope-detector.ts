@@ -62,9 +62,9 @@ export async function registerProject(cwd: string, projectId: string): Promise<b
  * Convenience: detects project scope, or derives a project ID from the directory name.
  * Always returns a string. Never throws.
  */
-export function getProjectId(cwd: string): string {
+export function getProjectId(cwd: string, preDetectedScope?: string | null): string {
   try {
-    const detected = detectProjectScope(cwd);
+    const detected = preDetectedScope !== undefined ? preDetectedScope : detectProjectScope(cwd);
     if (detected) return detected;
 
     // Derive from directory name: last segment, lowercased, sanitized + short hash of full path for uniqueness

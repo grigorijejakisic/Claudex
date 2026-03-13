@@ -27,6 +27,12 @@ const main = wrapHook('PreCompact', async (input, ctx) => {
     gsd: gsd ?? undefined,
   });
 
+  // Upgrade 13: Custom compaction instructions
+  const instructions = ctx.config.checkpoint.compaction_instructions;
+  if (instructions) {
+    return { customInstructions: instructions };
+  }
+
   return {};
 });
 

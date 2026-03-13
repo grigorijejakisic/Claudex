@@ -22,6 +22,11 @@ export function renderCheckpointMarkdown(
     const includeResume = !preset || preset === 'RESUME' || preset === 'GSD';
     const includeGsd = !preset || preset === 'GSD';
 
+    // 0. Current Objective recitation (Upgrade 10 — always rendered when present)
+    if (checkpoint.current_objective) {
+      sections.push(`### Current Objective\n${checkpoint.current_objective}`);
+    }
+
     // 1. Working context (always)
     const working = checkpoint.working;
     if (working && (working.task || working.status || working.next_action || working.branch)) {
@@ -63,10 +68,8 @@ export function renderCheckpointMarkdown(
 
     // 4. Files (RESUME+) — capped to avoid context bloat
     if (includeResume && checkpoint.files) {
-      const MAX_HOT = 15;
-      const MAX_READ = 20;
-      const hotFiles = checkpoint.files.hot?.slice(0, MAX_HOT) ?? [];
-      const readFiles = checkpoint.files.read?.slice(0, MAX_READ) ?? [];
+      const hotFiles = (checkpoint.files.hot ?? []).slice(0, 15);
+      const readFiles = (checkpoint.files.read ?? []).slice(0, 20);
       const hasHot = hotFiles.length > 0;
       const hasRead = readFiles.length > 0;
 
@@ -76,11 +79,10 @@ export function renderCheckpointMarkdown(
         if (hasHot) {
           lines.push('**Hot:**');
           for (const f of hotFiles) {
-            const action = f.last_action ? ` — ${f.last_action}` : '';
-            lines.push(`- ${f.path}${action}`);
+            lines.push(`- ${f.path}`);
           }
           const hotTotal = checkpoint.files.hot?.length ?? 0;
-          if (hotTotal > MAX_HOT) lines.push(`_(${hotTotal - MAX_HOT} more)_`);
+          if (hotTotal > 15) lines.push(`_(${hotTotal - 15} more)_`);
         }
 
         if (hasRead) {
@@ -90,7 +92,7 @@ export function renderCheckpointMarkdown(
             lines.push(`- ${f}`);
           }
           const readTotal = checkpoint.files.read?.length ?? 0;
-          if (readTotal > MAX_READ) lines.push(`_(${readTotal - MAX_READ} more)_`);
+          if (readTotal > 20) lines.push(`_(${readTotal - 20} more)_`);
         }
 
         sections.push(lines.join('\n'));
@@ -111,6 +113,15 @@ export function renderCheckpointMarkdown(
       const lines: string[] = ['### Learnings'];
       for (const learning of checkpoint.learnings) {
         lines.push(`- ${learning}`);
+      }
+      sections.push(lines.join('\n'));
+    }
+
+    // 6b. Verified Facts (RESUME+ — Upgrade 12)
+    if (includeResume && checkpoint.verified_facts && checkpoint.verified_facts.length > 0) {
+      const lines: string[] = ['### Verified Facts'];
+      for (const fact of checkpoint.verified_facts) {
+        lines.push(`- ${fact}`);
       }
       sections.push(lines.join('\n'));
     }

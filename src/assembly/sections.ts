@@ -16,6 +16,10 @@ import type { GsdState } from '../gsd/types.js';
 import type { TokenUsage } from '../shared/types.js';
 import type { TopicShiftResult } from '../intelligence/topic-shift.js';
 import { getIdentityDir, getHandoffsDir } from '../shared/paths.js';
+import { CONTENT_MAX_CHARS, getPressureZone } from '../shared/constants.js';
+import type { PressureZone } from '../shared/constants.js';
+import type { ToolCostEstimate } from '../observability/telemetry.js';
+import { truncateText } from '../shared/text-utils.js';
 
 /**
  * Priority 1: Identity section from USER.md.
@@ -162,9 +166,10 @@ export function formatFts5Section(observations: ObservationRow[], referenceMode?
       );
       body = bullets.join('\n');
     } else {
-      const entries = observations.map(o =>
-        `### ${o.title}\n*${o.category} | ${formatRelativeTime(o.timestamp_epoch)}*\n${o.content}`
-      );
+      const entries = observations.map(o => {
+        const cappedContent = truncateText(o.content, CONTENT_MAX_CHARS);
+        return `### ${o.title}\n*${o.category} | ${formatRelativeTime(o.timestamp_epoch)}*\n${cappedContent}`;
+      });
       body = entries.join('\n\n');
     }
 
@@ -190,16 +195,84 @@ export function formatRecentSection(observations: ObservationRow[]): string | nu
 }
 
 /**
- * Gauge section: token utilization display.
- * Only fires at >= threshold (default 0.70).
+ * Gauge section: token utilization display with pressure zones.
+ * Always fires when gauge is available (Upgrade 1).
+ * Includes tool cost estimates at advisory+ (Upgrade 11).
+ * Includes response budget hint at advisory+ (Upgrade 14).
+ *
+ * @param gauge - Token usage data
+ * @param threshold - DEPRECATED (ignored, kept for API compat)
+ * @param toolCosts - Optional tool cost estimates for advisory+ zones
  */
-export function formatGaugeSection(gauge: TokenUsage | null, threshold?: number): string | null {
+export function formatGaugeSection(
+  gauge: TokenUsage | null,
+  threshold?: number,
+  toolCosts?: ToolCostEstimate[],
+): string | null {
   try {
     if (!gauge) return null;
-    const thresh = threshold ?? 0.70;
-    if (gauge.utilization < thresh) return null;
     const pct = Math.round(gauge.utilization * 100);
-    return `# Token Gauge\nUtilization: ${pct}% (${gauge.inputTokens.toLocaleString()} / ${gauge.contextWindowTokens.toLocaleString()})`;
+    const zone: PressureZone = getPressureZone(gauge.utilization);
+    const inputK = Math.round(gauge.inputTokens / 1000);
+    const windowK = Math.round(gauge.contextWindowTokens / 1000);
+
+    // Build gauge line
+    let line = `[Context: ${inputK}k/${windowK}k (${pct}%)`;
+
+    // Tool costs at advisory+ (Upgrade 11)
+    if (zone !== 'normal' && toolCosts && toolCosts.length > 0) {
+      const costParts = toolCosts.slice(0, 3).map(
+        (tc) => `${tc.tool} ~${Math.round(tc.avgTokens / 1000)}k`
+      );
+      line += ` | Costs: ${costParts.join(', ')}`;
+    }
+
+    line += ` | Zone: ${zone}`;
+
+    // Response budget hint (Upgrade 14)
+    if (zone === 'advisory') {
+      line += ' | Respond concisely';
+    } else if (zone === 'warning') {
+      line += ' | ≤5 lines';
+    } else if (zone === 'critical') {
+      line += ' | ≤3 lines, essentials only';
+    }
+
+    line += ']';
+
+    return line;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Graduated pressure response — behavioral changes at different utilization levels.
+ * Returns zone-appropriate advisory/warning/critical message, or null for normal zone.
+ * @see Upgrade 7: Graduated Pressure Response
+ */
+export function formatPressureResponse(
+  gauge: TokenUsage | null,
+  zone: PressureZone,
+): string | null {
+  try {
+    if (!gauge || zone === 'normal') return null;
+
+    const pct = Math.round(gauge.utilization * 100);
+    const used = gauge.inputTokens.toLocaleString();
+    const total = gauge.contextWindowTokens.toLocaleString();
+    const gaugeLine = `[Context: ${used}/${total} (${pct}%) | Zone: ${zone}]`;
+
+    switch (zone) {
+      case 'advisory':
+        return `${gaugeLine}\n[Advisory: Consider using sub-agents for exploration tasks. Auto-checkpoint triggered.]`;
+      case 'warning':
+        return `${gaugeLine}\n[WARNING: Context at ${pct}%. Wrap up current task and prepare handoff. Auto-checkpoint triggered. Write key decisions and progress to handoff document.]`;
+      case 'critical':
+        return `${gaugeLine}\n[CRITICAL: Context at ${pct}%. STOP new work immediately. Write structured handover document NOW. Save all progress to ACTIVE.md. Do NOT start new tasks or explorations.]`;
+      default:
+        return null;
+    }
   } catch {
     return null;
   }

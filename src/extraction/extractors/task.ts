@@ -4,6 +4,7 @@
  */
 
 import { truncateText } from '../../shared/text-utils.js';
+import { CONTENT_MAX_CHARS } from '../../shared/constants.js';
 import type { ExtractionResult } from './types.js';
 
 /**
@@ -24,7 +25,7 @@ export function extractTask(
     const title = truncateText(`Task: ${description}`, 120);
 
     const result = String(output?.result ?? output?.output ?? '');
-    const content = truncateText(result || `Task: ${description}`, 2000);
+    const content = truncateText(result || `Task: ${description}`, CONTENT_MAX_CHARS);
 
     return {
       title,

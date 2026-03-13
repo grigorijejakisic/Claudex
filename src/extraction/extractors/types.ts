@@ -7,7 +7,7 @@
 export interface ExtractionResult {
   /** {toolName}: {key_detail}, max 120 chars */
   title: string;
-  /** Meaningful extracted output, max 2000 chars */
+  /** Meaningful extracted output, max CONTENT_MAX_CHARS chars */
   content: string;
   /** Affected file paths */
   files_modified: string[];

@@ -78,3 +78,70 @@ export function resetThreadState(
 ): void {
   cachedPrepare(db, 'DELETE FROM thread_state WHERE session_id = ?').run(sessionId);
 }
+
+// ---------------------------------------------------------------------------
+// Topic shift cooldown state — piggybacked on key_exchanges JSON
+// Uses a reserved entry with role '__cooldown' to avoid schema changes.
+// ---------------------------------------------------------------------------
+
+export interface CooldownState {
+  lastShiftEpoch: number;
+  turnsSinceShift: number;
+}
+
+const COOLDOWN_ROLE = '__cooldown';
+
+/**
+ * Reads cooldown state from thread_state key_exchanges.
+ * Returns null if no cooldown state found. Non-throwing.
+ */
+export function getCooldownState(
+  db: Database,
+  sessionId: string
+): CooldownState | null {
+  try {
+    const row = getThreadState(db, sessionId);
+    if (!row) return null;
+    const meta = row.key_exchanges.find(
+      (e: { role: string; gist: string }) => e.role === COOLDOWN_ROLE
+    );
+    if (!meta) return null;
+    const parsed = JSON.parse(meta.gist);
+    return {
+      lastShiftEpoch: parsed.lastShiftEpoch ?? 0,
+      turnsSinceShift: parsed.turnsSinceShift ?? 0,
+    };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Writes cooldown state into thread_state key_exchanges.
+ * Preserves existing key_exchanges, adds/replaces the __cooldown entry.
+ * Non-throwing.
+ */
+export function setCooldownState(
+  db: Database,
+  sessionId: string,
+  state: CooldownState
+): void {
+  try {
+    const existing = getThreadState(db, sessionId);
+    const exchanges = existing?.key_exchanges?.filter(
+      (e: { role: string }) => e.role !== COOLDOWN_ROLE
+    ) ?? [];
+    exchanges.push({
+      role: COOLDOWN_ROLE,
+      gist: JSON.stringify(state),
+    });
+    upsertThreadState(db, {
+      session_id: sessionId,
+      topic: existing?.topic ?? undefined,
+      summary: existing?.summary ?? undefined,
+      key_exchanges: exchanges,
+    });
+  } catch {
+    // Non-throwing
+  }
+}

@@ -80,7 +80,7 @@ describe('renderCheckpointMarkdown', () => {
     expect(md).toContain('### Active Files');
     expect(md).toContain('**Hot:**');
     expect(md).toContain('src/auth.ts');
-    expect(md).toContain('Fixed stale read');
+    expect(md).not.toContain('Fixed stale read');
     expect(md).toContain('**Read:**');
     expect(md).toContain('src/types.ts');
   });
@@ -167,5 +167,53 @@ describe('renderCheckpointMarkdown', () => {
       renderCheckpointMarkdown(null as unknown as CheckpointV3)
     ).not.toThrow();
     expect(renderCheckpointMarkdown(null as unknown as CheckpointV3)).toBe('');
+  });
+
+  // --- Upgrade 10: current_objective ---
+
+  it('renders current_objective section when present (Upgrade 10)', () => {
+    const cp = makeCheckpoint({
+      current_objective: 'Task: OAuth token persistence. Fixing critical auth bug, need to wire cron timer next.',
+    });
+    const md = renderCheckpointMarkdown(cp);
+    expect(md).toContain('### Current Objective');
+    expect(md).toContain('Task: OAuth token persistence');
+  });
+
+  it('omits current_objective section when null', () => {
+    const cp = makeCheckpoint({ current_objective: null });
+    const md = renderCheckpointMarkdown(cp);
+    expect(md).not.toContain('### Current Objective');
+  });
+
+  it('omits current_objective section when undefined', () => {
+    const cp = makeCheckpoint();
+    // Default checkpoint has no current_objective
+    const md = renderCheckpointMarkdown(cp);
+    expect(md).not.toContain('### Current Objective');
+  });
+
+  // --- Upgrade 12: verified_facts ---
+
+  it('renders verified_facts section when present (Upgrade 12)', () => {
+    const cp = makeCheckpoint({
+      verified_facts: ['tests passed at commit abc123', 'review findings processed'],
+    });
+    const md = renderCheckpointMarkdown(cp);
+    expect(md).toContain('### Verified Facts');
+    expect(md).toContain('- tests passed at commit abc123');
+    expect(md).toContain('- review findings processed');
+  });
+
+  it('omits verified_facts section when empty', () => {
+    const cp = makeCheckpoint({ verified_facts: [] });
+    const md = renderCheckpointMarkdown(cp);
+    expect(md).not.toContain('### Verified Facts');
+  });
+
+  it('omits verified_facts section when undefined', () => {
+    const cp = makeCheckpoint();
+    const md = renderCheckpointMarkdown(cp);
+    expect(md).not.toContain('### Verified Facts');
   });
 });

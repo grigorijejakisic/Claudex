@@ -36,7 +36,7 @@ export interface WorkingState {
 
 /** File tracking section. */
 export interface CheckpointFiles {
-  hot: Array<{ path: string; last_action: string | null }>;
+  hot: Array<{ path: string; last_action?: string | null }>;
   read: string[];
 }
 
@@ -78,6 +78,10 @@ export interface CheckpointV3 {
   open_items: string[];
   learnings: string[];
   gsd: unknown | null;
+  /** 1-2 line recitation: current task, step, what's next. @see Upgrade 10 */
+  current_objective?: string | null;
+  /** Verified facts that should not be re-checked. @see Upgrade 12 */
+  verified_facts?: string[];
 }
 
 /** Input for writeCheckpoint. */

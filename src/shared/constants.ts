@@ -30,13 +30,41 @@ export const OPENCLAW_CAPABILITIES: RuntimeCapabilities = {
 /** Database schema version. */
 export const SCHEMA_VERSION = 300;
 
+/** Context pressure zone thresholds for gauge injection. @see Upgrade 1 */
+export const PRESSURE_ZONES = {
+  normal: { max: 0.50 },
+  advisory: { min: 0.50, max: 0.65 },
+  warning: { min: 0.65, max: 0.80 },
+  critical: { min: 0.80 },
+} as const;
+
+export type PressureZone = 'normal' | 'advisory' | 'warning' | 'critical';
+
+/** Determine pressure zone from utilization ratio (0.0-1.0). */
+export function getPressureZone(utilization: number): PressureZone {
+  if (utilization >= PRESSURE_ZONES.critical.min) return 'critical';
+  if (utilization >= PRESSURE_ZONES.warning.min) return 'warning';
+  if (utilization >= PRESSURE_ZONES.advisory.min) return 'advisory';
+  return 'normal';
+}
+
+/** Default custom compaction instructions for CC. @see Upgrade 13 */
+export const DEFAULT_COMPACTION_INSTRUCTIONS = [
+  'Preserve all file paths verbatim — do not abbreviate, shorten, or summarize paths.',
+  'Preserve error messages and stack traces verbatim.',
+  'Preserve architectural decisions and their rationale.',
+  'Do NOT reproduce code blocks verbatim — reference the file path and function name instead.',
+  'Strip old tool outputs (older than 10 turns) — they are stored in the observation database.',
+  'The checkpoint (## Checkpoint section) is the authoritative state source. Preserve its content.',
+  'Keep the most recent context gauge line verbatim.',
+].join('\n');
+
 /** Default config values matching Architecture Section 11.1. */
 export const DEFAULT_CONFIG = {
   schema: 'claudex/config' as const,
   version: 3,
   injection: {
     budget_tokens: 4000,
-    boundary_only: true,
     gauge_threshold: 0.70,
     topic_shift_budget: 800,
   },
@@ -49,6 +77,7 @@ export const DEFAULT_CONFIG = {
   checkpoint: {
     debounce_seconds: 60,
     compression: false,
+    compaction_instructions: DEFAULT_COMPACTION_INSTRUCTIONS,
   },
   learnings: {
     max_per_project: 50,
@@ -70,6 +99,7 @@ export const DEFAULT_CONFIG = {
     topic_shift_threshold: 0.35,
     topic_shift_window: 3,
     decision_confidence_threshold: 0.15,
+    jaccard_shift_threshold: 0.15,
   },
   observability: {
     enabled: true,
@@ -79,6 +109,12 @@ export const DEFAULT_CONFIG = {
   gsd: {
     enabled: true,
     phase_boost: 0.10,
+  },
+  context: {
+    advisory_threshold: 0.50,
+    warning_threshold: 0.65,
+    critical_threshold: 0.80,
+    checkpoint_cooldown_seconds: 300,
   },
   features: {
     observation_capture: true,
@@ -91,3 +127,6 @@ export const DEFAULT_CONFIG = {
   },
   adapter: 'auto' as const,
 } as const;
+
+/** Maximum content length for observation extraction. @see Architecture Section 5.2 */
+export const CONTENT_MAX_CHARS = 500;

@@ -50,6 +50,30 @@ export function emitTelemetry(
 }
 
 /**
+ * Emits an injection telemetry event with standardized payload.
+ * Shared by session-start and user-prompt-submit hooks.
+ * Non-throwing.
+ */
+export function emitInjectionTelemetry(
+  db: Database,
+  sessionId: string,
+  params: {
+    trigger: 'session_start' | 'post_compaction' | 'topic_shift' | 'gauge';
+    sectionsIncluded: string[];
+    totalTokens: number;
+    budgetTokens: number;
+  }
+): void {
+  emitTelemetry(db, sessionId, 'injection', {
+    trigger: params.trigger,
+    sections_included: params.sectionsIncluded,
+    sections_skipped: [],
+    total_tokens: params.totalTokens,
+    budget_remaining: params.budgetTokens - params.totalTokens,
+  });
+}
+
+/**
  * Queries telemetry events with optional filters.
  * Returns results ordered by timestamp_epoch DESC.
  * Parses detail JSON back to typed objects.
@@ -134,4 +158,87 @@ export function pruneTelemetry(
   totalPruned += errorResult.changes;
 
   return totalPruned;
+}
+
+/** Tool cost estimate entry. */
+export interface ToolCostEstimate {
+  tool: string;
+  avgTokens: number;
+}
+
+/**
+ * Queries recent telemetry for average token cost per tool category.
+ * Returns top-N tool categories sorted by average cost descending.
+ * Non-throwing — returns empty array on error.
+ * @see Upgrade 11
+ */
+export function getToolCostEstimates(
+  db: Database,
+  opts?: { limit?: number; sessionId?: string }
+): ToolCostEstimate[] {
+  try {
+    const limit = opts?.limit ?? 5;
+    // Query observation_capture events which have tool + stored flag
+    // We estimate cost from the detail JSON: tool field gives the tool name
+    // We use a 24h window for recency
+    const cutoff = Math.floor(Date.now() / 1000) - 86400;
+
+    let query: string;
+    const params: unknown[] = [];
+
+    if (opts?.sessionId) {
+      query = `
+        SELECT
+          json_extract(detail, '$.tool') AS tool,
+          COUNT(*) AS call_count
+        FROM telemetry
+        WHERE event_kind = 'observation_capture'
+          AND timestamp_epoch > ?
+          AND session_id = ?
+        GROUP BY tool
+        HAVING tool IS NOT NULL
+        ORDER BY call_count DESC
+        LIMIT ?
+      `;
+      params.push(cutoff, opts.sessionId, limit);
+    } else {
+      query = `
+        SELECT
+          json_extract(detail, '$.tool') AS tool,
+          COUNT(*) AS call_count
+        FROM telemetry
+        WHERE event_kind = 'observation_capture'
+          AND timestamp_epoch > ?
+        GROUP BY tool
+        HAVING tool IS NOT NULL
+        ORDER BY call_count DESC
+        LIMIT ?
+      `;
+      params.push(cutoff, limit);
+    }
+
+    const rows = db.prepare(query).all(...params) as Array<{ tool: string; call_count: number }>;
+
+    // Estimate average token cost per tool type based on known heuristics
+    const toolCostMap: Record<string, number> = {
+      Agent: 35000,
+      'mcp__claude-teams__spawn_teammate': 35000,
+      Read: 2000,
+      Bash: 1500,
+      Edit: 1000,
+      Write: 1500,
+      Grep: 800,
+      Glob: 500,
+      WebFetch: 5000,
+      WebSearch: 3000,
+      NotebookEdit: 2000,
+    };
+
+    return rows.map((r) => ({
+      tool: r.tool,
+      avgTokens: toolCostMap[r.tool] ?? 1000,
+    }));
+  } catch {
+    return [];
+  }
 }

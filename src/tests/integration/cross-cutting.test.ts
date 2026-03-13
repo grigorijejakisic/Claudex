@@ -94,7 +94,7 @@ describe('Checkpoint Recovery', () => {
     // Write checkpoint
     await writeCheckpoint({
       db, sessionId: 'cp-sess', project: 'proj', projectDir: '/test',
-      trigger: 'compaction', scope: null,
+      trigger: 'compaction', scope: undefined,
     });
 
     // Verify checkpoint_meta row exists
@@ -205,7 +205,7 @@ describe('Enrichment Fallback', () => {
     // Write checkpoint without enrichment provider
     const result = await writeCheckpoint({
       db, sessionId: 'enr-sess', project: 'proj', projectDir: '/test',
-      trigger: 'compaction', scope: null,
+      trigger: 'compaction', scope: undefined,
     });
 
     // Verify checkpoint_meta row exists with non-null data

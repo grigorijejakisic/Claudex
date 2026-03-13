@@ -35,18 +35,18 @@ function makeConfig(overrides?: Partial<ClaudexConfig['injection']> & { features
     version: 3,
     injection: {
       budget_tokens: 4000,
-      boundary_only: true,
       gauge_threshold: 0.70,
       topic_shift_budget: 800,
       ...overrides,
     },
     observations: { enabled: true, retention_days: 90, prune_threshold: 1000, prune_count: 50 },
-    checkpoint: { debounce_seconds: 60 },
+    checkpoint: { debounce_seconds: 60, compression: false, compaction_instructions: '' },
     learnings: { max_per_project: 50, surface_count: 10, publish_to_memory_md: false },
     enrichment: { enabled: false, provider: 'auto', ollama_base_url: '', ollama_model: 'auto', timeout_ms: 10000 },
-    embeddings: { enabled: false, provider: 'ollama', model: 'nomic-embed-text', ollama_base_url: '', topic_shift_threshold: 0.35, topic_shift_window: 3, decision_confidence_threshold: 0.15 },
+    embeddings: { enabled: false, provider: 'ollama', model: 'nomic-embed-text', ollama_base_url: '', topic_shift_threshold: 0.35, topic_shift_window: 3, decision_confidence_threshold: 0.15, jaccard_shift_threshold: 0.15 },
     observability: { enabled: false, retention_days: 7, retain_error_count: 1000 },
     gsd: { enabled: true, phase_boost: 0.10 },
+    context: { advisory_threshold: 0.50, warning_threshold: 0.65, critical_threshold: 0.80, checkpoint_cooldown_seconds: 120 },
     features: {
       observation_capture: true,
       checkpoint_system: true,
@@ -129,7 +129,7 @@ describe('assembleFullContext', () => {
     expect(result.tokenEstimate).toBeLessThanOrEqual(250); // some overhead
   });
 
-  it('activates reference mode when budget < 500 after priority 5', () => {
+  it('uses full FTS5 mode when small content fits in remaining budget', () => {
     const projDir = mkDir('ref-mode');
     const idDir = mkDir('ref-mode-id');
     writeFile(idDir, 'USER.md', 'A'.repeat(1600)); // ~400 tokens
@@ -141,7 +141,7 @@ describe('assembleFullContext', () => {
       importance: 4, files_modified: ['src/auth.ts'],
     });
 
-    // Budget 500: identity takes ~400, leaves < 500 -> reference mode
+    // Budget 500: identity takes ~400, leaves ~100 -> small FTS5 content fits in full mode
     const result = assembleFullContext({
       db, project: 'proj', projectDir: projDir,
       config: makeConfig({ budget_tokens: 500 }),
@@ -150,10 +150,9 @@ describe('assembleFullContext', () => {
     });
 
     expect(result.sources).toContain('identity');
-    // If FTS5 made it in reference mode, it should have compact format
+    // Small FTS5 content fits in full mode; if included, it uses ### headers
     if (result.content.includes('Relevant Observations')) {
-      // Reference mode: one-liner format, not ### headers
-      expect(result.content).not.toContain('### Auth module');
+      expect(result.content).toContain('### Auth module');
     }
   });
 
@@ -310,7 +309,7 @@ describe('assembleRegularPrompt', () => {
     expect(result.sources).toContain('topic_pivot');
   });
 
-  it('returns gauge injection at >= 70% utilization', () => {
+  it('returns gauge injection at warning zone (75%)', () => {
     const projDir = mkDir('reg-gauge');
 
     const gauge: TokenUsage = { inputTokens: 150000, outputTokens: 0, contextWindowTokens: 200000, utilization: 0.75 };
@@ -323,18 +322,35 @@ describe('assembleRegularPrompt', () => {
       config: makeConfig(),
     });
 
-    expect(result.content).toContain('Token Gauge');
-    expect(result.sources).toContain('gauge');
+    expect(result.content).toContain('Zone: warning');
+    expect(result.sources).toContain('pressure_response');
   });
 
-  it('returns zero injection on normal turn', () => {
+  it('returns gauge injection on normal turn (Upgrade 1: always-on gauge)', () => {
     const projDir = mkDir('reg-zero');
 
-    const gauge: TokenUsage = { inputTokens: 100000, outputTokens: 0, contextWindowTokens: 200000, utilization: 0.50 };
+    const gauge: TokenUsage = { inputTokens: 80000, outputTokens: 0, contextWindowTokens: 200000, utilization: 0.40 };
 
     const result = assembleRegularPrompt({
       isPostCompaction: false, prompt: 'Continue working',
       gauge,
+      topicShift: null,
+      db, project: 'proj', projectDir: projDir,
+      config: makeConfig(),
+    });
+
+    // Upgrade 1: gauge always fires when gauge data is available
+    expect(result.content).toContain('Zone: normal');
+    expect(result.sources).toContain('gauge');
+    expect(result.tokenEstimate).toBeGreaterThan(0);
+  });
+
+  it('returns zero injection when gauge is null', () => {
+    const projDir = mkDir('reg-null-gauge');
+
+    const result = assembleRegularPrompt({
+      isPostCompaction: false, prompt: 'Continue working',
+      gauge: null,
       topicShift: null,
       db, project: 'proj', projectDir: projDir,
       config: makeConfig(),

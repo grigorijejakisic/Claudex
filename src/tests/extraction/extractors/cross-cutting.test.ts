@@ -13,6 +13,7 @@ import { extractWebFetch } from '../../../extraction/extractors/web-fetch.js';
 import { extractWebSearch } from '../../../extraction/extractors/web-search.js';
 import { extractTask } from '../../../extraction/extractors/task.js';
 import { extractNotebookEdit } from '../../../extraction/extractors/notebook-edit.js';
+import { CONTENT_MAX_CHARS } from '../../../shared/constants.js';
 
 describe('all extractors', () => {
   const extractors = [
@@ -34,7 +35,7 @@ describe('all extractors', () => {
     }
   });
 
-  it('truncate content at 2000 chars', () => {
+  it(`truncate content at CONTENT_MAX_CHARS (${CONTENT_MAX_CHARS}) chars`, () => {
     const longContent = 'a'.repeat(5000);
 
     // Test a few extractors with long content
@@ -43,20 +44,20 @@ describe('all extractors', () => {
       { content: longContent }
     );
     expect(readResult).not.toBeNull();
-    expect(readResult!.content.length).toBeLessThanOrEqual(2003); // 2000 + "..."
+    expect(readResult!.content.length).toBeLessThanOrEqual(CONTENT_MAX_CHARS + 3); // + "..."
 
     const writeResult = extractWrite(
       { file_path: '/src/file.ts', content: longContent },
       undefined
     );
     expect(writeResult).not.toBeNull();
-    expect(writeResult!.content.length).toBeLessThanOrEqual(2003);
+    expect(writeResult!.content.length).toBeLessThanOrEqual(CONTENT_MAX_CHARS + 3);
 
     const bashResult = extractBash(
       { command: 'cat big.log' },
       { output: longContent }
     );
     expect(bashResult).not.toBeNull();
-    expect(bashResult!.content.length).toBeLessThanOrEqual(2003);
+    expect(bashResult!.content.length).toBeLessThanOrEqual(CONTENT_MAX_CHARS + 3);
   });
 });

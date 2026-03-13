@@ -6,6 +6,8 @@
 
 import type { Database } from 'better-sqlite3';
 import { cachedPrepare } from './stmt-cache.js';
+import { CONTENT_MAX_CHARS } from '../shared/constants.js';
+import { truncateText } from '../shared/text-utils.js';
 
 /** Valid observation categories. */
 const VALID_CATEGORIES = [
@@ -31,6 +33,8 @@ export interface ObservationRow {
   access_count: number;
   last_accessed_at_epoch: number | null;
   deleted_at_epoch: number | null;
+  consumed: number;
+  obs_type: string | null;
 }
 
 /** Input for inserting an observation. */
@@ -43,6 +47,7 @@ export interface InsertObservationInput {
   content: string;
   importance: number;
   files_modified: string[];
+  obs_type?: string;
 }
 
 /**
@@ -58,10 +63,12 @@ export function insertObservation(
   // The generic "[REDACTED]" placeholder is kept for visual indication.
   const ftsCleanTitle = obs.title.replace(/\[REDACTED_\w+\]/g, '[REDACTED]');
   const ftsCleanContent = obs.content.replace(/\[REDACTED_\w+\]/g, '[REDACTED]');
+  // Defense-in-depth content cap (backstop for extractors)
+  const cappedContent = truncateText(ftsCleanContent, CONTENT_MAX_CHARS);
 
   const result = cachedPrepare(db,
-      `INSERT INTO observations (session_id, project, tool_name, category, title, content, importance, files_modified)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+      `INSERT INTO observations (session_id, project, tool_name, category, title, content, importance, files_modified, obs_type)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
     )
     .run(
       obs.session_id,
@@ -69,9 +76,10 @@ export function insertObservation(
       obs.tool_name,
       obs.category,
       ftsCleanTitle,
-      ftsCleanContent,
+      cappedContent,
       obs.importance,
-      JSON.stringify(obs.files_modified)
+      JSON.stringify(obs.files_modified),
+      obs.obs_type ?? null
     );
 
   return Number(result.lastInsertRowid);
@@ -146,6 +154,7 @@ export function searchObservations(
        WHERE observations_fts MATCH ?
          AND o.project = ?
          AND o.deleted_at_epoch IS NULL
+         AND o.consumed = 0
        ORDER BY bm25(observations_fts)
        LIMIT ?`
     )
@@ -187,4 +196,53 @@ export function incrementAccessCount(db: Database, id: number): void {
     `UPDATE observations SET access_count = access_count + 1, last_accessed_at_epoch = unixepoch()
      WHERE id = ?`
   ).run(id);
+}
+
+/**
+ * Marks observations as consumed (already injected into context).
+ * Used by PreCompact to flag old observations that don't need re-injection.
+ * @param db Database instance
+ * @param project Project scope
+ * @param olderThanEpoch Unix epoch — observations older than this are marked consumed
+ * @param excludeRecent Number of most recent observations to always keep unconsumed
+ */
+export function markObservationsConsumed(
+  db: Database,
+  project: string,
+  olderThanEpoch: number,
+  excludeRecent: number = 10
+): number {
+  // Get IDs of the N most recent observations to exclude
+  const recentIds = cachedPrepare(db,
+    `SELECT id FROM observations
+     WHERE project = ? AND deleted_at_epoch IS NULL
+     ORDER BY timestamp_epoch DESC
+     LIMIT ?`
+  ).all(project, excludeRecent) as Array<{ id: number }>;
+
+  const excludeSet = new Set(recentIds.map(r => r.id));
+
+  if (excludeSet.size === 0) {
+    // Mark all older observations as consumed
+    const result = cachedPrepare(db,
+      `UPDATE observations SET consumed = 1
+       WHERE project = ? AND deleted_at_epoch IS NULL
+         AND consumed = 0 AND timestamp_epoch < ?`
+    ).run(project, olderThanEpoch);
+    return result.changes;
+  }
+
+  // Use subquery to exclude the most recent N observations
+  const result = cachedPrepare(db,
+    `UPDATE observations SET consumed = 1
+     WHERE project = ? AND deleted_at_epoch IS NULL
+       AND consumed = 0 AND timestamp_epoch < ?
+       AND id NOT IN (
+         SELECT id FROM observations
+         WHERE project = ? AND deleted_at_epoch IS NULL
+         ORDER BY timestamp_epoch DESC
+         LIMIT ?
+       )`
+  ).run(project, olderThanEpoch, project, excludeRecent);
+  return result.changes;
 }

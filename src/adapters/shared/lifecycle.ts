@@ -21,6 +21,7 @@ import { initTemplates } from '../../embeddings/templates.js';
 import { promoteLearnings } from '../../intelligence/learnings-promoter.js';
 import { markPostCompactPending } from '../../core/checkpoint-tracking.js';
 import { pruneObservations, applyRetentionPolicy } from '../../decay/decay-engine.js';
+import { markObservationsConsumed } from '../../core/observations.js';
 import { decayPressureStratified } from '../../decay/pressure-decay.js';
 import { endSession } from '../../core/sessions.js';
 import { pruneTelemetry } from '../../observability/telemetry.js';
@@ -157,6 +158,7 @@ export function trackAfterTurn(
 ): void {
   const tracker = new ThreadTracker(db, sessionId);
   tracker.onAfterTurn(userText, assistantText);
+  // persist() removed — onAfterTurn() already persists internally (thread-tracker.ts:206)
 }
 
 /**
@@ -244,6 +246,15 @@ export async function captureDecisionsWithClassifier(params: DecisionCapturePara
  * Used by PreCompact (CC) and onCompact (bridge).
  */
 export async function runCompactionSequence(params: CompactionParams): Promise<void> {
+  // Upgrade 6: Mark old observations as consumed before compaction
+  // Observations older than 5 minutes ago that aren't in the most recent 10
+  try {
+    const fiveMinutesAgo = Math.floor(Date.now() / 1000) - 300;
+    markObservationsConsumed(params.db, params.project, fiveMinutesAgo, 10);
+  } catch {
+    // Non-fatal — continue with compaction even if masking fails
+  }
+
   const result = await writeCheckpoint({
     db: params.db,
     sessionId: params.sessionId,

@@ -220,6 +220,7 @@ export function createBridgeCallbacks(bctx: BridgeContext): ClaudexBridge {
           projectDir: ctx.cwd,
           config: bctx.config,
           identityDir: getIdentityDir(),
+          sessionId: ctx.sessionKey,
         });
 
         const elapsed = Date.now() - startMs;
@@ -269,6 +270,7 @@ export function createBridgeCallbacks(bctx: BridgeContext): ClaudexBridge {
                 config: {
                   topicShiftThreshold: bctx.config.embeddings.topic_shift_threshold,
                   topicShiftWindow: bctx.config.embeddings.topic_shift_window,
+                  jaccardShiftThreshold: bctx.config.embeddings.jaccard_shift_threshold,
                 },
               });
             }
@@ -287,6 +289,7 @@ export function createBridgeCallbacks(bctx: BridgeContext): ClaudexBridge {
           projectDir: bctx.cwd,
           config: bctx.config,
           identityDir: getIdentityDir(),
+          sessionId: bctx.sessionId,
         });
 
         if (isPostCompaction) {

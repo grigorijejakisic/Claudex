@@ -4,6 +4,7 @@
  */
 
 import { truncateText } from '../../shared/text-utils.js';
+import { CONTENT_MAX_CHARS } from '../../shared/constants.js';
 import type { ExtractionResult } from './types.js';
 
 /**
@@ -26,7 +27,7 @@ export function extractNotebookEdit(
     const title = truncateText(`NotebookEdit: ${identifier}`, 120);
 
     const cellContent = String(input.content ?? input.new_content ?? output?.content ?? '');
-    const content = truncateText(cellContent || `Cell: ${identifier}`, 2000);
+    const content = truncateText(cellContent || `Cell: ${identifier}`, CONTENT_MAX_CHARS);
 
     const filesModified = notebookPath ? [notebookPath] : [];
 

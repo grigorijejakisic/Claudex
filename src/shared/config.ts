@@ -14,7 +14,6 @@ export interface ClaudexConfig {
   version: number;
   injection: {
     budget_tokens: number;
-    boundary_only: boolean;
     gauge_threshold: number;
     topic_shift_budget: number;
   };
@@ -27,6 +26,7 @@ export interface ClaudexConfig {
   checkpoint: {
     debounce_seconds: number;
     compression: boolean;
+    compaction_instructions: string;
   };
   learnings: {
     max_per_project: number;
@@ -48,6 +48,7 @@ export interface ClaudexConfig {
     topic_shift_threshold: number;
     topic_shift_window: number;
     decision_confidence_threshold: number;
+    jaccard_shift_threshold: number;
   };
   observability: {
     enabled: boolean;
@@ -57,6 +58,12 @@ export interface ClaudexConfig {
   gsd: {
     enabled: boolean;
     phase_boost: number;
+  };
+  context: {
+    advisory_threshold: number;
+    warning_threshold: number;
+    critical_threshold: number;
+    checkpoint_cooldown_seconds: number;
   };
   features: {
     observation_capture: boolean;
@@ -113,21 +120,22 @@ function validateConfig(config: ClaudexConfig): ClaudexConfig {
     key: keyof ClaudexConfig;
     fields: Record<string, 'boolean' | 'number' | 'string'>;
   }> = [
-    { key: 'injection', fields: { budget_tokens: 'number', boundary_only: 'boolean', gauge_threshold: 'number', topic_shift_budget: 'number' } },
+    { key: 'injection', fields: { budget_tokens: 'number', gauge_threshold: 'number', topic_shift_budget: 'number' } },
     { key: 'observations', fields: { enabled: 'boolean', retention_days: 'number', prune_threshold: 'number', prune_count: 'number' } },
-    { key: 'checkpoint', fields: { debounce_seconds: 'number', compression: 'boolean' } },
+    { key: 'checkpoint', fields: { debounce_seconds: 'number', compression: 'boolean', compaction_instructions: 'string' } },
     { key: 'learnings', fields: { max_per_project: 'number', surface_count: 'number', publish_to_memory_md: 'boolean' } },
     { key: 'enrichment', fields: { enabled: 'boolean', provider: 'string', ollama_base_url: 'string', ollama_model: 'string', timeout_ms: 'number' } },
-    { key: 'embeddings', fields: { enabled: 'boolean', provider: 'string', model: 'string', ollama_base_url: 'string', topic_shift_threshold: 'number', topic_shift_window: 'number', decision_confidence_threshold: 'number' } },
+    { key: 'embeddings', fields: { enabled: 'boolean', provider: 'string', model: 'string', ollama_base_url: 'string', topic_shift_threshold: 'number', topic_shift_window: 'number', decision_confidence_threshold: 'number', jaccard_shift_threshold: 'number' } },
     { key: 'observability', fields: { enabled: 'boolean', retention_days: 'number', retain_error_count: 'number' } },
     { key: 'gsd', fields: { enabled: 'boolean', phase_boost: 'number' } },
+    { key: 'context', fields: { advisory_threshold: 'number', warning_threshold: 'number', critical_threshold: 'number', checkpoint_cooldown_seconds: 'number' } },
     { key: 'features', fields: { observation_capture: 'boolean', checkpoint_system: 'boolean', token_gauge: 'boolean', fts5_search: 'boolean', decision_capture: 'boolean', learnings_promotion: 'boolean', telemetry: 'boolean' } },
   ];
 
   for (const { key, fields } of sectionChecks) {
     if (typeof config[key] !== 'object' || config[key] === null || Array.isArray(config[key])) {
       // Entire section is invalid — replace with default
-      (config as Record<string, unknown>)[key] = (defaults as Record<string, unknown>)[key];
+      (config as unknown as Record<string, unknown>)[key] = (defaults as unknown as Record<string, unknown>)[key];
       continue;
     }
 

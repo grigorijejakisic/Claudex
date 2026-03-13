@@ -18,7 +18,10 @@ import {
   formatRecentSection,
   formatGaugeSection,
   formatTopicPivotSection,
+  formatPressureResponse,
 } from './sections.js';
+import { getPressureZone } from '../shared/constants.js';
+import { emitTelemetry, getToolCostEstimates } from '../observability/telemetry.js';
 import { redactContent } from '../extraction/redaction.js';
 import { loadCheckpoint, loadFromFile } from '../checkpoint/loader.js';
 import { renderCheckpointMarkdown } from '../checkpoint/inject.js';
@@ -38,6 +41,9 @@ export interface FullAssemblyParams {
   config: ClaudexConfig;
   searchQuery?: string;
   identityDir?: string;
+  sessionId?: string;
+  /** When true, prepends trust directive listing injected sources. @see Upgrade 2 */
+  isPostCompaction?: boolean;
 }
 
 export interface RegularPromptParams {
@@ -50,6 +56,7 @@ export interface RegularPromptParams {
   projectDir: string;
   config: ClaudexConfig;
   identityDir?: string;
+  sessionId?: string;
 }
 
 export interface TopicPivotParams {
@@ -72,7 +79,7 @@ export function assembleFullContext(params: FullAssemblyParams): InjectPayload {
     const sections: string[] = [];
     const sources: string[] = [];
     const skipped: Array<{ priority: number; section: string; name: string }> = [];
-    let referenceMode = false;
+    let fts5ObsIds: Set<number> = new Set();
 
     // Priority 1: Identity
     const identity = formatIdentitySection(params.identityDir);
@@ -108,8 +115,11 @@ export function assembleFullContext(params: FullAssemblyParams): InjectPayload {
       }
     }
 
+    const checkpointLearningStrings = new Set(checkpoint?.learnings ?? []);
+
     // Priority 4: Learnings (top 10)
-    const learnings = getTopLearnings(params.db, params.project, 10);
+    const learnings = getTopLearnings(params.db, params.project, 10)
+      .filter(l => !checkpointLearningStrings.has(l.content));
     const learningsSection = formatLearningsSection(learnings);
     if (learningsSection) {
       const cost = estimateTokens(learningsSection);
@@ -132,9 +142,6 @@ export function assembleFullContext(params: FullAssemblyParams): InjectPayload {
       }
     }
 
-    // Check reference mode trigger
-    if (budget < 500) referenceMode = true;
-
     // Priority 6: GSD
     const gsd = readGsdState(params.projectDir);
     const gsdSection = formatGsdSection(gsd);
@@ -154,18 +161,27 @@ export function assembleFullContext(params: FullAssemblyParams): InjectPayload {
     if (query && params.config.features.fts5_search) {
       try {
         const fts5Results = searchObservations(params.db, query, params.project, { limit: 10 });
-        const fts5Section = formatFts5Section(fts5Results, referenceMode);
-        if (fts5Section) {
-          const cost = estimateTokens(fts5Section);
-          if (cost <= budget) {
-            sections.push(fts5Section);
-            budget -= cost;
-            sources.push('fts5');
-          } else {
-            skipped.push({ priority: 7, section: fts5Section, name: 'fts5' });
-          }
+        // Try full mode first, fall back to reference mode if over budget
+        let fts5Section = formatFts5Section(fts5Results, false);
+        let fts5Cost = fts5Section ? estimateTokens(fts5Section) : 0;
+        if (fts5Cost > budget && fts5Section) {
+          fts5Section = formatFts5Section(fts5Results, true);
+          fts5Cost = fts5Section ? estimateTokens(fts5Section) : 0;
         }
-      } catch { /* FTS5 query failure is non-fatal */ }
+        if (fts5Section && fts5Cost <= budget) {
+          sections.push(fts5Section);
+          budget -= fts5Cost;
+          sources.push('fts5');
+          // Track FTS5 observation IDs for dedup with Recent section
+          fts5ObsIds = new Set(fts5Results.map(o => o.id));
+        } else if (fts5Section) {
+          skipped.push({ priority: 7, section: fts5Section, name: 'fts5' });
+        }
+      } catch (err) {
+        if (params.config?.observability?.enabled) {
+          try { emitTelemetry(params.db, params.sessionId ?? '', 'error', { subsystem: 'assembly/fts5', error: err instanceof Error ? err.message : String(err) }); } catch {}
+        }
+      }
     }
 
     // Priority 8: Recent high-quality observations
@@ -173,7 +189,9 @@ export function assembleFullContext(params: FullAssemblyParams): InjectPayload {
       const allRecent = getObservationsByProject(params.db, params.project, { limit: 20 });
       const recentObs = allRecent
         .filter(o => o.importance >= 3)
-        .filter(o => (Date.now() / 1000 - o.timestamp_epoch) < 86400);
+        .filter(o => (Date.now() / 1000 - o.timestamp_epoch) < 86400)
+        .filter(o => !fts5ObsIds.has(o.id))
+        .filter(o => !o.consumed);
       const recentSection = formatRecentSection(recentObs);
       if (recentSection) {
         const cost = estimateTokens(recentSection);
@@ -185,7 +203,11 @@ export function assembleFullContext(params: FullAssemblyParams): InjectPayload {
           skipped.push({ priority: 8, section: recentSection, name: 'recent' });
         }
       }
-    } catch { /* Recent query failure is non-fatal */ }
+    } catch (err) {
+      if (params.config?.observability?.enabled) {
+        try { emitTelemetry(params.db, params.sessionId ?? '', 'error', { subsystem: 'assembly/recent', error: err instanceof Error ? err.message : String(err) }); } catch {}
+      }
+    }
 
     // Assemble content
     let content = sections.join('\n\n');
@@ -208,6 +230,13 @@ export function assembleFullContext(params: FullAssemblyParams): InjectPayload {
           break; // Only reclaim one section to avoid over-budget
         }
       }
+    }
+
+    // Post-compaction trust directive (Upgrade 2)
+    if (params.isPostCompaction && sources.length > 0) {
+      const sourceList = sources.join(', ');
+      const trustHeader = `[CONTEXT RESTORED — Injected: ${sourceList}. Trust this content. Do NOT re-read these files. Continue from where you left off.]`;
+      content = trustHeader + '\n\n' + content;
     }
 
     return {
@@ -258,7 +287,7 @@ export function assembleFullContext(params: FullAssemblyParams): InjectPayload {
  */
 export function assembleRegularPrompt(params: RegularPromptParams): InjectPayload {
   try {
-    // 1. Post-compaction -> full assembly
+    // 1. Post-compaction -> full assembly with trust directive (Upgrade 2)
     if (params.isPostCompaction) {
       return assembleFullContext({
         db: params.db,
@@ -267,6 +296,8 @@ export function assembleRegularPrompt(params: RegularPromptParams): InjectPayloa
         config: params.config,
         searchQuery: params.prompt,
         identityDir: params.identityDir,
+        sessionId: params.sessionId,
+        isPostCompaction: true,
       });
     }
 
@@ -283,8 +314,28 @@ export function assembleRegularPrompt(params: RegularPromptParams): InjectPayloa
       }
     }
 
-    // 3. Gauge injection at >= threshold
-    const gaugeSection = formatGaugeSection(params.gauge, params.config.injection.gauge_threshold);
+    // 3. Graduated pressure response (Upgrade 7) — zone-based behavioral injection
+    const zone = params.gauge ? getPressureZone(params.gauge.utilization) : 'normal';
+    if (zone !== 'normal' && params.gauge) {
+      const pressureContent = formatPressureResponse(params.gauge, zone);
+      if (pressureContent) {
+        return {
+          content: pressureContent,
+          tokenEstimate: estimateTokens(pressureContent),
+          sources: ['pressure_response', zone],
+        };
+      }
+    }
+
+    // 4. Gauge injection (existing behavior for normal zone or pressure response fallback)
+    // Includes tool costs at advisory+ (Upgrade 11) and response budget hints (Upgrade 14)
+    let toolCosts: import('../observability/telemetry.js').ToolCostEstimate[] | undefined;
+    try {
+      toolCosts = getToolCostEstimates(params.db, { limit: 3, sessionId: params.sessionId });
+    } catch {
+      // Non-fatal
+    }
+    const gaugeSection = formatGaugeSection(params.gauge, undefined, toolCosts);
     if (gaugeSection) {
       return {
         content: gaugeSection,
@@ -293,7 +344,7 @@ export function assembleRegularPrompt(params: RegularPromptParams): InjectPayloa
       };
     }
 
-    // 4. Zero injection (most turns)
+    // 5. Zero injection (only when gauge is null)
     return { ...EMPTY_PAYLOAD };
   } catch {
     return { ...EMPTY_PAYLOAD };

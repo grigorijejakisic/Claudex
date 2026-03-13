@@ -4,6 +4,7 @@
  */
 
 import { truncateText } from '../../shared/text-utils.js';
+import { CONTENT_MAX_CHARS } from '../../shared/constants.js';
 import type { ExtractionResult } from './types.js';
 
 /**
@@ -37,7 +38,7 @@ export function extractWebSearch(
     } else {
       content = `Query: ${query}, no results`;
     }
-    content = truncateText(content, 2000);
+    content = truncateText(content, CONTENT_MAX_CHARS);
 
     return {
       title,

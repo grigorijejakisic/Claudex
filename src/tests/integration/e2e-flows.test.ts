@@ -118,7 +118,7 @@ describe('CC Hook E2E Flow', () => {
     // Step 4: PreCompact
     await writeCheckpoint({
       db, sessionId, project, projectDir: '/test',
-      trigger: 'compaction', scope: null,
+      trigger: 'compaction', scope: undefined,
     });
     promoteLearnings({ db, project, sessionLearnings: [] });
     markPostCompactPending(db, sessionId);
@@ -150,7 +150,7 @@ describe('CC Hook E2E Flow', () => {
     // Step 6: SessionEnd
     await writeCheckpoint({
       db, sessionId, project, projectDir: '/test',
-      trigger: 'session_end', scope: null,
+      trigger: 'session_end', scope: undefined,
     });
     pruneObservations(db, project, {
       pruneThreshold: config.observations.prune_threshold,
@@ -185,7 +185,7 @@ describe('OpenClaw Bridge E2E Flow', () => {
 
   it('full OpenClaw bridge lifecycle produces correct accumulated state', { timeout: 15000 }, async () => {
     const bctx: BridgeContext = {
-      db, config, project: 'test-project', scope: null, sessionId: '', cwd: '/test',
+      db, config, project: 'test-project', scope: undefined, sessionId: '', cwd: '/test',
     };
     const bridge = createBridgeCallbacks(bctx);
 

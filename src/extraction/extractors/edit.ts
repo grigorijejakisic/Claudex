@@ -4,6 +4,7 @@
  */
 
 import { truncateText } from '../../shared/text-utils.js';
+import { CONTENT_MAX_CHARS } from '../../shared/constants.js';
 import type { ExtractionResult } from './types.js';
 
 /**
@@ -26,7 +27,7 @@ export function extractEdit(
     const newStr = String(input.new_string ?? input.newString ?? '');
 
     const diff = `--- old\n${oldStr}\n+++ new\n${newStr}`;
-    const content = truncateText(diff, 2000);
+    const content = truncateText(diff, CONTENT_MAX_CHARS);
 
     return {
       title,

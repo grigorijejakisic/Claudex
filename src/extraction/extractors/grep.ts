@@ -4,6 +4,7 @@
  */
 
 import { truncateText } from '../../shared/text-utils.js';
+import { CONTENT_MAX_CHARS } from '../../shared/constants.js';
 import type { ExtractionResult } from './types.js';
 
 /**
@@ -35,7 +36,7 @@ export function extractGrep(
     } else {
       content = `Pattern: ${pattern}, ${matchCount} matches`;
     }
-    content = truncateText(content, 2000);
+    content = truncateText(content, CONTENT_MAX_CHARS);
 
     return {
       title,

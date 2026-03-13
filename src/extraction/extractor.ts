@@ -22,6 +22,7 @@ import { redactContent } from './redaction.js';
 import { sanitizePath } from './redaction.js';
 import { classifyCategory } from './scoring.js';
 import { scoreImportance } from './scoring.js';
+import { classifyObservationType, applyTypePrior } from './type-classifier.js';
 import { insertObservation } from '../core/observations.js';
 
 /** Input for processToolObservation. */
@@ -91,6 +92,11 @@ export function processToolObservation(input: ProcessToolObservationInput): numb
     // 6. Score — determine importance
     const importance = scoreImportance(toolName, category, redactedContent);
 
+    // 6b. Type Prior classification (Upgrade 8) — apply type-based importance multiplier
+    const exitCode = toolName === 'Bash' ? (toolOutput?.exitCode as number | undefined) : undefined;
+    const obsType = classifyObservationType(redactedContent, toolName, exitCode);
+    const adjustedImportance = applyTypePrior(importance, obsType);
+
     // 7. Dedup — skip if same tool+file+category+project+session within 5 minutes (300 seconds)
     const fiveMinutesAgo = Math.floor(Date.now() / 1000) - 300;
 
@@ -132,8 +138,9 @@ export function processToolObservation(input: ProcessToolObservationInput): numb
       category,
       title: redactedTitle,
       content: redactedContent,
-      importance,
+      importance: adjustedImportance,
       files_modified: sanitizedFiles,
+      obs_type: obsType,
     });
 
     return id;

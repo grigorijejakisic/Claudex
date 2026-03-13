@@ -4,6 +4,7 @@
  */
 
 import { truncateText } from '../../shared/text-utils.js';
+import { CONTENT_MAX_CHARS } from '../../shared/constants.js';
 import type { ExtractionResult } from './types.js';
 
 /**
@@ -25,7 +26,7 @@ export function extractGlob(
     const title = truncateText(`Glob: ${pattern} (${fileCount} files)`, 120);
     const content = truncateText(
       files.length > 0 ? files.join('\n') : `Pattern: ${pattern}, no files matched`,
-      2000
+      CONTENT_MAX_CHARS
     );
 
     return {

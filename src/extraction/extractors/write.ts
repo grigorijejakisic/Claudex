@@ -4,11 +4,12 @@
  */
 
 import { truncateText } from '../../shared/text-utils.js';
+import { CONTENT_MAX_CHARS } from '../../shared/constants.js';
 import type { ExtractionResult } from './types.js';
 
 /**
  * Extracts observation from a Write tool invocation.
- * Title: "Write: {basename}". Content: first 2000 chars of written content.
+ * Title: "Write: {basename}". Content: first 500 chars of written content.
  * Returns null if no file_path in input.
  */
 export function extractWrite(
@@ -22,7 +23,7 @@ export function extractWrite(
     const basename = filePath.split(/[/\\]/).pop() ?? filePath;
     const title = truncateText(`Write: ${basename}`, 120);
 
-    const content = truncateText(String(input.content ?? ''), 2000);
+    const content = truncateText(String(input.content ?? ''), CONTENT_MAX_CHARS);
 
     return {
       title,

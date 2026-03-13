@@ -60,6 +60,7 @@ function makeObservation(title: string, category: string, content: string, ageSe
     category, title, content, importance: 4,
     files_modified: '[]', timestamp_epoch: nowEpoch - ageSeconds,
     access_count: 0, last_accessed_at_epoch: null, deleted_at_epoch: null,
+    consumed: 0, obs_type: null,
   };
 }
 
@@ -352,33 +353,73 @@ describe('formatRecentSection', () => {
   });
 });
 
-// --- formatGaugeSection ---
+// --- formatGaugeSection (Upgrade 1: always-on, Upgrade 11: tool costs, Upgrade 14: response hints) ---
 
 describe('formatGaugeSection', () => {
-  it('returns gauge markdown at 70% utilization', () => {
+  it('returns gauge at any utilization level (Upgrade 1: always-on)', () => {
+    const gauge: TokenUsage = { inputTokens: 46000, outputTokens: 0, contextWindowTokens: 200000, utilization: 0.23 };
+    const result = formatGaugeSection(gauge);
+    expect(result).not.toBeNull();
+    expect(result).toContain('[Context: 46k/200k (23%)');
+    expect(result).toContain('Zone: normal');
+  });
+
+  it('includes zone in gauge line at 73% (warning zone)', () => {
     const gauge: TokenUsage = { inputTokens: 146000, outputTokens: 0, contextWindowTokens: 200000, utilization: 0.73 };
     const result = formatGaugeSection(gauge);
     expect(result).not.toBeNull();
-    expect(result).toContain('# Token Gauge');
-    expect(result).toContain('Utilization: 73%');
-    expect(result).toContain('146,000');
-    expect(result).toContain('200,000');
+    expect(result).toContain('Zone: warning');
+    expect(result).toContain('73%');
   });
 
-  it('returns null below threshold', () => {
+  it('returns gauge at 60% utilization (previously below threshold)', () => {
     const gauge: TokenUsage = { inputTokens: 120000, outputTokens: 0, contextWindowTokens: 200000, utilization: 0.60 };
-    expect(formatGaugeSection(gauge)).toBeNull();
+    const result = formatGaugeSection(gauge);
+    expect(result).not.toBeNull();
+    expect(result).toContain('Zone: advisory');
   });
 
   it('returns null for null gauge', () => {
     expect(formatGaugeSection(null)).toBeNull();
   });
 
-  it('uses custom threshold when provided', () => {
+  it('includes tool costs at advisory+ zone (Upgrade 11)', () => {
     const gauge: TokenUsage = { inputTokens: 110000, outputTokens: 0, contextWindowTokens: 200000, utilization: 0.55 };
-    const result = formatGaugeSection(gauge, 0.50);
+    const toolCosts = [
+      { tool: 'Agent', avgTokens: 35000 },
+      { tool: 'Read', avgTokens: 2000 },
+    ];
+    const result = formatGaugeSection(gauge, undefined, toolCosts);
     expect(result).not.toBeNull();
-    expect(result).toContain('Utilization: 55%');
+    expect(result).toContain('Costs: Agent ~35k, Read ~2k');
+    expect(result).toContain('Zone: advisory');
+  });
+
+  it('does NOT include tool costs in normal zone', () => {
+    const gauge: TokenUsage = { inputTokens: 40000, outputTokens: 0, contextWindowTokens: 200000, utilization: 0.20 };
+    const toolCosts = [{ tool: 'Agent', avgTokens: 35000 }];
+    const result = formatGaugeSection(gauge, undefined, toolCosts);
+    expect(result).not.toBeNull();
+    expect(result).not.toContain('Costs:');
+    expect(result).toContain('Zone: normal');
+  });
+
+  it('includes response budget hint at advisory zone (Upgrade 14)', () => {
+    const gauge: TokenUsage = { inputTokens: 110000, outputTokens: 0, contextWindowTokens: 200000, utilization: 0.55 };
+    const result = formatGaugeSection(gauge);
+    expect(result).toContain('Respond concisely');
+  });
+
+  it('includes response budget hint at warning zone (Upgrade 14)', () => {
+    const gauge: TokenUsage = { inputTokens: 140000, outputTokens: 0, contextWindowTokens: 200000, utilization: 0.70 };
+    const result = formatGaugeSection(gauge);
+    expect(result).toContain('≤5 lines');
+  });
+
+  it('includes response budget hint at critical zone (Upgrade 14)', () => {
+    const gauge: TokenUsage = { inputTokens: 170000, outputTokens: 0, contextWindowTokens: 200000, utilization: 0.85 };
+    const result = formatGaugeSection(gauge);
+    expect(result).toContain('≤3 lines, essentials only');
   });
 
   it('is non-throwing on error', () => {

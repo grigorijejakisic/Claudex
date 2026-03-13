@@ -4,11 +4,12 @@
  */
 
 import { truncateText } from '../../shared/text-utils.js';
+import { CONTENT_MAX_CHARS } from '../../shared/constants.js';
 import type { ExtractionResult } from './types.js';
 
 /**
  * Extracts observation from a Read tool invocation.
- * Title: "Read: {basename}". Content: file content up to 2000 chars.
+ * Title: "Read: {basename}". Content: file content up to 500 chars.
  * Returns null if no file_path in input.
  */
 export function extractRead(
@@ -22,7 +23,7 @@ export function extractRead(
     const basename = filePath.split(/[/\\]/).pop() ?? filePath;
     const title = truncateText(`Read: ${basename}`, 120);
 
-    const content = truncateText(String(output?.content ?? ''), 2000);
+    const content = truncateText(String(output?.content ?? ''), CONTENT_MAX_CHARS);
 
     return {
       title,

@@ -34,7 +34,9 @@ CREATE TABLE IF NOT EXISTS observations (
   timestamp_epoch INTEGER NOT NULL DEFAULT (unixepoch()),
   access_count INTEGER NOT NULL DEFAULT 0,
   last_accessed_at_epoch INTEGER,
-  deleted_at_epoch INTEGER DEFAULT NULL
+  deleted_at_epoch INTEGER DEFAULT NULL,
+  consumed INTEGER NOT NULL DEFAULT 0,
+  obs_type TEXT
 );
 
 -- FTS5 virtual table for full-text search on observations
@@ -84,6 +86,9 @@ CREATE INDEX IF NOT EXISTS idx_obs_project_active
 -- pruneObservations candidate selection + applyRetentionPolicy: WHERE project=? AND deleted_at_epoch IS NULL AND importance<?
 CREATE INDEX IF NOT EXISTS idx_obs_project_importance
   ON observations(project, deleted_at_epoch, importance);
+
+-- markObservationsConsumed: WHERE project=? AND consumed=? ORDER BY timestamp_epoch DESC
+CREATE INDEX IF NOT EXISTS idx_obs_consumed ON observations(project, consumed, timestamp_epoch DESC);
 
 -- sessions
 CREATE TABLE IF NOT EXISTS sessions (
@@ -203,6 +208,17 @@ CREATE INDEX IF NOT EXISTS idx_cpmeta_session
   ON checkpoint_meta(session_id, created_at_epoch DESC);
 CREATE INDEX IF NOT EXISTS idx_cpmeta_status
   ON checkpoint_meta(status, updated_at_epoch);
+
+-- verified_facts: facts verified during session, included in checkpoints (Upgrade 12)
+CREATE TABLE IF NOT EXISTS verified_facts (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  session_id TEXT NOT NULL,
+  fact TEXT NOT NULL,
+  created_at_epoch INTEGER NOT NULL DEFAULT (unixepoch())
+);
+
+CREATE INDEX IF NOT EXISTS idx_verified_facts_session
+  ON verified_facts(session_id, created_at_epoch DESC);
 `;
 
 /**
@@ -251,6 +267,17 @@ function upgradeV2SchemaInPlace(db: Database): void {
   try {
     db.exec("UPDATE pressure_scores SET temperature = 'COLD' WHERE temperature NOT IN ('HOT', 'COLD')");
   } catch { /* table may not exist */ }
+
+  // observations: v3.1 adds consumed column for observation masking (Upgrade 6)
+  // and obs_type column for Type Prior classification (Upgrade 8)
+  const obsCols = db.pragma('table_info(observations)') as Array<{ name: string }>;
+  const obsColNames = new Set(obsCols.map(c => c.name));
+  if (!obsColNames.has('consumed')) {
+    db.exec('ALTER TABLE observations ADD COLUMN consumed INTEGER NOT NULL DEFAULT 0');
+  }
+  if (!obsColNames.has('obs_type')) {
+    db.exec('ALTER TABLE observations ADD COLUMN obs_type TEXT');
+  }
 }
 
 /**

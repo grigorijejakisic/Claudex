@@ -4,6 +4,7 @@
  */
 
 import { truncateText } from '../../shared/text-utils.js';
+import { CONTENT_MAX_CHARS } from '../../shared/constants.js';
 import type { ExtractionResult } from './types.js';
 
 /**
@@ -24,7 +25,7 @@ export function extractWebFetch(
     const status = output?.status ?? output?.statusCode ?? '';
     const body = String(output?.content ?? output?.body ?? '');
     let content = status ? `Status: ${status}\n${body}` : body;
-    content = truncateText(content, 2000);
+    content = truncateText(content, CONTENT_MAX_CHARS);
 
     return {
       title,

@@ -99,7 +99,7 @@ export function bootstrapHook(input: HookInput): BootstrapResult {
   const db = openDatabase(getDbPath());
   const config = loadConfig();
   const scope = detectProjectScope(input.cwd);
-  const project = getProjectId(input.cwd);
+  const project = getProjectId(input.cwd, scope);
 
   return { db, config, project, scope };
 }

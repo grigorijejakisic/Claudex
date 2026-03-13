@@ -32,7 +32,7 @@ describe('loadConfig', () => {
     const config = loadConfig();
     expect(config.injection.budget_tokens).toBe(8000);
     // Other injection defaults preserved
-    expect(config.injection.boundary_only).toBe(true);
+    expect(config.injection.gauge_threshold).toBe(0.70);
     // Other sections untouched
     expect(config.embeddings.enabled).toBe(true);
   });
@@ -106,7 +106,7 @@ describe('loadConfig', () => {
     // Valid override applied
     expect(config.injection.budget_tokens).toBe(5000);
     // Unknown top-level key gets merged but doesn't break anything
-    expect((config as Record<string, unknown>)['unknown_section']).toEqual({ foo: 'bar' });
+    expect((config as unknown as Record<string, unknown>)['unknown_section']).toEqual({ foo: 'bar' });
     // Unknown field in known section preserved (deep merge carries it through)
     expect((config.injection as Record<string, unknown>)['unknown_field']).toBe(true);
   });
@@ -133,6 +133,20 @@ describe('loadConfig', () => {
     // Other defaults preserved
     expect(config.enrichment.enabled).toBe(true);
     expect(config.enrichment.provider).toBe('auto');
+  });
+
+  it('includes jaccard_shift_threshold in embeddings defaults', () => {
+    mockReadJsonFile.mockReturnValue(null);
+    const config = loadConfig();
+    expect(config.embeddings.jaccard_shift_threshold).toBe(0.15);
+  });
+
+  it('validates jaccard_shift_threshold falls back to default on wrong type', () => {
+    mockReadJsonFile.mockReturnValue({
+      embeddings: { jaccard_shift_threshold: 'high' }, // string instead of number
+    });
+    const config = loadConfig();
+    expect(config.embeddings.jaccard_shift_threshold).toBe(0.15);
   });
 
   it('handles config with unicode string values in all sections', () => {

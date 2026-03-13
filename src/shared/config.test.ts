@@ -36,7 +36,6 @@ describe('config', () => {
 
       // Verify nested sections
       expect(config.injection.budget_tokens).toBe(4000);
-      expect(config.injection.boundary_only).toBe(true);
       expect(config.injection.gauge_threshold).toBe(0.70);
       expect(config.injection.topic_shift_budget).toBe(800);
 
@@ -95,7 +94,6 @@ describe('config', () => {
       // Overridden value
       expect(config.injection.budget_tokens).toBe(8000);
       // Default values preserved
-      expect(config.injection.boundary_only).toBe(true);
       expect(config.injection.gauge_threshold).toBe(0.70);
       expect(config.observations.enabled).toBe(true);
       expect(config.adapter).toBe('auto');
@@ -139,7 +137,7 @@ describe('config', () => {
 
       const config = loadConfig();
       expect(config.injection.budget_tokens).toBe(6000);
-      expect(config.injection.boundary_only).toBe(true); // default preserved
+      expect(config.injection.gauge_threshold).toBe(0.70); // default preserved
 
       try { fs.rmSync(spacedDir, { recursive: true, force: true }); } catch { /* cleanup */ }
     });

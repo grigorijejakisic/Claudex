@@ -182,7 +182,7 @@ export async function writeCheckpoint(
     // Step 2: Read current state from DB
     const decisions = getDecisionsBySession(db, sessionId).slice(0, 15);
     const threadState = getThreadState(db, sessionId);
-    const hotFiles = getHotFiles(db, project, 20);
+    const hotFiles = getHotFiles(db, project, 15);
     const topLearnings = getTopLearnings(db, project, 10);
     const openItems = extractOpenItems(lastAssistantText);
 
@@ -191,10 +191,12 @@ export async function writeCheckpoint(
     try {
       const rows = db
         .prepare(
-          `SELECT DISTINCT json_each.value AS file_path
-           FROM observations, json_each(observations.files_modified)
-           WHERE observations.session_id = ? AND observations.deleted_at_epoch IS NULL
-           LIMIT 50`
+          `SELECT file_path FROM (
+             SELECT json_each.value AS file_path, MAX(observations.timestamp_epoch) AS last_seen
+             FROM observations, json_each(observations.files_modified)
+             WHERE observations.session_id = ? AND observations.deleted_at_epoch IS NULL
+             GROUP BY json_each.value
+           ) ORDER BY last_seen DESC LIMIT 20`
         )
         .all(sessionId) as Array<{ file_path: string }>;
       readFiles = rows.map((r) => r.file_path);
@@ -227,6 +229,35 @@ export async function writeCheckpoint(
       }
     } catch {
       // No previous checkpoint — ok
+    }
+
+    // Read verified facts from DB (Upgrade 12)
+    let verifiedFacts: string[] = [];
+    try {
+      const factRows = db
+        .prepare(
+          `SELECT fact FROM verified_facts WHERE session_id = ? ORDER BY created_at_epoch DESC LIMIT 20`
+        )
+        .all(sessionId) as Array<{ fact: string }>;
+      verifiedFacts = factRows.map((r) => r.fact);
+    } catch {
+      // Table may not exist yet — non-fatal
+    }
+
+    // Build current_objective from thread + working state (Upgrade 10)
+    let currentObjective: string | null = null;
+    try {
+      const parts: string[] = [];
+      if (threadState?.topic) parts.push(`Task: ${threadState.topic}`);
+      if (threadState?.summary) parts.push(threadState.summary);
+      if (parts.length === 0 && gsd && typeof gsd === 'object' && 'goal' in (gsd as Record<string, unknown>)) {
+        parts.push(`Goal: ${(gsd as Record<string, unknown>).goal}`);
+      }
+      if (parts.length > 0) {
+        currentObjective = parts.join('. ').slice(0, 200);
+      }
+    } catch {
+      // Non-fatal
     }
 
     // Step 3: Build CheckpointV3
@@ -262,7 +293,6 @@ export async function writeCheckpoint(
       files: {
         hot: hotFiles.map((f) => ({
           path: f.file_path,
-          last_action: null,
         })),
         read: readFiles,
       },
@@ -274,6 +304,8 @@ export async function writeCheckpoint(
       open_items: openItems,
       learnings: topLearnings.map((l) => l.content),
       gsd: gsd ?? null,
+      current_objective: currentObjective,
+      verified_facts: verifiedFacts,
     };
 
     // Step 4: UPDATE committed
@@ -384,5 +416,22 @@ export async function writeCheckpoint(
       // Best effort
     }
     return null;
+  }
+}
+
+/**
+ * Records a verified fact for the current session.
+ * Facts are persisted in the verified_facts table and included in subsequent checkpoints.
+ * Non-throwing — silently fails if table doesn't exist.
+ * @see Upgrade 12
+ */
+export function addVerifiedFact(db: Database, sessionId: string, fact: string): void {
+  try {
+    db.prepare(
+      `INSERT INTO verified_facts (session_id, fact, created_at_epoch)
+       VALUES (?, ?, unixepoch())`
+    ).run(sessionId, fact.slice(0, 500));
+  } catch {
+    // Table may not exist yet or other DB error — non-fatal
   }
 }

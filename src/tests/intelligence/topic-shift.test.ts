@@ -383,5 +383,127 @@ describe('topic-shift detection', () => {
       expect((detector as any).recentPromptEmbeddings).toHaveLength(0);
       expect((detector as any).topicEmbeddingCache).toBeNull();
     });
+
+    it('also resets lastShiftEpoch and turnsSinceShift', async () => {
+      setTopic('database implementation');
+      const detector = new TopicShiftDetector(null);
+
+      // Trigger a shift to set the cooldown state
+      await detector.detectTopicShift({ prompt: "now let's work on the API", db, sessionId });
+      expect((detector as any).lastShiftEpoch).toBeGreaterThan(0);
+      expect((detector as any).turnsSinceShift).toBe(0);
+
+      detector.clearCache();
+      expect((detector as any).lastShiftEpoch).toBe(0);
+      expect((detector as any).turnsSinceShift).toBe(0);
+    });
+  });
+
+  // --- Cooldown ---
+
+  describe('cooldown — rapid shift suppression', () => {
+    it('suppresses second shift within 60s with < 3 turns', async () => {
+      setTopic('database implementation');
+      const detector = new TopicShiftDetector(null);
+
+      // First shift via explicit pivot (lastShiftEpoch = 0, no cooldown)
+      const r1 = await detector.detectTopicShift({
+        prompt: "now let's work on the API",
+        db,
+        sessionId,
+      });
+      expect(r1.shifted).toBe(true);
+
+      // Immediately try another explicit pivot — suppressed (< 60s, turnsSinceShift = 1 < 3)
+      setTopic('API work');
+      const r2 = await detector.detectTopicShift({
+        prompt: 'switch to the frontend',
+        db,
+        sessionId,
+      });
+      expect(r2.shifted).toBe(false);
+    });
+
+    it('allows shift after turnsSinceShift reaches 3', async () => {
+      setTopic('database implementation');
+      const detector = new TopicShiftDetector(null);
+
+      // First shift
+      await detector.detectTopicShift({ prompt: "now let's work on the API", db, sessionId });
+
+      // Two intermediate turns (suppressed, but increment counter to 1 and 2)
+      setTopic('API work');
+      await detector.detectTopicShift({ prompt: 'continue API work', db, sessionId });
+      await detector.detectTopicShift({ prompt: 'more API work', db, sessionId });
+
+      // Third turn — turnsSinceShift increments to 3, 3 < 3 = false → cooldown bypassed
+      const result = await detector.detectTopicShift({
+        prompt: 'switch to the frontend',
+        db,
+        sessionId,
+      });
+      expect(result.shifted).toBe(true);
+    });
+
+    it('allows shift after 60s elapsed regardless of turn count', async () => {
+      setTopic('database implementation');
+      const detector = new TopicShiftDetector(null);
+
+      // Fake lastShiftEpoch to 70 seconds ago, turnsSinceShift = 1 (< 3)
+      const now = Math.floor(Date.now() / 1000);
+      (detector as any).lastShiftEpoch = now - 70;
+      (detector as any).turnsSinceShift = 1;
+
+      const result = await detector.detectTopicShift({
+        prompt: 'switch to the frontend',
+        db,
+        sessionId,
+      });
+      expect(result.shifted).toBe(true);
+    });
+
+    it('does not apply cooldown on first ever shift (lastShiftEpoch = 0)', async () => {
+      setTopic('database implementation');
+      const detector = new TopicShiftDetector(null);
+      // No prior shift — lastShiftEpoch is 0, cooldown guard skipped
+      const result = await detector.detectTopicShift({
+        prompt: "now let's work on the API",
+        db,
+        sessionId,
+      });
+      expect(result.shifted).toBe(true);
+    });
+  });
+
+  // --- Jaccard threshold config ---
+
+  describe('config — jaccardShiftThreshold', () => {
+    it('uses custom jaccardShiftThreshold from config', async () => {
+      setTopic('database storage implementation');
+      const detector = new TopicShiftDetector(null);
+
+      // With threshold=0.9, high-overlap prompt still triggers shift
+      const result = await detector.detectTopicShift({
+        prompt: 'fix the database storage migration implementation',
+        db,
+        sessionId,
+        config: { jaccardShiftThreshold: 0.9 },
+      });
+      expect(result.shifted).toBe(true);
+      expect(result.method).toBe('jaccard');
+    });
+
+    it('uses default 0.15 threshold when not in config', async () => {
+      setTopic('database storage implementation');
+      const detector = new TopicShiftDetector(null);
+
+      // High overlap with topic — no shift at default 0.15
+      const result = await detector.detectTopicShift({
+        prompt: 'fix the database storage migration implementation',
+        db,
+        sessionId,
+      });
+      expect(result.shifted).toBe(false);
+    });
   });
 });

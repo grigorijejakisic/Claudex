@@ -168,7 +168,8 @@ describe('processToolObservation', () => {
     expect(id).not.toBeNull();
 
     const row = db.prepare('SELECT importance FROM observations WHERE id = ?').get(id!) as { importance: number };
-    expect(row.importance).toBe(5);
+    // Base importance 5 (security category) * 0.8 (routine type prior) = 4
+    expect(row.importance).toBe(4);
   });
 
   // --- files_modified JSON ---
