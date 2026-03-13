@@ -61,28 +61,36 @@ export function renderCheckpointMarkdown(
       sections.push(lines.join('\n'));
     }
 
-    // 4. Files (RESUME+)
+    // 4. Files (RESUME+) — capped to avoid context bloat
     if (includeResume && checkpoint.files) {
-      const hasHot = checkpoint.files.hot && checkpoint.files.hot.length > 0;
-      const hasRead = checkpoint.files.read && checkpoint.files.read.length > 0;
+      const MAX_HOT = 15;
+      const MAX_READ = 20;
+      const hotFiles = checkpoint.files.hot?.slice(0, MAX_HOT) ?? [];
+      const readFiles = checkpoint.files.read?.slice(0, MAX_READ) ?? [];
+      const hasHot = hotFiles.length > 0;
+      const hasRead = readFiles.length > 0;
 
       if (hasHot || hasRead) {
         const lines: string[] = ['### Active Files'];
 
         if (hasHot) {
           lines.push('**Hot:**');
-          for (const f of checkpoint.files.hot) {
+          for (const f of hotFiles) {
             const action = f.last_action ? ` — ${f.last_action}` : '';
             lines.push(`- ${f.path}${action}`);
           }
+          const hotTotal = checkpoint.files.hot?.length ?? 0;
+          if (hotTotal > MAX_HOT) lines.push(`_(${hotTotal - MAX_HOT} more)_`);
         }
 
         if (hasRead) {
           if (hasHot) lines.push('');
           lines.push('**Read:**');
-          for (const f of checkpoint.files.read) {
+          for (const f of readFiles) {
             lines.push(`- ${f}`);
           }
+          const readTotal = checkpoint.files.read?.length ?? 0;
+          if (readTotal > MAX_READ) lines.push(`_(${readTotal - MAX_READ} more)_`);
         }
 
         sections.push(lines.join('\n'));
