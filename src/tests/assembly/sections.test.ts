@@ -6,6 +6,7 @@ import {
   formatIdentitySection,
   formatProjectSection,
   formatCheckpointSection,
+  renderSessionContinuity,
   formatLearningsSection,
   formatHotFilesSection,
   formatGsdSection,
@@ -425,5 +426,135 @@ describe('formatTopicPivotSection', () => {
   it('is non-throwing on error', () => {
     expect(() => formatTopicPivotSection({} as any)).not.toThrow();
     expect(() => formatTopicPivotSection({ shift: null } as any)).not.toThrow();
+  });
+});
+
+// --- renderSessionContinuity ---
+
+describe('renderSessionContinuity', () => {
+  it('returns null when no handoff and no sessions dir', () => {
+    expect(renderSessionContinuity()).toBeNull();
+    expect(renderSessionContinuity(undefined, undefined)).toBeNull();
+  });
+
+  it('returns null when handoff path does not exist', () => {
+    expect(renderSessionContinuity('/nonexistent/ACTIVE.md')).toBeNull();
+  });
+
+  it('returns null when sessions dir does not exist', () => {
+    expect(renderSessionContinuity(undefined, '/nonexistent/sessions')).toBeNull();
+  });
+
+  it('extracts task from handoff Current State section', () => {
+    const dir = mkDir('cont-task');
+    const handoffPath = path.join(dir, 'ACTIVE.md');
+    fs.writeFileSync(handoffPath, `# Handoff: Build Pipeline\n\n## Current State\n\nAll 11 phases implemented. Build clean.\n\n## Other\nStuff`, 'utf-8');
+    const result = renderSessionContinuity(handoffPath);
+    expect(result).not.toBeNull();
+    expect(result).toContain('## Session Continuity');
+    expect(result).toContain('**Task:**');
+    expect(result).toContain('All 11 phases implemented');
+  });
+
+  it('extracts progress from completed checkbox items', () => {
+    const dir = mkDir('cont-progress');
+    const handoffPath = path.join(dir, 'ACTIVE.md');
+    fs.writeFileSync(handoffPath, `# Handoff\n\n## Current State\nWorking on things\n\n## Done\n- [x] Phase 1 complete\n- [x] Phase 2 complete\n- [ ] Phase 3 pending\n`, 'utf-8');
+    const result = renderSessionContinuity(handoffPath);
+    expect(result).not.toBeNull();
+    expect(result).toContain('**Progress:**');
+    expect(result).toContain('Phase 1 complete');
+    expect(result).toContain('Phase 2 complete');
+    // Should not include unchecked items
+    expect(result).not.toContain('Phase 3 pending');
+  });
+
+  it('extracts where we left off from session log', () => {
+    const dir = mkDir('cont-session');
+    const sessionsDir = path.join(dir, 'sessions');
+    fs.mkdirSync(sessionsDir, { recursive: true });
+    fs.writeFileSync(
+      path.join(sessionsDir, '2026-03-13_session-1.md'),
+      `# Session 1\n\n## Where We Left Off\nFinished the assembler refactor. Next: write tests.\n\n## Other\nStuff`,
+      'utf-8'
+    );
+    const result = renderSessionContinuity(undefined, sessionsDir);
+    expect(result).not.toBeNull();
+    expect(result).toContain('**Left off:**');
+    expect(result).toContain('Finished the assembler refactor');
+  });
+
+  it('reads the most recent session log by filename sort', () => {
+    const dir = mkDir('cont-recent');
+    const sessionsDir = path.join(dir, 'sessions');
+    fs.mkdirSync(sessionsDir, { recursive: true });
+    fs.writeFileSync(
+      path.join(sessionsDir, '2026-03-12_session-1.md'),
+      `# Old Session\n\n## Where We Left Off\nOld session work.\n`,
+      'utf-8'
+    );
+    fs.writeFileSync(
+      path.join(sessionsDir, '2026-03-13_session-2.md'),
+      `# New Session\n\n## Where We Left Off\nNew session work.\n`,
+      'utf-8'
+    );
+    const result = renderSessionContinuity(undefined, sessionsDir);
+    expect(result).toContain('New session work');
+    expect(result).not.toContain('Old session work');
+  });
+
+  it('skips compact files in session directory', () => {
+    const dir = mkDir('cont-compact');
+    const sessionsDir = path.join(dir, 'sessions');
+    fs.mkdirSync(sessionsDir, { recursive: true });
+    // Only a compact file — should be skipped
+    fs.writeFileSync(
+      path.join(sessionsDir, '2026-03-13_compact-1.md'),
+      `# Compact\n\n## Where We Left Off\nCompact data.\n`,
+      'utf-8'
+    );
+    fs.writeFileSync(
+      path.join(sessionsDir, '2026-03-12_session-1.md'),
+      `# Session\n\n## Where We Left Off\nReal session.\n`,
+      'utf-8'
+    );
+    const result = renderSessionContinuity(undefined, sessionsDir);
+    expect(result).toContain('Real session');
+    expect(result).not.toContain('Compact data');
+  });
+
+  it('combines handoff and session log data', () => {
+    const dir = mkDir('cont-combined');
+    const handoffPath = path.join(dir, 'ACTIVE.md');
+    fs.writeFileSync(handoffPath, `# Handoff\n\n## Current State\nBuilding v3 context system.\n\n- [x] Phase 1 done\n- [x] Phase 2 done\n`, 'utf-8');
+    const sessionsDir = path.join(dir, 'sessions');
+    fs.mkdirSync(sessionsDir, { recursive: true });
+    fs.writeFileSync(
+      path.join(sessionsDir, '2026-03-13_session-1.md'),
+      `# Session\n\n## Where We Left Off\nAssembler tests passing.\n`,
+      'utf-8'
+    );
+    const result = renderSessionContinuity(handoffPath, sessionsDir);
+    expect(result).toContain('**Task:**');
+    expect(result).toContain('Building v3 context system');
+    expect(result).toContain('**Progress:**');
+    expect(result).toContain('**Left off:**');
+    expect(result).toContain('Assembler tests passing');
+  });
+
+  it('caps output at ~1200 chars', () => {
+    const dir = mkDir('cont-cap');
+    const handoffPath = path.join(dir, 'ACTIVE.md');
+    // Create a very long handoff
+    const longContent = `# Handoff\n\n## Current State\n${'A'.repeat(500)}\n\n- [x] ${'B'.repeat(200)}\n- [x] ${'C'.repeat(200)}\n- [x] ${'D'.repeat(200)}\n- [x] ${'E'.repeat(200)}\n- [x] ${'F'.repeat(200)}\n`;
+    fs.writeFileSync(handoffPath, longContent, 'utf-8');
+    const result = renderSessionContinuity(handoffPath);
+    expect(result).not.toBeNull();
+    expect(result!.length).toBeLessThanOrEqual(1200);
+  });
+
+  it('is non-throwing on error', () => {
+    expect(() => renderSessionContinuity('/bad/path', '/bad/dir')).not.toThrow();
+    expect(renderSessionContinuity('/bad/path', '/bad/dir')).toBeNull();
   });
 });

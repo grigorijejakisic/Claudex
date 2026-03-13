@@ -1,5 +1,5 @@
 /**
- * 10 stateless section formatters for the assembly pipeline.
+ * 11 stateless section formatters for the assembly pipeline.
  * All are pure functions taking pre-fetched data, returning string | null.
  * All non-throwing (return null on error).
  * @see Architecture Section 7.2
@@ -15,7 +15,7 @@ import type { ObservationRow } from '../core/observations.js';
 import type { GsdState } from '../gsd/types.js';
 import type { TokenUsage } from '../shared/types.js';
 import type { TopicShiftResult } from '../intelligence/topic-shift.js';
-import { getIdentityDir, getHandoffsDir } from '../shared/paths.js';
+import { getIdentityDir, getHandoffsDir, getSessionsDir } from '../shared/paths.js';
 
 /**
  * Priority 1: Identity section from USER.md.
@@ -186,6 +186,165 @@ export function formatRecentSection(observations: ObservationRow[]): string | nu
     return `## Recent Observations\n${bullets.join('\n')}`;
   } catch {
     return null;
+  }
+}
+
+/**
+ * Priority 2.5: Session continuity — compressed handoff + latest session log.
+ * Reads ACTIVE.md and the most recent session log, compresses into ~300 tokens.
+ * Returns null if no handoff exists (cost: 0). Non-throwing.
+ * @see Upgrade 4
+ */
+export function renderSessionContinuity(handoffPath?: string, sessionsDir?: string): string | null {
+  try {
+    let handoffContent: string | null = null;
+    let sessionContent: string | null = null;
+
+    // 1. Read handoff
+    if (handoffPath) {
+      try {
+        if (fs.existsSync(handoffPath)) {
+          handoffContent = fs.readFileSync(handoffPath, 'utf-8');
+        }
+      } catch { /* skip */ }
+    }
+
+    // 2. Read most recent session log (by filename sort, descending)
+    if (sessionsDir) {
+      try {
+        if (fs.existsSync(sessionsDir)) {
+          const files = fs.readdirSync(sessionsDir)
+            .filter(f => f.endsWith('.md') && !f.includes('compact'))
+            .sort();
+          if (files.length > 0) {
+            const latestFile = files[files.length - 1];
+            sessionContent = fs.readFileSync(path.join(sessionsDir, latestFile), 'utf-8');
+          }
+        }
+      } catch { /* skip */ }
+    }
+
+    if (!handoffContent && !sessionContent) return null;
+
+    const parts: string[] = ['## Session Continuity'];
+
+    // Extract current task from handoff (first heading after "What I Was Working On" or "Current State")
+    if (handoffContent) {
+      const taskLine = extractSection(handoffContent, ['## Current State', '## What I Was Working On', '# Handoff:']);
+      if (taskLine) {
+        parts.push(`**Task:** ${taskLine}`);
+      }
+
+      // Extract progress from handoff (checkbox items from "COMPLETED" or numbered items)
+      const progress = extractProgress(handoffContent);
+      if (progress.length > 0) {
+        parts.push('**Progress:**');
+        for (const item of progress.slice(0, 5)) {
+          parts.push(`- ${item}`);
+        }
+      }
+
+      // Extract pending decisions
+      const pending = extractSection(handoffContent, ['## DEFERRED', '## Key Decisions']);
+      if (pending) {
+        parts.push(`**Pending:** ${pending}`);
+      }
+    }
+
+    // Extract "Where We Left Off" from session log
+    if (sessionContent) {
+      const whereLeftOff = extractSection(sessionContent, ['## Where We Left Off', '## Notes for Next Session']);
+      if (whereLeftOff) {
+        parts.push(`**Left off:** ${whereLeftOff}`);
+      }
+    }
+
+    // If we only got the header and nothing else, skip
+    if (parts.length <= 1) return null;
+
+    // Hard cap at ~1200 chars (~300 tokens)
+    let result = parts.join('\n');
+    if (result.length > 1200) {
+      result = result.slice(0, 1197) + '...';
+    }
+
+    return result;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Extracts the first non-empty paragraph after a matching heading.
+ * Looks for the first match among headingPrefixes, then returns
+ * the first 2 content lines after that heading (trimmed, joined).
+ * Returns null if no heading matches. Non-throwing.
+ */
+function extractSection(content: string, headingPrefixes: string[]): string | null {
+  try {
+    const lines = content.split('\n');
+    for (const prefix of headingPrefixes) {
+      const idx = lines.findIndex(l => l.trim().startsWith(prefix));
+      if (idx === -1) continue;
+      // Collect up to 2 non-empty content lines after the heading
+      const collected: string[] = [];
+      for (let i = idx + 1; i < lines.length && collected.length < 2; i++) {
+        const line = lines[i].trim();
+        if (!line) continue;
+        // Stop at next heading
+        if (line.startsWith('#')) break;
+        // Skip front-matter markers and tables
+        if (line.startsWith('---') || line.startsWith('|')) continue;
+        collected.push(line);
+      }
+      if (collected.length > 0) return collected.join(' ');
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Extracts progress items from handoff content.
+ * Looks for completed checkbox items `- [x]` and recent bullet items from
+ * sections titled "COMPLETED" or "Progress Made".
+ * Returns array of progress strings (max 5). Non-throwing.
+ */
+function extractProgress(content: string): string[] {
+  try {
+    const results: string[] = [];
+    const lines = content.split('\n');
+
+    // Strategy 1: Find [x] checkbox items
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (trimmed.startsWith('- [x]') || trimmed.startsWith('- [X]')) {
+        results.push(trimmed.replace(/^- \[[xX]\]\s*/, ''));
+        if (results.length >= 5) return results;
+      }
+    }
+
+    // Strategy 2: Find items under "COMPLETED" or "Progress" heading
+    if (results.length === 0) {
+      const headingIdx = lines.findIndex(l => {
+        const t = l.trim().toUpperCase();
+        return t.includes('COMPLETED') || t.includes('PROGRESS MADE') || t.includes('PROGRESS');
+      });
+      if (headingIdx >= 0) {
+        for (let i = headingIdx + 1; i < lines.length && results.length < 5; i++) {
+          const line = lines[i].trim();
+          if (line.startsWith('#')) break;
+          if (line.startsWith('- ')) {
+            results.push(line.replace(/^- /, ''));
+          }
+        }
+      }
+    }
+
+    return results;
+  } catch {
+    return [];
   }
 }
 
