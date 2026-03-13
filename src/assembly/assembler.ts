@@ -11,6 +11,7 @@ import {
   formatIdentitySection,
   formatProjectSection,
   formatCheckpointSection,
+  renderSessionContinuity,
   formatLearningsSection,
   formatHotFilesSection,
   formatGsdSection,
@@ -22,6 +23,8 @@ import {
 } from './sections.js';
 import { getPressureZone } from '../shared/constants.js';
 import { emitTelemetry, getToolCostEstimates } from '../observability/telemetry.js';
+import { getHandoffsDir, getSessionsDir } from '../shared/paths.js';
+import * as path from 'path';
 import { redactContent } from '../extraction/redaction.js';
 import { loadCheckpoint, loadFromFile } from '../checkpoint/loader.js';
 import { renderCheckpointMarkdown } from '../checkpoint/inject.js';
@@ -103,6 +106,23 @@ export function assembleFullContext(params: FullAssemblyParams): InjectPayload {
       }
     }
 
+    // Priority 2.5: Session continuity (handoff + latest session log, compressed)
+    let handoffPath: string | undefined;
+    let sessionsDir: string | undefined;
+    try {
+      handoffPath = path.join(getHandoffsDir(params.projectDir), 'ACTIVE.md');
+      sessionsDir = getSessionsDir(params.projectDir);
+    } catch { /* non-fatal */ }
+    const continuity = renderSessionContinuity(handoffPath, sessionsDir);
+    if (continuity) {
+      const cost = estimateTokens(continuity);
+      if (cost <= budget) {
+        sections.push(continuity);
+        budget -= cost;
+        sources.push('session_continuity');
+      }
+    }
+
     // Priority 3: Checkpoint
     const checkpoint = loadCheckpoint(params.db, params.projectDir, undefined, params.project);
     const checkpointSection = formatCheckpointSection(checkpoint);
@@ -156,16 +176,36 @@ export function assembleFullContext(params: FullAssemblyParams): InjectPayload {
       }
     }
 
-    // Priority 7: FTS5 search
+    // Priority 7: FTS5 search with composite retrieval scoring (Upgrade 9)
+    // score = relevance * 0.5 + recency * 0.3 + importance * 0.2
     const query = params.searchQuery ?? checkpoint?.thread?.topic ?? null;
     if (query && params.config.features.fts5_search) {
       try {
-        const fts5Results = searchObservations(params.db, query, params.project, { limit: 10 });
+        const fts5Results = searchObservations(params.db, query, params.project, { limit: 20 });
+        // Apply composite scoring: relevance (from rank order) + recency + importance
+        const nowEpoch = Date.now() / 1000;
+        const scored = fts5Results.map((obs, idx) => {
+          // Relevance: normalize rank position to 0-1 (first result = 1.0)
+          const relevance = fts5Results.length > 1
+            ? 1.0 - (idx / (fts5Results.length - 1))
+            : 1.0;
+          // Recency: half-life of 24 hours
+          const ageHours = Math.max(0, (nowEpoch - obs.timestamp_epoch) / 3600);
+          const recency = Math.pow(0.5, ageHours / 24);
+          // Importance: normalize from 0-5 scale to 0-1
+          const importance = Math.min(1.0, Math.max(0, (obs.importance ?? 0) / 5));
+          const compositeScore = relevance * 0.5 + recency * 0.3 + importance * 0.2;
+          return { obs, compositeScore };
+        });
+        // Sort by composite score descending, take top 10
+        scored.sort((a, b) => b.compositeScore - a.compositeScore);
+        const rankedResults = scored.slice(0, 10).map(s => s.obs);
+
         // Try full mode first, fall back to reference mode if over budget
-        let fts5Section = formatFts5Section(fts5Results, false);
+        let fts5Section = formatFts5Section(rankedResults, false);
         let fts5Cost = fts5Section ? estimateTokens(fts5Section) : 0;
         if (fts5Cost > budget && fts5Section) {
-          fts5Section = formatFts5Section(fts5Results, true);
+          fts5Section = formatFts5Section(rankedResults, true);
           fts5Cost = fts5Section ? estimateTokens(fts5Section) : 0;
         }
         if (fts5Section && fts5Cost <= budget) {
@@ -173,7 +213,7 @@ export function assembleFullContext(params: FullAssemblyParams): InjectPayload {
           budget -= fts5Cost;
           sources.push('fts5');
           // Track FTS5 observation IDs for dedup with Recent section
-          fts5ObsIds = new Set(fts5Results.map(o => o.id));
+          fts5ObsIds = new Set(rankedResults.map(o => o.id));
         } else if (fts5Section) {
           skipped.push({ priority: 7, section: fts5Section, name: 'fts5' });
         }
