@@ -89,7 +89,7 @@ export function patchSettingsJson(
       return entry.hooks.some(
         (h) =>
           typeof h.command === 'string' &&
-          (h.command.includes('claudex') || h.command.includes('CLAUDEXv3'))
+          (h.command.toLowerCase().includes('claudex'))
       );
     });
 

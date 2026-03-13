@@ -227,10 +227,39 @@ CREATE INDEX IF NOT EXISTS idx_telemetry_kind ON telemetry(event_kind, timestamp
 `;
 
 /**
+ * Upgrades v2 tables in-place when v3 opens the same database file.
+ * Adds missing columns and renames changed ones so CREATE INDEX succeeds.
+ * Idempotent — safe to call on a fresh or already-upgraded DB.
+ */
+function upgradeV2SchemaInPlace(db: Database): void {
+  // Check if sessions table exists with v2 schema (has started_at_epoch, lacks created_at_epoch)
+  const sessionCols = db.pragma('table_info(sessions)') as Array<{ name: string }>;
+  if (sessionCols.length === 0) return; // Table doesn't exist yet — fresh install
+
+  const colNames = new Set(sessionCols.map(c => c.name));
+
+  // sessions: v2 has started_at_epoch, v3 expects created_at_epoch
+  if (colNames.has('started_at_epoch') && !colNames.has('created_at_epoch')) {
+    db.exec('ALTER TABLE sessions RENAME COLUMN started_at_epoch TO created_at_epoch');
+  }
+  // sessions: v3 needs 'source' column
+  if (!colNames.has('source')) {
+    db.exec("ALTER TABLE sessions ADD COLUMN source TEXT");
+  }
+
+  // pressure_scores: check for v2 WARM temperature values
+  try {
+    db.exec("UPDATE pressure_scores SET temperature = 'COLD' WHERE temperature NOT IN ('HOT', 'COLD')");
+  } catch { /* table may not exist */ }
+}
+
+/**
  * Initializes the complete v3 schema: 9 tables + telemetry + FTS5 + triggers + indexes.
  * Records schema version 300. Idempotent (all IF NOT EXISTS).
+ * Handles in-place upgrade when opening an existing v2 database at the same path.
  */
 export function initializeSchema(db: Database): void {
+  upgradeV2SchemaInPlace(db);
   db.exec(SCHEMA_V3);
   db.exec(TELEMETRY_SCHEMA);
 
