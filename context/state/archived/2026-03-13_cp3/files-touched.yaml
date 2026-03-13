@@ -1,0 +1,11 @@
+changed:
+  - path: <project>/UNIFIED_REVIEW_REPORT.md
+    action: Write
+    summary: 'Write: UNIFIED_REVIEW_REPORT.md'
+  - path: <project>/unified_review_quality.json
+    action: Write
+    summary: 'Write: unified_review_quality.json'
+read: []
+hot:
+  - <project>/UNIFIED_REVIEW_REPORT.md
+  - <project>/unified_review_quality.json

@@ -1,0 +1,32 @@
+summary: ''
+key_exchanges:
+  - role: agent
+    gist: 'Edit: Edit: scoring.test.ts'
+  - role: agent
+    gist: 'Edit: Edit: decision-capture.test.ts'
+  - role: agent
+    gist: 'Edit: Edit: observations.test.ts'
+  - role: agent
+    gist: 'Write: Write: fetch-utils.test.ts'
+  - role: agent
+    gist: 'Edit: Edit: crud-modules.test.ts'
+  - role: agent
+    gist: 'Edit: Edit: decision-capture.test.ts'
+  - role: agent
+    gist: 'Edit: Edit: enrichment.test.ts'
+  - role: agent
+    gist: 'Bash: Run: sleep 90 && wc -c "C:/Users/Grigorije/AppData/Local/Temp/...'
+  - role: agent
+    gist: 'Edit: Edit: sessions.test.ts'
+  - role: agent
+    gist: 'Bash: Run: wc -c "C:/Users/Grigorije/AppData/Local/Temp/unified-revi...'
+  - role: agent
+    gist: 'Edit: Edit: enrichment.test.ts'
+  - role: agent
+    gist: 'Bash: Run: ps aux 2>/dev/null | grep -i "run-all\|run-intelligence\|...'
+  - role: agent
+    gist: 'Edit: Edit: extractor.test.ts'
+  - role: agent
+    gist: 'Bash: Run: ps aux 2>/dev/null | grep -i "node" | grep -v grep'
+  - role: user
+    gist: where are we?

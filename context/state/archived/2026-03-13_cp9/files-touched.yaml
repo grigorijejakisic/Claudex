@@ -1,0 +1,68 @@
+changed:
+  - path: <project>/src/extraction/redaction.ts
+    action: Edit
+    summary: 'Edit: redaction.ts'
+  - path: <project>/src/tests/embeddings/embedding-provider.test.ts
+    action: Edit
+    summary: 'Edit: embedding-provider.test.ts'
+  - path: <project>/src/tests/embeddings/embedding-provider.test.ts
+    action: Edit
+    summary: 'Edit: embedding-provider.test.ts'
+  - path: <project>/src/extraction/redaction.ts
+    action: Edit
+    summary: 'Edit: redaction.ts'
+  - path: <project>/src/tests/intelligence/decision-capture.test.ts
+    action: Edit
+    summary: 'Edit: decision-capture.test.ts'
+  - path: <project>/src/embeddings/embedding-provider.ts
+    action: Edit
+    summary: 'Edit: embedding-provider.ts'
+  - path: <project>/src/tests/intelligence/decision-capture.test.ts
+    action: Edit
+    summary: 'Edit: decision-capture.test.ts'
+  - path: <project>/src/tests/intelligence/decision-capture.test.ts
+    action: Edit
+    summary: 'Edit: decision-capture.test.ts'
+  - path: <project>/src/tests/extraction/scoring.test.ts
+    action: Edit
+    summary: 'Edit: scoring.test.ts'
+  - path: <project>/src/tests/intelligence/decision-capture.test.ts
+    action: Edit
+    summary: 'Edit: decision-capture.test.ts'
+  - path: <project>/src/tests/core/observations.test.ts
+    action: Edit
+    summary: 'Edit: observations.test.ts'
+  - path: <project>/src/shared/fetch-utils.test.ts
+    action: Write
+    summary: 'Write: fetch-utils.test.ts'
+  - path: <project>/src/tests/core/crud-modules.test.ts
+    action: Edit
+    summary: 'Edit: crud-modules.test.ts'
+  - path: <project>/src/tests/intelligence/decision-capture.test.ts
+    action: Edit
+    summary: 'Edit: decision-capture.test.ts'
+  - path: <project>/src/tests/intelligence/enrichment.test.ts
+    action: Edit
+    summary: 'Edit: enrichment.test.ts'
+  - path: <project>/src/tests/core/sessions.test.ts
+    action: Edit
+    summary: 'Edit: sessions.test.ts'
+  - path: <project>/src/tests/intelligence/enrichment.test.ts
+    action: Edit
+    summary: 'Edit: enrichment.test.ts'
+  - path: <project>/src/tests/extraction/extractor.test.ts
+    action: Edit
+    summary: 'Edit: extractor.test.ts'
+read: []
+hot:
+  - <project>/src/extraction/redaction.ts
+  - <project>/src/tests/embeddings/embedding-provider.test.ts
+  - <project>/src/tests/intelligence/decision-capture.test.ts
+  - <project>/src/embeddings/embedding-provider.ts
+  - <project>/src/tests/extraction/scoring.test.ts
+  - <project>/src/tests/core/observations.test.ts
+  - <project>/src/shared/fetch-utils.test.ts
+  - <project>/src/tests/core/crud-modules.test.ts
+  - <project>/src/tests/intelligence/enrichment.test.ts
+  - <project>/src/tests/core/sessions.test.ts
+  - <project>/src/tests/extraction/extractor.test.ts

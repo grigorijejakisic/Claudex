@@ -59,10 +59,12 @@ export function promoteLearnings(params: {
       }
     }
 
-    // Cap enforcement
+    // Cap enforcement — count and prune from the same scope (project + agent_id)
     let pruned = 0;
-    const allLearnings = getLearningsByProject(db, project, { limit: 200 });
-    const excess = allLearnings.length - MAX_LEARNINGS_PER_PROJECT;
+    const scopedCount = (db.prepare(
+      `SELECT COUNT(*) AS cnt FROM learnings WHERE project = ? AND agent_id = ?`
+    ).get(project, agent) as { cnt: number }).cnt;
+    const excess = scopedCount - MAX_LEARNINGS_PER_PROJECT;
 
     if (excess > 0) {
       // Delete lowest promotion_count + oldest entries

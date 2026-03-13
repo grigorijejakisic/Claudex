@@ -9,6 +9,7 @@ const allEntryPoints = [
   'src/adapters/cc-hooks/pre-compact.ts',
   'src/adapters/cc-hooks/session-end.ts',
   'src/cli/setup.ts',
+  'src/cli/dashboard.ts',
   'src/adapters/openclaw-bridge/plugin-entry.ts',
 ];
 
@@ -32,6 +33,7 @@ async function build() {
     platform: 'node',
     target: 'node20',
     outdir: 'dist',
+    outExtension: { '.js': '.cjs' },
     external: ['better-sqlite3'],
     logLevel: 'info',
   });

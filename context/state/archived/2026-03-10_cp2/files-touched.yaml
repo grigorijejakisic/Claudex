@@ -1,0 +1,184 @@
+changed:
+  - path: <project>/ARCHITECTURE.md
+    action: Edit
+    summary: 'Edit: ARCHITECTURE.md'
+  - path: <project>/ARCHITECTURE.md
+    action: Edit
+    summary: 'Edit: ARCHITECTURE.md'
+  - path: <project>/ARCHITECTURE.md
+    action: Edit
+    summary: 'Edit: ARCHITECTURE.md'
+  - path: <project>/ARCHITECTURE.md
+    action: Edit
+    summary: 'Edit: ARCHITECTURE.md'
+  - path: <project>/ARCHITECTURE.md
+    action: Edit
+    summary: 'Edit: ARCHITECTURE.md'
+  - path: <project>/ARCHITECTURE.md
+    action: Edit
+    summary: 'Edit: ARCHITECTURE.md'
+  - path: <project>/ARCHITECTURE.md
+    action: Edit
+    summary: 'Edit: ARCHITECTURE.md'
+  - path: <project>/ARCHITECTURE.md
+    action: Edit
+    summary: 'Edit: ARCHITECTURE.md'
+  - path: <project>/ARCHITECTURE.md
+    action: Edit
+    summary: 'Edit: ARCHITECTURE.md'
+  - path: <project>/ARCHITECTURE.md
+    action: Edit
+    summary: 'Edit: ARCHITECTURE.md'
+  - path: <project>/ARCHITECTURE.md
+    action: Edit
+    summary: 'Edit: ARCHITECTURE.md'
+  - path: <project>/ARCHITECTURE.md
+    action: Edit
+    summary: 'Edit: ARCHITECTURE.md'
+  - path: <project>/ARCHITECTURE.md
+    action: Edit
+    summary: 'Edit: ARCHITECTURE.md'
+  - path: <project>/ARCHITECTURE.md
+    action: Edit
+    summary: 'Edit: ARCHITECTURE.md'
+  - path: <project>/ARCHITECTURE.md
+    action: Edit
+    summary: 'Edit: ARCHITECTURE.md'
+  - path: <project>/ARCHITECTURE.md
+    action: Edit
+    summary: 'Edit: ARCHITECTURE.md'
+  - path: <project>/ARCHITECTURE.md
+    action: Edit
+    summary: 'Edit: ARCHITECTURE.md'
+  - path: <project>/ARCHITECTURE.md
+    action: Edit
+    summary: 'Edit: ARCHITECTURE.md'
+  - path: <project>/ARCHITECTURE.md
+    action: Edit
+    summary: 'Edit: ARCHITECTURE.md'
+  - path: <project>/ARCHITECTURE.md
+    action: Edit
+    summary: 'Edit: ARCHITECTURE.md'
+  - path: <project>/ARCHITECTURE.md
+    action: Edit
+    summary: 'Edit: ARCHITECTURE.md'
+  - path: <project>/ARCHITECTURE.md
+    action: Edit
+    summary: 'Edit: ARCHITECTURE.md'
+  - path: <project>/ARCHITECTURE.md
+    action: Edit
+    summary: 'Edit: ARCHITECTURE.md'
+  - path: <project>/ARCHITECTURE.md
+    action: Edit
+    summary: 'Edit: ARCHITECTURE.md'
+  - path: <project>/ARCHITECTURE.md
+    action: Edit
+    summary: 'Edit: ARCHITECTURE.md'
+  - path: <project>/ARCHITECTURE.md
+    action: Edit
+    summary: 'Edit: ARCHITECTURE.md'
+  - path: <project>/ARCHITECTURE.md
+    action: Edit
+    summary: 'Edit: ARCHITECTURE.md'
+  - path: <project>/ARCHITECTURE.md
+    action: Edit
+    summary: 'Edit: ARCHITECTURE.md'
+  - path: <project>/ARCHITECTURE.md
+    action: Edit
+    summary: 'Edit: ARCHITECTURE.md'
+  - path: <project>/ARCHITECTURE.md
+    action: Edit
+    summary: 'Edit: ARCHITECTURE.md'
+  - path: <project>/ARCHITECTURE.md
+    action: Edit
+    summary: 'Edit: ARCHITECTURE.md'
+  - path: <project>/ARCHITECTURE.md
+    action: Edit
+    summary: 'Edit: ARCHITECTURE.md'
+  - path: <project>/ARCHITECTURE.md
+    action: Edit
+    summary: 'Edit: ARCHITECTURE.md'
+  - path: <project>/ARCHITECTURE.md
+    action: Edit
+    summary: 'Edit: ARCHITECTURE.md'
+  - path: <project>/ARCHITECTURE.md
+    action: Edit
+    summary: 'Edit: ARCHITECTURE.md'
+  - path: <project>/ARCHITECTURE.md
+    action: Edit
+    summary: 'Edit: ARCHITECTURE.md'
+  - path: <project>/ARCHITECTURE.md
+    action: Edit
+    summary: 'Edit: ARCHITECTURE.md'
+  - path: <project>/ARCHITECTURE.md
+    action: Edit
+    summary: 'Edit: ARCHITECTURE.md'
+  - path: <project>/ARCHITECTURE.md
+    action: Edit
+    summary: 'Edit: ARCHITECTURE.md'
+  - path: <project>/context/sessions/2026-03-10_session-2.md
+    action: Write
+    summary: 'Write: 2026-03-10_session-2.md'
+  - path: <project>/context/handoffs/ACTIVE.md
+    action: Write
+    summary: 'Write: ACTIVE.md'
+  - path: <project>/context/sessions/2026-03-10_session-2.md
+    action: Edit
+    summary: 'Edit: 2026-03-10_session-2.md'
+  - path: <project>/context/sessions/2026-03-10_session-2.md
+    action: Edit
+    summary: 'Edit: 2026-03-10_session-2.md'
+  - path: C:\Users\[USER]\.claudex\memory\daily\2026-03-10.md
+    action: Write
+    summary: 'Write: 2026-03-10.md'
+  - path: C:\Users\[USER]\.claudex\memory\topics\context-injection-patterns.md
+    action: Edit
+    summary: 'Edit: context-injection-patterns.md'
+  - path: C:\Users\[USER]\.claudex\memory\topics\context-injection-patterns.md
+    action: Edit
+    summary: 'Edit: context-injection-patterns.md'
+  - path: C:\Users\[USER]\.claudex\memory\topics\codex-mcp.md
+    action: Edit
+    summary: 'Edit: codex-mcp.md'
+  - path: C:\Users\[USER]\.claudex\memory\MEMORY.md
+    action: Edit
+    summary: 'Edit: MEMORY.md'
+  - path: C:\Users\[USER]\.claudex\memory\MEMORY.md
+    action: Edit
+    summary: 'Edit: MEMORY.md'
+  - path: <project>/PROJECT_PRIMER.md
+    action: Write
+    summary: 'Write: PROJECT_PRIMER.md'
+  - path: <project>/.planning/PROJECT.md
+    action: Write
+    summary: 'Write: PROJECT.md'
+  - path: <project>/.planning/config.json
+    action: Write
+    summary: 'Write: config.json'
+  - path: <project>/.planning/REQUIREMENTS.md
+    action: Write
+    summary: 'Write: REQUIREMENTS.md'
+  - path: <project>/.planning/ROADMAP.md
+    action: Write
+    summary: 'Write: ROADMAP.md'
+  - path: <project>/.planning/STATE.md
+    action: Write
+    summary: 'Write: STATE.md'
+  - path: <project>/.planning/REQUIREMENTS.md
+    action: Write
+    summary: 'Write: REQUIREMENTS.md'
+read: []
+hot:
+  - <project>/ARCHITECTURE.md
+  - <project>/context/sessions/2026-03-10_session-2.md
+  - <project>/context/handoffs/ACTIVE.md
+  - C:\Users\[USER]\.claudex\memory\daily\2026-03-10.md
+  - C:\Users\[USER]\.claudex\memory\topics\context-injection-patterns.md
+  - C:\Users\[USER]\.claudex\memory\topics\codex-mcp.md
+  - C:\Users\[USER]\.claudex\memory\MEMORY.md
+  - <project>/PROJECT_PRIMER.md
+  - <project>/.planning/PROJECT.md
+  - <project>/.planning/config.json
+  - <project>/.planning/REQUIREMENTS.md
+  - <project>/.planning/ROADMAP.md
+  - <project>/.planning/STATE.md

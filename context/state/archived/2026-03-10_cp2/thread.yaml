@@ -1,0 +1,36 @@
+summary: ''
+key_exchanges:
+  - role: user
+    gist: is there anything we need for tomorrow?
+  - role: agent
+    gist: Responded to user query
+  - role: user
+    gist: Corleanus github is exactly the place for this!
+  - role: agent
+    gist: Responded to user query
+  - role: user
+    gist: one more thing, this could be done in few big waves with /team, no?
+  - role: agent
+    gist: Responded to user query
+  - role: user
+    gist: how many agents per wave can we have? this machine is a beast! We can run how much agents you want
+  - role: agent
+    gist: Responded to user query
+  - role: user
+    gist: and /auto-orchestrate would be great intro into this multiagentic waves right?
+  - role: agent
+    gist: Responded to user query
+  - role: user
+    gist: wait, you can run new project and create it on your own! Because you have the most knowledge right n...
+  - role: agent
+    gist: 'Write: Write: PROJECT.md'
+  - role: agent
+    gist: 'Write: Write: config.json'
+  - role: agent
+    gist: 'Write: Write: REQUIREMENTS.md'
+  - role: agent
+    gist: 'Write: Write: ROADMAP.md'
+  - role: agent
+    gist: 'Write: Write: STATE.md'
+  - role: agent
+    gist: 'Write: Write: REQUIREMENTS.md'

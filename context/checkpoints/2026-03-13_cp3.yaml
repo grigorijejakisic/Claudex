@@ -1,0 +1,184 @@
+schema: claudex/checkpoint
+version: 2
+meta:
+  checkpoint_id: 2026-03-13_cp3
+  session_id: 2867d4ba-0d5b-4a53-9e63-5bb1c4d03124
+  scope: project:claudex-v3
+  created_at: 2026-03-13T00:37:37.040Z
+  created_at_epoch_ms: 1773362257040
+  trigger: auto-75pct
+  writer_version: 3.0.0
+  token_usage:
+    input_tokens: 1
+    output_tokens: 327
+    window_size: 200000
+    utilization: 0.82455
+  previous_checkpoint: 2026-03-13_cp2.yaml
+  session_log: null
+working:
+  task: ''
+  status: in_progress
+  branch: null
+  next_action: null
+decisions: []
+files:
+  changed:
+    - path: <project>/UNIFIED_REVIEW_REPORT.md
+      action: Write
+      summary: 'Write: UNIFIED_REVIEW_REPORT.md'
+    - path: <project>/unified_review_quality.json
+      action: Write
+      summary: 'Write: unified_review_quality.json'
+  read: []
+  hot:
+    - <project>/UNIFIED_REVIEW_REPORT.md
+    - <project>/unified_review_quality.json
+gsd:
+  active: true
+  milestone: null
+  phase: 11
+  phase_name: Deployment
+  phase_goal: Claudex v3 is running in production on both adapters, verified on fresh installs, with predecessor systems archived
+  plan_status: All 12 phases complete -- Claudex v3 fully implemented, tested, and deployment-ready
+  plan_number: 1
+  completion_pct: 92
+  requirements: []
+open_questions: []
+learnings: []
+thread:
+  summary: ''
+  key_exchanges:
+    - role: agent
+      gist: 'Bash: Run: file "C:/Users/Grigorije/AppData/Local/Temp/unified-revie...'
+    - role: agent
+      gist: 'Bash: Run: bash "C:/Users/Grigorije/AppData/Local/Temp/unified-revie...'
+    - role: agent
+      gist: 'Bash: Run: sleep 30 && for p in efficiency code-health; do echo "$p:...'
+    - role: agent
+      gist: 'Bash: Run: sleep 45 && wc -c "C:/Users/Grigorije/AppData/Local/Temp/...'
+    - role: agent
+      gist: 'Bash: Run: for f in quality acceptance security general reuse effici...'
+    - role: agent
+      gist: 'Write: Write: UNIFIED_REVIEW_REPORT.md'
+    - role: agent
+      gist: 'Bash: Run: rm -f "C:/Users/Grigorije/AppData/Local/Temp/unified-revi...'
+    - role: agent
+      gist: 'Bash: Run: sleep 45 && for p in efficiency code-health; do echo "$p:...'
+    - role: agent
+      gist: 'Bash: Run: sleep 120 && cat "C:\Users\GRIGOR~1\AppData\Local\Temp\cl...'
+    - role: agent
+      gist: 'Bash: Run: for p in quality acceptance security general reuse effici...'
+    - role: agent
+      gist: 'Bash: Run: wc -c "C:/Users/Grigorije/AppData/Local/Temp/unified-revi...'
+    - role: agent
+      gist: 'Write: Write: unified_review_quality.json'
+    - role: agent
+      gist: 'Bash: Run: sleep 120 && cat "C:/Users/Grigorije/AppData/Local/Temp/c...'
+    - role: agent
+      gist: Responded to user query
+    - role: user
+      gist: <task-notification>...
+pressure_snapshot:
+  hot:
+    - <project>/.planning/STATE.md
+    - <project>/ARCHITECTURE.md
+    - <project>/.planning/ROADMAP.md
+    - C:\Users\[USER]\.claude\teams\auto-gsd-pipeline\inboxes\team-lead.json
+    - <project>/src/core/migrations.ts
+    - <project>/src/adapters/openclaw-bridge/bridge-adapter.ts
+    - <project>/context/sessions/2026-03-10_session-2.md
+    - <project>/src/intelligence/enrichment.ts
+    - <project>/src/checkpoint/writer.ts
+    - <project>/src/cli/setup.ts
+    - <project>/src/tests/integration/e2e-flows.test.ts
+    - <project>/src/core/observations.ts
+    - <project>/src/tests/intelligence/enrichment.test.ts
+    - <project>/src/tests/adapters/openclaw-bridge/bridge-adapter.test.ts
+  warm:
+    - <project>/src/core/sessions.ts
+    - <project>/src/core/decisions.ts
+    - <project>/src/core/checkpoint-tracking.ts
+    - <project>/src/extraction/redaction.ts
+    - <project>/src/extraction/extractor.ts
+    - <project>/src/checkpoint/loader.ts
+    - <project>/src/tests/decay/pressure-decay.test.ts
+    - <project>/src/tests/cli/setup.test.ts
+    - <project>/src/tests/integration/cross-cutting.test.ts
+    - <project>/src/shared/config.ts
+    - <project>/src/core/pressure.ts
+    - <project>/src/tests/checkpoint/loader.test.ts
+    - <project>/context/handoffs/ACTIVE.md
+    - <project>/src/tests/core/migrations.test.ts
+    - <project>/src/core/thread.ts
+    - <project>/src/tests/intelligence/learnings-promoter.test.ts
+    - <project>/src/tests/embeddings/embedding-provider.test.ts
+    - <project>/src/tests/checkpoint/writer.test.ts
+    - <project>/src/adapters/cc-hooks/infrastructure.ts
+    - <project>/src/tests/cli/dashboard.test.ts
+    - <project>/build.ts
+    - <project>/src/shared/scope-detector.ts
+    - <project>/src/core/learnings.ts
+    - <project>/src/tests/core/sessions.test.ts
+    - <project>/src/tests/core/crud-modules.test.ts
+    - <project>/src/tests/extraction/extractor.test.ts
+    - <project>/src/tests/intelligence/semantic-dedup.test.ts
+    - <project>/src/intelligence/decision-capture.ts
+    - <project>/src/tests/intelligence/decision-capture.test.ts
+    - <project>/src/embeddings/embedding-provider.ts
+    - <project>/src/tests/embeddings/templates.test.ts
+    - <project>/src/tests/intelligence/topic-shift.test.ts
+    - <project>/src/tests/decay/decay-engine.test.ts
+    - <project>/src/tests/assembly/assembler.test.ts
+    - <project>/src/tests/checkpoint/compression.test.ts
+    - <project>/src/shared/scope-detector.test.ts
+    - <project>/src/tests/core/storage.test.ts
+    - <project>/src/extraction/quality-gate.ts
+    - <project>/src/extraction/scoring.ts
+    - C:\Users\[USER]\.claudex\memory\topics\agent-teams.md
+    - <project>/src/decay/decay-engine.ts
+    - <project>/src/assembly/assembler.ts
+    - <project>/src/adapters/cc-hooks/post-tool-use.ts
+    - <project>/src/adapters/cc-hooks/stop.ts
+    - <project>/src/tests/adapters/cc-hooks/infrastructure.test.ts
+    - <project>/src/tests/adapters/cc-hooks/hooks.test.ts
+    - <project>/src/tests/core/stmt-cache.test.ts
+    - <project>/src/tests/adapters/shared/lifecycle.test.ts
+recent_observations:
+  - title: 'Run: sleep 120 && cat "C:/Users/Grigorije/AppData/Local/Temp/c...'
+    category: change
+    timestamp_epoch: 1773362244349
+  - title: 'Write: unified_review_quality.json'
+    category: feature
+    timestamp_epoch: 1773362237775
+  - title: 'Run: wc -c "C:/Users/Grigorije/AppData/Local/Temp/unified-revi...'
+    category: change
+    timestamp_epoch: 1773362236508
+  - title: 'Run: for p in quality acceptance security general reuse effici...'
+    category: change
+    timestamp_epoch: 1773362226903
+  - title: 'Run: sleep 120 && cat "C:\Users\GRIGOR~1\AppData\Local\Temp\cl...'
+    category: change
+    timestamp_epoch: 1773362220575
+  - title: 'Run: sleep 45 && for p in efficiency code-health; do echo "$p:...'
+    category: change
+    timestamp_epoch: 1773362219519
+  - title: 'Run: rm -f "C:/Users/Grigorije/AppData/Local/Temp/unified-revi...'
+    category: change
+    timestamp_epoch: 1773362209490
+  - title: 'Write: UNIFIED_REVIEW_REPORT.md'
+    category: feature
+    timestamp_epoch: 1773362199575
+boost_state:
+  files:
+    - <project>/context/handoffs/ACTIVE.md
+    - <project>/src/tests/extraction/extractor.test.ts
+    - <project>/src/tests/adapters/openclaw-bridge/plugin-entry.test.ts
+    - <project>/src/tests/extraction/extractors/cross-cutting.test.ts
+    - <project>/src/tests/extraction/extractors/notebook-edit-extractor.test.ts
+    - <project>/src/tests/extraction/extractors/task-extractor.test.ts
+    - <project>/src/tests/extraction/extractors/web-search-extractor.test.ts
+    - <project>/src/tests/extraction/extractors/web-fetch-extractor.test.ts
+    - <project>/src/tests/extraction/extractors/glob-extractor.test.ts
+    - <project>/src/tests/extraction/extractors/grep-extractor.test.ts
+  turn: 3
+  applied_at: 1773335801210

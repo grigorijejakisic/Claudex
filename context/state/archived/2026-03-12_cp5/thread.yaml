@@ -1,0 +1,38 @@
+summary: ''
+key_exchanges:
+  - role: agent
+    gist: 'Edit: Edit: hooks.test.ts'
+  - role: agent
+    gist: 'Edit: Edit: bridge-adapter.test.ts'
+  - role: agent
+    gist: 'Edit: Edit: bridge-adapter.test.ts'
+  - role: agent
+    gist: 'Edit: Edit: e2e-flows.test.ts'
+  - role: agent
+    gist: 'Edit: Edit: e2e-flows.test.ts'
+  - role: agent
+    gist: 'Edit: Edit: e2e-flows.test.ts'
+  - role: agent
+    gist: 'Edit: Edit: e2e-flows.test.ts'
+  - role: agent
+    gist: 'Edit: Edit: cross-cutting.test.ts'
+  - role: agent
+    gist: 'Edit: Edit: cross-cutting.test.ts'
+  - role: agent
+    gist: 'Edit: Edit: cross-cutting.test.ts'
+  - role: agent
+    gist: 'Edit: Edit: cross-cutting.test.ts'
+  - role: agent
+    gist: 'Edit: Edit: dashboard.test.ts'
+  - role: agent
+    gist: 'Edit: Edit: dashboard.test.ts'
+  - role: agent
+    gist: 'Edit: Edit: topic-shift.test.ts'
+  - role: agent
+    gist: 'Edit: Edit: learnings-promoter.test.ts'
+  - role: agent
+    gist: 'Edit: Edit: decision-capture.test.ts'
+  - role: agent
+    gist: 'Edit: Edit: e2e-flows.test.ts'
+  - role: user
+    gist: how long to finish w7?

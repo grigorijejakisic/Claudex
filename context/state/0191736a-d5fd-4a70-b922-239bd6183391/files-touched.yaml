@@ -1,0 +1,14 @@
+changed:
+  - path: <project>/.planning/phases/00-repository-setup/00-CONTEXT.md
+    action: Write
+    summary: 'Write: 00-CONTEXT.md'
+  - path: <project>/.planning/STATE.md
+    action: Edit
+    summary: 'Edit: STATE.md'
+  - path: <project>/.planning/STATE.md
+    action: Edit
+    summary: 'Edit: STATE.md'
+read: []
+hot:
+  - <project>/.planning/phases/00-repository-setup/00-CONTEXT.md
+  - <project>/.planning/STATE.md

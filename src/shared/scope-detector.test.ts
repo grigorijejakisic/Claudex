@@ -85,9 +85,9 @@ describe('scope-detector', () => {
   });
 
   describe('getProjectId', () => {
-    it('returns derived name when no projects.json exists', () => {
+    it('returns derived name with hash when no projects.json exists', () => {
       const result = getProjectId('/some/path/MyProject');
-      expect(result).toBe('myproject');
+      expect(result).toMatch(/^myproject-[0-9a-f]{8}$/);
     });
 
     it('returns detected scope when project is registered', () => {
@@ -116,6 +116,83 @@ describe('scope-detector', () => {
 
       const detected = detectProjectScope(projectPath);
       expect(detected).toBe('new-id');
+    });
+  });
+
+  describe('paths with spaces', () => {
+    it('detectProjectScope matches path with spaces', () => {
+      const projectPath = path.join(tmpDir, 'My Project');
+      fs.writeFileSync(
+        projectsJsonPath,
+        JSON.stringify({ projects: { [projectPath]: 'spaced-id' } }),
+        'utf-8'
+      );
+      expect(detectProjectScope(projectPath)).toBe('spaced-id');
+    });
+
+    it('detectProjectScope matches subdirectory of path with spaces', () => {
+      const projectPath = path.join(tmpDir, 'My Project');
+      fs.writeFileSync(
+        projectsJsonPath,
+        JSON.stringify({ projects: { [projectPath]: 'spaced-id' } }),
+        'utf-8'
+      );
+      expect(detectProjectScope(path.join(projectPath, 'src', 'utils'))).toBe('spaced-id');
+    });
+
+    it('getProjectId derives ID from directory with spaces', () => {
+      const result = getProjectId(path.join(tmpDir, 'My Cool Project'));
+      expect(result).toMatch(/^my-cool-project-[0-9a-f]{8}$/);
+    });
+
+    it('registerProject works with path containing spaces', async () => {
+      const projectPath = path.join(tmpDir, 'path with spaces', 'sub dir');
+      const registered = await registerProject(projectPath, 'spaced-reg');
+      expect(registered).toBe(true);
+      expect(detectProjectScope(projectPath)).toBe('spaced-reg');
+    });
+  });
+
+  describe('paths with unicode characters', () => {
+    it('detectProjectScope matches path with unicode', () => {
+      const projectPath = path.join(tmpDir, 'Ünîcödé-project');
+      fs.writeFileSync(
+        projectsJsonPath,
+        JSON.stringify({ projects: { [projectPath]: 'unicode-id' } }),
+        'utf-8'
+      );
+      expect(detectProjectScope(projectPath)).toBe('unicode-id');
+    });
+
+    it('detectProjectScope matches subdirectory of unicode path', () => {
+      const projectPath = path.join(tmpDir, 'Ünîcödé-project');
+      fs.writeFileSync(
+        projectsJsonPath,
+        JSON.stringify({ projects: { [projectPath]: 'unicode-id' } }),
+        'utf-8'
+      );
+      expect(detectProjectScope(path.join(projectPath, 'src'))).toBe('unicode-id');
+    });
+
+    it('getProjectId derives ID from unicode directory name', () => {
+      const result = getProjectId(path.join(tmpDir, 'Ünîcödé'));
+      // Unicode letters get stripped by [^a-z0-9-] regex, leaving hyphens or empty
+      // The hash should still be deterministic
+      expect(result).toMatch(/^[a-z0-9-]+-[0-9a-f]{8}$/);
+    });
+
+    it('getProjectId is deterministic for unicode paths', () => {
+      const unicodePath = path.join(tmpDir, '日本語プロジェクト');
+      const id1 = getProjectId(unicodePath);
+      const id2 = getProjectId(unicodePath);
+      expect(id1).toBe(id2);
+    });
+
+    it('registerProject works with unicode path', async () => {
+      const projectPath = path.join(tmpDir, 'проект');
+      const registered = await registerProject(projectPath, 'russian-id');
+      expect(registered).toBe(true);
+      expect(detectProjectScope(projectPath)).toBe('russian-id');
     });
   });
 });

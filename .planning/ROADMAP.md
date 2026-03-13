@@ -25,10 +25,10 @@ Claudex v3 is a unified context management system delivering persistent LLM memo
 - [x] **Phase 5: Assembly Pipeline** - Boundary-only injection, priority-budgeted sections, token estimation (completed 2026-03-12)
 - [x] **Phase 6: Checkpoint System** - ULID IDs, DB-first state machine, 3-hop recovery, atomic writes (completed 2026-03-12)
 - [x] **Phase 7: Supporting Subsystems** - Token gauge, decay engine, GSD state reader (completed 2026-03-12)
-- [ ] **Phase 8: CC Hook Adapter** - 6 hook entry points, stdin/stdout protocol, claudex setup CLI
-- [ ] **Phase 9: OpenClaw Bridge Adapter** - globalThis registration, plugin activate(), bridge callbacks
-- [ ] **Phase 10: Integration Testing** - End-to-end flows, performance SLAs, observability validation
-- [ ] **Phase 11: Deployment** - Fresh install verification, optional v2 migration, monitoring
+- [x] **Phase 8: CC Hook Adapter** - 6 hook entry points, stdin/stdout protocol, claudex setup CLI (completed 2026-03-12)
+- [x] **Phase 9: OpenClaw Bridge Adapter** - globalThis registration, plugin activate(), bridge callbacks (completed 2026-03-12)
+- [x] **Phase 10: Integration Testing** - End-to-end flows, performance SLAs, observability validation (completed 2026-03-12)
+- [x] **Phase 11: Deployment** - Fresh install verification, optional v2 migration, monitoring (completed 2026-03-12)
 
 ## Phase Details
 
@@ -169,8 +169,8 @@ Plans:
 **Plans**: TBD
 
 Plans:
-- [ ] 08-01: TBD
-- [ ] 08-02: TBD
+- [ ] 08-01-PLAN.md -- Hook infrastructure (stdin/stdout protocol, bootstrap, wrapHook) + 6 entry points (session-start, user-prompt-submit, post-tool-use, stop, pre-compact, session-end)
+- [ ] 08-02-PLAN.md -- Setup CLI (claudex setup: directory creation, DB init, config write, settings.json hook patching, optional v2 migration)
 
 ### Phase 9: OpenClaw Bridge Adapter
 **Goal**: Claudex v3 runs as an OpenClaw plugin via globalThis bridge registration
@@ -183,7 +183,7 @@ Plans:
 **Plans**: TBD
 
 Plans:
-- [ ] 09-01: TBD
+- [ ] 09-01-PLAN.md -- Bridge types (BRIDGE_KEY, Pi SDK stubs), adapter callbacks (5 callbacks mapping Pi SDK to core), plugin entry (activate + globalThis registration + session_end cleanup)
 
 ### Phase 10: Integration Testing
 **Goal**: The complete system works end-to-end on both adapters, meets performance SLAs, and produces queryable observability data
@@ -198,8 +198,8 @@ Plans:
 **Plans**: TBD
 
 Plans:
-- [ ] 10-01: TBD
-- [ ] 10-02: TBD
+- [ ] 10-01-PLAN.md -- End-to-end flow tests (CC hooks + OpenClaw bridge + fresh install) and performance SLA assertions (PERF-01-04)
+- [ ] 10-02-PLAN.md -- Cross-cutting integration scenarios (learnings persistence, checkpoint recovery, topic-shift, FTS5, telemetry queryability, pressure scoring, decay)
 
 ### Phase 11: Deployment
 **Goal**: Claudex v3 is running in production on both adapters, verified on fresh installs, with predecessor systems archived
@@ -213,7 +213,7 @@ Plans:
 **Plans**: TBD
 
 Plans:
-- [ ] 11-01: TBD
+- [x] 11-01-PLAN.md -- Build verification, deployment checklist, monitoring protocol
 
 ## Progress
 
@@ -234,7 +234,7 @@ Then: Phase 10 then Phase 11 (sequential)
 | 5. Assembly Pipeline | 2/2 | Complete   | 2026-03-12 |
 | 6. Checkpoint System | 2/2 | Complete   | 2026-03-12 |
 | 7. Supporting Subsystems | 2/2 | Complete   | 2026-03-12 |
-| 8. CC Hook Adapter | 0/2 | Not started | - |
-| 9. OpenClaw Bridge Adapter | 0/1 | Not started | - |
-| 10. Integration Testing | 0/2 | Not started | - |
-| 11. Deployment | 0/1 | Not started | - |
+| 8. CC Hook Adapter | 2/2 | Complete   | 2026-03-12 |
+| 9. OpenClaw Bridge Adapter | 1/1 | Complete   | 2026-03-12 |
+| 10. Integration Testing | 2/2 | Complete   | 2026-03-12 |
+| 11. Deployment | 1/1 | Complete   | 2026-03-12 |

@@ -65,12 +65,25 @@ CREATE TRIGGER IF NOT EXISTS observations_au AFTER UPDATE ON observations BEGIN
   VALUES (new.id, new.title, new.content);
 END;
 
--- Observation indexes
+-- Observation indexes (single-column)
 CREATE INDEX IF NOT EXISTS idx_obs_session ON observations(session_id);
 CREATE INDEX IF NOT EXISTS idx_obs_project ON observations(project);
 CREATE INDEX IF NOT EXISTS idx_obs_timestamp ON observations(timestamp_epoch DESC);
 CREATE INDEX IF NOT EXISTS idx_obs_importance ON observations(importance DESC);
 CREATE INDEX IF NOT EXISTS idx_obs_deleted ON observations(deleted_at_epoch);
+
+-- Composite indexes for hot query paths
+-- Dedup query in extraction dispatcher: WHERE tool_name=? AND category=? AND project=? AND session_id=? AND timestamp_epoch>?
+CREATE INDEX IF NOT EXISTS idx_obs_dedup
+  ON observations(tool_name, category, project, session_id, timestamp_epoch DESC);
+
+-- getObservationsByProject + pruneObservations: WHERE project=? AND deleted_at_epoch IS NULL ORDER BY timestamp_epoch DESC
+CREATE INDEX IF NOT EXISTS idx_obs_project_active
+  ON observations(project, deleted_at_epoch, timestamp_epoch DESC);
+
+-- pruneObservations candidate selection + applyRetentionPolicy: WHERE project=? AND deleted_at_epoch IS NULL AND importance<?
+CREATE INDEX IF NOT EXISTS idx_obs_project_importance
+  ON observations(project, deleted_at_epoch, importance);
 
 -- sessions
 CREATE TABLE IF NOT EXISTS sessions (
@@ -86,6 +99,10 @@ CREATE TABLE IF NOT EXISTS sessions (
   ended_at_epoch INTEGER
 );
 
+-- getActiveSession: WHERE status='active' AND project=? ORDER BY created_at_epoch DESC
+CREATE INDEX IF NOT EXISTS idx_sessions_active
+  ON sessions(status, project, created_at_epoch DESC);
+
 -- pressure_scores
 CREATE TABLE IF NOT EXISTS pressure_scores (
   file_path TEXT NOT NULL,
@@ -97,6 +114,10 @@ CREATE TABLE IF NOT EXISTS pressure_scores (
   decay_rate REAL NOT NULL DEFAULT 0.1,
   PRIMARY KEY (file_path, project)
 );
+
+-- getHotFiles: WHERE project=? AND temperature='HOT' ORDER BY raw_pressure DESC
+CREATE INDEX IF NOT EXISTS idx_pressure_project_temp
+  ON pressure_scores(project, temperature, raw_pressure DESC);
 
 -- learnings
 CREATE TABLE IF NOT EXISTS learnings (
@@ -132,6 +153,10 @@ CREATE TABLE IF NOT EXISTS decisions (
 
 CREATE INDEX IF NOT EXISTS idx_decisions_session
   ON decisions(session_id, timestamp_epoch DESC);
+
+-- getDecisionsByProject: WHERE project=? ORDER BY timestamp_epoch DESC
+CREATE INDEX IF NOT EXISTS idx_decisions_project
+  ON decisions(project, timestamp_epoch DESC);
 
 -- thread_state
 CREATE TABLE IF NOT EXISTS thread_state (
@@ -220,8 +245,21 @@ export function initializeSchema(db: Database): void {
  * @see Architecture Section 4.3.2
  */
 export function migrateFromV2(db: Database, v2DbPath: string): void {
+  // Guard: prevent same-database source/target
+  const targetPath = (db.name && db.name !== ':memory:' && db.name !== '')
+    ? path.resolve(db.name)
+    : null;
+  const sourcePath = path.resolve(v2DbPath);
+  if (targetPath && sourcePath === targetPath) {
+    throw new Error(
+      `migrateFromV2: source and target are the same database (${sourcePath})`
+    );
+  }
+
   // 1. ATTACH v2 database (must be outside transaction)
-  db.exec(`ATTACH DATABASE '${v2DbPath}' AS v2`);
+  // Escape single quotes in path to prevent SQL injection
+  const escapedPath = v2DbPath.replace(/'/g, "''");
+  db.exec(`ATTACH DATABASE '${escapedPath}' AS v2`);
 
   try {
     const migrate = db.transaction(() => {
@@ -266,7 +304,10 @@ export function migrateFromV2(db: Database, v2DbPath: string): void {
         // Skip internal SQLite tables and already-archived tables
         if (name.startsWith('_archived_') || name.startsWith('sqlite_')) continue;
         try {
-          db.exec(`ALTER TABLE v2.${name} RENAME TO _archived_${name}`);
+          // Escape double quotes in identifiers to prevent SQL injection
+          const escapedName = name.replace(/"/g, '""');
+          const escapedArchived = `_archived_${name}`.replace(/"/g, '""');
+          db.exec(`ALTER TABLE v2."${escapedName}" RENAME TO "${escapedArchived}"`);
         } catch {
           // Table may already be archived or not renameable — skip
         }

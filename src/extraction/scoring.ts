@@ -5,6 +5,7 @@
  */
 
 import type { ObservationCategory } from '../core/observations.js';
+import { FILE_TOOL_NAMES } from '../shared/tool-catalog.js';
 
 // --- Category Classification ---
 
@@ -21,11 +22,6 @@ const CATEGORY_KEYWORDS: Array<[RegExp, ObservationCategory]> = [
   [/decide|chose|agreed|confirmed/i, 'decision'],
 ];
 
-/** File-related tools that default to 'code'. */
-const FILE_TOOLS = new Set([
-  'Read', 'Edit', 'Write', 'Grep', 'Glob', 'NotebookEdit',
-]);
-
 /**
  * Classifies an observation into a category using keyword-first-match.
  * Scans title + content (case-insensitive) against keyword map in order.
@@ -37,13 +33,13 @@ export function classifyCategory(
   content: string
 ): ObservationCategory {
   try {
-    const combined = `${title} ${content}`;
+    const combined = `${title} ${content}`.replace(/\[REDACTED_\w+\]/g, '');
     for (const [pattern, category] of CATEGORY_KEYWORDS) {
       if (pattern.test(combined)) {
         return category;
       }
     }
-    return FILE_TOOLS.has(toolName) ? 'code' : 'other';
+    return FILE_TOOL_NAMES.has(toolName) ? 'code' : 'other';
   } catch {
     return 'other';
   }

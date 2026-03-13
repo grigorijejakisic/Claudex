@@ -5,6 +5,7 @@
  */
 
 import type { Database } from 'better-sqlite3';
+import { cachedPrepare } from './stmt-cache.js';
 
 /** Valid observation categories. */
 const VALID_CATEGORIES = [
@@ -52,8 +53,13 @@ export function insertObservation(
   db: Database,
   obs: InsertObservationInput
 ): number {
-  const result = db
-    .prepare(
+  // Strip typed redaction markers from FTS-indexed fields so that
+  // "secret", "pii", "entropy" stems don't pollute full-text search.
+  // The generic "[REDACTED]" placeholder is kept for visual indication.
+  const ftsCleanTitle = obs.title.replace(/\[REDACTED_\w+\]/g, '[REDACTED]');
+  const ftsCleanContent = obs.content.replace(/\[REDACTED_\w+\]/g, '[REDACTED]');
+
+  const result = cachedPrepare(db,
       `INSERT INTO observations (session_id, project, tool_name, category, title, content, importance, files_modified)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
     )
@@ -62,8 +68,8 @@ export function insertObservation(
       obs.project,
       obs.tool_name,
       obs.category,
-      obs.title,
-      obs.content,
+      ftsCleanTitle,
+      ftsCleanContent,
       obs.importance,
       JSON.stringify(obs.files_modified)
     );
@@ -86,8 +92,7 @@ export function getObservationsByProject(
   const includeDeleted = opts?.includeDeleted ?? false;
 
   if (includeDeleted) {
-    return db
-      .prepare(
+    return cachedPrepare(db,
         `SELECT * FROM observations
          WHERE project = ?
          ORDER BY timestamp_epoch DESC
@@ -96,8 +101,7 @@ export function getObservationsByProject(
       .all(project, limit) as ObservationRow[];
   }
 
-  return db
-    .prepare(
+  return cachedPrepare(db,
       `SELECT * FROM observations
        WHERE project = ? AND deleted_at_epoch IS NULL
        ORDER BY timestamp_epoch DESC
@@ -113,8 +117,7 @@ export function getObservationById(
   db: Database,
   id: number
 ): ObservationRow | undefined {
-  return db
-    .prepare('SELECT * FROM observations WHERE id = ?')
+  return cachedPrepare(db, 'SELECT * FROM observations WHERE id = ?')
     .get(id) as ObservationRow | undefined;
 }
 
@@ -136,8 +139,7 @@ export function searchObservations(
 ): ObservationRow[] {
   const limit = opts?.limit ?? 100;
 
-  const rows = db
-    .prepare(
+  const rows = cachedPrepare(db,
       `SELECT o.*, bm25(observations_fts) as bm25_rank
        FROM observations_fts fts
        JOIN observations o ON o.id = fts.rowid
@@ -172,7 +174,7 @@ export function searchObservations(
  * Soft-deletes an observation by setting deleted_at_epoch.
  */
 export function softDeleteObservation(db: Database, id: number): void {
-  db.prepare(
+  cachedPrepare(db,
     'UPDATE observations SET deleted_at_epoch = unixepoch() WHERE id = ?'
   ).run(id);
 }
@@ -181,7 +183,7 @@ export function softDeleteObservation(db: Database, id: number): void {
  * Increments access_count and updates last_accessed_at_epoch for an observation.
  */
 export function incrementAccessCount(db: Database, id: number): void {
-  db.prepare(
+  cachedPrepare(db,
     `UPDATE observations SET access_count = access_count + 1, last_accessed_at_epoch = unixepoch()
      WHERE id = ?`
   ).run(id);

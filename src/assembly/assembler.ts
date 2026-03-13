@@ -97,7 +97,7 @@ export function assembleFullContext(params: FullAssemblyParams): InjectPayload {
     }
 
     // Priority 3: Checkpoint
-    const checkpoint = loadCheckpoint(params.db, params.projectDir);
+    const checkpoint = loadCheckpoint(params.db, params.projectDir, undefined, params.project);
     const checkpointSection = formatCheckpointSection(checkpoint);
     if (checkpointSection) {
       const cost = estimateTokens(checkpointSection);
@@ -226,7 +226,8 @@ export function assembleFullContext(params: FullAssemblyParams): InjectPayload {
       const checkpointMd = renderCheckpointMarkdown(checkpoint, 'RESUME');
       const identity = formatIdentitySection(params.identityDir);
       const parts = [identity, checkpointMd ? `## Checkpoint\n${checkpointMd}` : null].filter(Boolean) as string[];
-      const content = parts.join('\n\n');
+      let content = parts.join('\n\n');
+      content = redactContent(content);
       const tierSources: string[] = [];
       if (identity) tierSources.push('identity');
       if (checkpointMd) tierSources.push('checkpoint');
@@ -240,7 +241,8 @@ export function assembleFullContext(params: FullAssemblyParams): InjectPayload {
   try {
     const identity = formatIdentitySection(params.identityDir);
     if (identity) {
-      return { content: identity, tokenEstimate: estimateTokens(identity), sources: ['identity'] };
+      let content = redactContent(identity);
+      return { content, tokenEstimate: estimateTokens(content), sources: ['identity'] };
     }
   } catch {
     // Tier 3 failed

@@ -1,15 +1,13 @@
-import Database from 'better-sqlite3';
-import { initializeSchema } from '../../core/migrations.js';
+import { createTestDb, type TestDatabase } from '../helpers/test-db.js';
 import { getLearningsByProject } from '../../core/learnings.js';
 import { promoteLearnings } from '../../intelligence/learnings-promoter.js';
 
 describe('learnings promoter', () => {
-  let db: InstanceType<typeof Database>;
+  let db: TestDatabase;
   const project = 'test-project';
 
   beforeEach(() => {
-    db = new Database(':memory:');
-    initializeSchema(db);
+    db = createTestDb();
   });
 
   afterEach(() => {
@@ -185,6 +183,53 @@ describe('learnings promoter', () => {
     });
   });
 
+  // --- Cap scope alignment ---
+
+  describe('cap scope alignment', () => {
+    const ANIMALS = [
+      'aardvark', 'buffalo', 'cheetah', 'dolphin', 'elephant', 'falcon', 'giraffe',
+      'hedgehog', 'iguana', 'jaguar', 'koala', 'lemur', 'mongoose', 'narwhal',
+      'octopus', 'penguin', 'quail', 'raccoon', 'salamander', 'tapir', 'urchin',
+      'vulture', 'walrus', 'xerus', 'yak', 'zebra', 'alpaca', 'bison', 'capybara',
+      'dingo', 'emu', 'ferret', 'gecko', 'hamster', 'impala', 'jellyfish', 'kiwi',
+      'llama', 'mantis', 'newt', 'ocelot', 'platypus', 'quokka', 'robin', 'starling',
+      'toucan', 'urial', 'viper', 'wombat', 'xenops', 'yellowjacket', 'zebu',
+      'axolotl', 'barracuda', 'chinchilla',
+    ];
+    function distinctLearning(i: number): string {
+      return `${ANIMALS[i % ANIMALS.length]} migration pattern ${i} observed`;
+    }
+
+    it('does not let global learnings inflate the project cap (no premature pruning)', () => {
+      // Insert 20 global learnings directly into the DB
+      for (let i = 0; i < 20; i++) {
+        db.prepare(
+          `INSERT INTO learnings (project, agent_id, fingerprint, content)
+           VALUES ('__global__', 'default', ?, ?)`
+        ).run(`global-fp-${i}`, `global learning ${i}`);
+      }
+
+      // Now insert exactly 48 project learnings via promoteLearnings
+      const projectLearnings = Array.from({ length: 48 }, (_, i) => distinctLearning(i));
+      const result = promoteLearnings({
+        db,
+        project,
+        sessionLearnings: projectLearnings,
+      });
+
+      // With the bug: getLearningsByProject returns project+global rows (48+20=68),
+      // so excess = 68-50 = 18, and 18 project learnings get pruned.
+      // With the fix: scopedCount = 48 (project+agent only), excess = 48-50 = -2, no pruning.
+      expect(result.pruned).toBe(0);
+
+      // Verify all 48 project learnings are still present
+      const projectRows = db.prepare(
+        `SELECT COUNT(*) AS cnt FROM learnings WHERE project = ? AND agent_id = ?`
+      ).get(project, 'default') as { cnt: number };
+      expect(projectRows.cnt).toBe(48);
+    });
+  });
+
   // --- Edge cases ---
 
   describe('edge cases', () => {
@@ -206,7 +251,7 @@ describe('learnings promoter', () => {
       });
       expect(result).toEqual({ promoted: 0, inserted: 0, pruned: 0 });
       // Reopen for afterEach
-      db = new Database(':memory:');
+      db = createTestDb();
     });
 
     it('uses default agent_id when not provided', () => {

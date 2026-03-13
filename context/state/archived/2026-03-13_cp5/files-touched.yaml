@@ -1,0 +1,103 @@
+changed:
+  - path: <project>/src/checkpoint/loader.ts
+    action: Edit
+    summary: 'Edit: loader.ts'
+  - path: <project>/src/adapters/shared/lifecycle.ts
+    action: Edit
+    summary: 'Edit: lifecycle.ts'
+  - path: <project>/src/checkpoint/loader.ts
+    action: Edit
+    summary: 'Edit: loader.ts'
+  - path: <project>/src/adapters/shared/lifecycle.ts
+    action: Edit
+    summary: 'Edit: lifecycle.ts'
+  - path: <project>/src/adapters/cc-hooks/infrastructure.ts
+    action: Edit
+    summary: 'Edit: infrastructure.ts'
+  - path: <project>/src/checkpoint/loader.ts
+    action: Edit
+    summary: 'Edit: loader.ts'
+  - path: <project>/src/adapters/shared/lifecycle.ts
+    action: Edit
+    summary: 'Edit: lifecycle.ts'
+  - path: <project>/src/checkpoint/loader.ts
+    action: Edit
+    summary: 'Edit: loader.ts'
+  - path: <project>/src/adapters/shared/lifecycle.ts
+    action: Edit
+    summary: 'Edit: lifecycle.ts'
+  - path: <project>/src/adapters/cc-hooks/infrastructure.ts
+    action: Edit
+    summary: 'Edit: infrastructure.ts'
+  - path: <project>/src/adapters/shared/lifecycle.ts
+    action: Edit
+    summary: 'Edit: lifecycle.ts'
+  - path: <project>/src/checkpoint/loader.ts
+    action: Edit
+    summary: 'Edit: loader.ts'
+  - path: <project>/src/adapters/openclaw-bridge/bridge-adapter.ts
+    action: Edit
+    summary: 'Edit: bridge-adapter.ts'
+  - path: <project>/src/adapters/openclaw-bridge/bridge-adapter.ts
+    action: Edit
+    summary: 'Edit: bridge-adapter.ts'
+  - path: <project>/src/gauge/token-gauge.ts
+    action: Edit
+    summary: 'Edit: token-gauge.ts'
+  - path: <project>/src/tests/adapters/cc-hooks/infrastructure.test.ts
+    action: Edit
+    summary: 'Edit: infrastructure.test.ts'
+  - path: <project>/src/gauge/token-gauge.ts
+    action: Edit
+    summary: 'Edit: token-gauge.ts'
+  - path: <project>/src/adapters/shared/lifecycle.ts
+    action: Edit
+    summary: 'Edit: lifecycle.ts'
+  - path: <project>/src/checkpoint/loader.ts
+    action: Edit
+    summary: 'Edit: loader.ts'
+  - path: <project>/src/checkpoint/writer.ts
+    action: Edit
+    summary: 'Edit: writer.ts'
+  - path: <project>/src/checkpoint/writer.ts
+    action: Edit
+    summary: 'Edit: writer.ts'
+  - path: <project>/src/tests/adapters/openclaw-bridge/bridge-adapter.test.ts
+    action: Edit
+    summary: 'Edit: bridge-adapter.test.ts'
+  - path: <project>/src/adapters/cc-hooks/infrastructure.ts
+    action: Edit
+    summary: 'Edit: infrastructure.ts'
+  - path: <project>/src/tests/gauge/token-gauge.test.ts
+    action: Edit
+    summary: 'Edit: token-gauge.test.ts'
+  - path: <project>/src/shared/fetch-utils.ts
+    action: Write
+    summary: 'Write: fetch-utils.ts'
+  - path: <project>/src/tests/checkpoint/loader.test.ts
+    action: Edit
+    summary: 'Edit: loader.test.ts'
+  - path: <project>/src/tests/adapters/shared/lifecycle.test.ts
+    action: Edit
+    summary: 'Edit: lifecycle.test.ts'
+  - path: <project>/src/tests/adapters/shared/lifecycle.test.ts
+    action: Edit
+    summary: 'Edit: lifecycle.test.ts'
+  - path: <project>/src/embeddings/embedding-provider.ts
+    action: Write
+    summary: 'Write: embedding-provider.ts'
+read: []
+hot:
+  - <project>/src/checkpoint/loader.ts
+  - <project>/src/adapters/shared/lifecycle.ts
+  - <project>/src/adapters/cc-hooks/infrastructure.ts
+  - <project>/src/adapters/openclaw-bridge/bridge-adapter.ts
+  - <project>/src/gauge/token-gauge.ts
+  - <project>/src/tests/adapters/cc-hooks/infrastructure.test.ts
+  - <project>/src/checkpoint/writer.ts
+  - <project>/src/tests/adapters/openclaw-bridge/bridge-adapter.test.ts
+  - <project>/src/tests/gauge/token-gauge.test.ts
+  - <project>/src/shared/fetch-utils.ts
+  - <project>/src/tests/checkpoint/loader.test.ts
+  - <project>/src/tests/adapters/shared/lifecycle.test.ts
+  - <project>/src/embeddings/embedding-provider.ts

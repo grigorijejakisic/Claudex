@@ -1,0 +1,69 @@
+changed:
+  - path: <project>/context/handoffs/ACTIVE.md
+    action: Write
+    summary: 'Write: ACTIVE.md'
+  - path: C:\Users\[USER]\AppData\Local\Temp\unified-review\chunk.js
+    action: Write
+    summary: 'Write: chunk.js'
+  - path: C:\Users\[USER]\AppData\Local\Temp\unified-review\chunk.js
+    action: Write
+    summary: 'Write: chunk.js'
+  - path: C:\Users\[USER]\AppData\Local\Temp\unified-review\assemble.js
+    action: Write
+    summary: 'Write: assemble.js'
+  - path: C:/Users/[USER]/AppData/Local/Temp/unified-review/run-review.sh
+    action: Write
+    summary: 'Write: run-review.sh'
+  - path: C:/Users/[USER]/AppData/Local/Temp/unified-review/run-core-review.sh
+    action: Write
+    summary: 'Write: run-core-review.sh'
+  - path: <project>/src/extraction/redaction.ts
+    action: Edit
+    summary: 'Edit: redaction.ts'
+  - path: <project>/src/extraction/redaction.ts
+    action: Edit
+    summary: 'Edit: redaction.ts'
+  - path: C:/Users/[USER]/AppData/Local/Temp/unified-review/run-decay-gsd.sh
+    action: Write
+    summary: 'Write: run-decay-gsd.sh'
+  - path: C:/Users/[USER]/AppData/Local/Temp/unified-review/run-one.sh
+    action: Write
+    summary: 'Write: run-one.sh'
+  - path: <project>/context/reasoning/w3-checkpoint-audit.md
+    action: Write
+    summary: 'Write: w3-checkpoint-audit.md'
+  - path: C:/Users/[USER]/AppData/Local/Temp/unified-review/runner.js
+    action: Write
+    summary: 'Write: runner.js'
+  - path: <project>/context/reasoning/w4-intelligence-audit.md
+    action: Write
+    summary: 'Write: w4-intelligence-audit.md'
+  - path: <project>/context/reasoning/w2-assembly-audit.md
+    action: Write
+    summary: 'Write: w2-assembly-audit.md'
+  - path: <project>/context/reasoning/w5-extraction-storage-audit.md
+    action: Write
+    summary: 'Write: w5-extraction-storage-audit.md'
+  - path: <project>/context/reasoning/data-flow-audit.md
+    action: Write
+    summary: 'Write: data-flow-audit.md'
+  - path: <project>/context/reasoning/w1-redaction-consumers.md
+    action: Write
+    summary: 'Write: w1-redaction-consumers.md'
+read: []
+hot:
+  - <project>/context/handoffs/ACTIVE.md
+  - C:\Users\[USER]\AppData\Local\Temp\unified-review\chunk.js
+  - C:\Users\[USER]\AppData\Local\Temp\unified-review\assemble.js
+  - C:/Users/[USER]/AppData/Local/Temp/unified-review/run-review.sh
+  - C:/Users/[USER]/AppData/Local/Temp/unified-review/run-core-review.sh
+  - <project>/src/extraction/redaction.ts
+  - C:/Users/[USER]/AppData/Local/Temp/unified-review/run-decay-gsd.sh
+  - C:/Users/[USER]/AppData/Local/Temp/unified-review/run-one.sh
+  - <project>/context/reasoning/w3-checkpoint-audit.md
+  - C:/Users/[USER]/AppData/Local/Temp/unified-review/runner.js
+  - <project>/context/reasoning/w4-intelligence-audit.md
+  - <project>/context/reasoning/w2-assembly-audit.md
+  - <project>/context/reasoning/w5-extraction-storage-audit.md
+  - <project>/context/reasoning/data-flow-audit.md
+  - <project>/context/reasoning/w1-redaction-consumers.md

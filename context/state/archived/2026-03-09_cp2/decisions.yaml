@@ -1,0 +1,15 @@
+- id: auto-1773096397647
+  what: 'User chose: "is this system set up in such a way so that bf16 would actually use graphics card and then overload..."'
+  why: '(auto-detected from choice pattern, confidence: low)'
+  when: 2026-03-09T22:46:37.647Z
+  reversible: true
+- id: auto-1773098471960
+  what: 'User chose: "In our v3 architecture Claudex would be standalone for Claude Code and would override OpenClaw memor..."'
+  why: '(auto-detected from choice pattern, confidence: low)'
+  when: 2026-03-09T23:21:11.961Z
+  reversible: true
+- id: auto-1773099097754
+  what: 'User chose: "redesign all 6 as proper architecture sections (v1.2), then get Codex to review the additions like w..."'
+  why: '(auto-detected from choice pattern, confidence: low)'
+  when: 2026-03-09T23:31:37.754Z
+  reversible: true

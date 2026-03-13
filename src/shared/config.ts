@@ -26,6 +26,7 @@ export interface ClaudexConfig {
   };
   checkpoint: {
     debounce_seconds: number;
+    compression: boolean;
   };
   learnings: {
     max_per_project: number;
@@ -88,10 +89,58 @@ export function loadConfig(): ClaudexConfig {
     if (!loaded || typeof loaded !== 'object') {
       return getDefaultConfig();
     }
-    return deepMerge(getDefaultConfig() as unknown as Record<string, unknown>, loaded as unknown as Record<string, unknown>) as unknown as ClaudexConfig;
+    const merged = deepMerge(getDefaultConfig() as unknown as Record<string, unknown>, loaded as unknown as Record<string, unknown>) as unknown as ClaudexConfig;
+    return validateConfig(merged);
   } catch {
     return getDefaultConfig();
   }
+}
+
+/**
+ * Validates critical config fields have correct types after merge.
+ * Falls back to defaults for any field with an invalid type. Never throws.
+ */
+function validateConfig(config: ClaudexConfig): ClaudexConfig {
+  const defaults = getDefaultConfig();
+
+  // Validate top-level string fields
+  if (typeof config.schema !== 'string') config.schema = defaults.schema;
+  if (typeof config.version !== 'number') config.version = defaults.version;
+  if (typeof config.adapter !== 'string') config.adapter = defaults.adapter;
+
+  // Validate each section: must be an object, then check field types within
+  const sectionChecks: Array<{
+    key: keyof ClaudexConfig;
+    fields: Record<string, 'boolean' | 'number' | 'string'>;
+  }> = [
+    { key: 'injection', fields: { budget_tokens: 'number', boundary_only: 'boolean', gauge_threshold: 'number', topic_shift_budget: 'number' } },
+    { key: 'observations', fields: { enabled: 'boolean', retention_days: 'number', prune_threshold: 'number', prune_count: 'number' } },
+    { key: 'checkpoint', fields: { debounce_seconds: 'number', compression: 'boolean' } },
+    { key: 'learnings', fields: { max_per_project: 'number', surface_count: 'number', publish_to_memory_md: 'boolean' } },
+    { key: 'enrichment', fields: { enabled: 'boolean', provider: 'string', ollama_base_url: 'string', ollama_model: 'string', timeout_ms: 'number' } },
+    { key: 'embeddings', fields: { enabled: 'boolean', provider: 'string', model: 'string', ollama_base_url: 'string', topic_shift_threshold: 'number', topic_shift_window: 'number', decision_confidence_threshold: 'number' } },
+    { key: 'observability', fields: { enabled: 'boolean', retention_days: 'number', retain_error_count: 'number' } },
+    { key: 'gsd', fields: { enabled: 'boolean', phase_boost: 'number' } },
+    { key: 'features', fields: { observation_capture: 'boolean', checkpoint_system: 'boolean', token_gauge: 'boolean', fts5_search: 'boolean', decision_capture: 'boolean', learnings_promotion: 'boolean', telemetry: 'boolean' } },
+  ];
+
+  for (const { key, fields } of sectionChecks) {
+    if (typeof config[key] !== 'object' || config[key] === null || Array.isArray(config[key])) {
+      // Entire section is invalid — replace with default
+      (config as Record<string, unknown>)[key] = (defaults as Record<string, unknown>)[key];
+      continue;
+    }
+
+    const section = config[key] as Record<string, unknown>;
+    const defaultSection = defaults[key] as Record<string, unknown>;
+    for (const [field, expectedType] of Object.entries(fields)) {
+      if (typeof section[field] !== expectedType) {
+        section[field] = defaultSection[field];
+      }
+    }
+  }
+
+  return config;
 }
 
 /** Simple recursive deep merge. Loaded values override defaults. */

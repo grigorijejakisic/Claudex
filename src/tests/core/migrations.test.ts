@@ -68,8 +68,14 @@ describe('initializeSchema', () => {
       'idx_obs_timestamp',
       'idx_obs_importance',
       'idx_obs_deleted',
+      'idx_obs_dedup',
+      'idx_obs_project_active',
+      'idx_obs_project_importance',
+      'idx_sessions_active',
+      'idx_pressure_project_temp',
       'idx_learnings_promo',
       'idx_decisions_session',
+      'idx_decisions_project',
       'idx_cpmeta_session',
       'idx_cpmeta_status',
       'idx_telemetry_session',
@@ -332,6 +338,143 @@ describe('migrateFromV2', () => {
 
     expect(row).toBeDefined();
     expect(row!.version).toBe(300);
+  });
+
+  it('handles v2 database path containing single quotes', () => {
+    // Create a directory with a single quote in the name
+    const quotedDir = fs.mkdtempSync(path.join(os.tmpdir(), "claudex-it's-"));
+    const quotedDbPath = path.join(quotedDir, 'v2.db');
+
+    try {
+      // Create v2 database at the quoted path
+      const v2Db = new Database(quotedDbPath);
+      v2Db.exec(`
+        CREATE TABLE observations (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          session_id TEXT NOT NULL,
+          project TEXT,
+          tool_name TEXT NOT NULL,
+          category TEXT NOT NULL,
+          title TEXT NOT NULL,
+          content TEXT NOT NULL,
+          importance INTEGER NOT NULL,
+          files_modified TEXT NOT NULL DEFAULT '[]',
+          timestamp_epoch INTEGER NOT NULL DEFAULT (unixepoch()),
+          access_count INTEGER NOT NULL DEFAULT 0,
+          last_accessed_at_epoch INTEGER,
+          deleted_at_epoch INTEGER DEFAULT NULL
+        );
+        CREATE TABLE sessions (
+          session_id TEXT PRIMARY KEY,
+          scope TEXT, project TEXT, cwd TEXT, source TEXT,
+          status TEXT NOT NULL DEFAULT 'active',
+          observation_count INTEGER NOT NULL DEFAULT 0,
+          created_at_epoch INTEGER NOT NULL DEFAULT (unixepoch()),
+          ended_at_epoch INTEGER
+        );
+        CREATE TABLE pressure_scores (
+          file_path TEXT NOT NULL, project TEXT NOT NULL,
+          raw_pressure REAL NOT NULL DEFAULT 0.0,
+          temperature TEXT NOT NULL DEFAULT 'COLD',
+          last_touched_epoch INTEGER NOT NULL DEFAULT (unixepoch()),
+          decay_rate REAL NOT NULL DEFAULT 0.1,
+          PRIMARY KEY (file_path, project)
+        );
+        INSERT INTO observations (session_id, tool_name, category, title, content, importance)
+        VALUES ('sq-sess', 'bash', 'code', 'quoted path obs', 'content', 3);
+      `);
+      v2Db.close();
+
+      const qDb = new Database(':memory:');
+      migrateFromV2(qDb, quotedDbPath);
+
+      const obs = qDb
+        .prepare("SELECT * FROM observations WHERE session_id = 'sq-sess'")
+        .get() as Record<string, unknown> | undefined;
+
+      expect(obs).toBeDefined();
+      expect(obs!.title).toBe('quoted path obs');
+      qDb.close();
+    } finally {
+      fs.rmSync(quotedDir, { recursive: true, force: true });
+    }
+  });
+
+  it('properly quotes table names with special characters during archival', () => {
+    // Create v2 db with a table name containing double quotes
+    const specialDir = fs.mkdtempSync(path.join(os.tmpdir(), 'claudex-special-'));
+    const specialDbPath = path.join(specialDir, 'v2.db');
+
+    try {
+      const v2Db = new Database(specialDbPath);
+      v2Db.exec(`
+        CREATE TABLE observations (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          session_id TEXT NOT NULL,
+          project TEXT,
+          tool_name TEXT NOT NULL,
+          category TEXT NOT NULL,
+          title TEXT NOT NULL,
+          content TEXT NOT NULL,
+          importance INTEGER NOT NULL,
+          files_modified TEXT NOT NULL DEFAULT '[]',
+          timestamp_epoch INTEGER NOT NULL DEFAULT (unixepoch()),
+          access_count INTEGER NOT NULL DEFAULT 0,
+          last_accessed_at_epoch INTEGER,
+          deleted_at_epoch INTEGER DEFAULT NULL
+        );
+        CREATE TABLE sessions (
+          session_id TEXT PRIMARY KEY,
+          scope TEXT, project TEXT, cwd TEXT, source TEXT,
+          status TEXT NOT NULL DEFAULT 'active',
+          observation_count INTEGER NOT NULL DEFAULT 0,
+          created_at_epoch INTEGER NOT NULL DEFAULT (unixepoch()),
+          ended_at_epoch INTEGER
+        );
+        CREATE TABLE pressure_scores (
+          file_path TEXT NOT NULL, project TEXT NOT NULL,
+          raw_pressure REAL NOT NULL DEFAULT 0.0,
+          temperature TEXT NOT NULL DEFAULT 'COLD',
+          last_touched_epoch INTEGER NOT NULL DEFAULT (unixepoch()),
+          decay_rate REAL NOT NULL DEFAULT 0.1,
+          PRIMARY KEY (file_path, project)
+        );
+        CREATE TABLE "my-special-table" (
+          id INTEGER PRIMARY KEY,
+          data TEXT
+        );
+      `);
+      v2Db.close();
+
+      const sDb = new Database(':memory:');
+      // Should not throw even with special table names
+      expect(() => migrateFromV2(sDb, specialDbPath)).not.toThrow();
+      sDb.close();
+    } finally {
+      fs.rmSync(specialDir, { recursive: true, force: true });
+    }
+  });
+
+  it('throws when source and target are the same database path', () => {
+    const sameDir = fs.mkdtempSync(path.join(os.tmpdir(), 'claudex-same-'));
+    const sameDbPath = path.join(sameDir, 'same.db');
+
+    try {
+      // Create a database file
+      const sameDb = new Database(sameDbPath);
+      sameDb.exec(`
+        CREATE TABLE schema_versions (version INTEGER PRIMARY KEY, applied_at_epoch INTEGER NOT NULL DEFAULT (unixepoch()));
+        INSERT INTO schema_versions (version) VALUES (200);
+      `);
+      sameDb.close();
+
+      // Open as target, then try to migrate from same path
+      const targetDb = new Database(sameDbPath);
+      expect(() => migrateFromV2(targetDb, sameDbPath)).toThrow(/same database/);
+      targetDb.close();
+    } finally {
+      fs.rmSync(sameDir, { recursive: true, force: true });
+    }
   });
 });
 

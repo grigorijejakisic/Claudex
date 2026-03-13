@@ -1,6 +1,7 @@
 /**
  * Per-tool quality gates that filter low-signal observations.
  * Pure function, no DB dependency. Non-throwing.
+ * Tool names must match TOOL_CATALOG keys in shared/tool-catalog.ts.
  * @see Architecture Section 5.2 + 5.5 — quality gates
  */
 
@@ -64,7 +65,7 @@ export function passesQualityGate(
         if (exitCode !== undefined && exitCode !== 0) {
           return { pass: true };
         }
-        const bashOutput = String(output?.output ?? '');
+        const bashOutput = String(output?.output ?? output?.stdout ?? '');
         if (bashOutput.length < 20) {
           return { pass: false, reason: 'bash_no_output' };
         }

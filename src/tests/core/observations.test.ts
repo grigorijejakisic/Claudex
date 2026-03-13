@@ -1,5 +1,4 @@
-import Database from 'better-sqlite3';
-import { initializeSchema } from '../../core/migrations.js';
+import { createTestDb, type TestDatabase } from '../helpers/test-db.js';
 import {
   insertObservation,
   getObservationsByProject,
@@ -10,11 +9,10 @@ import {
 } from '../../core/observations.js';
 
 describe('observation CRUD', () => {
-  let db: InstanceType<typeof Database>;
+  let db: TestDatabase;
 
   beforeEach(() => {
-    db = new Database(':memory:');
-    initializeSchema(db);
+    db = createTestDb();
   });
 
   afterEach(() => {
@@ -41,6 +39,48 @@ describe('observation CRUD', () => {
     expect(row.title).toBe('Found auth bug');
     expect(row.content).toBe('The JWT validation skips expiry check');
     expect(row.importance).toBe(4);
+  });
+
+  it('insertObservation strips typed redaction markers from stored content', () => {
+    const id = insertObservation(db, {
+      session_id: 's1',
+      project: 'myapp',
+      tool_name: 'Read',
+      category: 'code',
+      title: 'Has [REDACTED_SECRET] in title',
+      content: 'key was [REDACTED_SECRET] and email [REDACTED_PII] and blob [REDACTED_ENTROPY]',
+      importance: 3,
+      files_modified: [],
+    });
+
+    const row = db
+      .prepare('SELECT title, content FROM observations WHERE id = ?')
+      .get(id) as { title: string; content: string };
+    // Typed markers replaced with generic [REDACTED]
+    expect(row.title).toBe('Has [REDACTED] in title');
+    expect(row.content).toBe('key was [REDACTED] and email [REDACTED] and blob [REDACTED]');
+    // "secret", "pii", "entropy" stems should NOT appear in stored content
+    expect(row.content).not.toContain('SECRET');
+    expect(row.content).not.toContain('PII');
+    expect(row.content).not.toContain('ENTROPY');
+  });
+
+  it('FTS search does not match on redaction marker stems', () => {
+    insertObservation(db, {
+      session_id: 's1',
+      project: 'myapp',
+      tool_name: 'Read',
+      category: 'code',
+      title: 'Normal file read',
+      content: 'value was [REDACTED_SECRET] in the config',
+      importance: 3,
+      files_modified: [],
+    });
+
+    // Searching for "secret" should NOT return this observation
+    // because [REDACTED_SECRET] is stored as [REDACTED]
+    const results = searchObservations(db, 'secret', 'myapp');
+    expect(results).toHaveLength(0);
   });
 
   it('insertObservation serializes files_modified as JSON', () => {

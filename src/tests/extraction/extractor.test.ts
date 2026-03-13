@@ -1,19 +1,18 @@
 /**
  * Integration tests for the extraction dispatcher pipeline.
- * Uses in-memory SQLite DB via better-sqlite3 + initializeSchema.
+ * Uses in-memory SQLite DB via shared test harness.
  */
 
 import Database from 'better-sqlite3';
-import { initializeSchema } from '../../core/migrations.js';
+import { createTestDb, type TestDatabase } from '../helpers/test-db.js';
 import { processToolObservation } from '../../extraction/extractor.js';
 import type { ProcessToolObservationInput } from '../../extraction/extractor.js';
 
 describe('processToolObservation', () => {
-  let db: InstanceType<typeof Database>;
+  let db: TestDatabase;
 
   beforeEach(() => {
-    db = new Database(':memory:');
-    initializeSchema(db);
+    db = createTestDb();
   });
 
   afterEach(() => {
@@ -38,7 +37,6 @@ describe('processToolObservation', () => {
       toolInput: { file_path: '/src/auth.ts', old_string: 'foo', new_string: 'bar' },
     }));
     expect(id).not.toBeNull();
-    expect(typeof id).toBe('number');
 
     const row = db.prepare('SELECT * FROM observations WHERE id = ?').get(id!) as Record<string, unknown>;
     expect(row.tool_name).toBe('Edit');
@@ -87,7 +85,9 @@ describe('processToolObservation', () => {
 
     const row = db.prepare('SELECT content FROM observations WHERE id = ?').get(id!) as { content: string };
     expect(row.content).not.toContain('sk-oldkey1234567890abcdef');
-    expect(row.content).toContain('[REDACTED_SECRET]');
+    // Stored content uses generic [REDACTED] (typed markers stripped for FTS hygiene)
+    expect(row.content).toContain('[REDACTED]');
+    expect(row.content).not.toContain('[REDACTED_SECRET]');
   });
 
   it('applies path sanitization to files_modified', () => {
@@ -221,6 +221,134 @@ describe('processToolObservation', () => {
       toolInput: { file_path: '/src/old.ts', old_string: 'c', new_string: 'd' },
     }));
     expect(second).not.toBeNull();
+  });
+
+  // --- Dedup: empty files_modified ---
+
+  it('dedup does NOT match across different tools with empty files_modified', () => {
+    const first = processToolObservation(makeInput({
+      toolName: 'Bash',
+      toolInput: { command: 'npm run build --production' },
+      toolOutput: { output: 'Build completed successfully. Output written to dist/' },
+    }));
+    expect(first).not.toBeNull();
+
+    // Different tool, also empty files_modified — should NOT be deduped
+    const second = processToolObservation(makeInput({
+      toolName: 'Bash',
+      toolInput: { command: 'npm run test -- --coverage' },
+      toolOutput: { output: 'All 42 tests passed with 98% coverage' },
+    }));
+    expect(second).not.toBeNull();
+    expect(second).not.toBe(first);
+  });
+
+  it('dedup does NOT match same tool with different content but empty files_modified', () => {
+    const first = processToolObservation(makeInput({
+      toolName: 'Bash',
+      toolInput: { command: 'npm run build --production' },
+      toolOutput: { output: 'Build completed successfully in 3.2 seconds' },
+    }));
+    expect(first).not.toBeNull();
+
+    // Same tool, empty files, but different content — should NOT be deduped
+    const second = processToolObservation(makeInput({
+      toolName: 'Bash',
+      toolInput: { command: 'npm run lint --fix' },
+      toolOutput: { output: 'Linting completed with 0 errors and 0 warnings' },
+    }));
+    expect(second).not.toBeNull();
+    expect(second).not.toBe(first);
+  });
+
+  it('dedup does NOT collapse different commands with identical output (title dedup)', () => {
+    // Two Bash commands with identical output but different titles
+    // should NOT be deduped — the title differentiates them
+    const first = processToolObservation(makeInput({
+      toolName: 'Bash',
+      toolInput: { command: 'npm run build --production' },
+      toolOutput: { output: 'Completed successfully in 2.3 seconds with no errors' },
+    }));
+    expect(first).not.toBeNull();
+
+    // Same output but different command (different title)
+    const second = processToolObservation(makeInput({
+      toolName: 'Bash',
+      toolInput: { command: 'npm run test --coverage' },
+      toolOutput: { output: 'Completed successfully in 2.3 seconds with no errors' },
+    }));
+    expect(second).not.toBeNull();
+    expect(second).not.toBe(first);
+  });
+
+  it('dedup DOES collapse identical empty-file observations (same title+content)', () => {
+    const first = processToolObservation(makeInput({
+      toolName: 'Bash',
+      toolInput: { command: 'npm run build --production' },
+      toolOutput: { output: 'Build completed successfully. Output written to dist/' },
+    }));
+    expect(first).not.toBeNull();
+
+    // Exact same command and output — should be deduped
+    const second = processToolObservation(makeInput({
+      toolName: 'Bash',
+      toolInput: { command: 'npm run build --production' },
+      toolOutput: { output: 'Build completed successfully. Output written to dist/' },
+    }));
+    expect(second).toBeNull();
+  });
+
+  it('dedup does NOT match across different projects', () => {
+    const first = processToolObservation(makeInput({
+      toolName: 'Edit',
+      toolInput: { file_path: '/src/main.ts', old_string: 'a', new_string: 'b' },
+      project: 'project-alpha',
+    }));
+    expect(first).not.toBeNull();
+
+    // Same tool+file+category but different project — should NOT be deduped
+    const second = processToolObservation(makeInput({
+      toolName: 'Edit',
+      toolInput: { file_path: '/src/main.ts', old_string: 'a', new_string: 'b' },
+      project: 'project-beta',
+    }));
+    expect(second).not.toBeNull();
+    expect(second).not.toBe(first);
+  });
+
+  it('dedup does NOT match across different sessions', () => {
+    const first = processToolObservation(makeInput({
+      toolName: 'Edit',
+      toolInput: { file_path: '/src/main.ts', old_string: 'a', new_string: 'b' },
+      sessionId: 'session-1',
+    }));
+    expect(first).not.toBeNull();
+
+    // Same tool+file+category+project but different session — should NOT be deduped
+    const second = processToolObservation(makeInput({
+      toolName: 'Edit',
+      toolInput: { file_path: '/src/main.ts', old_string: 'a', new_string: 'b' },
+      sessionId: 'session-2',
+    }));
+    expect(second).not.toBeNull();
+    expect(second).not.toBe(first);
+  });
+
+  // --- Title redaction ---
+
+  it('applies redaction to title (secret in title is replaced)', () => {
+    const id = processToolObservation(makeInput({
+      toolName: 'Bash',
+      toolInput: { command: 'curl -H "Authorization: Bearer abcdefghijklmnopqrstuvwxyz123456" https://api.example.com' },
+      toolOutput: { output: 'HTTP/1.1 200 OK response body here' },
+    }));
+    expect(id).not.toBeNull();
+
+    const row = db.prepare('SELECT title FROM observations WHERE id = ?').get(id!) as { title: string };
+    expect(row.title).not.toContain('Bearer abcdefghijklmnopqrstuvwxyz123456');
+    // Stored title uses generic [REDACTED] (typed markers stripped for FTS hygiene)
+    expect(row.title).toContain('[REDACTED]');
+    expect(row.title).not.toContain('[REDACTED_SECRET]');
   });
 
   // --- Non-throwing ---

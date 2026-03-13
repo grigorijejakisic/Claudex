@@ -28,7 +28,10 @@ export function detectProjectScope(cwd: string): string | null {
 
     for (const [projectPath, projectId] of Object.entries(data.projects)) {
       const normalizedProject = normalizePath(projectPath);
-      if (normalizedCwd.startsWith(normalizedProject) && normalizedProject.length > bestLength) {
+      if (
+        (normalizedCwd === normalizedProject || normalizedCwd.startsWith(normalizedProject + path.sep)) &&
+        normalizedProject.length > bestLength
+      ) {
         bestMatch = projectId;
         bestLength = normalizedProject.length;
       }
@@ -64,12 +67,24 @@ export function getProjectId(cwd: string): string {
     const detected = detectProjectScope(cwd);
     if (detected) return detected;
 
-    // Derive from directory name: last segment, lowercased, sanitized
+    // Derive from directory name: last segment, lowercased, sanitized + short hash of full path for uniqueness
     const baseName = path.basename(cwd);
-    return baseName.toLowerCase().replace(/[^a-z0-9-]/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '') || 'unknown';
+    const sanitized = baseName.toLowerCase().replace(/[^a-z0-9-]/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '') || 'unknown';
+    const hash = simpleHash(normalizePath(path.resolve(cwd)));
+    return `${sanitized}-${hash}`;
   } catch {
     return 'unknown';
   }
+}
+
+/** Deterministic simple string hash. Returns 8-char hex string. Not cryptographic — for uniqueness only. */
+function simpleHash(str: string): string {
+  let h = 0x811c9dc5; // FNV-1a offset basis
+  for (let i = 0; i < str.length; i++) {
+    h ^= str.charCodeAt(i);
+    h = Math.imul(h, 0x01000193); // FNV-1a prime
+  }
+  return (h >>> 0).toString(16).padStart(8, '0');
 }
 
 /** Normalizes a path for comparison. Case-insensitive on Windows. */

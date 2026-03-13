@@ -5,6 +5,7 @@
  */
 
 import type { Database } from 'better-sqlite3';
+import { cachedPrepare } from './stmt-cache.js';
 
 export interface CheckpointTrackingRow {
   session_id: string;
@@ -31,8 +32,7 @@ export function getCheckpointTracking(
   db: Database,
   sessionId: string
 ): CheckpointTrackingRow | undefined {
-  const row = db
-    .prepare('SELECT * FROM checkpoint_tracking WHERE session_id = ?')
+  const row = cachedPrepare(db, 'SELECT * FROM checkpoint_tracking WHERE session_id = ?')
     .get(sessionId) as RawCheckpointTrackingRow | undefined;
 
   if (!row) return undefined;
@@ -51,7 +51,7 @@ export function updateCheckpointTracking(
   sessionId: string,
   observationCount: number
 ): void {
-  db.prepare(
+  cachedPrepare(db,
     `INSERT INTO checkpoint_tracking (session_id, observation_count, last_checkpoint_epoch, updated_at_epoch)
      VALUES (?, ?, unixepoch(), unixepoch())
      ON CONFLICT(session_id) DO UPDATE SET
@@ -69,7 +69,7 @@ export function markPostCompactPending(
   db: Database,
   sessionId: string
 ): void {
-  db.prepare(
+  cachedPrepare(db,
     `INSERT INTO checkpoint_tracking (session_id, post_compact_pending, updated_at_epoch)
      VALUES (?, 1, unixepoch())
      ON CONFLICT(session_id) DO UPDATE SET
@@ -85,7 +85,7 @@ export function clearPostCompactPending(
   db: Database,
   sessionId: string
 ): void {
-  db.prepare(
+  cachedPrepare(db,
     `UPDATE checkpoint_tracking SET post_compact_pending = 0, updated_at_epoch = unixepoch()
      WHERE session_id = ?`
   ).run(sessionId);
@@ -100,22 +100,26 @@ export function recordThresholdHit(
   sessionId: string,
   threshold: number
 ): void {
-  const existing = db
-    .prepare('SELECT thresholds_hit FROM checkpoint_tracking WHERE session_id = ?')
-    .get(sessionId) as { thresholds_hit: string } | undefined;
+  const doRecordThreshold = db.transaction(() => {
+    const existing = cachedPrepare(db,
+      'SELECT thresholds_hit FROM checkpoint_tracking WHERE session_id = ?'
+    ).get(sessionId) as { thresholds_hit: string } | undefined;
 
-  if (existing) {
-    const thresholds: number[] = JSON.parse(existing.thresholds_hit);
-    thresholds.push(threshold);
-    db.prepare(
-      `UPDATE checkpoint_tracking
-       SET thresholds_hit = ?, updated_at_epoch = unixepoch()
-       WHERE session_id = ?`
-    ).run(JSON.stringify(thresholds), sessionId);
-  } else {
-    db.prepare(
-      `INSERT INTO checkpoint_tracking (session_id, thresholds_hit, updated_at_epoch)
-       VALUES (?, ?, unixepoch())`
-    ).run(sessionId, JSON.stringify([threshold]));
-  }
+    if (existing) {
+      const thresholds: number[] = JSON.parse(existing.thresholds_hit);
+      thresholds.push(threshold);
+      cachedPrepare(db,
+        `UPDATE checkpoint_tracking
+         SET thresholds_hit = ?, updated_at_epoch = unixepoch()
+         WHERE session_id = ?`
+      ).run(JSON.stringify(thresholds), sessionId);
+    } else {
+      cachedPrepare(db,
+        `INSERT INTO checkpoint_tracking (session_id, thresholds_hit, updated_at_epoch)
+         VALUES (?, ?, unixepoch())`
+      ).run(sessionId, JSON.stringify([threshold]));
+    }
+  });
+
+  doRecordThreshold();
 }

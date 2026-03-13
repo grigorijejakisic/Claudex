@@ -1,0 +1,244 @@
+schema: claudex/checkpoint
+version: 2
+meta:
+  checkpoint_id: 2026-03-13_cp9
+  session_id: 2867d4ba-0d5b-4a53-9e63-5bb1c4d03124
+  scope: project:claudex-v3
+  created_at: 2026-03-13T00:55:33.413Z
+  created_at_epoch_ms: 1773363333413
+  trigger: auto-75pct
+  writer_version: 3.0.0
+  token_usage:
+    input_tokens: 3
+    output_tokens: 229
+    window_size: 200000
+    utilization: 0.822775
+  previous_checkpoint: 2026-03-13_cp8.yaml
+  session_log: null
+working:
+  task: ''
+  status: in_progress
+  branch: null
+  next_action: null
+decisions: []
+files:
+  changed:
+    - path: <project>/src/extraction/redaction.ts
+      action: Edit
+      summary: 'Edit: redaction.ts'
+    - path: <project>/src/tests/embeddings/embedding-provider.test.ts
+      action: Edit
+      summary: 'Edit: embedding-provider.test.ts'
+    - path: <project>/src/tests/embeddings/embedding-provider.test.ts
+      action: Edit
+      summary: 'Edit: embedding-provider.test.ts'
+    - path: <project>/src/extraction/redaction.ts
+      action: Edit
+      summary: 'Edit: redaction.ts'
+    - path: <project>/src/tests/intelligence/decision-capture.test.ts
+      action: Edit
+      summary: 'Edit: decision-capture.test.ts'
+    - path: <project>/src/embeddings/embedding-provider.ts
+      action: Edit
+      summary: 'Edit: embedding-provider.ts'
+    - path: <project>/src/tests/intelligence/decision-capture.test.ts
+      action: Edit
+      summary: 'Edit: decision-capture.test.ts'
+    - path: <project>/src/tests/intelligence/decision-capture.test.ts
+      action: Edit
+      summary: 'Edit: decision-capture.test.ts'
+    - path: <project>/src/tests/extraction/scoring.test.ts
+      action: Edit
+      summary: 'Edit: scoring.test.ts'
+    - path: <project>/src/tests/intelligence/decision-capture.test.ts
+      action: Edit
+      summary: 'Edit: decision-capture.test.ts'
+    - path: <project>/src/tests/core/observations.test.ts
+      action: Edit
+      summary: 'Edit: observations.test.ts'
+    - path: <project>/src/shared/fetch-utils.test.ts
+      action: Write
+      summary: 'Write: fetch-utils.test.ts'
+    - path: <project>/src/tests/core/crud-modules.test.ts
+      action: Edit
+      summary: 'Edit: crud-modules.test.ts'
+    - path: <project>/src/tests/intelligence/decision-capture.test.ts
+      action: Edit
+      summary: 'Edit: decision-capture.test.ts'
+    - path: <project>/src/tests/intelligence/enrichment.test.ts
+      action: Edit
+      summary: 'Edit: enrichment.test.ts'
+    - path: <project>/src/tests/core/sessions.test.ts
+      action: Edit
+      summary: 'Edit: sessions.test.ts'
+    - path: <project>/src/tests/intelligence/enrichment.test.ts
+      action: Edit
+      summary: 'Edit: enrichment.test.ts'
+    - path: <project>/src/tests/extraction/extractor.test.ts
+      action: Edit
+      summary: 'Edit: extractor.test.ts'
+  read: []
+  hot:
+    - <project>/src/extraction/redaction.ts
+    - <project>/src/tests/embeddings/embedding-provider.test.ts
+    - <project>/src/tests/intelligence/decision-capture.test.ts
+    - <project>/src/embeddings/embedding-provider.ts
+    - <project>/src/tests/extraction/scoring.test.ts
+    - <project>/src/tests/core/observations.test.ts
+    - <project>/src/shared/fetch-utils.test.ts
+    - <project>/src/tests/core/crud-modules.test.ts
+    - <project>/src/tests/intelligence/enrichment.test.ts
+    - <project>/src/tests/core/sessions.test.ts
+    - <project>/src/tests/extraction/extractor.test.ts
+gsd:
+  active: true
+  milestone: null
+  phase: 11
+  phase_name: Deployment
+  phase_goal: Claudex v3 is running in production on both adapters, verified on fresh installs, with predecessor systems archived
+  plan_status: All 12 phases complete -- Claudex v3 fully implemented, tested, and deployment-ready
+  plan_number: 1
+  completion_pct: 92
+  requirements: []
+open_questions: []
+learnings: []
+thread:
+  summary: ''
+  key_exchanges:
+    - role: agent
+      gist: 'Edit: Edit: scoring.test.ts'
+    - role: agent
+      gist: 'Edit: Edit: decision-capture.test.ts'
+    - role: agent
+      gist: 'Edit: Edit: observations.test.ts'
+    - role: agent
+      gist: 'Write: Write: fetch-utils.test.ts'
+    - role: agent
+      gist: 'Edit: Edit: crud-modules.test.ts'
+    - role: agent
+      gist: 'Edit: Edit: decision-capture.test.ts'
+    - role: agent
+      gist: 'Edit: Edit: enrichment.test.ts'
+    - role: agent
+      gist: 'Bash: Run: sleep 90 && wc -c "C:/Users/Grigorije/AppData/Local/Temp/...'
+    - role: agent
+      gist: 'Edit: Edit: sessions.test.ts'
+    - role: agent
+      gist: 'Bash: Run: wc -c "C:/Users/Grigorije/AppData/Local/Temp/unified-revi...'
+    - role: agent
+      gist: 'Edit: Edit: enrichment.test.ts'
+    - role: agent
+      gist: 'Bash: Run: ps aux 2>/dev/null | grep -i "run-all\|run-intelligence\|...'
+    - role: agent
+      gist: 'Edit: Edit: extractor.test.ts'
+    - role: agent
+      gist: 'Bash: Run: ps aux 2>/dev/null | grep -i "node" | grep -v grep'
+    - role: user
+      gist: where are we?
+pressure_snapshot:
+  hot:
+    - <project>/.planning/STATE.md
+    - <project>/ARCHITECTURE.md
+    - <project>/.planning/ROADMAP.md
+    - <project>/src/adapters/openclaw-bridge/bridge-adapter.ts
+    - C:\Users\[USER]\.claude\teams\auto-gsd-pipeline\inboxes\team-lead.json
+    - <project>/src/core/migrations.ts
+    - <project>/src/checkpoint/loader.ts
+    - <project>/src/checkpoint/writer.ts
+    - <project>/context/sessions/2026-03-10_session-2.md
+    - <project>/src/intelligence/enrichment.ts
+    - <project>/src/tests/intelligence/enrichment.test.ts
+    - <project>/src/cli/setup.ts
+    - <project>/src/tests/integration/e2e-flows.test.ts
+    - <project>/src/core/observations.ts
+    - <project>/src/extraction/redaction.ts
+    - <project>/src/tests/intelligence/decision-capture.test.ts
+    - <project>/src/tests/embeddings/embedding-provider.test.ts
+    - <project>/src/tests/adapters/openclaw-bridge/bridge-adapter.test.ts
+    - <project>/src/core/decisions.ts
+    - <project>/src/extraction/extractor.ts
+    - <project>/src/tests/checkpoint/loader.test.ts
+    - <project>/src/adapters/cc-hooks/infrastructure.ts
+  warm:
+    - <project>/src/core/sessions.ts
+    - <project>/src/core/thread.ts
+    - <project>/src/core/checkpoint-tracking.ts
+    - <project>/src/tests/decay/pressure-decay.test.ts
+    - <project>/src/tests/cli/setup.test.ts
+    - <project>/src/tests/integration/cross-cutting.test.ts
+    - <project>/src/adapters/shared/lifecycle.ts
+    - <project>/src/tests/adapters/shared/lifecycle.test.ts
+    - <project>/src/shared/config.ts
+    - <project>/src/core/pressure.ts
+    - <project>/src/embeddings/embedding-provider.ts
+    - <project>/src/tests/checkpoint/writer.test.ts
+    - <project>/context/handoffs/ACTIVE.md
+    - <project>/src/tests/core/migrations.test.ts
+    - <project>/src/tests/core/sessions.test.ts
+    - <project>/src/tests/core/crud-modules.test.ts
+    - <project>/src/tests/extraction/extractor.test.ts
+    - <project>/src/intelligence/decision-capture.ts
+    - <project>/src/tests/intelligence/learnings-promoter.test.ts
+    - <project>/src/tests/cli/dashboard.test.ts
+    - <project>/build.ts
+    - <project>/src/shared/scope-detector.ts
+    - <project>/src/core/learnings.ts
+    - <project>/src/extraction/scoring.ts
+    - <project>/src/tests/intelligence/semantic-dedup.test.ts
+    - <project>/src/tests/embeddings/templates.test.ts
+    - <project>/src/tests/intelligence/topic-shift.test.ts
+    - <project>/src/tests/decay/decay-engine.test.ts
+    - <project>/src/tests/assembly/assembler.test.ts
+    - <project>/src/tests/adapters/cc-hooks/infrastructure.test.ts
+    - <project>/src/tests/checkpoint/compression.test.ts
+    - <project>/src/shared/scope-detector.test.ts
+    - <project>/src/tests/core/storage.test.ts
+    - <project>/src/tests/core/observations.test.ts
+    - <project>/src/extraction/quality-gate.ts
+    - C:\Users\[USER]\.claudex\memory\topics\agent-teams.md
+    - <project>/src/gauge/token-gauge.ts
+    - <project>/src/decay/decay-engine.ts
+    - <project>/src/assembly/assembler.ts
+    - <project>/src/adapters/cc-hooks/post-tool-use.ts
+    - <project>/src/adapters/cc-hooks/stop.ts
+    - <project>/src/tests/adapters/cc-hooks/hooks.test.ts
+    - <project>/src/tests/core/stmt-cache.test.ts
+recent_observations:
+  - title: 'Run: ps aux 2>/dev/null | grep -i "node" | grep -v grep'
+    category: change
+    timestamp_epoch: 1773363325184
+  - title: 'Edit: extractor.test.ts'
+    category: change
+    timestamp_epoch: 1773363323831
+  - title: 'Run: ps aux 2>/dev/null | grep -i "run-all\|run-intelligence\|...'
+    category: change
+    timestamp_epoch: 1773363319938
+  - title: 'Edit: enrichment.test.ts'
+    category: change
+    timestamp_epoch: 1773363314537
+  - title: 'Run: wc -c "C:/Users/Grigorije/AppData/Local/Temp/unified-revi...'
+    category: change
+    timestamp_epoch: 1773363313389
+  - title: 'Edit: sessions.test.ts'
+    category: change
+    timestamp_epoch: 1773363310816
+  - title: 'Run: sleep 90 && wc -c "C:/Users/Grigorije/AppData/Local/Temp/...'
+    category: change
+    timestamp_epoch: 1773363308559
+  - title: 'Edit: enrichment.test.ts'
+    category: change
+    timestamp_epoch: 1773363306391
+boost_state:
+  files:
+    - <project>/unified_review_quality.json
+    - <project>/UNIFIED_REVIEW_REPORT.md
+    - <project>/context/reasoning/w1-redaction-consumers.md
+    - <project>/context/reasoning/data-flow-audit.md
+    - <project>/context/reasoning/w5-extraction-storage-audit.md
+    - <project>/context/reasoning/w2-assembly-audit.md
+    - <project>/context/reasoning/w4-intelligence-audit.md
+    - C:/Users/[USER]/AppData/Local/Temp/unified-review/runner.js
+    - <project>/context/reasoning/w3-checkpoint-audit.md
+    - C:/Users/[USER]/AppData/Local/Temp/unified-review/run-one.sh
+  turn: 3
+  applied_at: 1773335801210

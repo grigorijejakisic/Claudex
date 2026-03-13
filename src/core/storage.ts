@@ -20,6 +20,7 @@ export function openDatabase(path: string): Database.Database {
   db.pragma('synchronous = NORMAL');
   db.pragma('cache_size = 10000');
   db.pragma('foreign_keys = ON');
+  db.pragma('busy_timeout = 5000');
 
   return db;
 }

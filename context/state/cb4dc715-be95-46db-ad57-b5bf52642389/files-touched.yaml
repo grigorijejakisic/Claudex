@@ -1,0 +1,146 @@
+changed:
+  - path: <project>/src/tests/extraction/redaction.test.ts
+    action: Write
+    summary: 'Write: redaction.test.ts'
+  - path: <project>/src/extraction/redaction.ts
+    action: Write
+    summary: 'Write: redaction.ts'
+  - path: <project>/src/extraction/redaction.ts
+    action: Edit
+    summary: 'Edit: redaction.ts'
+  - path: <project>/src/extraction/redaction.ts
+    action: Edit
+    summary: 'Edit: redaction.ts'
+  - path: <project>/src/extraction/redaction.ts
+    action: Edit
+    summary: 'Edit: redaction.ts'
+  - path: <project>/src/extraction/redaction.ts
+    action: Edit
+    summary: 'Edit: redaction.ts'
+  - path: <project>/src/tests/extraction/quality-gate.test.ts
+    action: Write
+    summary: 'Write: quality-gate.test.ts'
+  - path: <project>/src/tests/extraction/scoring.test.ts
+    action: Write
+    summary: 'Write: scoring.test.ts'
+  - path: <project>/src/extraction/quality-gate.ts
+    action: Write
+    summary: 'Write: quality-gate.ts'
+  - path: <project>/src/extraction/scoring.ts
+    action: Write
+    summary: 'Write: scoring.ts'
+  - path: <project>/.planning/phases/02-extraction-pipeline/02-01-SUMMARY.md
+    action: Write
+    summary: 'Write: 02-01-SUMMARY.md'
+  - path: <project>/.planning/phases/02-extraction-pipeline/02-01-SUMMARY.md
+    action: Edit
+    summary: 'Edit: 02-01-SUMMARY.md'
+  - path: <project>/.planning/STATE.md
+    action: Edit
+    summary: 'Edit: STATE.md'
+  - path: <project>/.planning/STATE.md
+    action: Edit
+    summary: 'Edit: STATE.md'
+  - path: <project>/.planning/STATE.md
+    action: Edit
+    summary: 'Edit: STATE.md'
+  - path: <project>/.planning/STATE.md
+    action: Edit
+    summary: 'Edit: STATE.md'
+  - path: <project>/.planning/STATE.md
+    action: Edit
+    summary: 'Edit: STATE.md'
+  - path: <project>/src/extraction/extractors/types.ts
+    action: Write
+    summary: 'Write: types.ts'
+  - path: <project>/src/extraction/extractors/read.ts
+    action: Write
+    summary: 'Write: read.ts'
+  - path: <project>/src/extraction/extractors/edit.ts
+    action: Write
+    summary: 'Write: edit.ts'
+  - path: <project>/src/extraction/extractors/write.ts
+    action: Write
+    summary: 'Write: write.ts'
+  - path: <project>/src/extraction/extractors/bash.ts
+    action: Write
+    summary: 'Write: bash.ts'
+  - path: <project>/src/extraction/extractors/grep.ts
+    action: Write
+    summary: 'Write: grep.ts'
+  - path: <project>/src/extraction/extractors/glob.ts
+    action: Write
+    summary: 'Write: glob.ts'
+  - path: <project>/src/extraction/extractors/web-fetch.ts
+    action: Write
+    summary: 'Write: web-fetch.ts'
+  - path: <project>/src/extraction/extractors/web-search.ts
+    action: Write
+    summary: 'Write: web-search.ts'
+  - path: <project>/src/extraction/extractors/task.ts
+    action: Write
+    summary: 'Write: task.ts'
+  - path: <project>/src/extraction/extractors/notebook-edit.ts
+    action: Write
+    summary: 'Write: notebook-edit.ts'
+  - path: <project>/src/tests/extraction/extractors.test.ts
+    action: Write
+    summary: 'Write: extractors.test.ts'
+  - path: <project>/src/extraction/extractor.ts
+    action: Write
+    summary: 'Write: extractor.ts'
+  - path: <project>/src/tests/extraction/extractor.test.ts
+    action: Write
+    summary: 'Write: extractor.test.ts'
+  - path: <project>/.planning/phases/02-extraction-pipeline/02-02-SUMMARY.md
+    action: Write
+    summary: 'Write: 02-02-SUMMARY.md'
+  - path: <project>/.planning/phases/02-extraction-pipeline/02-02-SUMMARY.md
+    action: Edit
+    summary: 'Edit: 02-02-SUMMARY.md'
+  - path: <project>/.planning/STATE.md
+    action: Edit
+    summary: 'Edit: STATE.md'
+  - path: <project>/.planning/STATE.md
+    action: Edit
+    summary: 'Edit: STATE.md'
+  - path: <project>/.planning/STATE.md
+    action: Edit
+    summary: 'Edit: STATE.md'
+  - path: <project>/.planning/STATE.md
+    action: Edit
+    summary: 'Edit: STATE.md'
+  - path: <project>/.planning/STATE.md
+    action: Edit
+    summary: 'Edit: STATE.md'
+  - path: <project>/.planning/STATE.md
+    action: Edit
+    summary: 'Edit: STATE.md'
+  - path: <project>/.planning/STATE.md
+    action: Edit
+    summary: 'Edit: STATE.md'
+read: []
+hot:
+  - <project>/src/tests/extraction/redaction.test.ts
+  - <project>/src/extraction/redaction.ts
+  - <project>/src/tests/extraction/quality-gate.test.ts
+  - <project>/src/tests/extraction/scoring.test.ts
+  - <project>/src/extraction/quality-gate.ts
+  - <project>/src/extraction/scoring.ts
+  - <project>/.planning/phases/02-extraction-pipeline/02-01-SUMMARY.md
+  - <project>/.planning/STATE.md
+  - <project>/src/extraction/extractors/types.ts
+  - <project>/src/extraction/extractors/read.ts
+  - <project>/src/extraction/extractors/edit.ts
+  - <project>/src/extraction/extractors/write.ts
+  - <project>/src/extraction/extractors/bash.ts
+  - <project>/src/extraction/extractors/grep.ts
+  - <project>/src/extraction/extractors/glob.ts
+  - <project>/src/extraction/extractors/web-fetch.ts
+  - <project>/src/extraction/extractors/web-search.ts
+  - <project>/src/extraction/extractors/task.ts
+  - <project>/src/extraction/extractors/notebook-edit.ts
+  - <project>/src/tests/extraction/extractors.test.ts
+  - <project>/src/extraction/extractor.ts
+  - <project>/src/tests/extraction/extractor.test.ts
+  - <project>/.planning/phases/02-extraction-pipeline/02-02-SUMMARY.md

@@ -1,0 +1,26 @@
+summary: ''
+key_exchanges:
+  - role: agent
+    gist: 'Bash: Run: INIT_RAW=$(node C:/Users/Grigorije/.claude/get-shit-done/...'
+  - role: agent
+    gist: 'Bash: Run: node C:/Users/Grigorije/.claude/get-shit-done/bin/gsd-too...'
+  - role: agent
+    gist: 'Bash: Run: node C:/Users/Grigorije/.claude/get-shit-done/bin/gsd-too...'
+  - role: agent
+    gist: 'Write: Write: 02-01-PLAN.md'
+  - role: agent
+    gist: 'Write: Write: 02-02-PLAN.md'
+  - role: agent
+    gist: 'Edit: Edit: ROADMAP.md'
+  - role: agent
+    gist: 'Bash: Run: node C:/Users/Grigorije/.claude/get-shit-done/bin/gsd-too...'
+  - role: agent
+    gist: 'Bash: Run: node C:/Users/Grigorije/.claude/get-shit-done/bin/gsd-too...'
+  - role: agent
+    gist: 'Bash: Run: node C:/Users/Grigorije/.claude/get-shit-done/bin/gsd-too...'
+  - role: agent
+    gist: 'Bash: Run: node C:/Users/Grigorije/.claude/get-shit-done/bin/gsd-too...'
+  - role: agent
+    gist: 'Bash: Run: node C:/Users/Grigorije/.claude/get-shit-done/bin/gsd-too...'
+  - role: agent
+    gist: Responded to user query

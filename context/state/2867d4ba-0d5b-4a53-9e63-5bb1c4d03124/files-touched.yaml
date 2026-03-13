@@ -1,0 +1,14 @@
+changed:
+  - path: <project>/src/tests/core/network-safety.test.ts
+    action: Write
+    summary: 'Write: network-safety.test.ts'
+  - path: <project>/src/tests/extraction/extractor.test.ts
+    action: Edit
+    summary: 'Edit: extractor.test.ts'
+  - path: <project>/src/tests/extraction/extractor.test.ts
+    action: Edit
+    summary: 'Edit: extractor.test.ts'
+read: []
+hot:
+  - <project>/src/tests/core/network-safety.test.ts
+  - <project>/src/tests/extraction/extractor.test.ts

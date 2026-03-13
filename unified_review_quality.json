@@ -1,0 +1,93 @@
+{
+  "assessments": {
+    "naming_quality": 82,
+    "error_consistency": 64,
+    "abstraction_fitness": 72,
+    "logic_clarity": 68,
+    "ai_generated_debt": 58,
+    "type_safety": 63,
+    "contract_coherence": 58
+  },
+  "findings": [
+    {
+      "id": "quality-001",
+      "dimension": "contract_coherence",
+      "file": "src/adapters/shared/lifecycle.ts",
+      "line": 122,
+      "severity": "high",
+      "description": "Pressure stores raw paths while observations stores sanitized paths — cross-table joins silently fail"
+    },
+    {
+      "id": "quality-002",
+      "dimension": "contract_coherence",
+      "file": "src/checkpoint/loader.ts",
+      "line": 62,
+      "severity": "high",
+      "description": "Re-mirroring writes plain YAML for .yaml.gz — breaks compressed checkpoint recovery"
+    },
+    {
+      "id": "quality-003",
+      "dimension": "contract_coherence",
+      "file": "src/gauge/token-gauge.ts",
+      "line": 77,
+      "severity": "high",
+      "description": "Token utilization formula differs between CC hooks and OpenClaw bridge adapter"
+    },
+    {
+      "id": "quality-004",
+      "dimension": "error_consistency",
+      "file": "src/adapters/cc-hooks/infrastructure.ts",
+      "line": 1,
+      "severity": "high",
+      "description": "wrapHook swallows all errors without telemetry"
+    },
+    {
+      "id": "quality-005",
+      "dimension": "contract_coherence",
+      "file": "src/embeddings/embedding-provider.ts",
+      "line": 189,
+      "severity": "high",
+      "description": "resetAvailability() undoes external-URL safety block"
+    },
+    {
+      "id": "quality-006",
+      "dimension": "error_consistency",
+      "file": "src/embeddings/embedding-provider.ts",
+      "line": 74,
+      "severity": "medium",
+      "description": "HTTP responses not checked for resp.ok"
+    },
+    {
+      "id": "quality-007",
+      "dimension": "abstraction_fitness",
+      "file": "src/extraction/scoring.ts",
+      "line": 1,
+      "severity": "medium",
+      "description": "Redaction tokens trigger false security category classification"
+    },
+    {
+      "id": "quality-008",
+      "dimension": "logic_clarity",
+      "file": "src/checkpoint/writer.ts",
+      "line": 226,
+      "severity": "medium",
+      "description": "Hop chain basename wrong format"
+    },
+    {
+      "id": "quality-009",
+      "dimension": "type_safety",
+      "file": "src/checkpoint/loader.ts",
+      "line": 111,
+      "severity": "medium",
+      "description": "Runtime YAML/JSON parsed with unchecked casts"
+    },
+    {
+      "id": "quality-010",
+      "dimension": "ai_generated_debt",
+      "file": "src/tests/integration/e2e-flows.test.ts",
+      "line": 12,
+      "severity": "low",
+      "description": "Unused imports, template boilerplate, tautological assertions"
+    }
+  ]
+}

@@ -1,0 +1,40 @@
+summary: ''
+key_exchanges:
+  - role: agent
+    gist: 'Edit: Edit: lifecycle.test.ts'
+  - role: agent
+    gist: 'Edit: Edit: loader.test.ts'
+  - role: agent
+    gist: Responded to user query
+  - role: agent
+    gist: 'Edit: Edit: decision-capture.ts'
+  - role: agent
+    gist: 'Edit: Edit: lifecycle.test.ts'
+  - role: user
+    gist: <task-notification>...
+  - role: agent
+    gist: 'Edit: Edit: writer.test.ts'
+  - role: agent
+    gist: Responded to user query
+  - role: agent
+    gist: 'Edit: Edit: scoring.ts'
+  - role: agent
+    gist: 'Edit: Edit: observations.ts'
+  - role: agent
+    gist: 'Edit: Edit: thread.ts'
+  - role: agent
+    gist: 'Edit: Edit: thread.ts'
+  - role: agent
+    gist: 'Edit: Edit: decisions.ts'
+  - role: agent
+    gist: 'Write: Write: enrichment.ts'
+  - role: agent
+    gist: 'Edit: Edit: extractor.ts'
+  - role: agent
+    gist: 'Edit: Edit: embedding-provider.test.ts'
+  - role: user
+    gist: <task-notification>...
+  - role: agent
+    gist: 'Write: Write: network-safety.ts'
+  - role: agent
+    gist: 'Edit: Edit: embedding-provider.test.ts'

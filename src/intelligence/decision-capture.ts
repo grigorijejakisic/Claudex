@@ -1,12 +1,16 @@
 /**
- * Stage 1 model-agnostic decision capture with 4-tier regex extraction.
- * Stage 2 (embedding classification) deferred to Phase 4.
+ * Two-stage model-agnostic decision capture.
+ * Stage 1: 4-tier regex extraction (always active).
+ * Stage 2: Embedding classification filtering (when classifier provided).
  * @see Architecture Section 6.1
  */
 
 import type { Database } from 'better-sqlite3';
 import { insertDecision, getDecisionsBySession } from '../core/decisions.js';
 import { normalizeForDedup, isDuplicate } from './semantic-dedup.js';
+import type { EmbeddingProvider } from '../embeddings/embedding-provider.js';
+import type { DecisionTemplates } from '../embeddings/templates.js';
+import { classifyDecision } from '../embeddings/templates.js';
 
 export interface CapturedDecision {
   content: string;
@@ -114,18 +118,26 @@ function extractTier4(text: string): CapturedDecision[] {
  * Captures decisions from turn or tool text. Non-throwing.
  * - after_tool: Tier 1 + 4 only
  * - after_turn: all 4 tiers
+ * - Stage 2: when classifier provided, filters false positives via embedding classification
  */
-export function captureDecisions(params: {
+export async function captureDecisions(params: {
   db: Database;
   sessionId: string;
   project: string;
   userText?: string;
   assistantText?: string;
   mode: 'after_turn' | 'after_tool';
-}): CapturedDecision[] {
+  classifier?: {
+    provider: EmbeddingProvider;
+    templates: DecisionTemplates;
+  } | null;
+  confidenceThreshold?: number;
+}): Promise<CapturedDecision[]> {
   try {
-    const { db, sessionId, project, userText, assistantText, mode } = params;
-    const candidates: CapturedDecision[] = [];
+    const { db, sessionId, project, userText, assistantText, mode, classifier, confidenceThreshold = 0.15 } = params;
+    let candidates: CapturedDecision[] = [];
+
+    // Stage 1: Tier extraction (always active)
 
     // Tier 1: user confirmations (both modes)
     if (userText) {
@@ -140,6 +152,28 @@ export function captureDecisions(params: {
     if (mode === 'after_turn') {
       if (assistantText) candidates.push(...extractTier2(assistantText));
       if (userText) candidates.push(...extractTier3(userText));
+    }
+
+    if (candidates.length === 0) return [];
+
+    // Stage 2: Embedding classification filter (when classifier provided)
+    if (classifier) {
+      const texts = candidates.map(c => c.content);
+      const embeddings = await classifier.provider.embedBatch(texts);
+      const filtered: CapturedDecision[] = [];
+      for (let i = 0; i < candidates.length; i++) {
+        const candidateEmb = embeddings[i];
+        if (!candidateEmb) {
+          // Fail open: embed failure does not filter candidate
+          filtered.push(candidates[i]);
+          continue;
+        }
+        const confidence = classifyDecision(candidateEmb, classifier.templates);
+        if (confidence > confidenceThreshold) {
+          filtered.push(candidates[i]);
+        }
+      }
+      candidates = filtered;
     }
 
     if (candidates.length === 0) return [];

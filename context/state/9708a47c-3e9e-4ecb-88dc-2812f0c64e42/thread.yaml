@@ -1,0 +1,38 @@
+summary: ''
+key_exchanges:
+  - role: agent
+    gist: 'Write: Write: fs-helpers.ts'
+  - role: agent
+    gist: 'Write: Write: text-utils.ts'
+  - role: agent
+    gist: 'Write: Write: paths.test.ts'
+  - role: agent
+    gist: 'Write: Write: fs-helpers.test.ts'
+  - role: agent
+    gist: 'Write: Write: text-utils.test.ts'
+  - role: agent
+    gist: 'Write: Write: scope-detector.ts'
+  - role: agent
+    gist: 'Write: Write: config.ts'
+  - role: agent
+    gist: 'Write: Write: scope-detector.test.ts'
+  - role: agent
+    gist: 'Write: Write: config.test.ts'
+  - role: agent
+    gist: 'Edit: Edit: config.ts'
+  - role: agent
+    gist: 'Edit: Edit: package.json'
+  - role: agent
+    gist: 'Bash: Run: P2_END_TIME=$(date -u +"%Y-%m-%dT%H:%M:%SZ") && P2_END_EP...'
+  - role: agent
+    gist: 'Write: Write: 00-02-SUMMARY.md'
+  - role: agent
+    gist: 'Edit: Edit: STATE.md'
+  - role: agent
+    gist: 'Edit: Edit: STATE.md'
+  - role: agent
+    gist: 'Edit: Edit: STATE.md'
+  - role: agent
+    gist: 'Edit: Edit: STATE.md'
+  - role: agent
+    gist: Responded to user query

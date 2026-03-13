@@ -1,0 +1,113 @@
+changed:
+  - path: <project>/package.json
+    action: Write
+    summary: 'Write: package.json'
+  - path: <project>/tsconfig.json
+    action: Write
+    summary: 'Write: tsconfig.json'
+  - path: <project>/build.ts
+    action: Write
+    summary: 'Write: build.ts'
+  - path: <project>/vitest.config.ts
+    action: Write
+    summary: 'Write: vitest.config.ts'
+  - path: <project>/src/tests/setup.test.ts
+    action: Write
+    summary: 'Write: setup.test.ts'
+  - path: <project>/tsconfig.json
+    action: Edit
+    summary: 'Edit: tsconfig.json'
+  - path: <project>/build.ts
+    action: Write
+    summary: 'Write: build.ts'
+  - path: <project>/src/shared/types.ts
+    action: Write
+    summary: 'Write: types.ts'
+  - path: <project>/src/shared/constants.ts
+    action: Write
+    summary: 'Write: constants.ts'
+  - path: <project>/.planning/phases/00-repository-setup/00-01-SUMMARY.md
+    action: Write
+    summary: 'Write: 00-01-SUMMARY.md'
+  - path: <project>/.planning/STATE.md
+    action: Edit
+    summary: 'Edit: STATE.md'
+  - path: <project>/.planning/STATE.md
+    action: Edit
+    summary: 'Edit: STATE.md'
+  - path: <project>/.planning/STATE.md
+    action: Edit
+    summary: 'Edit: STATE.md'
+  - path: <project>/src/shared/paths.ts
+    action: Write
+    summary: 'Write: paths.ts'
+  - path: <project>/src/shared/fs-helpers.ts
+    action: Write
+    summary: 'Write: fs-helpers.ts'
+  - path: <project>/src/shared/text-utils.ts
+    action: Write
+    summary: 'Write: text-utils.ts'
+  - path: <project>/src/shared/paths.test.ts
+    action: Write
+    summary: 'Write: paths.test.ts'
+  - path: <project>/src/shared/fs-helpers.test.ts
+    action: Write
+    summary: 'Write: fs-helpers.test.ts'
+  - path: <project>/src/shared/text-utils.test.ts
+    action: Write
+    summary: 'Write: text-utils.test.ts'
+  - path: <project>/src/shared/scope-detector.ts
+    action: Write
+    summary: 'Write: scope-detector.ts'
+  - path: <project>/src/shared/config.ts
+    action: Write
+    summary: 'Write: config.ts'
+  - path: <project>/src/shared/scope-detector.test.ts
+    action: Write
+    summary: 'Write: scope-detector.test.ts'
+  - path: <project>/src/shared/config.test.ts
+    action: Write
+    summary: 'Write: config.test.ts'
+  - path: <project>/src/shared/config.ts
+    action: Edit
+    summary: 'Edit: config.ts'
+  - path: <project>/package.json
+    action: Edit
+    summary: 'Edit: package.json'
+  - path: <project>/.planning/phases/00-repository-setup/00-02-SUMMARY.md
+    action: Write
+    summary: 'Write: 00-02-SUMMARY.md'
+  - path: <project>/.planning/STATE.md
+    action: Edit
+    summary: 'Edit: STATE.md'
+  - path: <project>/.planning/STATE.md
+    action: Edit
+    summary: 'Edit: STATE.md'
+  - path: <project>/.planning/STATE.md
+    action: Edit
+    summary: 'Edit: STATE.md'
+  - path: <project>/.planning/STATE.md
+    action: Edit
+    summary: 'Edit: STATE.md'
+read: []
+hot:
+  - <project>/package.json
+  - <project>/tsconfig.json
+  - <project>/build.ts
+  - <project>/vitest.config.ts
+  - <project>/src/tests/setup.test.ts
+  - <project>/src/shared/types.ts
+  - <project>/src/shared/constants.ts
+  - <project>/.planning/phases/00-repository-setup/00-01-SUMMARY.md
+  - <project>/.planning/STATE.md
+  - <project>/src/shared/paths.ts
+  - <project>/src/shared/fs-helpers.ts
+  - <project>/src/shared/text-utils.ts
+  - <project>/src/shared/paths.test.ts
+  - <project>/src/shared/fs-helpers.test.ts
+  - <project>/src/shared/text-utils.test.ts
+  - <project>/src/shared/scope-detector.ts
+  - <project>/src/shared/config.ts
+  - <project>/src/shared/scope-detector.test.ts
+  - <project>/src/shared/config.test.ts
+  - <project>/.planning/phases/00-repository-setup/00-02-SUMMARY.md

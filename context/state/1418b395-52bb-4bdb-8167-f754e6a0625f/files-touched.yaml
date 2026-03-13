@@ -1,0 +1,22 @@
+changed:
+  - path: <project>/.planning/phases/01-storage-layer/01-01-PLAN.md
+    action: Write
+    summary: 'Write: 01-01-PLAN.md'
+  - path: <project>/.planning/phases/01-storage-layer/01-02-PLAN.md
+    action: Write
+    summary: 'Write: 01-02-PLAN.md'
+  - path: <project>/.planning/phases/01-storage-layer/01-03-PLAN.md
+    action: Write
+    summary: 'Write: 01-03-PLAN.md'
+  - path: <project>/.planning/ROADMAP.md
+    action: Edit
+    summary: 'Edit: ROADMAP.md'
+  - path: <project>/.planning/ROADMAP.md
+    action: Edit
+    summary: 'Edit: ROADMAP.md'
+read: []
+hot:
+  - <project>/.planning/phases/01-storage-layer/01-01-PLAN.md
+  - <project>/.planning/phases/01-storage-layer/01-02-PLAN.md
+  - <project>/.planning/phases/01-storage-layer/01-03-PLAN.md
+  - <project>/.planning/ROADMAP.md

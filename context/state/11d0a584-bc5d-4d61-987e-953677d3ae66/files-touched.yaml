@@ -1,0 +1,153 @@
+changed:
+  - path: <project>/src/core/storage.ts
+    action: Write
+    summary: 'Write: storage.ts'
+  - path: <project>/src/core/migrations.ts
+    action: Write
+    summary: 'Write: migrations.ts'
+  - path: <project>/src/core/migrations.ts
+    action: Edit
+    summary: 'Edit: migrations.ts'
+  - path: <project>/src/core/migrations.ts
+    action: Edit
+    summary: 'Edit: migrations.ts'
+  - path: <project>/src/tests/core/storage.test.ts
+    action: Write
+    summary: 'Write: storage.test.ts'
+  - path: <project>/src/tests/core/migrations.test.ts
+    action: Write
+    summary: 'Write: migrations.test.ts'
+  - path: <project>/src/core/migrations.ts
+    action: Edit
+    summary: 'Edit: migrations.ts'
+  - path: <project>/src/tests/core/migrations.test.ts
+    action: Edit
+    summary: 'Edit: migrations.test.ts'
+  - path: <project>/src/tests/core/migrations.test.ts
+    action: Edit
+    summary: 'Edit: migrations.test.ts'
+  - path: <project>/src/core/migrations.ts
+    action: Edit
+    summary: 'Edit: migrations.ts'
+  - path: <project>/src/core/migrations.ts
+    action: Edit
+    summary: 'Edit: migrations.ts'
+  - path: <project>/src/core/migrations.ts
+    action: Edit
+    summary: 'Edit: migrations.ts'
+  - path: <project>/.planning/phases/01-storage-layer/01-01-SUMMARY.md
+    action: Write
+    summary: 'Write: 01-01-SUMMARY.md'
+  - path: <project>/.planning/phases/01-storage-layer/01-01-SUMMARY.md
+    action: Edit
+    summary: 'Edit: 01-01-SUMMARY.md'
+  - path: <project>/.planning/STATE.md
+    action: Edit
+    summary: 'Edit: STATE.md'
+  - path: <project>/.planning/STATE.md
+    action: Edit
+    summary: 'Edit: STATE.md'
+  - path: <project>/src/core/sessions.ts
+    action: Write
+    summary: 'Write: sessions.ts'
+  - path: <project>/src/core/decisions.ts
+    action: Write
+    summary: 'Write: decisions.ts'
+  - path: <project>/src/core/learnings.ts
+    action: Write
+    summary: 'Write: learnings.ts'
+  - path: <project>/src/tests/core/sessions.test.ts
+    action: Write
+    summary: 'Write: sessions.test.ts'
+  - path: <project>/src/core/thread.ts
+    action: Write
+    summary: 'Write: thread.ts'
+  - path: <project>/src/core/pressure.ts
+    action: Write
+    summary: 'Write: pressure.ts'
+  - path: <project>/src/core/checkpoint-tracking.ts
+    action: Write
+    summary: 'Write: checkpoint-tracking.ts'
+  - path: <project>/src/tests/core/crud-modules.test.ts
+    action: Write
+    summary: 'Write: crud-modules.test.ts'
+  - path: <project>/.planning/phases/01-storage-layer/01-03-SUMMARY.md
+    action: Write
+    summary: 'Write: 01-03-SUMMARY.md'
+  - path: <project>/.planning/phases/01-storage-layer/01-03-SUMMARY.md
+    action: Edit
+    summary: 'Edit: 01-03-SUMMARY.md'
+  - path: <project>/.planning/STATE.md
+    action: Edit
+    summary: 'Edit: STATE.md'
+  - path: <project>/.planning/STATE.md
+    action: Edit
+    summary: 'Edit: STATE.md'
+  - path: <project>/.planning/STATE.md
+    action: Edit
+    summary: 'Edit: STATE.md'
+  - path: <project>/.planning/STATE.md
+    action: Edit
+    summary: 'Edit: STATE.md'
+  - path: <project>/src/tests/core/observations.test.ts
+    action: Write
+    summary: 'Write: observations.test.ts'
+  - path: <project>/src/core/observations.ts
+    action: Write
+    summary: 'Write: observations.ts'
+  - path: <project>/src/observability/types.ts
+    action: Write
+    summary: 'Write: types.ts'
+  - path: <project>/src/tests/observability/telemetry.test.ts
+    action: Write
+    summary: 'Write: telemetry.test.ts'
+  - path: <project>/src/observability/telemetry.ts
+    action: Write
+    summary: 'Write: telemetry.ts'
+  - path: <project>/.planning/phases/01-storage-layer/01-02-SUMMARY.md
+    action: Write
+    summary: 'Write: 01-02-SUMMARY.md'
+  - path: <project>/.planning/STATE.md
+    action: Edit
+    summary: 'Edit: STATE.md'
+  - path: <project>/.planning/STATE.md
+    action: Edit
+    summary: 'Edit: STATE.md'
+  - path: <project>/.planning/STATE.md
+    action: Edit
+    summary: 'Edit: STATE.md'
+  - path: <project>/.planning/STATE.md
+    action: Edit
+    summary: 'Edit: STATE.md'
+  - path: <project>/.planning/STATE.md
+    action: Edit
+    summary: 'Edit: STATE.md'
+  - path: <project>/.planning/STATE.md
+    action: Edit
+    summary: 'Edit: STATE.md'
+  - path: <project>/.planning/STATE.md
+    action: Edit
+    summary: 'Edit: STATE.md'
+read: []
+hot:
+  - <project>/src/core/storage.ts
+  - <project>/src/core/migrations.ts
+  - <project>/src/tests/core/storage.test.ts
+  - <project>/src/tests/core/migrations.test.ts
+  - <project>/.planning/phases/01-storage-layer/01-01-SUMMARY.md
+  - <project>/.planning/STATE.md
+  - <project>/src/core/sessions.ts
+  - <project>/src/core/decisions.ts
+  - <project>/src/core/learnings.ts
+  - <project>/src/tests/core/sessions.test.ts
+  - <project>/src/core/thread.ts
+  - <project>/src/core/pressure.ts
+  - <project>/src/core/checkpoint-tracking.ts
+  - <project>/src/tests/core/crud-modules.test.ts
+  - <project>/.planning/phases/01-storage-layer/01-03-SUMMARY.md
+  - <project>/src/tests/core/observations.test.ts
+  - <project>/src/core/observations.ts
+  - <project>/src/observability/types.ts
+  - <project>/src/tests/observability/telemetry.test.ts
+  - <project>/src/observability/telemetry.ts
+  - <project>/.planning/phases/01-storage-layer/01-02-SUMMARY.md

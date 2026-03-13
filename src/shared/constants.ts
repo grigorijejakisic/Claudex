@@ -48,6 +48,7 @@ export const DEFAULT_CONFIG = {
   },
   checkpoint: {
     debounce_seconds: 60,
+    compression: false,
   },
   learnings: {
     max_per_project: 50,

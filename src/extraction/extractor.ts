@@ -80,28 +80,47 @@ export function processToolObservation(input: ProcessToolObservationInput): numb
     const result = extractor(toolInput, toolOutput);
     if (!result) return null;
 
-    // 4. Redact — apply content redaction and path sanitization
+    // 4. Redact — apply content redaction, title redaction, and path sanitization
     const redactedContent = redactContent(result.content);
+    const redactedTitle = redactContent(result.title);
     const sanitizedFiles = result.files_modified.map((f) => sanitizePath(f, projectRoot));
 
     // 5. Classify — determine observation category
-    const category = classifyCategory(toolName, result.title, redactedContent);
+    const category = classifyCategory(toolName, redactedTitle, redactedContent);
 
     // 6. Score — determine importance
     const importance = scoreImportance(toolName, category, redactedContent);
 
-    // 7. Dedup — skip if same tool+file+category within 5 minutes (300 seconds)
-    const firstFile = sanitizedFiles.length > 0 ? sanitizedFiles[0] : '';
+    // 7. Dedup — skip if same tool+file+category+project+session within 5 minutes (300 seconds)
     const fiveMinutesAgo = Math.floor(Date.now() / 1000) - 300;
 
-    const existing = db
-      .prepare(
-        `SELECT id FROM observations
-         WHERE tool_name = ? AND category = ? AND timestamp_epoch > ?
-           AND files_modified LIKE ?
-         LIMIT 1`
-      )
-      .get(toolName, category, fiveMinutesAgo, `%${firstFile}%`) as { id: number } | undefined;
+    let existing: { id: number } | undefined;
+    if (sanitizedFiles.length > 0) {
+      // Match on exact files_modified JSON string for precise dedup
+      existing = db
+        .prepare(
+          `SELECT id FROM observations
+           WHERE tool_name = ? AND category = ? AND project = ? AND session_id = ?
+             AND timestamp_epoch > ? AND files_modified = ?
+           LIMIT 1`
+        )
+        .get(toolName, category, project, sessionId, fiveMinutesAgo, JSON.stringify(sanitizedFiles)) as { id: number } | undefined;
+    } else {
+      // No files — dedup on tool+category+project+session+title+content+time window
+      // (empty files_modified means tools like Bash; include title to avoid collapsing
+      // different commands with identical output)
+      existing = db
+        .prepare(
+          `SELECT id FROM observations
+           WHERE tool_name = ? AND category = ? AND project = ? AND session_id = ?
+             AND content = ? AND title = ?
+             AND timestamp_epoch > ?
+             AND files_modified = '[]'
+             AND deleted_at_epoch IS NULL
+           LIMIT 1`
+        )
+        .get(toolName, category, project, sessionId, redactedContent, redactedTitle, fiveMinutesAgo) as { id: number } | undefined;
+    }
 
     if (existing) return null;
 
@@ -111,7 +130,7 @@ export function processToolObservation(input: ProcessToolObservationInput): numb
       project,
       tool_name: toolName,
       category,
-      title: result.title,
+      title: redactedTitle,
       content: redactedContent,
       importance,
       files_modified: sanitizedFiles,

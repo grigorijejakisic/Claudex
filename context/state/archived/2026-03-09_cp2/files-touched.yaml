@@ -1,0 +1,52 @@
+changed:
+  - path: C:\Users\[USER]\.claudex\projects.json
+    action: Edit
+    summary: 'Edit: projects.json'
+  - path: <project>/context/sessions/2026-03-09_session-1.md
+    action: Write
+    summary: 'Write: 2026-03-09_session-1.md'
+  - path: <project>/context/handoffs/ACTIVE.md
+    action: Write
+    summary: 'Write: ACTIVE.md'
+  - path: <project>/ARCHITECTURE.md
+    action: Edit
+    summary: 'Edit: ARCHITECTURE.md'
+  - path: <project>/ARCHITECTURE.md
+    action: Edit
+    summary: 'Edit: ARCHITECTURE.md'
+  - path: <project>/ARCHITECTURE.md
+    action: Edit
+    summary: 'Edit: ARCHITECTURE.md'
+  - path: <project>/ARCHITECTURE.md
+    action: Edit
+    summary: 'Edit: ARCHITECTURE.md'
+  - path: <project>/ARCHITECTURE.md
+    action: Edit
+    summary: 'Edit: ARCHITECTURE.md'
+  - path: <project>/ARCHITECTURE.md
+    action: Edit
+    summary: 'Edit: ARCHITECTURE.md'
+  - path: <project>/ARCHITECTURE.md
+    action: Edit
+    summary: 'Edit: ARCHITECTURE.md'
+  - path: <project>/ARCHITECTURE.md
+    action: Edit
+    summary: 'Edit: ARCHITECTURE.md'
+  - path: <project>/ARCHITECTURE.md
+    action: Edit
+    summary: 'Edit: ARCHITECTURE.md'
+  - path: <project>/ARCHITECTURE.md
+    action: Edit
+    summary: 'Edit: ARCHITECTURE.md'
+  - path: <project>/ARCHITECTURE.md
+    action: Edit
+    summary: 'Edit: ARCHITECTURE.md'
+  - path: <project>/ARCHITECTURE.md
+    action: Edit
+    summary: 'Edit: ARCHITECTURE.md'
+read: []
+hot:
+  - C:\Users\[USER]\.claudex\projects.json
+  - <project>/context/sessions/2026-03-09_session-1.md
+  - <project>/context/handoffs/ACTIVE.md
+  - <project>/ARCHITECTURE.md

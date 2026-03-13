@@ -1,0 +1,118 @@
+schema: claudex/checkpoint
+version: 2
+meta:
+  checkpoint_id: 2026-03-12_cp3
+  session_id: 2867d4ba-0d5b-4a53-9e63-5bb1c4d03124
+  scope: project:claudex-v3
+  created_at: 2026-03-12T21:20:28.188Z
+  created_at_epoch_ms: 1773350428188
+  trigger: auto-75pct
+  writer_version: 3.0.0
+  token_usage:
+    input_tokens: 1
+    output_tokens: 216
+    window_size: 200000
+    utilization: 0.76569
+  previous_checkpoint: 2026-03-12_cp2.yaml
+  session_log: null
+working:
+  task: ''
+  status: in_progress
+  branch: null
+  next_action: null
+decisions: []
+files:
+  changed: []
+  read: []
+  hot: []
+gsd:
+  active: true
+  milestone: null
+  phase: 11
+  phase_name: Deployment
+  phase_goal: Claudex v3 is running in production on both adapters, verified on fresh installs, with predecessor systems archived
+  plan_status: All 12 phases complete -- Claudex v3 fully implemented, tested, and deployment-ready
+  plan_number: 1
+  completion_pct: 92
+  requirements: []
+open_questions: []
+learnings: []
+thread:
+  summary: ''
+  key_exchanges:
+    - role: user
+      gist: /starthere
+pressure_snapshot:
+  hot:
+    - <project>/.planning/STATE.md
+    - <project>/ARCHITECTURE.md
+    - <project>/.planning/ROADMAP.md
+    - C:\Users\[USER]\.claude\teams\auto-gsd-pipeline\inboxes\team-lead.json
+    - <project>/context/sessions/2026-03-10_session-2.md
+    - <project>/src/core/migrations.ts
+    - <project>/src/cli/setup.ts
+  warm:
+    - <project>/src/intelligence/enrichment.ts
+    - <project>/src/adapters/openclaw-bridge/bridge-adapter.ts
+    - <project>/src/tests/cli/setup.test.ts
+    - <project>/src/extraction/redaction.ts
+    - <project>/src/extraction/extractor.ts
+    - <project>/src/tests/decay/pressure-decay.test.ts
+    - <project>/src/adapters/cc-hooks/infrastructure.ts
+    - <project>/src/tests/integration/e2e-flows.test.ts
+    - <project>/context/handoffs/ACTIVE.md
+    - <project>/src/shared/scope-detector.ts
+    - <project>/src/shared/config.ts
+    - <project>/src/tests/core/migrations.test.ts
+    - <project>/src/tests/intelligence/semantic-dedup.test.ts
+    - <project>/src/intelligence/decision-capture.ts
+    - <project>/src/tests/embeddings/embedding-provider.test.ts
+    - <project>/src/checkpoint/loader.ts
+    - C:\Users\[USER]\.claudex\memory\topics\agent-teams.md
+    - <project>/src/tests/intelligence/learnings-promoter.test.ts
+    - <project>/src/embeddings/embedding-provider.ts
+    - <project>/src/tests/checkpoint/loader.test.ts
+    - <project>/src/decay/decay-engine.ts
+    - <project>/src/assembly/assembler.ts
+    - <project>/src/tests/adapters/cc-hooks/infrastructure.test.ts
+    - <project>/src/tests/adapters/openclaw-bridge/bridge-adapter.test.ts
+    - <project>/src/tests/integration/cross-cutting.test.ts
+recent_observations:
+  - title: 'Run: touch "$HOME/.claudex/sessions/.completed-manual-2026-03-...'
+    category: change
+    timestamp_epoch: 1773349946487
+  - title: 'Run: git status --short | grep "^??" | wc -l'
+    category: change
+    timestamp_epoch: 1773349939490
+  - title: 'Run: git status --short | head -30'
+    category: change
+    timestamp_epoch: 1773349934957
+  - title: 'Edit: 2026-03-12.md'
+    category: change
+    timestamp_epoch: 1773349930381
+  - title: 'Write: ACTIVE.md'
+    category: feature
+    timestamp_epoch: 1773349914994
+  - title: 'Run: cp context/handoffs/ACTIVE.md context/handoffs/archive/au...'
+    category: change
+    timestamp_epoch: 1773349883583
+  - title: 'Write: 2026-03-12_session-4.md'
+    category: feature
+    timestamp_epoch: 1773349878793
+  - title: 'Run: mkdir -p context/handoffs/archive 2>/dev/null; echo "done"'
+    category: change
+    timestamp_epoch: 1773349834585
+boost_state:
+  files:
+    - C:\Users\[USER]\.claudex\memory\daily\2026-03-12.md
+    - <project>/context/handoffs/ACTIVE.md
+    - <project>/context/sessions/2026-03-12_session-4.md
+    - <project>/src/shared/scope-detector.test.ts
+    - <project>/src/tests/adapters/cc-hooks/infrastructure.test.ts
+    - <project>/src/tests/embeddings/embedding-provider.test.ts
+    - <project>/src/tests/cli/setup.test.ts
+    - <project>/src/adapters/cc-hooks/post-tool-use.ts
+    - <project>/src/cli/setup.ts
+    - <project>/src/tests/assembly/assembler.test.ts
+  turn: 2
+  applied_at: 1773335801210

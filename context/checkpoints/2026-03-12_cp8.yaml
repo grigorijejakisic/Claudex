@@ -1,0 +1,139 @@
+schema: claudex/checkpoint
+version: 2
+meta:
+  checkpoint_id: 2026-03-12_cp8
+  session_id: 2867d4ba-0d5b-4a53-9e63-5bb1c4d03124
+  scope: project:claudex-v3
+  created_at: 2026-03-12T22:54:52.416Z
+  created_at_epoch_ms: 1773356092416
+  trigger: incremental
+  writer_version: 3.0.0
+  token_usage:
+    input_tokens: 1
+    output_tokens: 1
+    window_size: 200000
+    utilization: 0.79217
+  previous_checkpoint: 2026-03-12_cp7.yaml
+  session_log: null
+working:
+  task: ''
+  status: in_progress
+  branch: null
+  next_action: null
+decisions: []
+files:
+  changed: []
+  read: []
+  hot: []
+gsd: null
+open_questions: []
+learnings: []
+thread:
+  summary: ''
+  key_exchanges:
+    - role: agent
+      gist: 'Bash: Run: bun run build 2>&1'
+pressure_snapshot:
+  hot:
+    - <project>/.planning/STATE.md
+    - <project>/ARCHITECTURE.md
+    - <project>/.planning/ROADMAP.md
+    - C:\Users\[USER]\.claude\teams\auto-gsd-pipeline\inboxes\team-lead.json
+    - <project>/src/core/migrations.ts
+    - <project>/src/adapters/openclaw-bridge/bridge-adapter.ts
+    - <project>/context/sessions/2026-03-10_session-2.md
+    - <project>/src/intelligence/enrichment.ts
+    - <project>/src/checkpoint/writer.ts
+    - <project>/src/cli/setup.ts
+    - <project>/src/tests/integration/e2e-flows.test.ts
+    - <project>/src/core/observations.ts
+    - <project>/src/tests/intelligence/enrichment.test.ts
+    - <project>/src/tests/adapters/openclaw-bridge/bridge-adapter.test.ts
+  warm:
+    - <project>/src/core/sessions.ts
+    - <project>/src/core/decisions.ts
+    - <project>/src/core/checkpoint-tracking.ts
+    - <project>/src/extraction/extractor.ts
+    - <project>/src/checkpoint/loader.ts
+    - <project>/src/tests/decay/pressure-decay.test.ts
+    - <project>/src/tests/cli/setup.test.ts
+    - <project>/src/tests/integration/cross-cutting.test.ts
+    - <project>/src/shared/config.ts
+    - <project>/src/core/pressure.ts
+    - <project>/src/tests/checkpoint/loader.test.ts
+    - <project>/src/tests/core/migrations.test.ts
+    - <project>/src/core/thread.ts
+    - <project>/src/extraction/redaction.ts
+    - <project>/src/tests/intelligence/learnings-promoter.test.ts
+    - <project>/src/tests/embeddings/embedding-provider.test.ts
+    - <project>/src/tests/checkpoint/writer.test.ts
+    - <project>/src/adapters/cc-hooks/infrastructure.ts
+    - <project>/src/tests/cli/dashboard.test.ts
+    - <project>/context/handoffs/ACTIVE.md
+    - <project>/build.ts
+    - <project>/src/shared/scope-detector.ts
+    - <project>/src/core/learnings.ts
+    - <project>/src/tests/core/sessions.test.ts
+    - <project>/src/tests/core/crud-modules.test.ts
+    - <project>/src/tests/extraction/extractor.test.ts
+    - <project>/src/tests/intelligence/semantic-dedup.test.ts
+    - <project>/src/intelligence/decision-capture.ts
+    - <project>/src/tests/intelligence/decision-capture.test.ts
+    - <project>/src/embeddings/embedding-provider.ts
+    - <project>/src/tests/embeddings/templates.test.ts
+    - <project>/src/tests/intelligence/topic-shift.test.ts
+    - <project>/src/tests/decay/decay-engine.test.ts
+    - <project>/src/tests/assembly/assembler.test.ts
+    - <project>/src/tests/checkpoint/compression.test.ts
+    - <project>/src/shared/scope-detector.test.ts
+    - <project>/src/tests/core/storage.test.ts
+    - <project>/src/extraction/quality-gate.ts
+    - <project>/src/extraction/scoring.ts
+    - C:\Users\[USER]\.claudex\memory\topics\agent-teams.md
+    - <project>/src/decay/decay-engine.ts
+    - <project>/src/assembly/assembler.ts
+    - <project>/src/adapters/cc-hooks/post-tool-use.ts
+    - <project>/src/adapters/cc-hooks/stop.ts
+    - <project>/src/tests/adapters/cc-hooks/infrastructure.test.ts
+    - <project>/src/tests/adapters/cc-hooks/hooks.test.ts
+    - <project>/src/tests/core/stmt-cache.test.ts
+    - <project>/src/tests/adapters/shared/lifecycle.test.ts
+recent_observations:
+  - title: 'Run: bun run build 2>&1'
+    category: change
+    timestamp_epoch: 1773356092380
+  - title: 'Edit: extractor.test.ts'
+    category: change
+    timestamp_epoch: 1773355941022
+  - title: 'Edit: plugin-entry.test.ts'
+    category: change
+    timestamp_epoch: 1773355928276
+  - title: 'Run: rm "C:\Users\Grigorije\Desktop\Projects\CLAUDEXv3\src\tes...'
+    category: change
+    timestamp_epoch: 1773355857538
+  - title: 'Write: cross-cutting.test.ts'
+    category: feature
+    timestamp_epoch: 1773355850956
+  - title: 'Write: notebook-edit-extractor.test.ts'
+    category: feature
+    timestamp_epoch: 1773355839021
+  - title: 'Write: task-extractor.test.ts'
+    category: feature
+    timestamp_epoch: 1773355831094
+  - title: 'Write: web-search-extractor.test.ts'
+    category: feature
+    timestamp_epoch: 1773355818154
+boost_state:
+  files:
+    - C:\Users\[USER]\.claudex\memory\daily\2026-03-12.md
+    - <project>/context/handoffs/ACTIVE.md
+    - <project>/context/sessions/2026-03-12_session-4.md
+    - <project>/src/shared/scope-detector.test.ts
+    - <project>/src/tests/adapters/cc-hooks/infrastructure.test.ts
+    - <project>/src/tests/embeddings/embedding-provider.test.ts
+    - <project>/src/tests/cli/setup.test.ts
+    - <project>/src/adapters/cc-hooks/post-tool-use.ts
+    - <project>/src/cli/setup.ts
+    - <project>/src/tests/assembly/assembler.test.ts
+  turn: 2
+  applied_at: 1773335801210

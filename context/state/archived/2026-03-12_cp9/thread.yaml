@@ -1,0 +1,10 @@
+summary: ''
+key_exchanges:
+  - role: agent
+    gist: 'Bash: Run: bun run build 2>&1'
+  - role: agent
+    gist: 'Bash: Run: npx vitest run 2>&1 | tail -25'
+  - role: agent
+    gist: Responded to user query
+  - role: user
+    gist: update the handoff then do /unified-review

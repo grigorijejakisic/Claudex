@@ -5,6 +5,7 @@
  */
 
 import type { Database } from 'better-sqlite3';
+import { cachedPrepare } from './stmt-cache.js';
 
 export interface SessionRow {
   session_id: string;
@@ -31,7 +32,7 @@ export function createSession(
     source?: string;
   }
 ): void {
-  db.prepare(
+  cachedPrepare(db,
     `INSERT INTO sessions (session_id, scope, project, cwd, source)
      VALUES (?, ?, ?, ?, ?)`
   ).run(
@@ -50,7 +51,7 @@ export function getSession(
   db: Database,
   sessionId: string
 ): SessionRow | undefined {
-  return db.prepare('SELECT * FROM sessions WHERE session_id = ?').get(sessionId) as
+  return cachedPrepare(db, 'SELECT * FROM sessions WHERE session_id = ?').get(sessionId) as
     | SessionRow
     | undefined;
 }
@@ -63,7 +64,7 @@ export function endSession(
   sessionId: string,
   status: 'completed' | 'failed'
 ): void {
-  db.prepare(
+  cachedPrepare(db,
     `UPDATE sessions SET status = ?, ended_at_epoch = unixepoch()
      WHERE session_id = ?`
   ).run(status, sessionId);
@@ -78,16 +79,14 @@ export function getActiveSession(
   project?: string
 ): SessionRow | undefined {
   if (project) {
-    return db
-      .prepare(
+    return cachedPrepare(db,
         `SELECT * FROM sessions
          WHERE status = 'active' AND project = ?
          ORDER BY created_at_epoch DESC LIMIT 1`
       )
       .get(project) as SessionRow | undefined;
   }
-  return db
-    .prepare(
+  return cachedPrepare(db,
       `SELECT * FROM sessions
        WHERE status = 'active'
        ORDER BY created_at_epoch DESC LIMIT 1`
@@ -102,7 +101,7 @@ export function incrementObservationCount(
   db: Database,
   sessionId: string
 ): void {
-  db.prepare(
+  cachedPrepare(db,
     `UPDATE sessions SET observation_count = observation_count + 1
      WHERE session_id = ?`
   ).run(sessionId);

@@ -1,0 +1,833 @@
+schema: claudex/checkpoint
+version: 2
+meta:
+  checkpoint_id: 2026-03-12_cp1
+  session_id: 2867d4ba-0d5b-4a53-9e63-5bb1c4d03124
+  scope: project:claudex-v3
+  created_at: 2026-03-12T16:51:14.743Z
+  created_at_epoch_ms: 1773334274743
+  trigger: incremental
+  writer_version: 3.0.0
+  token_usage:
+    input_tokens: 1
+    output_tokens: 429
+    window_size: 200000
+    utilization: 0.82386
+  previous_checkpoint: 2026-03-10_cp5.yaml
+  session_log: null
+working:
+  task: ''
+  status: in_progress
+  branch: null
+  next_action: null
+decisions: []
+files:
+  changed:
+    - path: <project>/.planning/phases/03-intelligence-core/03-CONTEXT.md
+      action: Write
+      summary: 'Write: 03-CONTEXT.md'
+    - path: <project>/.planning/phases/03-intelligence-core/03-01-PLAN.md
+      action: Write
+      summary: 'Write: 03-01-PLAN.md'
+    - path: <project>/.planning/phases/03-intelligence-core/03-02-PLAN.md
+      action: Write
+      summary: 'Write: 03-02-PLAN.md'
+    - path: <project>/.planning/ROADMAP.md
+      action: Edit
+      summary: 'Edit: ROADMAP.md'
+    - path: <project>/src/intelligence/semantic-dedup.ts
+      action: Write
+      summary: 'Write: semantic-dedup.ts'
+    - path: <project>/src/tests/intelligence/semantic-dedup.test.ts
+      action: Write
+      summary: 'Write: semantic-dedup.test.ts'
+    - path: <project>/src/tests/intelligence/semantic-dedup.test.ts
+      action: Edit
+      summary: 'Edit: semantic-dedup.test.ts'
+    - path: <project>/src/tests/intelligence/semantic-dedup.test.ts
+      action: Edit
+      summary: 'Edit: semantic-dedup.test.ts'
+    - path: <project>/src/tests/intelligence/semantic-dedup.test.ts
+      action: Edit
+      summary: 'Edit: semantic-dedup.test.ts'
+    - path: <project>/src/intelligence/decision-capture.ts
+      action: Write
+      summary: 'Write: decision-capture.ts'
+    - path: <project>/src/tests/intelligence/decision-capture.test.ts
+      action: Write
+      summary: 'Write: decision-capture.test.ts'
+    - path: <project>/src/intelligence/decision-capture.ts
+      action: Edit
+      summary: 'Edit: decision-capture.ts'
+    - path: <project>/src/intelligence/thread-tracker.ts
+      action: Write
+      summary: 'Write: thread-tracker.ts'
+    - path: <project>/src/tests/intelligence/thread-tracker.test.ts
+      action: Write
+      summary: 'Write: thread-tracker.test.ts'
+    - path: <project>/src/intelligence/learnings-promoter.ts
+      action: Write
+      summary: 'Write: learnings-promoter.ts'
+    - path: <project>/src/tests/intelligence/learnings-promoter.test.ts
+      action: Write
+      summary: 'Write: learnings-promoter.test.ts'
+    - path: <project>/src/tests/intelligence/learnings-promoter.test.ts
+      action: Edit
+      summary: 'Edit: learnings-promoter.test.ts'
+    - path: <project>/.planning/phases/03-intelligence-core/03-01-SUMMARY.md
+      action: Write
+      summary: 'Write: 03-01-SUMMARY.md'
+    - path: <project>/.planning/phases/03-intelligence-core/03-02-SUMMARY.md
+      action: Write
+      summary: 'Write: 03-02-SUMMARY.md'
+    - path: <project>/.planning/STATE.md
+      action: Edit
+      summary: 'Edit: STATE.md'
+    - path: <project>/.planning/STATE.md
+      action: Edit
+      summary: 'Edit: STATE.md'
+    - path: <project>/.planning/STATE.md
+      action: Edit
+      summary: 'Edit: STATE.md'
+    - path: <project>/.planning/ROADMAP.md
+      action: Edit
+      summary: 'Edit: ROADMAP.md'
+    - path: <project>/.planning/ROADMAP.md
+      action: Edit
+      summary: 'Edit: ROADMAP.md'
+    - path: <project>/.planning/phases/04-intelligence-v12/04-CONTEXT.md
+      action: Write
+      summary: 'Write: 04-CONTEXT.md'
+    - path: <project>/.planning/phases/04-intelligence-v12/04-01-PLAN.md
+      action: Write
+      summary: 'Write: 04-01-PLAN.md'
+    - path: <project>/.planning/phases/04-intelligence-v12/04-02-PLAN.md
+      action: Write
+      summary: 'Write: 04-02-PLAN.md'
+    - path: <project>/.planning/ROADMAP.md
+      action: Edit
+      summary: 'Edit: ROADMAP.md'
+    - path: <project>/src/embeddings/cosine.ts
+      action: Write
+      summary: 'Write: cosine.ts'
+    - path: <project>/src/embeddings/embedding-provider.ts
+      action: Write
+      summary: 'Write: embedding-provider.ts'
+    - path: <project>/src/embeddings/templates.ts
+      action: Write
+      summary: 'Write: templates.ts'
+    - path: <project>/src/tests/embeddings/cosine.test.ts
+      action: Write
+      summary: 'Write: cosine.test.ts'
+    - path: <project>/src/tests/embeddings/embedding-provider.test.ts
+      action: Write
+      summary: 'Write: embedding-provider.test.ts'
+    - path: <project>/src/tests/embeddings/templates.test.ts
+      action: Write
+      summary: 'Write: templates.test.ts'
+    - path: <project>/src/tests/embeddings/embedding-provider.test.ts
+      action: Edit
+      summary: 'Edit: embedding-provider.test.ts'
+    - path: <project>/src/intelligence/topic-shift.ts
+      action: Write
+      summary: 'Write: topic-shift.ts'
+    - path: <project>/src/intelligence/decision-capture.ts
+      action: Edit
+      summary: 'Edit: decision-capture.ts'
+    - path: <project>/src/intelligence/decision-capture.ts
+      action: Edit
+      summary: 'Edit: decision-capture.ts'
+    - path: <project>/src/intelligence/enrichment.ts
+      action: Write
+      summary: 'Write: enrichment.ts'
+    - path: <project>/src/tests/intelligence/decision-capture.test.ts
+      action: Write
+      summary: 'Write: decision-capture.test.ts'
+    - path: <project>/src/tests/intelligence/topic-shift.test.ts
+      action: Write
+      summary: 'Write: topic-shift.test.ts'
+    - path: <project>/src/tests/intelligence/enrichment.test.ts
+      action: Write
+      summary: 'Write: enrichment.test.ts'
+    - path: <project>/.planning/phases/04-intelligence-v12/04-01-SUMMARY.md
+      action: Write
+      summary: 'Write: 04-01-SUMMARY.md'
+    - path: <project>/.planning/phases/04-intelligence-v12/04-02-SUMMARY.md
+      action: Write
+      summary: 'Write: 04-02-SUMMARY.md'
+    - path: <project>/.planning/STATE.md
+      action: Edit
+      summary: 'Edit: STATE.md'
+    - path: <project>/.planning/STATE.md
+      action: Edit
+      summary: 'Edit: STATE.md'
+    - path: <project>/.planning/STATE.md
+      action: Edit
+      summary: 'Edit: STATE.md'
+    - path: <project>/.planning/ROADMAP.md
+      action: Edit
+      summary: 'Edit: ROADMAP.md'
+    - path: <project>/.planning/ROADMAP.md
+      action: Edit
+      summary: 'Edit: ROADMAP.md'
+    - path: <project>/.planning/phases/06-checkpoint-system/06-CONTEXT.md
+      action: Write
+      summary: 'Write: 06-CONTEXT.md'
+    - path: <project>/.planning/phases/06-checkpoint-system/06-01-PLAN.md
+      action: Write
+      summary: 'Write: 06-01-PLAN.md'
+    - path: <project>/.planning/phases/06-checkpoint-system/06-02-PLAN.md
+      action: Write
+      summary: 'Write: 06-02-PLAN.md'
+    - path: <project>/.planning/ROADMAP.md
+      action: Edit
+      summary: 'Edit: ROADMAP.md'
+    - path: <project>/src/checkpoint/types.ts
+      action: Write
+      summary: 'Write: types.ts'
+    - path: <project>/src/tests/checkpoint/types.test.ts
+      action: Write
+      summary: 'Write: types.test.ts'
+    - path: <project>/src/checkpoint/writer.ts
+      action: Write
+      summary: 'Write: writer.ts'
+    - path: <project>/src/tests/checkpoint/writer.test.ts
+      action: Write
+      summary: 'Write: writer.test.ts'
+    - path: <project>/src/tests/checkpoint/writer.test.ts
+      action: Edit
+      summary: 'Edit: writer.test.ts'
+    - path: <project>/src/checkpoint/loader.ts
+      action: Write
+      summary: 'Write: loader.ts'
+    - path: <project>/src/tests/checkpoint/loader.test.ts
+      action: Write
+      summary: 'Write: loader.test.ts'
+    - path: <project>/src/checkpoint/inject.ts
+      action: Write
+      summary: 'Write: inject.ts'
+    - path: <project>/src/tests/checkpoint/inject.test.ts
+      action: Write
+      summary: 'Write: inject.test.ts'
+    - path: <project>/.planning/phases/06-checkpoint-system/06-01-SUMMARY.md
+      action: Write
+      summary: 'Write: 06-01-SUMMARY.md'
+    - path: <project>/.planning/phases/06-checkpoint-system/06-02-SUMMARY.md
+      action: Write
+      summary: 'Write: 06-02-SUMMARY.md'
+    - path: <project>/.planning/STATE.md
+      action: Edit
+      summary: 'Edit: STATE.md'
+    - path: <project>/.planning/STATE.md
+      action: Edit
+      summary: 'Edit: STATE.md'
+    - path: <project>/.planning/STATE.md
+      action: Edit
+      summary: 'Edit: STATE.md'
+    - path: <project>/.planning/STATE.md
+      action: Edit
+      summary: 'Edit: STATE.md'
+    - path: <project>/.planning/ROADMAP.md
+      action: Edit
+      summary: 'Edit: ROADMAP.md'
+    - path: <project>/.planning/ROADMAP.md
+      action: Edit
+      summary: 'Edit: ROADMAP.md'
+    - path: <project>/.planning/phases/07-supporting-subsystems/07-CONTEXT.md
+      action: Write
+      summary: 'Write: 07-CONTEXT.md'
+    - path: <project>/.planning/phases/07-supporting-subsystems/07-01-PLAN.md
+      action: Write
+      summary: 'Write: 07-01-PLAN.md'
+    - path: <project>/.planning/phases/07-supporting-subsystems/07-02-PLAN.md
+      action: Write
+      summary: 'Write: 07-02-PLAN.md'
+    - path: <project>/.planning/ROADMAP.md
+      action: Edit
+      summary: 'Edit: ROADMAP.md'
+    - path: <project>/src/gauge/window-detector.ts
+      action: Write
+      summary: 'Write: window-detector.ts'
+    - path: <project>/src/gauge/token-gauge.ts
+      action: Write
+      summary: 'Write: token-gauge.ts'
+    - path: <project>/src/tests/gauge/window-detector.test.ts
+      action: Write
+      summary: 'Write: window-detector.test.ts'
+    - path: <project>/src/tests/gauge/token-gauge.test.ts
+      action: Write
+      summary: 'Write: token-gauge.test.ts'
+    - path: <project>/src/decay/decay-engine.ts
+      action: Write
+      summary: 'Write: decay-engine.ts'
+    - path: <project>/src/decay/pressure-decay.ts
+      action: Write
+      summary: 'Write: pressure-decay.ts'
+    - path: <project>/src/tests/decay/decay-engine.test.ts
+      action: Write
+      summary: 'Write: decay-engine.test.ts'
+    - path: <project>/src/tests/decay/pressure-decay.test.ts
+      action: Write
+      summary: 'Write: pressure-decay.test.ts'
+    - path: <project>/src/gsd/types.ts
+      action: Write
+      summary: 'Write: types.ts'
+    - path: <project>/src/gsd/state-reader.ts
+      action: Write
+      summary: 'Write: state-reader.ts'
+    - path: <project>/src/tests/gsd/state-reader.test.ts
+      action: Write
+      summary: 'Write: state-reader.test.ts'
+    - path: <project>/.planning/phases/07-supporting-subsystems/07-01-SUMMARY.md
+      action: Write
+      summary: 'Write: 07-01-SUMMARY.md'
+    - path: <project>/.planning/phases/07-supporting-subsystems/07-02-SUMMARY.md
+      action: Write
+      summary: 'Write: 07-02-SUMMARY.md'
+    - path: <project>/.planning/STATE.md
+      action: Edit
+      summary: 'Edit: STATE.md'
+    - path: <project>/.planning/STATE.md
+      action: Edit
+      summary: 'Edit: STATE.md'
+    - path: <project>/.planning/STATE.md
+      action: Edit
+      summary: 'Edit: STATE.md'
+    - path: <project>/.planning/STATE.md
+      action: Edit
+      summary: 'Edit: STATE.md'
+    - path: <project>/.planning/STATE.md
+      action: Edit
+      summary: 'Edit: STATE.md'
+    - path: <project>/.planning/ROADMAP.md
+      action: Edit
+      summary: 'Edit: ROADMAP.md'
+    - path: <project>/.planning/ROADMAP.md
+      action: Edit
+      summary: 'Edit: ROADMAP.md'
+    - path: <project>/.planning/phases/05-assembly-pipeline/05-CONTEXT.md
+      action: Write
+      summary: 'Write: 05-CONTEXT.md'
+    - path: <project>/.planning/phases/05-assembly-pipeline/05-01-PLAN.md
+      action: Write
+      summary: 'Write: 05-01-PLAN.md'
+    - path: <project>/.planning/phases/05-assembly-pipeline/05-02-PLAN.md
+      action: Write
+      summary: 'Write: 05-02-PLAN.md'
+    - path: <project>/.planning/ROADMAP.md
+      action: Edit
+      summary: 'Edit: ROADMAP.md'
+    - path: <project>/src/assembly/token-estimator.ts
+      action: Write
+      summary: 'Write: token-estimator.ts'
+    - path: <project>/src/assembly/sections.ts
+      action: Write
+      summary: 'Write: sections.ts'
+    - path: <project>/src/tests/assembly/token-estimator.test.ts
+      action: Write
+      summary: 'Write: token-estimator.test.ts'
+    - path: <project>/src/tests/assembly/sections.test.ts
+      action: Write
+      summary: 'Write: sections.test.ts'
+    - path: <project>/src/assembly/assembler.ts
+      action: Write
+      summary: 'Write: assembler.ts'
+    - path: <project>/src/tests/assembly/assembler.test.ts
+      action: Write
+      summary: 'Write: assembler.test.ts'
+    - path: <project>/.planning/phases/05-assembly-pipeline/05-01-SUMMARY.md
+      action: Write
+      summary: 'Write: 05-01-SUMMARY.md'
+    - path: <project>/.planning/phases/05-assembly-pipeline/05-02-SUMMARY.md
+      action: Write
+      summary: 'Write: 05-02-SUMMARY.md'
+    - path: <project>/.planning/STATE.md
+      action: Edit
+      summary: 'Edit: STATE.md'
+    - path: <project>/.planning/STATE.md
+      action: Edit
+      summary: 'Edit: STATE.md'
+    - path: <project>/.planning/STATE.md
+      action: Edit
+      summary: 'Edit: STATE.md'
+    - path: <project>/.planning/STATE.md
+      action: Edit
+      summary: 'Edit: STATE.md'
+    - path: <project>/.planning/STATE.md
+      action: Edit
+      summary: 'Edit: STATE.md'
+    - path: <project>/.planning/STATE.md
+      action: Edit
+      summary: 'Edit: STATE.md'
+    - path: <project>/.planning/ROADMAP.md
+      action: Edit
+      summary: 'Edit: ROADMAP.md'
+    - path: <project>/.planning/ROADMAP.md
+      action: Edit
+      summary: 'Edit: ROADMAP.md'
+    - path: <project>/.planning/phases/08-cc-hook-adapter/08-CONTEXT.md
+      action: Write
+      summary: 'Write: 08-CONTEXT.md'
+    - path: <project>/.planning/phases/08-cc-hook-adapter/08-01-PLAN.md
+      action: Write
+      summary: 'Write: 08-01-PLAN.md'
+    - path: <project>/.planning/phases/08-cc-hook-adapter/08-02-PLAN.md
+      action: Write
+      summary: 'Write: 08-02-PLAN.md'
+    - path: <project>/.planning/ROADMAP.md
+      action: Edit
+      summary: 'Edit: ROADMAP.md'
+    - path: <project>/src/adapters/cc-hooks/infrastructure.ts
+      action: Write
+      summary: 'Write: infrastructure.ts'
+    - path: <project>/src/adapters/cc-hooks/session-start.ts
+      action: Write
+      summary: 'Write: session-start.ts'
+    - path: <project>/src/adapters/cc-hooks/user-prompt-submit.ts
+      action: Write
+      summary: 'Write: user-prompt-submit.ts'
+    - path: <project>/src/adapters/cc-hooks/post-tool-use.ts
+      action: Write
+      summary: 'Write: post-tool-use.ts'
+    - path: <project>/src/adapters/cc-hooks/stop.ts
+      action: Write
+      summary: 'Write: stop.ts'
+    - path: <project>/src/adapters/cc-hooks/pre-compact.ts
+      action: Write
+      summary: 'Write: pre-compact.ts'
+    - path: <project>/src/adapters/cc-hooks/session-end.ts
+      action: Write
+      summary: 'Write: session-end.ts'
+    - path: <project>/src/adapters/cc-hooks/infrastructure.ts
+      action: Edit
+      summary: 'Edit: infrastructure.ts'
+    - path: <project>/src/adapters/cc-hooks/infrastructure.ts
+      action: Edit
+      summary: 'Edit: infrastructure.ts'
+    - path: <project>/src/adapters/cc-hooks/stop.ts
+      action: Edit
+      summary: 'Edit: stop.ts'
+    - path: <project>/src/tests/adapters/cc-hooks/infrastructure.test.ts
+      action: Write
+      summary: 'Write: infrastructure.test.ts'
+    - path: <project>/src/tests/adapters/cc-hooks/hooks.test.ts
+      action: Write
+      summary: 'Write: hooks.test.ts'
+    - path: <project>/src/cli/setup.ts
+      action: Write
+      summary: 'Write: setup.ts'
+    - path: <project>/src/tests/cli/setup.test.ts
+      action: Write
+      summary: 'Write: setup.test.ts'
+    - path: <project>/src/cli/setup.ts
+      action: Edit
+      summary: 'Edit: setup.ts'
+    - path: <project>/.planning/phases/08-cc-hook-adapter/08-01-SUMMARY.md
+      action: Write
+      summary: 'Write: 08-01-SUMMARY.md'
+    - path: <project>/.planning/phases/08-cc-hook-adapter/08-02-SUMMARY.md
+      action: Write
+      summary: 'Write: 08-02-SUMMARY.md'
+    - path: <project>/.planning/ROADMAP.md
+      action: Edit
+      summary: 'Edit: ROADMAP.md'
+    - path: <project>/.planning/ROADMAP.md
+      action: Edit
+      summary: 'Edit: ROADMAP.md'
+    - path: <project>/.planning/STATE.md
+      action: Edit
+      summary: 'Edit: STATE.md'
+    - path: <project>/.planning/STATE.md
+      action: Edit
+      summary: 'Edit: STATE.md'
+    - path: <project>/.planning/STATE.md
+      action: Edit
+      summary: 'Edit: STATE.md'
+    - path: <project>/.planning/STATE.md
+      action: Edit
+      summary: 'Edit: STATE.md'
+    - path: <project>/.planning/phases/09-openclaw-bridge-adapter/09-CONTEXT.md
+      action: Write
+      summary: 'Write: 09-CONTEXT.md'
+    - path: <project>/.planning/phases/09-openclaw-bridge-adapter/09-01-PLAN.md
+      action: Write
+      summary: 'Write: 09-01-PLAN.md'
+    - path: <project>/.planning/ROADMAP.md
+      action: Edit
+      summary: 'Edit: ROADMAP.md'
+    - path: <project>/src/adapters/openclaw-bridge/bridge-types.ts
+      action: Write
+      summary: 'Write: bridge-types.ts'
+    - path: <project>/src/adapters/openclaw-bridge/bridge-adapter.ts
+      action: Write
+      summary: 'Write: bridge-adapter.ts'
+    - path: <project>/src/adapters/openclaw-bridge/plugin-entry.ts
+      action: Write
+      summary: 'Write: plugin-entry.ts'
+    - path: <project>/src/tests/adapters/openclaw-bridge/bridge-adapter.test.ts
+      action: Write
+      summary: 'Write: bridge-adapter.test.ts'
+    - path: <project>/src/tests/adapters/openclaw-bridge/plugin-entry.test.ts
+      action: Write
+      summary: 'Write: plugin-entry.test.ts'
+    - path: <project>/src/adapters/openclaw-bridge/bridge-adapter.ts
+      action: Edit
+      summary: 'Edit: bridge-adapter.ts'
+    - path: <project>/src/adapters/openclaw-bridge/bridge-adapter.ts
+      action: Edit
+      summary: 'Edit: bridge-adapter.ts'
+    - path: <project>/src/adapters/openclaw-bridge/bridge-adapter.ts
+      action: Edit
+      summary: 'Edit: bridge-adapter.ts'
+    - path: <project>/src/adapters/openclaw-bridge/bridge-adapter.ts
+      action: Edit
+      summary: 'Edit: bridge-adapter.ts'
+    - path: <project>/src/adapters/openclaw-bridge/bridge-adapter.ts
+      action: Edit
+      summary: 'Edit: bridge-adapter.ts'
+    - path: <project>/src/adapters/openclaw-bridge/bridge-adapter.ts
+      action: Edit
+      summary: 'Edit: bridge-adapter.ts'
+    - path: <project>/src/tests/adapters/openclaw-bridge/bridge-adapter.test.ts
+      action: Edit
+      summary: 'Edit: bridge-adapter.test.ts'
+    - path: <project>/src/tests/adapters/openclaw-bridge/bridge-adapter.test.ts
+      action: Edit
+      summary: 'Edit: bridge-adapter.test.ts'
+    - path: <project>/.planning/phases/09-openclaw-bridge-adapter/09-01-SUMMARY.md
+      action: Write
+      summary: 'Write: 09-01-SUMMARY.md'
+    - path: <project>/.planning/STATE.md
+      action: Edit
+      summary: 'Edit: STATE.md'
+    - path: <project>/.planning/STATE.md
+      action: Edit
+      summary: 'Edit: STATE.md'
+    - path: <project>/.planning/STATE.md
+      action: Edit
+      summary: 'Edit: STATE.md'
+    - path: <project>/.planning/ROADMAP.md
+      action: Edit
+      summary: 'Edit: ROADMAP.md'
+    - path: <project>/.planning/ROADMAP.md
+      action: Edit
+      summary: 'Edit: ROADMAP.md'
+    - path: <project>/.planning/STATE.md
+      action: Edit
+      summary: 'Edit: STATE.md'
+    - path: <project>/.planning/STATE.md
+      action: Edit
+      summary: 'Edit: STATE.md'
+    - path: <project>/.planning/STATE.md
+      action: Edit
+      summary: 'Edit: STATE.md'
+    - path: <project>/.planning/phases/10-integration-testing/10-CONTEXT.md
+      action: Write
+      summary: 'Write: 10-CONTEXT.md'
+    - path: <project>/.planning/phases/10-integration-testing/10-01-PLAN.md
+      action: Write
+      summary: 'Write: 10-01-PLAN.md'
+    - path: <project>/.planning/phases/10-integration-testing/10-02-PLAN.md
+      action: Write
+      summary: 'Write: 10-02-PLAN.md'
+    - path: <project>/.planning/ROADMAP.md
+      action: Edit
+      summary: 'Edit: ROADMAP.md'
+    - path: <project>/src/tests/integration/e2e-flows.test.ts
+      action: Write
+      summary: 'Write: e2e-flows.test.ts'
+    - path: <project>/src/tests/integration/e2e-flows.test.ts
+      action: Edit
+      summary: 'Edit: e2e-flows.test.ts'
+    - path: <project>/src/tests/integration/e2e-flows.test.ts
+      action: Edit
+      summary: 'Edit: e2e-flows.test.ts'
+    - path: <project>/src/tests/integration/e2e-flows.test.ts
+      action: Edit
+      summary: 'Edit: e2e-flows.test.ts'
+    - path: <project>/src/tests/integration/e2e-flows.test.ts
+      action: Edit
+      summary: 'Edit: e2e-flows.test.ts'
+    - path: <project>/src/tests/integration/cross-cutting.test.ts
+      action: Write
+      summary: 'Write: cross-cutting.test.ts'
+    - path: <project>/src/tests/integration/cross-cutting.test.ts
+      action: Edit
+      summary: 'Edit: cross-cutting.test.ts'
+    - path: <project>/src/tests/integration/cross-cutting.test.ts
+      action: Edit
+      summary: 'Edit: cross-cutting.test.ts'
+    - path: <project>/.planning/phases/10-integration-testing/10-01-SUMMARY.md
+      action: Write
+      summary: 'Write: 10-01-SUMMARY.md'
+    - path: <project>/.planning/phases/10-integration-testing/10-02-SUMMARY.md
+      action: Write
+      summary: 'Write: 10-02-SUMMARY.md'
+    - path: <project>/.planning/STATE.md
+      action: Edit
+      summary: 'Edit: STATE.md'
+    - path: <project>/.planning/STATE.md
+      action: Edit
+      summary: 'Edit: STATE.md'
+    - path: <project>/.planning/STATE.md
+      action: Edit
+      summary: 'Edit: STATE.md'
+    - path: <project>/.planning/STATE.md
+      action: Edit
+      summary: 'Edit: STATE.md'
+    - path: <project>/.planning/STATE.md
+      action: Edit
+      summary: 'Edit: STATE.md'
+    - path: <project>/.planning/STATE.md
+      action: Edit
+      summary: 'Edit: STATE.md'
+    - path: <project>/.planning/ROADMAP.md
+      action: Edit
+      summary: 'Edit: ROADMAP.md'
+    - path: <project>/.planning/ROADMAP.md
+      action: Edit
+      summary: 'Edit: ROADMAP.md'
+    - path: <project>/.planning/phases/11-deployment/11-CONTEXT.md
+      action: Write
+      summary: 'Write: 11-CONTEXT.md'
+    - path: <project>/.planning/phases/11-deployment/11-01-PLAN.md
+      action: Write
+      summary: 'Write: 11-01-PLAN.md'
+    - path: <project>/src/cli/setup.ts
+      action: Edit
+      summary: 'Edit: setup.ts'
+    - path: <project>/src/cli/setup.ts
+      action: Edit
+      summary: 'Edit: setup.ts'
+    - path: <project>/src/tests/cli/setup.test.ts
+      action: Edit
+      summary: 'Edit: setup.test.ts'
+    - path: <project>/docs/DEPLOYMENT.md
+      action: Write
+      summary: 'Write: DEPLOYMENT.md'
+    - path: <project>/.planning/phases/11-deployment/11-01-SUMMARY.md
+      action: Write
+      summary: 'Write: 11-01-SUMMARY.md'
+    - path: <project>/.planning/ROADMAP.md
+      action: Edit
+      summary: 'Edit: ROADMAP.md'
+    - path: <project>/.planning/ROADMAP.md
+      action: Edit
+      summary: 'Edit: ROADMAP.md'
+    - path: <project>/.planning/ROADMAP.md
+      action: Edit
+      summary: 'Edit: ROADMAP.md'
+    - path: <project>/.planning/STATE.md
+      action: Edit
+      summary: 'Edit: STATE.md'
+    - path: <project>/.planning/STATE.md
+      action: Edit
+      summary: 'Edit: STATE.md'
+    - path: <project>/.planning/STATE.md
+      action: Edit
+      summary: 'Edit: STATE.md'
+    - path: <project>/.planning/STATE.md
+      action: Edit
+      summary: 'Edit: STATE.md'
+    - path: <project>/.planning/STATE.md
+      action: Edit
+      summary: 'Edit: STATE.md'
+    - path: <project>/.planning/STATE.md
+      action: Edit
+      summary: 'Edit: STATE.md'
+  read: []
+  hot:
+    - <project>/.planning/phases/03-intelligence-core/03-CONTEXT.md
+    - <project>/.planning/phases/03-intelligence-core/03-01-PLAN.md
+    - <project>/.planning/phases/03-intelligence-core/03-02-PLAN.md
+    - <project>/.planning/ROADMAP.md
+    - <project>/src/intelligence/semantic-dedup.ts
+    - <project>/src/tests/intelligence/semantic-dedup.test.ts
+    - <project>/src/intelligence/decision-capture.ts
+    - <project>/src/tests/intelligence/decision-capture.test.ts
+    - <project>/src/intelligence/thread-tracker.ts
+    - <project>/src/tests/intelligence/thread-tracker.test.ts
+    - <project>/src/intelligence/learnings-promoter.ts
+    - <project>/src/tests/intelligence/learnings-promoter.test.ts
+    - <project>/.planning/phases/03-intelligence-core/03-01-SUMMARY.md
+    - <project>/.planning/phases/03-intelligence-core/03-02-SUMMARY.md
+    - <project>/.planning/STATE.md
+    - <project>/.planning/phases/04-intelligence-v12/04-CONTEXT.md
+    - <project>/.planning/phases/04-intelligence-v12/04-01-PLAN.md
+    - <project>/.planning/phases/04-intelligence-v12/04-02-PLAN.md
+    - <project>/src/embeddings/cosine.ts
+    - <project>/src/embeddings/embedding-provider.ts
+    - <project>/src/embeddings/templates.ts
+    - <project>/src/tests/embeddings/cosine.test.ts
+    - <project>/src/tests/embeddings/embedding-provider.test.ts
+    - <project>/src/tests/embeddings/templates.test.ts
+    - <project>/src/intelligence/topic-shift.ts
+    - <project>/src/intelligence/enrichment.ts
+    - <project>/src/tests/intelligence/topic-shift.test.ts
+    - <project>/src/tests/intelligence/enrichment.test.ts
+    - <project>/.planning/phases/04-intelligence-v12/04-01-SUMMARY.md
+    - <project>/.planning/phases/04-intelligence-v12/04-02-SUMMARY.md
+    - <project>/.planning/phases/06-checkpoint-system/06-CONTEXT.md
+    - <project>/.planning/phases/06-checkpoint-system/06-01-PLAN.md
+    - <project>/.planning/phases/06-checkpoint-system/06-02-PLAN.md
+    - <project>/src/checkpoint/types.ts
+    - <project>/src/tests/checkpoint/types.test.ts
+    - <project>/src/checkpoint/writer.ts
+    - <project>/src/tests/checkpoint/writer.test.ts
+    - <project>/src/checkpoint/loader.ts
+    - <project>/src/tests/checkpoint/loader.test.ts
+    - <project>/src/checkpoint/inject.ts
+    - <project>/src/tests/checkpoint/inject.test.ts
+    - <project>/.planning/phases/06-checkpoint-system/06-01-SUMMARY.md
+    - <project>/.planning/phases/06-checkpoint-system/06-02-SUMMARY.md
+    - <project>/.planning/phases/07-supporting-subsystems/07-CONTEXT.md
+    - <project>/.planning/phases/07-supporting-subsystems/07-01-PLAN.md
+    - <project>/.planning/phases/07-supporting-subsystems/07-02-PLAN.md
+    - <project>/src/gauge/window-detector.ts
+    - <project>/src/gauge/token-gauge.ts
+    - <project>/src/tests/gauge/window-detector.test.ts
+    - <project>/src/tests/gauge/token-gauge.test.ts
+    - <project>/src/decay/decay-engine.ts
+    - <project>/src/decay/pressure-decay.ts
+    - <project>/src/tests/decay/decay-engine.test.ts
+    - <project>/src/tests/decay/pressure-decay.test.ts
+    - <project>/src/gsd/types.ts
+    - <project>/src/gsd/state-reader.ts
+    - <project>/src/tests/gsd/state-reader.test.ts
+    - <project>/.planning/phases/07-supporting-subsystems/07-01-SUMMARY.md
+    - <project>/.planning/phases/07-supporting-subsystems/07-02-SUMMARY.md
+    - <project>/.planning/phases/05-assembly-pipeline/05-CONTEXT.md
+    - <project>/.planning/phases/05-assembly-pipeline/05-01-PLAN.md
+    - <project>/.planning/phases/05-assembly-pipeline/05-02-PLAN.md
+    - <project>/src/assembly/token-estimator.ts
+    - <project>/src/assembly/sections.ts
+    - <project>/src/tests/assembly/token-estimator.test.ts
+    - <project>/src/tests/assembly/sections.test.ts
+    - <project>/src/assembly/assembler.ts
+    - <project>/src/tests/assembly/assembler.test.ts
+    - <project>/.planning/phases/05-assembly-pipeline/05-01-SUMMARY.md
+    - <project>/.planning/phases/05-assembly-pipeline/05-02-SUMMARY.md
+    - <project>/.planning/phases/08-cc-hook-adapter/08-CONTEXT.md
+    - <project>/.planning/phases/08-cc-hook-adapter/08-01-PLAN.md
+    - <project>/.planning/phases/08-cc-hook-adapter/08-02-PLAN.md
+    - <project>/src/adapters/cc-hooks/infrastructure.ts
+    - <project>/src/adapters/cc-hooks/session-start.ts
+    - <project>/src/adapters/cc-hooks/user-prompt-submit.ts
+    - <project>/src/adapters/cc-hooks/post-tool-use.ts
+    - <project>/src/adapters/cc-hooks/stop.ts
+    - <project>/src/adapters/cc-hooks/pre-compact.ts
+    - <project>/src/adapters/cc-hooks/session-end.ts
+    - <project>/src/tests/adapters/cc-hooks/infrastructure.test.ts
+    - <project>/src/tests/adapters/cc-hooks/hooks.test.ts
+    - <project>/src/cli/setup.ts
+    - <project>/src/tests/cli/setup.test.ts
+    - <project>/.planning/phases/08-cc-hook-adapter/08-01-SUMMARY.md
+    - <project>/.planning/phases/08-cc-hook-adapter/08-02-SUMMARY.md
+    - <project>/.planning/phases/09-openclaw-bridge-adapter/09-CONTEXT.md
+    - <project>/.planning/phases/09-openclaw-bridge-adapter/09-01-PLAN.md
+    - <project>/src/adapters/openclaw-bridge/bridge-types.ts
+    - <project>/src/adapters/openclaw-bridge/bridge-adapter.ts
+    - <project>/src/adapters/openclaw-bridge/plugin-entry.ts
+    - <project>/src/tests/adapters/openclaw-bridge/bridge-adapter.test.ts
+    - <project>/src/tests/adapters/openclaw-bridge/plugin-entry.test.ts
+    - <project>/.planning/phases/09-openclaw-bridge-adapter/09-01-SUMMARY.md
+    - <project>/.planning/phases/10-integration-testing/10-CONTEXT.md
+    - <project>/.planning/phases/10-integration-testing/10-01-PLAN.md
+    - <project>/.planning/phases/10-integration-testing/10-02-PLAN.md
+    - <project>/src/tests/integration/e2e-flows.test.ts
+    - <project>/src/tests/integration/cross-cutting.test.ts
+    - <project>/.planning/phases/10-integration-testing/10-01-SUMMARY.md
+    - <project>/.planning/phases/10-integration-testing/10-02-SUMMARY.md
+    - <project>/.planning/phases/11-deployment/11-CONTEXT.md
+    - <project>/.planning/phases/11-deployment/11-01-PLAN.md
+    - <project>/docs/DEPLOYMENT.md
+    - <project>/.planning/phases/11-deployment/11-01-SUMMARY.md
+gsd: null
+open_questions: []
+learnings: []
+thread:
+  summary: ''
+  key_exchanges:
+    - role: agent
+      gist: 'Edit: Edit: ROADMAP.md'
+    - role: agent
+      gist: 'Edit: Edit: STATE.md'
+    - role: agent
+      gist: 'Edit: Edit: STATE.md'
+    - role: agent
+      gist: 'Edit: Edit: STATE.md'
+    - role: agent
+      gist: 'Edit: Edit: STATE.md'
+    - role: agent
+      gist: 'Edit: Edit: STATE.md'
+    - role: agent
+      gist: 'Edit: Edit: STATE.md'
+    - role: agent
+      gist: Responded to user query
+    - role: agent
+      gist: Responded to user query
+    - role: user
+      gist: what happened?
+    - role: agent
+      gist: Responded to user query
+    - role: user
+      gist: ● Ran 2 stop hooks (ctrl+o to expand)...
+    - role: agent
+      gist: Responded to user query
+    - role: user
+      gist: throw err;...
+    - role: user
+      gist: at Function._load (node:internal/modules/cjs/loader:1192:37)...
+    - role: agent
+      gist: Responded to user query
+    - role: user
+      gist: do /unified-review then we will implement v3
+    - role: agent
+      gist: 'Bash: Run: rm -rf "$LOCALAPPDATA/Temp/unified-review" && mkdir -p "$...'
+pressure_snapshot:
+  hot:
+    - <project>/.planning/STATE.md
+    - <project>/ARCHITECTURE.md
+    - <project>/.planning/ROADMAP.md
+    - C:\Users\[USER]\.claude\teams\auto-gsd-pipeline\inboxes\team-lead.json
+    - <project>/context/sessions/2026-03-10_session-2.md
+  warm:
+    - <project>/src/core/migrations.ts
+    - <project>/src/adapters/openclaw-bridge/bridge-adapter.ts
+    - <project>/src/extraction/redaction.ts
+    - <project>/src/tests/integration/e2e-flows.test.ts
+    - <project>/src/tests/intelligence/semantic-dedup.test.ts
+    - <project>/src/intelligence/decision-capture.ts
+    - <project>/src/cli/setup.ts
+    - <project>/context/handoffs/ACTIVE.md
+    - <project>/src/tests/core/migrations.test.ts
+    - C:\Users\[USER]\.claudex\memory\topics\agent-teams.md
+    - <project>/src/adapters/cc-hooks/infrastructure.ts
+    - <project>/src/tests/adapters/openclaw-bridge/bridge-adapter.test.ts
+    - <project>/src/tests/integration/cross-cutting.test.ts
+recent_observations:
+  - title: 'Run: rm -rf "$LOCALAPPDATA/Temp/unified-review" && mkdir -p "$...'
+    category: change
+    timestamp_epoch: 1773334274709
+  - title: 'Edit: STATE.md'
+    category: change
+    timestamp_epoch: 1773323035337
+  - title: 'Edit: STATE.md'
+    category: change
+    timestamp_epoch: 1773323022695
+  - title: 'Edit: STATE.md'
+    category: change
+    timestamp_epoch: 1773323016130
+  - title: 'Edit: STATE.md'
+    category: change
+    timestamp_epoch: 1773323010878
+  - title: 'Edit: STATE.md'
+    category: change
+    timestamp_epoch: 1773323005302
+  - title: 'Edit: STATE.md'
+    category: change
+    timestamp_epoch: 1773322985044
+  - title: 'Edit: ROADMAP.md'
+    category: change
+    timestamp_epoch: 1773322972787
+boost_state: null

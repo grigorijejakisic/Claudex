@@ -1,5 +1,4 @@
-import Database from 'better-sqlite3';
-import { initializeSchema } from '../../core/migrations.js';
+import { createTestDb, type TestDatabase } from '../helpers/test-db.js';
 import { createSession } from '../../core/sessions.js';
 import {
   upsertThreadState,
@@ -21,11 +20,10 @@ import {
 } from '../../core/checkpoint-tracking.js';
 
 describe('thread state CRUD', () => {
-  let db: InstanceType<typeof Database>;
+  let db: TestDatabase;
 
   beforeEach(() => {
-    db = new Database(':memory:');
-    initializeSchema(db);
+    db = createTestDb();
   });
 
   afterEach(() => {
@@ -77,6 +75,37 @@ describe('thread state CRUD', () => {
     expect(state!.key_exchanges).toEqual(exchanges);
   });
 
+  it('upsertThreadState redacts secrets in topic and summary', () => {
+    upsertThreadState(db, {
+      session_id: 's1',
+      topic: 'Working with key sk-abcdefghijklmnopqrstuvwxyz',
+      summary: 'Used token ghp_ABCDEFghijklmnopqrstuvwxyz0123456789',
+    });
+
+    const state = getThreadState(db, 's1');
+    expect(state).toBeDefined();
+    expect(state!.topic).not.toContain('sk-abcdefghijklmnopqrstuvwxyz');
+    expect(state!.topic).toContain('[REDACTED_SECRET]');
+    expect(state!.summary).not.toContain('ghp_ABCDEFghijklmnopqrstuvwxyz0123456789');
+    expect(state!.summary).toContain('[REDACTED_SECRET]');
+  });
+
+  it('upsertThreadState redacts secrets in key_exchanges gists', () => {
+    upsertThreadState(db, {
+      session_id: 's1',
+      key_exchanges: [
+        { role: 'user', gist: 'sent Bearer abcdefghijklmnopqrstuvwxyz1234 to API' },
+      ],
+    });
+
+    const state = getThreadState(db, 's1');
+    expect(state!.key_exchanges).toHaveLength(1);
+    expect(state!.key_exchanges[0].gist).not.toContain('Bearer abcdefghijklmnopqrstuvwxyz1234');
+    expect(state!.key_exchanges[0].gist).toContain('[REDACTED_SECRET]');
+    // Role should be preserved
+    expect(state!.key_exchanges[0].role).toBe('user');
+  });
+
   it('resetThreadState deletes thread state', () => {
     upsertThreadState(db, {
       session_id: 's1',
@@ -90,11 +119,10 @@ describe('thread state CRUD', () => {
 });
 
 describe('pressure scores CRUD', () => {
-  let db: InstanceType<typeof Database>;
+  let db: TestDatabase;
 
   beforeEach(() => {
-    db = new Database(':memory:');
-    initializeSchema(db);
+    db = createTestDb();
   });
 
   afterEach(() => {
@@ -155,11 +183,10 @@ describe('pressure scores CRUD', () => {
 });
 
 describe('checkpoint tracking CRUD', () => {
-  let db: InstanceType<typeof Database>;
+  let db: TestDatabase;
 
   beforeEach(() => {
-    db = new Database(':memory:');
-    initializeSchema(db);
+    db = createTestDb();
   });
 
   afterEach(() => {

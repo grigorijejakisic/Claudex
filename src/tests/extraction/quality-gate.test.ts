@@ -62,6 +62,15 @@ describe('quality gates', () => {
     expect(result.pass).toBe(true);
   });
 
+  it('Bash: passes for non-trivial command with stdout (not output) >= 20 chars', () => {
+    const result = passesQualityGate(
+      'Bash',
+      { command: 'npm install' },
+      { stdout: 'added 42 packages in 3s' }
+    );
+    expect(result.pass).toBe(true);
+  });
+
   it('Bash: fails for non-trivial command with < 20 chars output', () => {
     const result = passesQualityGate(
       'Bash',

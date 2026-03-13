@@ -5,6 +5,7 @@
  */
 
 import type { Database } from 'better-sqlite3';
+import { cachedPrepare } from './stmt-cache.js';
 
 export interface DecisionRow {
   id: number;
@@ -32,8 +33,7 @@ export function insertDecision(
     fingerprint: string;
   }
 ): number | null {
-  const result = db
-    .prepare(
+  const result = cachedPrepare(db,
       `INSERT OR IGNORE INTO decisions (session_id, project, content, source, fingerprint)
        VALUES (?, ?, ?, ?, ?)`
     )
@@ -50,13 +50,23 @@ export function insertDecision(
 
 /**
  * Returns all decisions for a session, newest first.
+ * Pass opts.limit to cap the result set (default: unlimited).
  */
 export function getDecisionsBySession(
   db: Database,
-  sessionId: string
+  sessionId: string,
+  opts?: { limit?: number }
 ): DecisionRow[] {
-  return db
-    .prepare(
+  const limit = opts?.limit;
+  if (limit) {
+    return cachedPrepare(db,
+        `SELECT * FROM decisions WHERE session_id = ?
+         ORDER BY timestamp_epoch DESC
+         LIMIT ?`
+      )
+      .all(sessionId, limit) as DecisionRow[];
+  }
+  return cachedPrepare(db,
       `SELECT * FROM decisions WHERE session_id = ?
        ORDER BY timestamp_epoch DESC`
     )
@@ -71,8 +81,7 @@ export function getDecisionsByProject(
   db: Database,
   project: string
 ): DecisionRow[] {
-  return db
-    .prepare(
+  return cachedPrepare(db,
       `SELECT * FROM decisions WHERE project = ?
        ORDER BY timestamp_epoch DESC`
     )
@@ -87,8 +96,7 @@ export function resetSessionDecisions(
   db: Database,
   sessionId: string
 ): number {
-  const result = db
-    .prepare('DELETE FROM decisions WHERE session_id = ?')
+  const result = cachedPrepare(db, 'DELETE FROM decisions WHERE session_id = ?')
     .run(sessionId);
   return result.changes;
 }

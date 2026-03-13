@@ -123,6 +123,8 @@ adapters/
 - `CODEX_REVIEW_V12.md` — READ WHEN: reviewing v1.2 feedback. Grade B+, accepted findings addressed in v1.2.1, disagreed findings documented in session log.
 - `../claudex-analysis.md` — READ WHEN: understanding Claudex v2 internals for reference during implementation.
 - `../openclaw-analysis.md` — READ WHEN: understanding OpenClaw CM internals for reference during implementation.
+- `.planning/ROADMAP.md` — READ WHEN: checking phase structure, requirement mapping, execution order. 12 phases, 70 requirements.
+- `.planning/REQUIREMENTS.md` — READ WHEN: verifying requirement coverage, checking REQ-IDs, traceability.
 
 ## Architecture Section Quick Reference
 

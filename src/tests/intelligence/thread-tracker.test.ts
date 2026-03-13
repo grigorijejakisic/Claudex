@@ -1,15 +1,13 @@
-import Database from 'better-sqlite3';
-import { initializeSchema } from '../../core/migrations.js';
+import { createTestDb, type TestDatabase } from '../helpers/test-db.js';
 import { getThreadState } from '../../core/thread.js';
 import { ThreadTracker, extractGist, extractTopic } from '../../intelligence/thread-tracker.js';
 
 describe('thread tracker', () => {
-  let db: InstanceType<typeof Database>;
+  let db: TestDatabase;
   const sessionId = 'test-session';
 
   beforeEach(() => {
-    db = new Database(':memory:');
-    initializeSchema(db);
+    db = createTestDb();
   });
 
   afterEach(() => {

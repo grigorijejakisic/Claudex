@@ -1,0 +1,7 @@
+changed:
+  - path: <project>/.planning/phases/02-extraction-pipeline/02-CONTEXT.md
+    action: Write
+    summary: 'Write: 02-CONTEXT.md'
+read: []
+hot:
+  - <project>/.planning/phases/02-extraction-pipeline/02-CONTEXT.md

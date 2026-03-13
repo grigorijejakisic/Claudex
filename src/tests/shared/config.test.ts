@@ -1,0 +1,147 @@
+import { vi, describe, it, expect, beforeEach } from 'vitest';
+
+// Mock dependencies
+vi.mock('../../shared/paths.js', () => ({
+  getConfigPath: vi.fn(() => '/mock/config.json'),
+}));
+
+vi.mock('../../shared/fs-helpers.js', () => ({
+  readJsonFile: vi.fn(() => null),
+}));
+
+import { loadConfig, getDefaultConfig } from '../../shared/config.js';
+import { readJsonFile } from '../../shared/fs-helpers.js';
+
+const mockReadJsonFile = vi.mocked(readJsonFile);
+
+describe('loadConfig', () => {
+  beforeEach(() => {
+    mockReadJsonFile.mockReset();
+  });
+
+  it('returns defaults when config file is missing', () => {
+    mockReadJsonFile.mockReturnValue(null);
+    const config = loadConfig();
+    expect(config).toEqual(getDefaultConfig());
+  });
+
+  it('merges valid overrides into defaults', () => {
+    mockReadJsonFile.mockReturnValue({
+      injection: { budget_tokens: 8000 },
+    });
+    const config = loadConfig();
+    expect(config.injection.budget_tokens).toBe(8000);
+    // Other injection defaults preserved
+    expect(config.injection.boundary_only).toBe(true);
+    // Other sections untouched
+    expect(config.embeddings.enabled).toBe(true);
+  });
+
+  it('falls back to default when boolean field has wrong type (string)', () => {
+    mockReadJsonFile.mockReturnValue({
+      embeddings: { enabled: 'yes' }, // string instead of boolean
+    });
+    const config = loadConfig();
+    expect(config.embeddings.enabled).toBe(true); // default
+  });
+
+  it('falls back to default when number field has wrong type (string)', () => {
+    mockReadJsonFile.mockReturnValue({
+      injection: { budget_tokens: 'lots' }, // string instead of number
+    });
+    const config = loadConfig();
+    expect(config.injection.budget_tokens).toBe(4000); // default
+  });
+
+  it('falls back to default when string field has wrong type (number)', () => {
+    mockReadJsonFile.mockReturnValue({
+      enrichment: { provider: 42 }, // number instead of string
+    });
+    const config = loadConfig();
+    expect(config.enrichment.provider).toBe('auto'); // default
+  });
+
+  it('replaces entire section when section is a primitive instead of object', () => {
+    mockReadJsonFile.mockReturnValue({
+      embeddings: 'broken', // string instead of object
+    });
+    const config = loadConfig();
+    expect(config.embeddings).toEqual(getDefaultConfig().embeddings);
+  });
+
+  it('replaces entire section when section is an array instead of object', () => {
+    mockReadJsonFile.mockReturnValue({
+      features: [1, 2, 3], // array instead of object
+    });
+    const config = loadConfig();
+    expect(config.features).toEqual(getDefaultConfig().features);
+  });
+
+  it('replaces entire section when section is null', () => {
+    mockReadJsonFile.mockReturnValue({
+      gsd: null,
+    });
+    const config = loadConfig();
+    expect(config.gsd).toEqual(getDefaultConfig().gsd);
+  });
+
+  it('preserves valid override while fixing invalid sibling field', () => {
+    mockReadJsonFile.mockReturnValue({
+      embeddings: {
+        enabled: false,    // valid boolean override
+        provider: 123,     // invalid: number instead of string
+      },
+    });
+    const config = loadConfig();
+    expect(config.embeddings.enabled).toBe(false);            // valid override kept
+    expect(config.embeddings.provider).toBe('ollama');         // invalid field reset to default
+  });
+
+  it('handles unknown keys without crashing', () => {
+    mockReadJsonFile.mockReturnValue({
+      unknown_section: { foo: 'bar' },
+      injection: { budget_tokens: 5000, unknown_field: true },
+    });
+    const config = loadConfig();
+    // Valid override applied
+    expect(config.injection.budget_tokens).toBe(5000);
+    // Unknown top-level key gets merged but doesn't break anything
+    expect((config as Record<string, unknown>)['unknown_section']).toEqual({ foo: 'bar' });
+    // Unknown field in known section preserved (deep merge carries it through)
+    expect((config.injection as Record<string, unknown>)['unknown_field']).toBe(true);
+  });
+
+  it('validates top-level fields: schema, version, adapter', () => {
+    mockReadJsonFile.mockReturnValue({
+      schema: 123,        // number instead of string
+      version: 'three',   // string instead of number
+      adapter: false,      // boolean instead of string
+    });
+    const config = loadConfig();
+    const defaults = getDefaultConfig();
+    expect(config.schema).toBe(defaults.schema);
+    expect(config.version).toBe(defaults.version);
+    expect(config.adapter).toBe(defaults.adapter);
+  });
+
+  it('loads config with unicode values without corruption', () => {
+    mockReadJsonFile.mockReturnValue({
+      enrichment: { ollama_model: 'ünîcödé-model' },
+    });
+    const config = loadConfig();
+    expect(config.enrichment.ollama_model).toBe('ünîcödé-model');
+    // Other defaults preserved
+    expect(config.enrichment.enabled).toBe(true);
+    expect(config.enrichment.provider).toBe('auto');
+  });
+
+  it('handles config with unicode string values in all sections', () => {
+    mockReadJsonFile.mockReturnValue({
+      adapter: 'адаптер',
+      embeddings: { provider: '提供者' },
+    });
+    const config = loadConfig();
+    expect(config.adapter).toBe('адаптер');
+    expect(config.embeddings.provider).toBe('提供者');
+  });
+});

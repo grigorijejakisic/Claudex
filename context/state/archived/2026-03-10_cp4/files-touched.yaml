@@ -1,0 +1,77 @@
+changed:
+  - path: C:\Users\[USER]\.claude\teams\auto-gsd-pipeline\inboxes\team-lead.json
+    action: Write
+    summary: 'Write: team-lead.json'
+  - path: C:\Users\[USER]\.claude\teams\auto-gsd-pipeline\inboxes\discuss-0.json
+    action: Write
+    summary: 'Write: discuss-0.json'
+  - path: C:\Users\[USER]\.claude\teams\auto-gsd-pipeline\inboxes\team-lead.json
+    action: Write
+    summary: 'Write: team-lead.json'
+  - path: C:\Users\[USER]\.claude\teams\auto-gsd-pipeline\inboxes\team-lead.json
+    action: Write
+    summary: 'Write: team-lead.json'
+  - path: C:\Users\[USER]\.claude\teams\auto-gsd-pipeline\inboxes\plan-0.json
+    action: Write
+    summary: 'Write: plan-0.json'
+  - path: C:\Users\[USER]\.claude\teams\auto-gsd-pipeline\inboxes\team-lead.json
+    action: Write
+    summary: 'Write: team-lead.json'
+  - path: C:\Users\[USER]\.claude\teams\auto-gsd-pipeline\config.json
+    action: Edit
+    summary: 'Edit: config.json'
+  - path: C:\Users\[USER]\.claude\teams\auto-gsd-pipeline\inboxes\team-lead.json
+    action: Write
+    summary: 'Write: team-lead.json'
+  - path: C:\Users\[USER]\.claude\teams\auto-gsd-pipeline\inboxes\team-lead.json
+    action: Write
+    summary: 'Write: team-lead.json'
+  - path: C:\Users\[USER]\.claude\teams\auto-gsd-pipeline\inboxes\team-lead.json
+    action: Write
+    summary: 'Write: team-lead.json'
+  - path: C:\Users\[USER]\.claude\teams\auto-gsd-pipeline\inboxes\team-lead.json
+    action: Write
+    summary: 'Write: team-lead.json'
+  - path: C:\Users\[USER]\.claude\teams\auto-gsd-pipeline\inboxes\team-lead.json
+    action: Write
+    summary: 'Write: team-lead.json'
+  - path: C:\Users\[USER]\.claude\teams\auto-gsd-pipeline\inboxes\team-lead.json
+    action: Write
+    summary: 'Write: team-lead.json'
+  - path: C:\Users\[USER]\.claude\teams\auto-gsd-pipeline\inboxes\team-lead.json
+    action: Write
+    summary: 'Write: team-lead.json'
+  - path: C:\Users\[USER]\.claude\teams\auto-gsd-pipeline\inboxes\team-lead.json
+    action: Write
+    summary: 'Write: team-lead.json'
+  - path: C:\Users\[USER]\.claude\teams\auto-gsd-pipeline\inboxes\team-lead.json
+    action: Write
+    summary: 'Write: team-lead.json'
+  - path: C:\Users\[USER]\.claude\teams\auto-gsd-pipeline\inboxes\team-lead.json
+    action: Write
+    summary: 'Write: team-lead.json'
+  - path: <project>/context/sessions/2026-03-11_session-3.md
+    action: Write
+    summary: 'Write: 2026-03-11_session-3.md'
+  - path: <project>/context/handoffs/ACTIVE.md
+    action: Write
+    summary: 'Write: ACTIVE.md'
+  - path: C:\Users\[USER]\.claudex\memory\daily\2026-03-11.md
+    action: Write
+    summary: 'Write: 2026-03-11.md'
+  - path: C:\Users\[USER]\.claudex\memory\topics\agent-teams.md
+    action: Edit
+    summary: 'Edit: agent-teams.md'
+  - path: C:\Users\[USER]\.claudex\memory\topics\agent-teams.md
+    action: Edit
+    summary: 'Edit: agent-teams.md'
+read: []
+hot:
+  - C:\Users\[USER]\.claude\teams\auto-gsd-pipeline\inboxes\team-lead.json
+  - C:\Users\[USER]\.claude\teams\auto-gsd-pipeline\inboxes\discuss-0.json
+  - C:\Users\[USER]\.claude\teams\auto-gsd-pipeline\inboxes\plan-0.json
+  - C:\Users\[USER]\.claude\teams\auto-gsd-pipeline\config.json
+  - <project>/context/sessions/2026-03-11_session-3.md
+  - <project>/context/handoffs/ACTIVE.md
+  - C:\Users\[USER]\.claudex\memory\daily\2026-03-11.md
+  - C:\Users\[USER]\.claudex\memory\topics\agent-teams.md

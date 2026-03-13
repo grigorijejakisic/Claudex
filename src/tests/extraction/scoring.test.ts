@@ -20,6 +20,18 @@ describe('scoring and classification', () => {
       expect(classifyCategory('Read', 'Check auth', 'credential management')).toBe('security');
     });
 
+    it('redacted tokens do not trigger false security category', () => {
+      // [REDACTED_SECRET] contains "secret" which would match security keyword
+      expect(classifyCategory('Read', 'Read file', 'value was [REDACTED_SECRET] here')).toBe('code');
+      // [REDACTED_ENTROPY] should also not match anything
+      expect(classifyCategory('Bash', 'Run command', 'output [REDACTED_ENTROPY] done')).toBe('other');
+    });
+
+    it('real security keywords still match alongside redacted tokens', () => {
+      // "auth" is a real keyword, should still match even when redacted tokens present
+      expect(classifyCategory('Read', 'Check auth flow', 'contains [REDACTED_SECRET]')).toBe('security');
+    });
+
     it('first match wins (error before test)', () => {
       // Contains both "error" and "test" — error should win since it's first in the keyword map
       expect(classifyCategory('Bash', 'Test error found', 'test failure exception')).toBe('error');

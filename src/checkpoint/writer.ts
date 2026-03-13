@@ -1,0 +1,388 @@
+/**
+ * DB-first checkpoint writer with ULID IDs, threshold logic, debounce,
+ * YAML serialization, and optional LLM enrichment.
+ * All public functions are non-throwing.
+ * @see Architecture Section 8.3
+ */
+
+import type { Database } from 'better-sqlite3';
+import { ulid } from 'ulid';
+import * as yaml from 'js-yaml';
+import * as zlib from 'zlib';
+import * as fs from 'fs';
+import * as path from 'path';
+import type { TokenUsage } from '../shared/types.js';
+import type { CheckpointTrackingRow } from '../core/checkpoint-tracking.js';
+import { recordThresholdHit } from '../core/checkpoint-tracking.js';
+import { getDecisionsBySession } from '../core/decisions.js';
+import { getThreadState } from '../core/thread.js';
+import { getHotFiles } from '../core/pressure.js';
+import { getTopLearnings } from '../core/learnings.js';
+import { enrichCheckpoint, mergeEnrichment } from '../intelligence/enrichment.js';
+import type { EnrichmentProvider, CheckpointData } from '../intelligence/enrichment.js';
+import { atomicWriteFile, ensureDir } from '../shared/fs-helpers.js';
+import { getCheckpointsDir } from '../shared/paths.js';
+import {
+  THRESHOLDS_200K,
+  THRESHOLDS_1M,
+  WINDOW_THRESHOLD,
+  type CheckpointV3,
+  type CheckpointTrigger,
+  type WriteCheckpointParams,
+  type WriteCheckpointResult,
+} from './types.js';
+
+/**
+ * Extract open items from assistant text via regex.
+ * Patterns: TODO, FIXME, HACK, remaining/still need/need to.
+ * Non-throwing — returns [] on error.
+ */
+export function extractOpenItems(text: string | null | undefined): string[] {
+  try {
+    if (!text) return [];
+
+    const patterns = [
+      /TODO:?\s+(.+)/gi,
+      /FIXME:?\s+(.+)/gi,
+      /HACK:?\s+(.+)/gi,
+      /(?:remaining|still need|need to)\s+(.+)/gi,
+    ];
+
+    const items = new Set<string>();
+    for (const pattern of patterns) {
+      let match: RegExpExecArray | null;
+      while ((match = pattern.exec(text)) !== null) {
+        const item = match[1].trim();
+        if (item) items.add(item);
+      }
+    }
+
+    return Array.from(items);
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Writes a file with zlib gzip compression.
+ * Creates parent directories if needed. Returns true on success. Never throws.
+ */
+export async function writeCompressedFile(filePath: string, content: string): Promise<boolean> {
+  try {
+    const dir = path.dirname(filePath);
+    ensureDir(dir);
+
+    const compressed = zlib.gzipSync(Buffer.from(content, 'utf-8'));
+    fs.writeFileSync(filePath, compressed);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Reads a gzip-compressed file and returns its decompressed UTF-8 content.
+ * Returns null on error. Never throws.
+ */
+export function readCompressedFile(filePath: string): string | null {
+  try {
+    const compressed = fs.readFileSync(filePath);
+    const decompressed = zlib.gunzipSync(compressed);
+    return decompressed.toString('utf-8');
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Determines whether a checkpoint should be triggered based on trigger type,
+ * token usage, tracking state, and debounce.
+ * Non-throwing — returns false on error.
+ */
+export function shouldTriggerCheckpoint(params: {
+  trigger: CheckpointTrigger;
+  tokenUsage?: TokenUsage;
+  tracking?: CheckpointTrackingRow;
+  debounceSeconds?: number;
+}): boolean {
+  try {
+    const { trigger, tokenUsage, tracking, debounceSeconds = 60 } = params;
+
+    if (trigger === 'compaction') return true;
+    if (trigger === 'session_end') return true;
+
+    // threshold trigger
+    if (!tokenUsage) return false;
+
+    const windowSize = tokenUsage.contextWindowTokens;
+    const thresholds = windowSize < WINDOW_THRESHOLD ? THRESHOLDS_200K : THRESHOLDS_1M;
+
+    // Find highest threshold crossed
+    let highestCrossed: number | null = null;
+    for (const t of thresholds) {
+      if (tokenUsage.utilization >= t) {
+        highestCrossed = t;
+      }
+    }
+    if (highestCrossed === null) return false;
+
+    // Check if already hit
+    if (tracking?.thresholds_hit?.includes(highestCrossed)) return false;
+
+    // Apply debounce
+    if (tracking?.last_checkpoint_epoch) {
+      const nowEpoch = Math.floor(Date.now() / 1000);
+      if (nowEpoch - tracking.last_checkpoint_epoch < debounceSeconds) return false;
+    }
+
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * DB-first checkpoint writer. Full lifecycle:
+ * INSERT pending -> build data -> UPDATE committed -> enrich -> write file -> UPDATE mirrored.
+ * Non-throwing — returns null on error.
+ * @see Architecture Section 8.3
+ */
+export async function writeCheckpoint(
+  params: WriteCheckpointParams
+): Promise<WriteCheckpointResult | null> {
+  const {
+    db,
+    sessionId,
+    project,
+    projectDir,
+    trigger,
+    tokenUsage,
+    gsd,
+    lastAssistantText,
+    enrichmentProvider,
+    scope,
+    compression,
+  } = params;
+
+  const checkpointId = ulid();
+  const datePrefix = new Date().toISOString().slice(0, 10);
+  const ext = compression ? '.yaml.gz' : '.yaml';
+  const basename = `${datePrefix}_${checkpointId}${ext}`;
+  const checkpointsDir = getCheckpointsDir(projectDir);
+  const filePath = `${checkpointsDir}/${basename}`;
+  let enriched = false;
+
+  try {
+    // Step 1: INSERT pending
+    db.prepare(
+      `INSERT INTO checkpoint_meta (checkpoint_id, session_id, trigger, status, created_at_epoch, updated_at_epoch)
+       VALUES (?, ?, ?, 'pending', unixepoch(), unixepoch())`
+    ).run(checkpointId, sessionId, trigger);
+
+    // Step 2: Read current state from DB
+    const decisions = getDecisionsBySession(db, sessionId).slice(0, 15);
+    const threadState = getThreadState(db, sessionId);
+    const hotFiles = getHotFiles(db, project, 20);
+    const topLearnings = getTopLearnings(db, project, 10);
+    const openItems = extractOpenItems(lastAssistantText);
+
+    // Get read files from observations
+    let readFiles: string[] = [];
+    try {
+      const rows = db
+        .prepare(
+          `SELECT DISTINCT json_each.value AS file_path
+           FROM observations, json_each(observations.files_modified)
+           WHERE observations.session_id = ? AND observations.deleted_at_epoch IS NULL
+           LIMIT 50`
+        )
+        .all(sessionId) as Array<{ file_path: string }>;
+      readFiles = rows.map((r) => r.file_path);
+    } catch {
+      // json_each may fail on invalid data — skip
+    }
+
+    // Get previous checkpoint basename
+    let previousCheckpoint: string | null = null;
+    try {
+      const prev = db
+        .prepare(
+          `SELECT checkpoint_id FROM checkpoint_meta
+           WHERE session_id = ? AND status IN ('committed', 'mirrored')
+           AND checkpoint_id != ?
+           ORDER BY created_at_epoch DESC LIMIT 1`
+        )
+        .get(sessionId, checkpointId) as { checkpoint_id: string } | undefined;
+      if (prev) {
+        // Generate basename from checkpoint_id (we store basenames, not full paths)
+        const prevRow = db
+          .prepare('SELECT mirror_path FROM checkpoint_meta WHERE checkpoint_id = ?')
+          .get(prev.checkpoint_id) as { mirror_path: string | null } | undefined;
+        if (prevRow?.mirror_path) {
+          const parts = prevRow.mirror_path.replace(/\\/g, '/').split('/');
+          previousCheckpoint = parts[parts.length - 1];
+        }
+        // Fix 4: No fallback — without mirror_path we lack the date prefix,
+        // so skip rather than generate a wrong basename like ${id}.yaml
+      }
+    } catch {
+      // No previous checkpoint — ok
+    }
+
+    // Step 3: Build CheckpointV3
+    const checkpoint: CheckpointV3 = {
+      schema: 'claudex/checkpoint',
+      version: 3,
+      meta: {
+        checkpoint_id: checkpointId,
+        session_id: sessionId,
+        scope: scope ?? null,
+        trigger,
+        token_usage: tokenUsage
+          ? {
+              input_tokens: tokenUsage.inputTokens,
+              output_tokens: tokenUsage.outputTokens,
+              window_size: tokenUsage.contextWindowTokens,
+              utilization: tokenUsage.utilization,
+            }
+          : null,
+        previous_checkpoint: previousCheckpoint,
+      },
+      working: {
+        task: null,
+        status: null,
+        next_action: null,
+        branch: null,
+      },
+      decisions: decisions.map((d) => ({
+        content: d.content,
+        source: d.source,
+        timestamp: d.timestamp_epoch,
+      })),
+      files: {
+        hot: hotFiles.map((f) => ({
+          path: f.file_path,
+          last_action: null,
+        })),
+        read: readFiles,
+      },
+      thread: {
+        topic: threadState?.topic ?? null,
+        summary: threadState?.summary ?? null,
+        key_exchanges: threadState?.key_exchanges ?? [],
+      },
+      open_items: openItems,
+      learnings: topLearnings.map((l) => l.content),
+      gsd: gsd ?? null,
+    };
+
+    // Step 4: UPDATE committed
+    db.prepare(
+      `UPDATE checkpoint_meta SET status = 'committed', data = ?, updated_at_epoch = unixepoch()
+       WHERE checkpoint_id = ?`
+    ).run(JSON.stringify(checkpoint), checkpointId);
+
+    // Step 5: Optional enrichment
+    if (enrichmentProvider) {
+      try {
+        const cpData: CheckpointData = {
+          topic: checkpoint.thread.topic ?? undefined,
+          task: checkpoint.working.task ?? undefined,
+          status: checkpoint.working.status ?? undefined,
+          decisions: checkpoint.decisions.map((d) => d.content),
+          open_items: checkpoint.open_items,
+          learnings: checkpoint.learnings,
+          summary: checkpoint.thread.summary ?? undefined,
+          key_exchanges: checkpoint.thread.key_exchanges,
+        };
+
+        const enrichedData = await enrichCheckpoint(cpData, enrichmentProvider);
+        if (enrichedData) {
+          const merged = mergeEnrichment(cpData, enrichedData);
+
+          // Apply merged data back to checkpoint
+          if (merged.topic) checkpoint.thread.topic = merged.topic;
+          if (merged.summary) checkpoint.thread.summary = merged.summary;
+          if (merged.task) checkpoint.working.task = merged.task;
+          if (merged.decisions) checkpoint.decisions = merged.decisions.map((d) => ({ content: d, source: 'enriched', timestamp: Date.now() }));
+          if (merged.open_items) checkpoint.open_items = merged.open_items;
+          if (merged.learnings) checkpoint.learnings = merged.learnings;
+          if (merged.key_exchanges) checkpoint.thread.key_exchanges = merged.key_exchanges;
+
+          db.prepare(
+            `UPDATE checkpoint_meta SET data = ?, updated_at_epoch = unixepoch()
+             WHERE checkpoint_id = ?`
+          ).run(JSON.stringify(checkpoint), checkpointId);
+
+          enriched = true;
+        }
+      } catch {
+        // Enrichment failure is non-fatal
+      }
+    }
+
+    // Step 6-7: Write YAML file (optionally compressed)
+    // Fix 6: Use JSON_SCHEMA for round-trip consistency (prevents "true" -> boolean coercion)
+    const yamlContent = yaml.dump(checkpoint, { lineWidth: 120, noRefs: true, schema: yaml.JSON_SCHEMA });
+    let writeOk: boolean;
+    if (compression) {
+      writeOk = await writeCompressedFile(filePath, yamlContent);
+    } else {
+      writeOk = await atomicWriteFile(filePath, yamlContent);
+    }
+
+    if (!writeOk) {
+      db.prepare(
+        `UPDATE checkpoint_meta SET error = 'File write failed', updated_at_epoch = unixepoch()
+         WHERE checkpoint_id = ?`
+      ).run(checkpointId);
+      return {
+        checkpointId,
+        status: 'committed',
+        filePath: null,
+        enriched,
+      };
+    }
+
+    // Step 8: Update latest.yaml
+    await atomicWriteFile(`${checkpointsDir}/latest.yaml`, `ref: ${basename}\n`);
+
+    // Step 9: UPDATE mirrored
+    db.prepare(
+      `UPDATE checkpoint_meta SET status = 'mirrored', mirror_path = ?, updated_at_epoch = unixepoch()
+       WHERE checkpoint_id = ?`
+    ).run(filePath, checkpointId);
+
+    // Step 10: Record threshold hit
+    if (trigger === 'threshold' && tokenUsage) {
+      const windowSize = tokenUsage.contextWindowTokens;
+      const thresholds = windowSize < WINDOW_THRESHOLD ? THRESHOLDS_200K : THRESHOLDS_1M;
+      let highestCrossed: number | null = null;
+      for (const t of thresholds) {
+        if (tokenUsage.utilization >= t) highestCrossed = t;
+      }
+      if (highestCrossed !== null) {
+        recordThresholdHit(db, sessionId, highestCrossed);
+      }
+    }
+
+    return {
+      checkpointId,
+      status: 'mirrored',
+      filePath,
+      enriched,
+    };
+  } catch (err) {
+    // Set error on checkpoint_meta if it was inserted
+    try {
+      const msg = err instanceof Error ? err.message : 'Unknown error';
+      db.prepare(
+        `UPDATE checkpoint_meta SET error = ?, updated_at_epoch = unixepoch()
+         WHERE checkpoint_id = ?`
+      ).run(msg, checkpointId);
+    } catch {
+      // Best effort
+    }
+    return null;
+  }
+}

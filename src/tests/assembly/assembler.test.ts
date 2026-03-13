@@ -1,9 +1,8 @@
 import { describe, it, expect, beforeEach, afterEach, beforeAll, afterAll } from 'vitest';
-import Database from 'better-sqlite3';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
-import { initializeSchema } from '../../core/migrations.js';
+import { createTestDb, type TestDatabase } from '../helpers/test-db.js';
 import { insertObservation } from '../../core/observations.js';
 import { upsertLearning } from '../../core/learnings.js';
 import { updatePressureScore } from '../../core/pressure.js';
@@ -73,11 +72,10 @@ afterAll(() => {
 // --- assembleFullContext ---
 
 describe('assembleFullContext', () => {
-  let db: InstanceType<typeof Database>;
+  let db: TestDatabase;
 
   beforeEach(() => {
-    db = new Database(':memory:');
-    initializeSchema(db);
+    db = createTestDb();
   });
 
   afterEach(() => {
@@ -271,11 +269,10 @@ describe('assembleFullContext', () => {
 // --- assembleRegularPrompt ---
 
 describe('assembleRegularPrompt', () => {
-  let db: InstanceType<typeof Database>;
+  let db: TestDatabase;
 
   beforeEach(() => {
-    db = new Database(':memory:');
-    initializeSchema(db);
+    db = createTestDb();
   });
 
   afterEach(() => {
@@ -402,11 +399,10 @@ describe('assembleRegularPrompt', () => {
 // --- assembleTopicPivot ---
 
 describe('assembleTopicPivot', () => {
-  let db: InstanceType<typeof Database>;
+  let db: TestDatabase;
 
   beforeEach(() => {
-    db = new Database(':memory:');
-    initializeSchema(db);
+    db = createTestDb();
   });
 
   afterEach(() => {
@@ -523,6 +519,77 @@ gsd: null
     expect(result.sources.length).toBeGreaterThan(0);
   });
 
+  it('Tier 2: applies redaction to checkpoint-only output', () => {
+    const projDir = mkDir('tier2-redact');
+    const idDir = mkDir('tier2-redact-id');
+    writeFile(idDir, 'USER.md', 'User identity');
+
+    // Write a checkpoint YAML with a secret that should be redacted
+    const cpDir = path.join(projDir, 'context', 'checkpoints');
+    fs.mkdirSync(cpDir, { recursive: true });
+    const cpContent = `schema: "claudex/checkpoint"
+version: 3
+meta:
+  checkpoint_id: "cp1"
+  session_id: "s1"
+  scope: "project:test"
+  trigger: threshold
+  token_usage: null
+  previous_checkpoint: null
+working:
+  task: "Build assembler with token ghp_abcdefghijklmnopqrstuvwxyz1234567890"
+  status: in_progress
+  next_action: null
+  branch: main
+decisions: []
+files:
+  hot: []
+  read: []
+thread:
+  topic: "assembly"
+  summary: null
+  key_exchanges: []
+open_items: []
+learnings: []
+gsd: null
+`;
+    fs.writeFileSync(path.join(cpDir, 'cp1.yaml'), cpContent);
+    fs.writeFileSync(path.join(cpDir, 'latest.yaml'), 'ref: cp1.yaml\n');
+
+    // Pass a broken DB to force Tier 2 fallback
+    const brokenDb = { prepare: () => { throw new Error('DB broken'); } } as any;
+
+    const result = assembleFullContext({
+      db: brokenDb, project: 'proj', projectDir: projDir,
+      config: makeConfig(), identityDir: idDir,
+    });
+
+    // Should have content (Tier 2 succeeded)
+    expect(result.content.length).toBeGreaterThan(0);
+    // The GitHub PAT should be redacted
+    expect(result.content).not.toContain('ghp_abcdefghijklmnopqrstuvwxyz1234567890');
+    expect(result.content).toContain('[REDACTED_SECRET]');
+  });
+
+  it('Tier 3: applies redaction to identity-only output', () => {
+    const projDir = mkDir('tier3-redact');
+    const idDir = mkDir('tier3-redact-id');
+    // Identity with a secret
+    writeFile(idDir, 'USER.md', 'User API key: sk-abcdefghijklmnopqrstuvwxyz12');
+
+    // No checkpoint files, broken DB -> Tier 3
+    const brokenDb = { prepare: () => { throw new Error('DB broken'); } } as any;
+
+    const result = assembleFullContext({
+      db: brokenDb, project: 'proj', projectDir: projDir,
+      config: makeConfig(), identityDir: idDir,
+    });
+
+    expect(result.content.length).toBeGreaterThan(0);
+    expect(result.content).not.toContain('sk-abcdefghijklmnopqrstuvwxyz12');
+    expect(result.content).toContain('[REDACTED_SECRET]');
+  });
+
   it('Tier 3: falls back to identity-only when checkpoint also fails', () => {
     const projDir = mkDir('tier3');
     const idDir = mkDir('tier3-id');
@@ -560,11 +627,10 @@ gsd: null
 // --- Edge cases ---
 
 describe('edge cases', () => {
-  let db: InstanceType<typeof Database>;
+  let db: TestDatabase;
 
   beforeEach(() => {
-    db = new Database(':memory:');
-    initializeSchema(db);
+    db = createTestDb();
   });
 
   afterEach(() => {

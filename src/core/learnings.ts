@@ -5,6 +5,7 @@
  */
 
 import type { Database } from 'better-sqlite3';
+import { cachedPrepare } from './stmt-cache.js';
 
 export interface LearningRow {
   id: number;
@@ -31,7 +32,7 @@ export function upsertLearning(
     content: string;
   }
 ): void {
-  db.prepare(
+  cachedPrepare(db,
     `INSERT INTO learnings (project, agent_id, fingerprint, content)
      VALUES (?, ?, ?, ?)
      ON CONFLICT(project, agent_id, fingerprint) DO UPDATE SET
@@ -57,8 +58,7 @@ export function getLearningsByProject(
   opts?: { limit?: number }
 ): LearningRow[] {
   const limit = opts?.limit ?? 50;
-  return db
-    .prepare(
+  return cachedPrepare(db,
       `SELECT * FROM learnings
        WHERE project = ? OR project = '__global__'
        ORDER BY promotion_count DESC

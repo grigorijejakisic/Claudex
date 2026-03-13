@@ -1,27 +1,27 @@
-import Database from 'better-sqlite3';
-import { initializeSchema } from '../../core/migrations.js';
+import { createTestDb, type TestDatabase } from '../helpers/test-db.js';
 import { captureDecisions, CapturedDecision } from '../../intelligence/decision-capture.js';
 import { getDecisionsBySession } from '../../core/decisions.js';
+import { EmbeddingProvider } from '../../embeddings/embedding-provider.js';
+import type { DecisionTemplates } from '../../embeddings/templates.js';
 
 describe('decision capture', () => {
-  let db: InstanceType<typeof Database>;
+  let db: TestDatabase;
   const sessionId = 'test-session';
   const project = 'test-project';
 
   beforeEach(() => {
-    db = new Database(':memory:');
-    initializeSchema(db);
+    db = createTestDb();
   });
 
   afterEach(() => {
     db.close();
   });
 
-  function capture(opts: {
+  async function capture(opts: {
     userText?: string;
     assistantText?: string;
     mode?: 'after_turn' | 'after_tool';
-  }): CapturedDecision[] {
+  }): Promise<CapturedDecision[]> {
     return captureDecisions({
       db,
       sessionId,
@@ -35,8 +35,8 @@ describe('decision capture', () => {
   // --- Tier 1: Explicit confirmation ---
 
   describe('Tier 1 — confirmation', () => {
-    it('captures user confirmation "yes" with assistant proposal as content', () => {
-      const result = capture({
+    it('captures user confirmation "yes" with assistant proposal as content', async () => {
+      const result = await capture({
         userText: 'yes',
         assistantText: 'I suggest we use SQLite for the storage layer',
       });
@@ -46,8 +46,8 @@ describe('decision capture', () => {
       expect(result[0].content).toBe('I suggest we use SQLite for the storage layer');
     });
 
-    it('captures "lgtm" confirmation', () => {
-      const result = capture({
+    it('captures "lgtm" confirmation', async () => {
+      const result = await capture({
         userText: 'lgtm',
         assistantText: 'The approach uses boundary-only injection',
       });
@@ -55,8 +55,8 @@ describe('decision capture', () => {
       expect(result[0].source).toBe('confirmation');
     });
 
-    it('captures "do it" confirmation', () => {
-      const result = capture({
+    it('captures "do it" confirmation', async () => {
+      const result = await capture({
         userText: 'do it',
         assistantText: 'I will implement the PKCE flow for auth',
       });
@@ -64,8 +64,8 @@ describe('decision capture', () => {
       expect(result[0].source).toBe('confirmation');
     });
 
-    it('uses assistantText as decision content when user confirms', () => {
-      const result = capture({
+    it('uses assistantText as decision content when user confirms', async () => {
+      const result = await capture({
         userText: 'ok',
         assistantText: 'Switching to ULIDs for checkpoint IDs',
       });
@@ -76,8 +76,8 @@ describe('decision capture', () => {
   // --- Tier 2: Direction-setting ---
 
   describe('Tier 2 — direction', () => {
-    it('captures imperative verb line "Use SQLite for storage"', () => {
-      const result = capture({
+    it('captures imperative verb line "Use SQLite for storage"', async () => {
+      const result = await capture({
         assistantText: 'Use SQLite for the storage layer instead of flat files.',
       });
       expect(result.length).toBeGreaterThanOrEqual(1);
@@ -86,29 +86,29 @@ describe('decision capture', () => {
       expect(direction!.tier).toBe(2);
     });
 
-    it('captures "instead of" comparison resolution', () => {
-      const result = capture({
+    it('captures "instead of" comparison resolution', async () => {
+      const result = await capture({
         assistantText: 'We should keep the DB approach instead of switching to flat files for persistence.',
       });
       expect(result.some((r) => r.source === 'direction')).toBe(true);
     });
 
-    it('captures "will implement" commitment', () => {
-      const result = capture({
+    it('captures "will implement" commitment', async () => {
+      const result = await capture({
         assistantText: 'I will implement the token gauge using transcript JSONL parsing for utilization tracking.',
       });
       expect(result.some((r) => r.source === 'direction')).toBe(true);
     });
 
-    it('captures "should" recommendation', () => {
-      const result = capture({
+    it('captures "should" recommendation', async () => {
+      const result = await capture({
         assistantText: 'We should use boundary-only injection to minimize per-turn overhead costs.',
       });
       expect(result.some((r) => r.source === 'direction')).toBe(true);
     });
 
-    it('rejects direction line < 20 chars', () => {
-      const result = capture({ assistantText: 'Use SQLite.' });
+    it('rejects direction line < 20 chars', async () => {
+      const result = await capture({ assistantText: 'Use SQLite.' });
       const direction = result.filter((r) => r.source === 'direction');
       expect(direction).toHaveLength(0);
     });
@@ -117,22 +117,22 @@ describe('decision capture', () => {
   // --- Tier 3: Rejection ---
 
   describe('Tier 3 — rejection', () => {
-    it('captures rejection with "don\'t"', () => {
-      const result = capture({
+    it('captures rejection with "don\'t"', async () => {
+      const result = await capture({
         userText: "don't use PostgreSQL for this project please",
       });
       expect(result.some((r) => r.source === 'rejection')).toBe(true);
     });
 
-    it('captures rejection with "actually,"', () => {
-      const result = capture({
+    it('captures rejection with "actually,"', async () => {
+      const result = await capture({
         userText: 'actually, let us go with a different approach here',
       });
       expect(result.some((r) => r.source === 'rejection')).toBe(true);
     });
 
-    it('captures rejection with "scratch that"', () => {
-      const result = capture({
+    it('captures rejection with "scratch that"', async () => {
+      const result = await capture({
         userText: 'scratch that, use the other method instead please',
       });
       expect(result.some((r) => r.source === 'rejection')).toBe(true);
@@ -142,16 +142,16 @@ describe('decision capture', () => {
   // --- Tier 4: Explicit markers ---
 
   describe('Tier 4 — explicit', () => {
-    it('captures "DECISION: use TypeScript" explicit marker', () => {
-      const result = capture({
+    it('captures "DECISION: use TypeScript" explicit marker', async () => {
+      const result = await capture({
         assistantText: 'After discussion, DECISION: use TypeScript for all modules.',
       });
       expect(result.some((r) => r.source === 'explicit')).toBe(true);
       expect(result.some((r) => r.tier === 4)).toBe(true);
     });
 
-    it('captures "going with: approach B" explicit marker', () => {
-      const result = capture({
+    it('captures "going with: approach B" explicit marker', async () => {
+      const result = await capture({
         userText: 'going with: approach B for the checkpoint system',
       });
       expect(result.some((r) => r.source === 'explicit')).toBe(true);
@@ -161,28 +161,28 @@ describe('decision capture', () => {
   // --- Filler rejection ---
 
   describe('filler rejection', () => {
-    it('rejects "let me read the file" as filler', () => {
-      const result = capture({ assistantText: 'let me read the file' });
+    it('rejects "let me read the file" as filler', async () => {
+      const result = await capture({ assistantText: 'let me read the file' });
       expect(result.filter((r) => r.source === 'direction')).toHaveLength(0);
     });
 
-    it('rejects "looking at the code now" as filler', () => {
-      const result = capture({ assistantText: 'looking at the code now' });
+    it('rejects "looking at the code now" as filler', async () => {
+      const result = await capture({ assistantText: 'looking at the code now' });
       expect(result.filter((r) => r.source === 'direction')).toHaveLength(0);
     });
 
-    it('rejects "running the tests" as filler', () => {
-      const result = capture({ assistantText: 'running the tests' });
+    it('rejects "running the tests" as filler', async () => {
+      const result = await capture({ assistantText: 'running the tests' });
       expect(result.filter((r) => r.source === 'direction')).toHaveLength(0);
     });
 
-    it('rejects candidates under 15 chars', () => {
-      const result = capture({ assistantText: 'Use SQLite' });
+    it('rejects candidates under 15 chars', async () => {
+      const result = await capture({ assistantText: 'Use SQLite' });
       expect(result.filter((r) => r.source === 'direction')).toHaveLength(0);
     });
 
-    it('rejects standalone greetings <= 15 chars', () => {
-      const result = capture({ userText: 'hello' });
+    it('rejects standalone greetings <= 15 chars', async () => {
+      const result = await capture({ userText: 'hello' });
       expect(result).toHaveLength(0);
     });
   });
@@ -190,16 +190,16 @@ describe('decision capture', () => {
   // --- Code fence skip ---
 
   describe('code fence skip', () => {
-    it('ignores decisions inside code fences', () => {
+    it('ignores decisions inside code fences', async () => {
       const text = '```\nDECISION: use SQLite for the main storage layer\n```';
-      const result = capture({ assistantText: text });
+      const result = await capture({ assistantText: text });
       expect(result.filter((r) => r.source === 'explicit')).toHaveLength(0);
     });
 
-    it('captures decisions outside code fences in same text', () => {
+    it('captures decisions outside code fences in same text', async () => {
       const text =
         'DECISION: use TypeScript for all modules.\n```\nconst x = 1;\n```\nMore text here.';
-      const result = capture({ assistantText: text });
+      const result = await capture({ assistantText: text });
       expect(result.some((r) => r.source === 'explicit')).toBe(true);
     });
   });
@@ -207,20 +207,20 @@ describe('decision capture', () => {
   // --- Dedup ---
 
   describe('dedup', () => {
-    it('skips duplicate decision (same content already in session)', () => {
+    it('skips duplicate decision (same content already in session)', async () => {
       // First capture
-      capture({ assistantText: 'Use SQLite for the observation storage layer.' });
+      await capture({ assistantText: 'Use SQLite for the observation storage layer.' });
       // Second capture with same content
-      const result = capture({
+      const result = await capture({
         assistantText: 'Use SQLite for the observation storage layer.',
       });
       const directions = result.filter((r) => r.source === 'direction');
       expect(directions).toHaveLength(0);
     });
 
-    it('skips semantic duplicate (Jaccard match with existing)', () => {
-      capture({ assistantText: 'Use SQLite for storage in the observation layer.' });
-      const result = capture({
+    it('skips semantic duplicate (Jaccard match with existing)', async () => {
+      await capture({ assistantText: 'Use SQLite for storage in the observation layer.' });
+      const result = await capture({
         assistantText: 'SQLite should be the storage layer for observations.',
       });
       const directions = result.filter((r) => r.source === 'direction');
@@ -231,8 +231,8 @@ describe('decision capture', () => {
   // --- Mode ---
 
   describe('mode', () => {
-    it('after_tool mode only checks Tier 1 and Tier 4', () => {
-      const result = capture({
+    it('after_tool mode only checks Tier 1 and Tier 4', async () => {
+      const result = await capture({
         userText: 'yes',
         assistantText:
           'Use SQLite for the storage layer.\nDECISION: boundary-only injection for assembly.',
@@ -245,8 +245,8 @@ describe('decision capture', () => {
       expect(sources).not.toContain('rejection');
     });
 
-    it('after_turn mode checks all 4 tiers', () => {
-      const result = capture({
+    it('after_turn mode checks all 4 tiers', async () => {
+      const result = await capture({
         userText: 'yes',
         assistantText:
           'Use SQLite for the storage layer.\nDECISION: boundary-only injection for assembly.',
@@ -258,18 +258,226 @@ describe('decision capture', () => {
     });
   });
 
+  // --- Stage 2: Embedding classification ---
+
+  describe('Stage 2 — embedding classification', () => {
+    function createMockClassifier(embedResult: number[] | null, confidence: number) {
+      const provider = new EmbeddingProvider();
+      (provider as any).available = true;
+      provider.embed = async () => embedResult;
+
+      const templates: DecisionTemplates = {
+        positive: new Map([['t1', [1, 0]]]),
+        negative: new Map([['n1', [0, 1]]]),
+      };
+
+      // Override classifyDecision behavior by constructing templates
+      // that produce the desired confidence. For testing, we'll mock embed
+      // and use real classifyDecision. Instead, create templates that produce
+      // deterministic results.
+      return { provider, templates };
+    }
+
+    it('filters false-positive candidate when classifier returns low confidence', async () => {
+      // Provider returns embedding close to negative templates
+      const provider = new EmbeddingProvider();
+      (provider as any).available = true;
+      provider.embed = async () => [0, 1]; // close to negative [0, 1], far from positive [1, 0]
+      provider.embedBatch = async (texts: string[]) => texts.map(() => [0, 1]);
+
+      const templates: DecisionTemplates = {
+        positive: new Map([['t1', [1, 0]]]),
+        negative: new Map([['n1', [0, 1]]]),
+      };
+
+      const result = await captureDecisions({
+        db,
+        sessionId,
+        project,
+        assistantText: 'Use SQLite for the primary storage layer.',
+        mode: 'after_turn',
+        classifier: { provider, templates },
+      });
+      // confidence = cos([0,1], [1,0]) - cos([0,1], [0,1]) = 0 - 1 = -1.0, below 0.15
+      expect(result.filter((r) => r.source === 'direction')).toHaveLength(0);
+    });
+
+    it('keeps candidate when classifier returns high confidence', async () => {
+      const provider = new EmbeddingProvider();
+      (provider as any).available = true;
+      provider.embed = async () => [1, 0]; // close to positive [1, 0]
+      provider.embedBatch = async (texts: string[]) => texts.map(() => [1, 0]);
+
+      const templates: DecisionTemplates = {
+        positive: new Map([['t1', [1, 0]]]),
+        negative: new Map([['n1', [0, 1]]]),
+      };
+
+      const result = await captureDecisions({
+        db,
+        sessionId,
+        project,
+        assistantText: 'Use SQLite for the primary storage layer.',
+        mode: 'after_turn',
+        classifier: { provider, templates },
+      });
+      // confidence = cos([1,0], [1,0]) - cos([1,0], [0,1]) = 1 - 0 = 1.0, above 0.15
+      expect(result.filter((r) => r.source === 'direction').length).toBeGreaterThanOrEqual(1);
+    });
+
+    it('passes all candidates through when classifier is null (backward compatible)', async () => {
+      const result = await captureDecisions({
+        db,
+        sessionId,
+        project,
+        assistantText: 'Use SQLite for the primary storage layer.',
+        mode: 'after_turn',
+        classifier: null,
+      });
+      expect(result.filter((r) => r.source === 'direction').length).toBeGreaterThanOrEqual(1);
+    });
+
+    it('passes all candidates through when classifier is undefined (backward compatible)', async () => {
+      const result = await captureDecisions({
+        db,
+        sessionId,
+        project,
+        assistantText: 'Use SQLite for the primary storage layer.',
+        mode: 'after_turn',
+      });
+      expect(result.filter((r) => r.source === 'direction').length).toBeGreaterThanOrEqual(1);
+    });
+
+    it('keeps candidate when embed returns null (fail open)', async () => {
+      const provider = new EmbeddingProvider();
+      (provider as any).available = true;
+      provider.embed = async () => null; // embed failure
+      provider.embedBatch = async (texts: string[]) => texts.map(() => null);
+
+      const templates: DecisionTemplates = {
+        positive: new Map([['t1', [1, 0]]]),
+        negative: new Map([['n1', [0, 1]]]),
+      };
+
+      const result = await captureDecisions({
+        db,
+        sessionId,
+        project,
+        assistantText: 'Use SQLite for the primary storage layer.',
+        mode: 'after_turn',
+        classifier: { provider, templates },
+      });
+      // Fail open — should still have directions
+      expect(result.filter((r) => r.source === 'direction').length).toBeGreaterThanOrEqual(1);
+    });
+
+    it('respects custom confidenceThreshold', async () => {
+      const provider = new EmbeddingProvider();
+      (provider as any).available = true;
+      // Embedding that gives moderate confidence
+      const norm = 1 / Math.sqrt(2);
+      provider.embed = async () => [norm, norm]; // 45 degrees from both
+      provider.embedBatch = async (texts: string[]) => texts.map(() => [norm, norm]);
+
+      const templates: DecisionTemplates = {
+        positive: new Map([['t1', [1, 0]]]),
+        negative: new Map([['n1', [0, 1]]]),
+      };
+
+      // cos([n,n],[1,0]) = n/1 ≈ 0.707, cos([n,n],[0,1]) = n/1 ≈ 0.707
+      // confidence = 0.707 - 0.707 ≈ 0 — below both thresholds
+
+      // With default threshold 0.15: filtered out (0 <= 0.15)
+      const result1 = await captureDecisions({
+        db,
+        sessionId: 'sess-1',
+        project,
+        assistantText: 'Use SQLite for the primary storage layer.',
+        mode: 'after_turn',
+        classifier: { provider, templates },
+        confidenceThreshold: 0.15,
+      });
+      expect(result1.filter((r) => r.source === 'direction')).toHaveLength(0);
+
+      // With threshold -0.5: passes (0 > -0.5)
+      const result2 = await captureDecisions({
+        db,
+        sessionId: 'sess-2',
+        project,
+        assistantText: 'Use SQLite for the primary storage layer.',
+        mode: 'after_turn',
+        classifier: { provider, templates },
+        confidenceThreshold: -0.5,
+      });
+      expect(result2.filter((r) => r.source === 'direction').length).toBeGreaterThanOrEqual(1);
+    });
+
+    it('uses embedBatch (not sequential embed) for classification', async () => {
+      let embedBatchCalled = false;
+      let embedCallCount = 0;
+      const provider = new EmbeddingProvider();
+      (provider as any).available = true;
+      provider.embed = async () => { embedCallCount++; return [1, 0]; };
+      provider.embedBatch = async (texts: string[]) => {
+        embedBatchCalled = true;
+        return texts.map(() => [1, 0]);
+      };
+
+      const templates: DecisionTemplates = {
+        positive: new Map([['t1', [1, 0]]]),
+        negative: new Map([['n1', [0, 1]]]),
+      };
+
+      await captureDecisions({
+        db,
+        sessionId,
+        project,
+        assistantText: 'Use SQLite for the primary storage layer.',
+        mode: 'after_turn',
+        classifier: { provider, templates },
+      });
+      expect(embedBatchCalled).toBe(true);
+      expect(embedCallCount).toBe(0);
+    });
+
+    it('Stage 2 filtering happens before dedup check (filtered candidates not stored)', async () => {
+      const provider = new EmbeddingProvider();
+      (provider as any).available = true;
+      provider.embed = async () => [0, 1]; // low confidence
+      provider.embedBatch = async (texts: string[]) => texts.map(() => [0, 1]);
+
+      const templates: DecisionTemplates = {
+        positive: new Map([['t1', [1, 0]]]),
+        negative: new Map([['n1', [0, 1]]]),
+      };
+
+      await captureDecisions({
+        db,
+        sessionId,
+        project,
+        assistantText: 'Use SQLite for the primary storage layer.',
+        mode: 'after_turn',
+        classifier: { provider, templates },
+      });
+
+      // Nothing should be stored in DB
+      const stored = getDecisionsBySession(db, sessionId);
+      expect(stored).toHaveLength(0);
+    });
+  });
+
   // --- Edge cases ---
 
   describe('edge cases', () => {
-    it('returns empty array when no decisions found', () => {
-      const result = capture({ userText: 'What is the weather like today?' });
+    it('returns empty array when no decisions found', async () => {
+      const result = await capture({ userText: 'What is the weather like today?' });
       expect(result).toEqual([]);
     });
 
-    it('is non-throwing (returns empty array on error)', () => {
+    it('is non-throwing (returns empty array on error)', async () => {
       // Pass a closed database
       db.close();
-      const result = captureDecisions({
+      const result = await captureDecisions({
         db,
         sessionId,
         project,
@@ -278,11 +486,11 @@ describe('decision capture', () => {
       });
       expect(result).toEqual([]);
       // Reopen for afterEach
-      db = new Database(':memory:');
+      db = createTestDb();
     });
 
-    it('handles missing userText/assistantText gracefully', () => {
-      const result = capture({});
+    it('handles missing userText/assistantText gracefully', async () => {
+      const result = await capture({});
       expect(result).toEqual([]);
     });
   });

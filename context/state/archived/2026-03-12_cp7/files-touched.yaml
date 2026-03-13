@@ -1,0 +1,112 @@
+changed:
+  - path: <project>/src/tests/checkpoint/loader.test.ts
+    action: Edit
+    summary: 'Edit: loader.test.ts'
+  - path: <project>/src/tests/checkpoint/loader.test.ts
+    action: Edit
+    summary: 'Edit: loader.test.ts'
+  - path: <project>/src/tests/checkpoint/loader.test.ts
+    action: Edit
+    summary: 'Edit: loader.test.ts'
+  - path: <project>/src/tests/checkpoint/writer.test.ts
+    action: Edit
+    summary: 'Edit: writer.test.ts'
+  - path: <project>/src/tests/checkpoint/writer.test.ts
+    action: Edit
+    summary: 'Edit: writer.test.ts'
+  - path: <project>/src/tests/checkpoint/writer.test.ts
+    action: Edit
+    summary: 'Edit: writer.test.ts'
+  - path: <project>/src/tests/checkpoint/compression.test.ts
+    action: Edit
+    summary: 'Edit: compression.test.ts'
+  - path: <project>/src/tests/checkpoint/compression.test.ts
+    action: Edit
+    summary: 'Edit: compression.test.ts'
+  - path: <project>/src/tests/checkpoint/compression.test.ts
+    action: Edit
+    summary: 'Edit: compression.test.ts'
+  - path: <project>/src/tests/adapters/shared/lifecycle.test.ts
+    action: Edit
+    summary: 'Edit: lifecycle.test.ts'
+  - path: <project>/src/tests/adapters/shared/lifecycle.test.ts
+    action: Edit
+    summary: 'Edit: lifecycle.test.ts'
+  - path: <project>/src/tests/decay/pressure-decay.test.ts
+    action: Edit
+    summary: 'Edit: pressure-decay.test.ts'
+  - path: <project>/src/tests/decay/decay-engine.test.ts
+    action: Edit
+    summary: 'Edit: decay-engine.test.ts'
+  - path: <project>/src/tests/adapters/openclaw-bridge/bridge-adapter.test.ts
+    action: Edit
+    summary: 'Edit: bridge-adapter.test.ts'
+  - path: <project>/src/tests/core/stmt-cache.test.ts
+    action: Edit
+    summary: 'Edit: stmt-cache.test.ts'
+  - path: <project>/src/tests/cli/dashboard.test.ts
+    action: Edit
+    summary: 'Edit: dashboard.test.ts'
+  - path: <project>/src/tests/extraction/extractors/read-extractor.test.ts
+    action: Write
+    summary: 'Write: read-extractor.test.ts'
+  - path: <project>/src/tests/extraction/extractors/edit-extractor.test.ts
+    action: Write
+    summary: 'Write: edit-extractor.test.ts'
+  - path: <project>/src/tests/extraction/extractors/write-extractor.test.ts
+    action: Write
+    summary: 'Write: write-extractor.test.ts'
+  - path: <project>/src/tests/extraction/extractors/bash-extractor.test.ts
+    action: Write
+    summary: 'Write: bash-extractor.test.ts'
+  - path: <project>/src/tests/extraction/extractors/grep-extractor.test.ts
+    action: Write
+    summary: 'Write: grep-extractor.test.ts'
+  - path: <project>/src/tests/extraction/extractors/glob-extractor.test.ts
+    action: Write
+    summary: 'Write: glob-extractor.test.ts'
+  - path: <project>/src/tests/extraction/extractors/web-fetch-extractor.test.ts
+    action: Write
+    summary: 'Write: web-fetch-extractor.test.ts'
+  - path: <project>/src/tests/extraction/extractors/web-search-extractor.test.ts
+    action: Write
+    summary: 'Write: web-search-extractor.test.ts'
+  - path: <project>/src/tests/extraction/extractors/task-extractor.test.ts
+    action: Write
+    summary: 'Write: task-extractor.test.ts'
+  - path: <project>/src/tests/extraction/extractors/notebook-edit-extractor.test.ts
+    action: Write
+    summary: 'Write: notebook-edit-extractor.test.ts'
+  - path: <project>/src/tests/extraction/extractors/cross-cutting.test.ts
+    action: Write
+    summary: 'Write: cross-cutting.test.ts'
+  - path: <project>/src/tests/adapters/openclaw-bridge/plugin-entry.test.ts
+    action: Edit
+    summary: 'Edit: plugin-entry.test.ts'
+  - path: <project>/src/tests/extraction/extractor.test.ts
+    action: Edit
+    summary: 'Edit: extractor.test.ts'
+read: []
+hot:
+  - <project>/src/tests/checkpoint/loader.test.ts
+  - <project>/src/tests/checkpoint/writer.test.ts
+  - <project>/src/tests/checkpoint/compression.test.ts
+  - <project>/src/tests/adapters/shared/lifecycle.test.ts
+  - <project>/src/tests/decay/pressure-decay.test.ts
+  - <project>/src/tests/decay/decay-engine.test.ts
+  - <project>/src/tests/adapters/openclaw-bridge/bridge-adapter.test.ts
+  - <project>/src/tests/core/stmt-cache.test.ts
+  - <project>/src/tests/cli/dashboard.test.ts
+  - <project>/src/tests/extraction/extractors/read-extractor.test.ts
+  - <project>/src/tests/extraction/extractors/edit-extractor.test.ts
+  - <project>/src/tests/extraction/extractors/write-extractor.test.ts
+  - <project>/src/tests/extraction/extractors/bash-extractor.test.ts
+  - <project>/src/tests/extraction/extractors/grep-extractor.test.ts
+  - <project>/src/tests/extraction/extractors/glob-extractor.test.ts
+  - <project>/src/tests/extraction/extractors/web-fetch-extractor.test.ts
+  - <project>/src/tests/extraction/extractors/web-search-extractor.test.ts
+  - <project>/src/tests/extraction/extractors/task-extractor.test.ts
+  - <project>/src/tests/extraction/extractors/notebook-edit-extractor.test.ts
+  - <project>/src/tests/extraction/extractors/cross-cutting.test.ts
+  - <project>/src/tests/adapters/openclaw-bridge/plugin-entry.test.ts
+  - <project>/src/tests/extraction/extractor.test.ts

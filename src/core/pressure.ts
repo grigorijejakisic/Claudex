@@ -5,6 +5,7 @@
  */
 
 import type { Database } from 'better-sqlite3';
+import { cachedPrepare } from './stmt-cache.js';
 
 export interface PressureRow {
   file_path: string;
@@ -33,7 +34,7 @@ export function updatePressureScore(
   project: string,
   rawPressureIncrement: number
 ): void {
-  db.prepare(
+  cachedPrepare(db,
     `INSERT INTO pressure_scores (file_path, project, raw_pressure, temperature, last_touched_epoch)
      VALUES (?, ?, ?, CASE WHEN ? > ${HOT_THRESHOLD} THEN 'HOT' ELSE 'COLD' END, unixepoch())
      ON CONFLICT(file_path, project) DO UPDATE SET
@@ -58,8 +59,7 @@ export function getPressureByProject(
   db: Database,
   project: string
 ): PressureRow[] {
-  return db
-    .prepare(
+  return cachedPrepare(db,
       `SELECT * FROM pressure_scores WHERE project = ?
        ORDER BY raw_pressure DESC`
     )
@@ -75,8 +75,7 @@ export function getHotFiles(
   project: string,
   limit?: number
 ): PressureRow[] {
-  return db
-    .prepare(
+  return cachedPrepare(db,
       `SELECT * FROM pressure_scores
        WHERE project = ? AND temperature = 'HOT'
        ORDER BY raw_pressure DESC
@@ -98,19 +97,21 @@ export function decayPressure(
 ): number {
   const rate = decayRate ?? 0.1;
 
-  const decayResult = db
-    .prepare(
+  const doBatchDecay = db.transaction(() => {
+    const decayResult = cachedPrepare(db,
       `UPDATE pressure_scores
        SET raw_pressure = raw_pressure * (1 - ?)
        WHERE project = ?`
-    )
-    .run(rate, project);
+    ).run(rate, project);
 
-  db.prepare(
-    `UPDATE pressure_scores
-     SET temperature = 'COLD'
-     WHERE project = ? AND raw_pressure < ${COLD_THRESHOLD}`
-  ).run(project);
+    cachedPrepare(db,
+      `UPDATE pressure_scores
+       SET temperature = 'COLD'
+       WHERE project = ? AND raw_pressure < ${COLD_THRESHOLD}`
+    ).run(project);
 
-  return decayResult.changes;
+    return decayResult.changes;
+  });
+
+  return doBatchDecay();
 }

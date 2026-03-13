@@ -1,0 +1,32 @@
+summary: ''
+key_exchanges:
+  - role: agent
+    gist: 'Write: Write: read-extractor.test.ts'
+  - role: agent
+    gist: 'Write: Write: edit-extractor.test.ts'
+  - role: agent
+    gist: 'Write: Write: write-extractor.test.ts'
+  - role: agent
+    gist: 'Write: Write: bash-extractor.test.ts'
+  - role: agent
+    gist: 'Write: Write: grep-extractor.test.ts'
+  - role: agent
+    gist: 'Write: Write: glob-extractor.test.ts'
+  - role: agent
+    gist: 'Write: Write: web-fetch-extractor.test.ts'
+  - role: agent
+    gist: 'Write: Write: web-search-extractor.test.ts'
+  - role: agent
+    gist: 'Write: Write: task-extractor.test.ts'
+  - role: agent
+    gist: 'Write: Write: notebook-edit-extractor.test.ts'
+  - role: agent
+    gist: 'Write: Write: cross-cutting.test.ts'
+  - role: agent
+    gist: 'Bash: Run: rm "C:\Users\Grigorije\Desktop\Projects\CLAUDEXv3\src\tes...'
+  - role: agent
+    gist: 'Edit: Edit: plugin-entry.test.ts'
+  - role: agent
+    gist: 'Edit: Edit: extractor.test.ts'
+  - role: user
+    gist: <task-notification>...

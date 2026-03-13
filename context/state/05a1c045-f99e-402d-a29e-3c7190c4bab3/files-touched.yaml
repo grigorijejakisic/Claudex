@@ -1,0 +1,43 @@
+changed:
+  - path: <project>/context/handoffs/ACTIVE.md
+    action: Write
+    summary: 'Write: ACTIVE.md'
+  - path: <project>/context/sessions/2026-03-10_session-2.md
+    action: Edit
+    summary: 'Edit: 2026-03-10_session-2.md'
+  - path: <project>/context/sessions/2026-03-10_session-2.md
+    action: Edit
+    summary: 'Edit: 2026-03-10_session-2.md'
+  - path: <project>/context/sessions/2026-03-10_session-2.md
+    action: Edit
+    summary: 'Edit: 2026-03-10_session-2.md'
+  - path: <project>/context/sessions/2026-03-10_session-2.md
+    action: Edit
+    summary: 'Edit: 2026-03-10_session-2.md'
+  - path: <project>/context/sessions/2026-03-10_session-2.md
+    action: Edit
+    summary: 'Edit: 2026-03-10_session-2.md'
+  - path: <project>/context/sessions/2026-03-10_session-2.md
+    action: Edit
+    summary: 'Edit: 2026-03-10_session-2.md'
+  - path: <project>/context/sessions/2026-03-10_session-2.md
+    action: Edit
+    summary: 'Edit: 2026-03-10_session-2.md'
+  - path: <project>/context/sessions/2026-03-10_session-2.md
+    action: Edit
+    summary: 'Edit: 2026-03-10_session-2.md'
+  - path: <project>/context/sessions/2026-03-10_session-2.md
+    action: Edit
+    summary: 'Edit: 2026-03-10_session-2.md'
+  - path: <project>/PROJECT_PRIMER.md
+    action: Edit
+    summary: 'Edit: PROJECT_PRIMER.md'
+  - path: C:\Users\[USER]\.claudex\memory\daily\2026-03-10.md
+    action: Edit
+    summary: 'Edit: 2026-03-10.md'
+read: []
+hot:
+  - <project>/context/handoffs/ACTIVE.md
+  - <project>/context/sessions/2026-03-10_session-2.md
+  - <project>/PROJECT_PRIMER.md
+  - C:\Users\[USER]\.claudex\memory\daily\2026-03-10.md

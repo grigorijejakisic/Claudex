@@ -1,0 +1,85 @@
+schema: claudex/checkpoint
+version: 3
+meta:
+  checkpoint_id: 01KKJ70PQW7XVM85C467QGCZW8
+  session_id: 2867d4ba-0d5b-4a53-9e63-5bb1c4d03124
+  scope: null
+  trigger: compaction
+  token_usage: null
+  previous_checkpoint: null
+working:
+  task: null
+  status: null
+  next_action: null
+  branch: null
+decisions: []
+files:
+  hot: []
+  read:
+    - <project>/.planning/phases/03-intelligence-core/03-CONTEXT.md
+    - <project>/.planning/phases/03-intelligence-core/03-01-PLAN.md
+    - <project>/.planning/phases/03-intelligence-core/03-02-PLAN.md
+    - <project>/.planning/ROADMAP.md
+    - <project>/src/intelligence/semantic-dedup.ts
+    - <project>/src/tests/intelligence/semantic-dedup.test.ts
+    - <project>/src/intelligence/decision-capture.ts
+    - <project>/src/tests/intelligence/decision-capture.test.ts
+    - <project>/src/intelligence/thread-tracker.ts
+    - <project>/src/tests/intelligence/thread-tracker.test.ts
+    - <project>/src/intelligence/learnings-promoter.ts
+    - <project>/src/tests/intelligence/learnings-promoter.test.ts
+    - <project>/.planning/phases/03-intelligence-core/03-01-SUMMARY.md
+    - <project>/.planning/phases/03-intelligence-core/03-02-SUMMARY.md
+    - <project>/.planning/STATE.md
+    - <project>/.planning/phases/04-intelligence-v12/04-CONTEXT.md
+    - <project>/.planning/phases/04-intelligence-v12/04-01-PLAN.md
+    - <project>/.planning/phases/04-intelligence-v12/04-02-PLAN.md
+    - <project>/src/embeddings/cosine.ts
+    - <project>/src/embeddings/embedding-provider.ts
+    - <project>/src/embeddings/templates.ts
+    - <project>/src/tests/embeddings/cosine.test.ts
+    - <project>/src/tests/embeddings/embedding-provider.test.ts
+    - <project>/src/tests/embeddings/templates.test.ts
+    - <project>/src/intelligence/topic-shift.ts
+    - <project>/src/intelligence/enrichment.ts
+    - <project>/src/tests/intelligence/topic-shift.test.ts
+    - <project>/src/tests/intelligence/enrichment.test.ts
+    - <project>/.planning/phases/04-intelligence-v12/04-01-SUMMARY.md
+    - <project>/.planning/phases/04-intelligence-v12/04-02-SUMMARY.md
+    - <project>/.planning/phases/06-checkpoint-system/06-CONTEXT.md
+    - <project>/.planning/phases/06-checkpoint-system/06-01-PLAN.md
+    - <project>/.planning/phases/06-checkpoint-system/06-02-PLAN.md
+    - <project>/src/checkpoint/types.ts
+    - <project>/src/tests/checkpoint/types.test.ts
+    - <project>/src/checkpoint/writer.ts
+    - <project>/src/tests/checkpoint/writer.test.ts
+    - <project>/src/checkpoint/loader.ts
+    - <project>/src/tests/checkpoint/loader.test.ts
+    - <project>/src/checkpoint/inject.ts
+    - <project>/src/tests/checkpoint/inject.test.ts
+    - <project>/.planning/phases/06-checkpoint-system/06-01-SUMMARY.md
+    - <project>/.planning/phases/06-checkpoint-system/06-02-SUMMARY.md
+    - <project>/.planning/phases/07-supporting-subsystems/07-CONTEXT.md
+    - <project>/.planning/phases/07-supporting-subsystems/07-01-PLAN.md
+    - <project>/.planning/phases/07-supporting-subsystems/07-02-PLAN.md
+    - <project>/src/gauge/window-detector.ts
+    - <project>/src/gauge/token-gauge.ts
+    - <project>/src/tests/gauge/window-detector.test.ts
+    - <project>/src/tests/gauge/token-gauge.test.ts
+thread:
+  topic: null
+  summary: ''
+  key_exchanges: []
+open_items: []
+learnings: []
+gsd:
+  phase: 11
+  plan: 1
+  status: All 12 phases complete -- Claudex v3 fully implemented, tested, and deployment-ready
+  goal: Claudex v3 is running in production on both adapters, verified on fresh installs, with predecessor systems archived
+  success_criteria:
+    - Fresh `claudex setup` on a clean Windows machine produces a fully operational CC hook system
+    - Fresh OpenClaw plugin install produces a fully operational bridge adapter
+    - Optional v2 migration completes successfully for existing Claudex users (data preserved, backup created)
+    - Both adapters verified independently for one week of real usage
+  completion: 0/0 requirements met

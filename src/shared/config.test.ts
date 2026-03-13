@@ -127,4 +127,38 @@ describe('config', () => {
       expect(config.features.observation_capture).toBe(true); // default preserved
     });
   });
+
+  describe('config loading from paths with spaces', () => {
+    it('loads config from path with spaces', () => {
+      const spacedDir = fs.mkdtempSync(path.join(os.tmpdir(), 'claudex space test-'));
+      const spacedConfigPath = path.join(spacedDir, 'config.json');
+      vi.spyOn(paths, 'getConfigPath').mockReturnValue(spacedConfigPath);
+
+      const partial = { injection: { budget_tokens: 6000 } };
+      fs.writeFileSync(spacedConfigPath, JSON.stringify(partial), 'utf-8');
+
+      const config = loadConfig();
+      expect(config.injection.budget_tokens).toBe(6000);
+      expect(config.injection.boundary_only).toBe(true); // default preserved
+
+      try { fs.rmSync(spacedDir, { recursive: true, force: true }); } catch { /* cleanup */ }
+    });
+  });
+
+  describe('config loading from paths with unicode characters', () => {
+    it('loads config from unicode path', () => {
+      const unicodeDir = fs.mkdtempSync(path.join(os.tmpdir(), 'claudex-üñî-'));
+      const unicodeConfigPath = path.join(unicodeDir, 'config.json');
+      vi.spyOn(paths, 'getConfigPath').mockReturnValue(unicodeConfigPath);
+
+      const partial = { observations: { retention_days: 30 } };
+      fs.writeFileSync(unicodeConfigPath, JSON.stringify(partial), 'utf-8');
+
+      const config = loadConfig();
+      expect(config.observations.retention_days).toBe(30);
+      expect(config.observations.enabled).toBe(true); // default preserved
+
+      try { fs.rmSync(unicodeDir, { recursive: true, force: true }); } catch { /* cleanup */ }
+    });
+  });
 });

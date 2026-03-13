@@ -1,5 +1,4 @@
-import Database from 'better-sqlite3';
-import { initializeSchema } from '../../core/migrations.js';
+import { createTestDb, type TestDatabase } from '../helpers/test-db.js';
 import {
   emitTelemetry,
   queryTelemetry,
@@ -8,11 +7,10 @@ import {
 import type { HookInvocationDetail, ErrorDetail } from '../../observability/types.js';
 
 describe('telemetry subsystem', () => {
-  let db: InstanceType<typeof Database>;
+  let db: TestDatabase;
 
   beforeEach(() => {
-    db = new Database(':memory:');
-    initializeSchema(db);
+    db = createTestDb();
   });
 
   afterEach(() => {

@@ -1,0 +1,82 @@
+schema: claudex/checkpoint
+version: 2
+meta:
+  checkpoint_id: 2026-03-10_cp5
+  session_id: 6b4989ec-d5e1-414b-9f59-34886299d4ca
+  scope: project:claudex-v3
+  created_at: 2026-03-10T23:18:29.924Z
+  created_at_epoch_ms: 1773184709924
+  trigger: incremental
+  writer_version: 3.0.0
+  token_usage:
+    input_tokens: 3
+    output_tokens: 518
+    window_size: 200000
+    utilization: 0.783175
+  previous_checkpoint: 2026-03-10_cp4.yaml
+  session_log: null
+working:
+  task: ''
+  status: in_progress
+  branch: null
+  next_action: null
+decisions: []
+files:
+  changed:
+    - path: C:\Users\[USER]\.claudex\memory\topics\agent-teams.md
+      action: Edit
+      summary: 'Edit: agent-teams.md'
+  read: []
+  hot:
+    - C:\Users\[USER]\.claudex\memory\topics\agent-teams.md
+gsd: null
+open_questions: []
+learnings: []
+thread:
+  summary: ''
+  key_exchanges:
+    - role: agent
+      gist: Responded to user query
+    - role: user
+      gist: You knew that before.....
+    - role: agent
+      gist: 'Edit: Edit: agent-teams.md'
+pressure_snapshot:
+  hot:
+    - <project>/ARCHITECTURE.md
+    - <project>/.planning/STATE.md
+    - C:\Users\[USER]\.claude\teams\auto-gsd-pipeline\inboxes\team-lead.json
+    - <project>/context/sessions/2026-03-10_session-2.md
+  warm:
+    - <project>/src/core/migrations.ts
+    - <project>/src/extraction/redaction.ts
+    - <project>/.planning/ROADMAP.md
+    - <project>/context/handoffs/ACTIVE.md
+    - <project>/src/tests/core/migrations.test.ts
+    - C:\Users\[USER]\.claudex\memory\topics\agent-teams.md
+recent_observations:
+  - title: 'Edit: agent-teams.md'
+    category: change
+    timestamp_epoch: 1773184709893
+  - title: 'Edit: agent-teams.md'
+    category: change
+    timestamp_epoch: 1773184620164
+  - title: 'Run: touch "$HOME/.claudex/sessions/.completed-6b4989ec-d5e1-4...'
+    category: change
+    timestamp_epoch: 1773184572203
+  - title: 'Edit: agent-teams.md'
+    category: change
+    timestamp_epoch: 1773184565999
+  - title: 'Write: 2026-03-11.md'
+    category: feature
+    timestamp_epoch: 1773184545071
+  - title: 'Write: ACTIVE.md'
+    category: feature
+    timestamp_epoch: 1773184528753
+  - title: 'Write: 2026-03-11_session-3.md'
+    category: feature
+    timestamp_epoch: 1773184507038
+  - title: 'Run: git log --oneline -5'
+    category: change
+    timestamp_epoch: 1773184003784
+boost_state: null

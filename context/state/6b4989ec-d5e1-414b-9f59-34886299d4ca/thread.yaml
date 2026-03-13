@@ -1,0 +1,10 @@
+summary: ''
+key_exchanges:
+  - role: agent
+    gist: Responded to user query
+  - role: user
+    gist: You knew that before.....
+  - role: agent
+    gist: 'Edit: Edit: agent-teams.md'
+  - role: agent
+    gist: Responded to user query

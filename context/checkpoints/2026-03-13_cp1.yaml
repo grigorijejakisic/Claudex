@@ -1,0 +1,252 @@
+schema: claudex/checkpoint
+version: 2
+meta:
+  checkpoint_id: 2026-03-13_cp1
+  session_id: 2867d4ba-0d5b-4a53-9e63-5bb1c4d03124
+  scope: project:claudex-v3
+  created_at: 2026-03-13T00:34:03.124Z
+  created_at_epoch_ms: 1773362043124
+  trigger: auto-75pct
+  writer_version: 3.0.0
+  token_usage:
+    input_tokens: 1
+    output_tokens: 156
+    window_size: 200000
+    utilization: 0.76375
+  previous_checkpoint: 2026-03-12_cp10.yaml
+  session_log: null
+working:
+  task: ''
+  status: in_progress
+  branch: null
+  next_action: null
+decisions:
+  - id: auto-1773359994222
+    what: 'User chose: "I believe after this review and potential fixes we are ready for production, at least for the two of..."'
+    why: '(auto-detected from choice pattern, confidence: low)'
+    when: 2026-03-12T23:59:54.223Z
+    reversible: true
+  - id: auto-1773361288378
+    what: 'User approved: "go"'
+    why: '(auto-detected from approval pattern, confidence: low)'
+    when: 2026-03-13T00:21:28.378Z
+    reversible: true
+files:
+  changed:
+    - path: <project>/context/handoffs/ACTIVE.md
+      action: Write
+      summary: 'Write: ACTIVE.md'
+    - path: C:\Users\[USER]\AppData\Local\Temp\unified-review\chunk.js
+      action: Write
+      summary: 'Write: chunk.js'
+    - path: C:\Users\[USER]\AppData\Local\Temp\unified-review\chunk.js
+      action: Write
+      summary: 'Write: chunk.js'
+    - path: C:\Users\[USER]\AppData\Local\Temp\unified-review\assemble.js
+      action: Write
+      summary: 'Write: assemble.js'
+    - path: C:/Users/[USER]/AppData/Local/Temp/unified-review/run-review.sh
+      action: Write
+      summary: 'Write: run-review.sh'
+    - path: C:/Users/[USER]/AppData/Local/Temp/unified-review/run-core-review.sh
+      action: Write
+      summary: 'Write: run-core-review.sh'
+    - path: <project>/src/extraction/redaction.ts
+      action: Edit
+      summary: 'Edit: redaction.ts'
+    - path: <project>/src/extraction/redaction.ts
+      action: Edit
+      summary: 'Edit: redaction.ts'
+    - path: C:/Users/[USER]/AppData/Local/Temp/unified-review/run-decay-gsd.sh
+      action: Write
+      summary: 'Write: run-decay-gsd.sh'
+    - path: C:/Users/[USER]/AppData/Local/Temp/unified-review/run-one.sh
+      action: Write
+      summary: 'Write: run-one.sh'
+    - path: <project>/context/reasoning/w3-checkpoint-audit.md
+      action: Write
+      summary: 'Write: w3-checkpoint-audit.md'
+    - path: C:/Users/[USER]/AppData/Local/Temp/unified-review/runner.js
+      action: Write
+      summary: 'Write: runner.js'
+    - path: <project>/context/reasoning/w4-intelligence-audit.md
+      action: Write
+      summary: 'Write: w4-intelligence-audit.md'
+    - path: <project>/context/reasoning/w2-assembly-audit.md
+      action: Write
+      summary: 'Write: w2-assembly-audit.md'
+    - path: <project>/context/reasoning/w5-extraction-storage-audit.md
+      action: Write
+      summary: 'Write: w5-extraction-storage-audit.md'
+    - path: <project>/context/reasoning/data-flow-audit.md
+      action: Write
+      summary: 'Write: data-flow-audit.md'
+    - path: <project>/context/reasoning/w1-redaction-consumers.md
+      action: Write
+      summary: 'Write: w1-redaction-consumers.md'
+  read: []
+  hot:
+    - <project>/context/handoffs/ACTIVE.md
+    - C:\Users\[USER]\AppData\Local\Temp\unified-review\chunk.js
+    - C:\Users\[USER]\AppData\Local\Temp\unified-review\assemble.js
+    - C:/Users/[USER]/AppData/Local/Temp/unified-review/run-review.sh
+    - C:/Users/[USER]/AppData/Local/Temp/unified-review/run-core-review.sh
+    - <project>/src/extraction/redaction.ts
+    - C:/Users/[USER]/AppData/Local/Temp/unified-review/run-decay-gsd.sh
+    - C:/Users/[USER]/AppData/Local/Temp/unified-review/run-one.sh
+    - <project>/context/reasoning/w3-checkpoint-audit.md
+    - C:/Users/[USER]/AppData/Local/Temp/unified-review/runner.js
+    - <project>/context/reasoning/w4-intelligence-audit.md
+    - <project>/context/reasoning/w2-assembly-audit.md
+    - <project>/context/reasoning/w5-extraction-storage-audit.md
+    - <project>/context/reasoning/data-flow-audit.md
+    - <project>/context/reasoning/w1-redaction-consumers.md
+gsd:
+  active: true
+  milestone: null
+  phase: 11
+  phase_name: Deployment
+  phase_goal: Claudex v3 is running in production on both adapters, verified on fresh installs, with predecessor systems archived
+  plan_status: All 12 phases complete -- Claudex v3 fully implemented, tested, and deployment-ready
+  plan_number: 1
+  completion_pct: 92
+  requirements: []
+open_questions: []
+learnings: []
+thread:
+  summary: ''
+  key_exchanges:
+    - role: agent
+      gist: 'Bash: Run: sleep 180 && for f in quality acceptance security general...'
+    - role: agent
+      gist: 'Bash: Run: REVIEW_DIR="C:/Users/Grigorije/AppData/Local/Temp/unified...'
+    - role: agent
+      gist: Responded to user query
+    - role: agent
+      gist: 'Bash: Run: bash -c ''cat "C:/Users/Grigorije/AppData/Local/Temp/unifi...'
+    - role: agent
+      gist: 'Bash: Run: wc -c "C:/Users/Grigorije/AppData/Local/Temp/unified-revi...'
+    - role: agent
+      gist: 'Bash: Run: sleep 90 && wc -c "C:/Users/Grigorije/AppData/Local/Temp/...'
+    - role: agent
+      gist: 'Bash: Run: sleep 120 && wc -c "C:/Users/Grigorije/AppData/Local/Temp...'
+    - role: user
+      gist: <task-notification>...
+    - role: agent
+      gist: 'Bash: Run: sleep 90 && cat "C:\Users\GRIGOR~1\AppData\Local\Temp\cla...'
+    - role: agent
+      gist: 'Bash: Run: sleep 45 && wc -c "C:/Users/Grigorije/AppData/Local/Temp/...'
+    - role: agent
+      gist: 'Bash: Run: sleep 300 && cat "C:/Users/Grigorije/AppData/Local/Temp/c...'
+    - role: agent
+      gist: 'Bash: Run: for p in quality acceptance security general reuse effici...'
+    - role: agent
+      gist: 'Bash: Run: REVIEW_DIR="C:/Users/Grigorije/AppData/Local/Temp/unified...'
+    - role: agent
+      gist: Responded to user query
+    - role: user
+      gist: <task-notification>...
+pressure_snapshot:
+  hot:
+    - <project>/.planning/STATE.md
+    - <project>/ARCHITECTURE.md
+    - <project>/.planning/ROADMAP.md
+    - C:\Users\[USER]\.claude\teams\auto-gsd-pipeline\inboxes\team-lead.json
+    - <project>/src/core/migrations.ts
+    - <project>/src/adapters/openclaw-bridge/bridge-adapter.ts
+    - <project>/context/sessions/2026-03-10_session-2.md
+    - <project>/src/intelligence/enrichment.ts
+    - <project>/src/checkpoint/writer.ts
+    - <project>/src/cli/setup.ts
+    - <project>/src/tests/integration/e2e-flows.test.ts
+    - <project>/src/core/observations.ts
+    - <project>/src/tests/intelligence/enrichment.test.ts
+    - <project>/src/tests/adapters/openclaw-bridge/bridge-adapter.test.ts
+  warm:
+    - <project>/src/core/sessions.ts
+    - <project>/src/core/decisions.ts
+    - <project>/src/core/checkpoint-tracking.ts
+    - <project>/src/extraction/redaction.ts
+    - <project>/src/extraction/extractor.ts
+    - <project>/src/checkpoint/loader.ts
+    - <project>/src/tests/decay/pressure-decay.test.ts
+    - <project>/src/tests/cli/setup.test.ts
+    - <project>/src/tests/integration/cross-cutting.test.ts
+    - <project>/src/shared/config.ts
+    - <project>/src/core/pressure.ts
+    - <project>/src/tests/checkpoint/loader.test.ts
+    - <project>/context/handoffs/ACTIVE.md
+    - <project>/src/tests/core/migrations.test.ts
+    - <project>/src/core/thread.ts
+    - <project>/src/tests/intelligence/learnings-promoter.test.ts
+    - <project>/src/tests/embeddings/embedding-provider.test.ts
+    - <project>/src/tests/checkpoint/writer.test.ts
+    - <project>/src/adapters/cc-hooks/infrastructure.ts
+    - <project>/src/tests/cli/dashboard.test.ts
+    - <project>/build.ts
+    - <project>/src/shared/scope-detector.ts
+    - <project>/src/core/learnings.ts
+    - <project>/src/tests/core/sessions.test.ts
+    - <project>/src/tests/core/crud-modules.test.ts
+    - <project>/src/tests/extraction/extractor.test.ts
+    - <project>/src/tests/intelligence/semantic-dedup.test.ts
+    - <project>/src/intelligence/decision-capture.ts
+    - <project>/src/tests/intelligence/decision-capture.test.ts
+    - <project>/src/embeddings/embedding-provider.ts
+    - <project>/src/tests/embeddings/templates.test.ts
+    - <project>/src/tests/intelligence/topic-shift.test.ts
+    - <project>/src/tests/decay/decay-engine.test.ts
+    - <project>/src/tests/assembly/assembler.test.ts
+    - <project>/src/tests/checkpoint/compression.test.ts
+    - <project>/src/shared/scope-detector.test.ts
+    - <project>/src/tests/core/storage.test.ts
+    - <project>/src/extraction/quality-gate.ts
+    - <project>/src/extraction/scoring.ts
+    - C:\Users\[USER]\.claudex\memory\topics\agent-teams.md
+    - <project>/src/decay/decay-engine.ts
+    - <project>/src/assembly/assembler.ts
+    - <project>/src/adapters/cc-hooks/post-tool-use.ts
+    - <project>/src/adapters/cc-hooks/stop.ts
+    - <project>/src/tests/adapters/cc-hooks/infrastructure.test.ts
+    - <project>/src/tests/adapters/cc-hooks/hooks.test.ts
+    - <project>/src/tests/core/stmt-cache.test.ts
+    - <project>/src/tests/adapters/shared/lifecycle.test.ts
+recent_observations:
+  - title: 'Run: REVIEW_DIR="C:/Users/Grigorije/AppData/Local/Temp/unified...'
+    category: change
+    timestamp_epoch: 1773362003974
+  - title: 'Run: for p in quality acceptance security general reuse effici...'
+    category: change
+    timestamp_epoch: 1773361993757
+  - title: 'Run: sleep 300 && cat "C:/Users/Grigorije/AppData/Local/Temp/c...'
+    category: change
+    timestamp_epoch: 1773361992887
+  - title: 'Run: sleep 45 && wc -c "C:/Users/Grigorije/AppData/Local/Temp/...'
+    category: change
+    timestamp_epoch: 1773361985712
+  - title: 'Run: sleep 90 && cat "C:\Users\GRIGOR~1\AppData\Local\Temp\cla...'
+    category: change
+    timestamp_epoch: 1773361969126
+  - title: 'Run: sleep 120 && wc -c "C:/Users/Grigorije/AppData/Local/Temp...'
+    category: change
+    timestamp_epoch: 1773361938153
+  - title: 'Run: sleep 90 && wc -c "C:/Users/Grigorije/AppData/Local/Temp/...'
+    category: change
+    timestamp_epoch: 1773361934989
+  - title: 'Run: wc -c "C:/Users/Grigorije/AppData/Local/Temp/unified-revi...'
+    category: change
+    timestamp_epoch: 1773361924837
+boost_state:
+  files:
+    - <project>/context/handoffs/ACTIVE.md
+    - <project>/src/tests/extraction/extractor.test.ts
+    - <project>/src/tests/adapters/openclaw-bridge/plugin-entry.test.ts
+    - <project>/src/tests/extraction/extractors/cross-cutting.test.ts
+    - <project>/src/tests/extraction/extractors/notebook-edit-extractor.test.ts
+    - <project>/src/tests/extraction/extractors/task-extractor.test.ts
+    - <project>/src/tests/extraction/extractors/web-search-extractor.test.ts
+    - <project>/src/tests/extraction/extractors/web-fetch-extractor.test.ts
+    - <project>/src/tests/extraction/extractors/glob-extractor.test.ts
+    - <project>/src/tests/extraction/extractors/grep-extractor.test.ts
+  turn: 3
+  applied_at: 1773335801210

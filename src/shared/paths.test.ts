@@ -87,4 +87,75 @@ describe('paths', () => {
       expect(result.length).toBeGreaterThan(0);
     }
   });
+
+  describe('paths with spaces', () => {
+    it('getProjectContextDir handles spaces in path', () => {
+      const result = getProjectContextDir('C:\\Users\\My User\\Desktop\\project');
+      expect(result).toContain('context');
+      expect(result).toContain('My User');
+    });
+
+    it('getCheckpointsDir handles spaces in path', () => {
+      const result = getCheckpointsDir('/home/my user/projects/app');
+      expect(result).toContain('checkpoints');
+      expect(result).toContain('my user');
+    });
+
+    it('getSessionsDir handles spaces in path', () => {
+      const result = getSessionsDir('C:\\Program Files\\My App');
+      expect(result).toContain('sessions');
+      expect(result).toContain('Program Files');
+    });
+
+    it('getHandoffsDir handles spaces in path', () => {
+      const result = getHandoffsDir('/path with spaces/project dir');
+      expect(result).toContain('handoffs');
+      expect(result).toContain('path with spaces');
+    });
+  });
+
+  describe('paths with unicode characters', () => {
+    it('getProjectContextDir handles unicode in path', () => {
+      const result = getProjectContextDir('C:\\Users\\Ünîcödé\\project');
+      expect(result).toContain('context');
+      expect(result).toContain('Ünîcödé');
+    });
+
+    it('getCheckpointsDir handles CJK characters', () => {
+      const result = getCheckpointsDir('/home/用户/项目');
+      expect(result).toContain('checkpoints');
+      expect(result).toContain('用户');
+    });
+
+    it('getSessionsDir handles emoji in path', () => {
+      const result = getSessionsDir('/home/user/🚀project');
+      expect(result).toContain('sessions');
+      expect(result).toContain('🚀project');
+    });
+
+    it('getHandoffsDir handles mixed unicode and spaces', () => {
+      const result = getHandoffsDir('C:\\Users\\Grégoire Müller\\проект');
+      expect(result).toContain('handoffs');
+      expect(result).toContain('Grégoire Müller');
+    });
+  });
+
+  describe('paths with long names (>260 chars)', () => {
+    it('getProjectContextDir handles long paths', () => {
+      const longSegment = 'a'.repeat(200);
+      const longPath = path.join('C:\\', 'Users', 'test', longSegment, 'project');
+      const result = getProjectContextDir(longPath);
+      expect(result).toContain('context');
+      expect(result).toContain(longSegment);
+    });
+
+    it('getCheckpointsDir handles deeply nested long paths', () => {
+      // Build a path that exceeds 260 chars through nesting
+      const segments = Array.from({ length: 30 }, (_, i) => `segment${i}`);
+      const longPath = path.join('C:\\', ...segments);
+      expect(longPath.length).toBeGreaterThan(260);
+      const result = getCheckpointsDir(longPath);
+      expect(result).toContain('checkpoints');
+    });
+  });
 });

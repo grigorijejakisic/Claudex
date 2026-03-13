@@ -5,6 +5,8 @@
  */
 
 import type { Database } from 'better-sqlite3';
+import { cachedPrepare } from './stmt-cache.js';
+import { redactContent } from '../extraction/redaction.js';
 
 export interface ThreadStateRow {
   session_id: string;
@@ -35,14 +37,17 @@ export function upsertThreadState(
     key_exchanges?: Array<{ role: string; gist: string }>;
   }
 ): void {
-  db.prepare(
+  cachedPrepare(db,
     `INSERT OR REPLACE INTO thread_state (session_id, topic, summary, key_exchanges, updated_at_epoch)
      VALUES (?, ?, ?, ?, unixepoch())`
   ).run(
     state.session_id,
-    state.topic ?? null,
-    state.summary ?? null,
-    JSON.stringify(state.key_exchanges ?? [])
+    state.topic ? redactContent(state.topic) : null,
+    state.summary ? redactContent(state.summary) : null,
+    JSON.stringify((state.key_exchanges ?? []).map(ex => ({
+      ...ex,
+      gist: redactContent(ex.gist),
+    })))
   );
 }
 
@@ -53,8 +58,7 @@ export function getThreadState(
   db: Database,
   sessionId: string
 ): ThreadStateRow | undefined {
-  const row = db
-    .prepare('SELECT * FROM thread_state WHERE session_id = ?')
+  const row = cachedPrepare(db, 'SELECT * FROM thread_state WHERE session_id = ?')
     .get(sessionId) as RawThreadStateRow | undefined;
 
   if (!row) return undefined;
@@ -72,5 +76,5 @@ export function resetThreadState(
   db: Database,
   sessionId: string
 ): void {
-  db.prepare('DELETE FROM thread_state WHERE session_id = ?').run(sessionId);
+  cachedPrepare(db, 'DELETE FROM thread_state WHERE session_id = ?').run(sessionId);
 }

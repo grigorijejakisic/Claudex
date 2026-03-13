@@ -1,0 +1,630 @@
+schema: claudex/checkpoint
+version: 2
+meta:
+  checkpoint_id: 2026-03-12_cp4
+  session_id: 2867d4ba-0d5b-4a53-9e63-5bb1c4d03124
+  scope: project:claudex-v3
+  created_at: 2026-03-12T22:40:45.802Z
+  created_at_epoch_ms: 1773355245802
+  trigger: incremental
+  writer_version: 3.0.0
+  token_usage:
+    input_tokens: 1
+    output_tokens: 28
+    window_size: 200000
+    utilization: 0.75572
+  previous_checkpoint: 2026-03-12_cp3.yaml
+  session_log: null
+working:
+  task: ''
+  status: in_progress
+  branch: null
+  next_action: null
+decisions:
+  - id: auto-1773353593001
+    what: 'User chose: "I agree with your recommendation! put items 3/4/5/16 as handoff (until we have more data) Proceed to..."'
+    why: '(auto-detected from choice pattern, confidence: low)'
+    when: 2026-03-12T22:13:13.001Z
+    reversible: true
+files:
+  changed:
+    - path: C:\Users\[USER]\.claude\settings.json
+      action: Write
+      summary: 'Write: settings.json'
+    - path: <project>/build.ts
+      action: Edit
+      summary: 'Edit: build.ts'
+    - path: <project>/src/cli/setup.ts
+      action: Edit
+      summary: 'Edit: setup.ts'
+    - path: <project>/src/cli/setup.ts
+      action: Edit
+      summary: 'Edit: setup.ts'
+    - path: <project>/src/tests/cli/setup.test.ts
+      action: Edit
+      summary: 'Edit: setup.test.ts'
+    - path: <project>/src/core/storage.ts
+      action: Edit
+      summary: 'Edit: storage.ts'
+    - path: <project>/src/shared/paths.test.ts
+      action: Edit
+      summary: 'Edit: paths.test.ts'
+    - path: <project>/src/core/stmt-cache.ts
+      action: Write
+      summary: 'Write: stmt-cache.ts'
+    - path: <project>/src/embeddings/embedding-provider.ts
+      action: Edit
+      summary: 'Edit: embedding-provider.ts'
+    - path: <project>/src/shared/fs-helpers.test.ts
+      action: Edit
+      summary: 'Edit: fs-helpers.test.ts'
+    - path: <project>/src/core/observations.ts
+      action: Edit
+      summary: 'Edit: observations.ts'
+    - path: <project>/src/embeddings/templates.ts
+      action: Edit
+      summary: 'Edit: templates.ts'
+    - path: <project>/src/core/observations.ts
+      action: Edit
+      summary: 'Edit: observations.ts'
+    - path: <project>/src/shared/scope-detector.test.ts
+      action: Edit
+      summary: 'Edit: scope-detector.test.ts'
+    - path: <project>/src/core/observations.ts
+      action: Edit
+      summary: 'Edit: observations.ts'
+    - path: <project>/src/adapters/openclaw-bridge/bridge-adapter.ts
+      action: Edit
+      summary: 'Edit: bridge-adapter.ts'
+    - path: <project>/src/core/observations.ts
+      action: Edit
+      summary: 'Edit: observations.ts'
+    - path: <project>/src/core/observations.ts
+      action: Edit
+      summary: 'Edit: observations.ts'
+    - path: <project>/src/core/observations.ts
+      action: Edit
+      summary: 'Edit: observations.ts'
+    - path: <project>/src/adapters/openclaw-bridge/bridge-adapter.ts
+      action: Edit
+      summary: 'Edit: bridge-adapter.ts'
+    - path: <project>/src/tests/shared/scope-detector.test.ts
+      action: Edit
+      summary: 'Edit: scope-detector.test.ts'
+    - path: <project>/src/shared/constants.ts
+      action: Edit
+      summary: 'Edit: constants.ts'
+    - path: <project>/src/core/observations.ts
+      action: Edit
+      summary: 'Edit: observations.ts'
+    - path: <project>/src/shared/tool-catalog.ts
+      action: Write
+      summary: 'Write: tool-catalog.ts'
+    - path: <project>/src/shared/config.ts
+      action: Edit
+      summary: 'Edit: config.ts'
+    - path: <project>/src/core/sessions.ts
+      action: Edit
+      summary: 'Edit: sessions.ts'
+    - path: <project>/src/adapters/openclaw-bridge/bridge-adapter.ts
+      action: Edit
+      summary: 'Edit: bridge-adapter.ts'
+    - path: <project>/src/shared/config.test.ts
+      action: Edit
+      summary: 'Edit: config.test.ts'
+    - path: <project>/src/core/sessions.ts
+      action: Edit
+      summary: 'Edit: sessions.ts'
+    - path: <project>/src/shared/config.ts
+      action: Edit
+      summary: 'Edit: config.ts'
+    - path: <project>/src/core/sessions.ts
+      action: Edit
+      summary: 'Edit: sessions.ts'
+    - path: <project>/src/adapters/openclaw-bridge/bridge-adapter.ts
+      action: Edit
+      summary: 'Edit: bridge-adapter.ts'
+    - path: <project>/src/core/sessions.ts
+      action: Edit
+      summary: 'Edit: sessions.ts'
+    - path: <project>/src/tests/shared/config.test.ts
+      action: Edit
+      summary: 'Edit: config.test.ts'
+    - path: <project>/src/tests/shared/tool-catalog.test.ts
+      action: Write
+      summary: 'Write: tool-catalog.test.ts'
+    - path: <project>/src/checkpoint/writer.ts
+      action: Edit
+      summary: 'Edit: writer.ts'
+    - path: <project>/src/core/sessions.ts
+      action: Edit
+      summary: 'Edit: sessions.ts'
+    - path: <project>/src/checkpoint/types.ts
+      action: Edit
+      summary: 'Edit: types.ts'
+    - path: <project>/src/core/sessions.ts
+      action: Edit
+      summary: 'Edit: sessions.ts'
+    - path: <project>/src/extraction/scoring.ts
+      action: Edit
+      summary: 'Edit: scoring.ts'
+    - path: <project>/src/checkpoint/writer.ts
+      action: Edit
+      summary: 'Edit: writer.ts'
+    - path: <project>/src/core/decisions.ts
+      action: Edit
+      summary: 'Edit: decisions.ts'
+    - path: <project>/src/extraction/scoring.ts
+      action: Edit
+      summary: 'Edit: scoring.ts'
+    - path: <project>/src/checkpoint/writer.ts
+      action: Edit
+      summary: 'Edit: writer.ts'
+    - path: <project>/src/core/decisions.ts
+      action: Edit
+      summary: 'Edit: decisions.ts'
+    - path: <project>/src/checkpoint/writer.ts
+      action: Edit
+      summary: 'Edit: writer.ts'
+    - path: <project>/src/tests/embeddings/embedding-provider.test.ts
+      action: Edit
+      summary: 'Edit: embedding-provider.test.ts'
+    - path: <project>/src/tests/core/storage.test.ts
+      action: Edit
+      summary: 'Edit: storage.test.ts'
+    - path: <project>/src/tests/embeddings/templates.test.ts
+      action: Edit
+      summary: 'Edit: templates.test.ts'
+    - path: <project>/src/checkpoint/writer.ts
+      action: Edit
+      summary: 'Edit: writer.ts'
+    - path: <project>/src/extraction/extractor.ts
+      action: Edit
+      summary: 'Edit: extractor.ts'
+    - path: <project>/src/tests/embeddings/templates.test.ts
+      action: Edit
+      summary: 'Edit: templates.test.ts'
+    - path: <project>/src/checkpoint/loader.ts
+      action: Edit
+      summary: 'Edit: loader.ts'
+    - path: <project>/src/core/decisions.ts
+      action: Edit
+      summary: 'Edit: decisions.ts'
+    - path: <project>/src/extraction/quality-gate.ts
+      action: Edit
+      summary: 'Edit: quality-gate.ts'
+    - path: <project>/src/tests/embeddings/templates.test.ts
+      action: Edit
+      summary: 'Edit: templates.test.ts'
+    - path: <project>/src/core/decisions.ts
+      action: Edit
+      summary: 'Edit: decisions.ts'
+    - path: <project>/src/intelligence/enrichment.ts
+      action: Edit
+      summary: 'Edit: enrichment.ts'
+    - path: <project>/src/core/decisions.ts
+      action: Edit
+      summary: 'Edit: decisions.ts'
+    - path: <project>/src/checkpoint/loader.ts
+      action: Edit
+      summary: 'Edit: loader.ts'
+    - path: <project>/src/core/learnings.ts
+      action: Edit
+      summary: 'Edit: learnings.ts'
+    - path: <project>/src/tests/core/storage.test.ts
+      action: Edit
+      summary: 'Edit: storage.test.ts'
+    - path: <project>/src/core/learnings.ts
+      action: Edit
+      summary: 'Edit: learnings.ts'
+    - path: <project>/src/intelligence/enrichment.ts
+      action: Edit
+      summary: 'Edit: enrichment.ts'
+    - path: <project>/src/core/learnings.ts
+      action: Edit
+      summary: 'Edit: learnings.ts'
+    - path: <project>/src/core/thread.ts
+      action: Edit
+      summary: 'Edit: thread.ts'
+    - path: <project>/src/intelligence/enrichment.ts
+      action: Edit
+      summary: 'Edit: enrichment.ts'
+    - path: <project>/src/tests/adapters/openclaw-bridge/bridge-adapter.test.ts
+      action: Edit
+      summary: 'Edit: bridge-adapter.test.ts'
+    - path: <project>/src/core/thread.ts
+      action: Edit
+      summary: 'Edit: thread.ts'
+    - path: <project>/src/core/thread.ts
+      action: Edit
+      summary: 'Edit: thread.ts'
+    - path: <project>/src/tests/intelligence/enrichment.test.ts
+      action: Edit
+      summary: 'Edit: enrichment.test.ts'
+    - path: <project>/src/core/thread.ts
+      action: Edit
+      summary: 'Edit: thread.ts'
+    - path: <project>/src/core/pressure.ts
+      action: Edit
+      summary: 'Edit: pressure.ts'
+    - path: <project>/src/core/pressure.ts
+      action: Edit
+      summary: 'Edit: pressure.ts'
+    - path: <project>/src/tests/intelligence/enrichment.test.ts
+      action: Edit
+      summary: 'Edit: enrichment.test.ts'
+    - path: <project>/src/tests/intelligence/enrichment.test.ts
+      action: Edit
+      summary: 'Edit: enrichment.test.ts'
+    - path: <project>/src/core/pressure.ts
+      action: Edit
+      summary: 'Edit: pressure.ts'
+    - path: <project>/src/tests/checkpoint/compression.test.ts
+      action: Write
+      summary: 'Write: compression.test.ts'
+    - path: <project>/src/tests/intelligence/enrichment.test.ts
+      action: Edit
+      summary: 'Edit: enrichment.test.ts'
+    - path: <project>/src/core/pressure.ts
+      action: Edit
+      summary: 'Edit: pressure.ts'
+    - path: <project>/src/core/pressure.ts
+      action: Edit
+      summary: 'Edit: pressure.ts'
+    - path: <project>/src/core/checkpoint-tracking.ts
+      action: Edit
+      summary: 'Edit: checkpoint-tracking.ts'
+    - path: <project>/src/tests/intelligence/enrichment.test.ts
+      action: Edit
+      summary: 'Edit: enrichment.test.ts'
+    - path: <project>/src/core/checkpoint-tracking.ts
+      action: Edit
+      summary: 'Edit: checkpoint-tracking.ts'
+    - path: <project>/src/core/checkpoint-tracking.ts
+      action: Edit
+      summary: 'Edit: checkpoint-tracking.ts'
+    - path: <project>/src/tests/intelligence/enrichment.test.ts
+      action: Edit
+      summary: 'Edit: enrichment.test.ts'
+    - path: <project>/src/extraction/extractor.ts
+      action: Edit
+      summary: 'Edit: extractor.ts'
+    - path: <project>/src/core/checkpoint-tracking.ts
+      action: Edit
+      summary: 'Edit: checkpoint-tracking.ts'
+    - path: <project>/src/core/checkpoint-tracking.ts
+      action: Edit
+      summary: 'Edit: checkpoint-tracking.ts'
+    - path: <project>/src/core/checkpoint-tracking.ts
+      action: Edit
+      summary: 'Edit: checkpoint-tracking.ts'
+    - path: <project>/src/cli/dashboard.ts
+      action: Write
+      summary: 'Write: dashboard.ts'
+    - path: <project>/src/core/migrations.ts
+      action: Edit
+      summary: 'Edit: migrations.ts'
+    - path: <project>/src/core/migrations.ts
+      action: Edit
+      summary: 'Edit: migrations.ts'
+    - path: <project>/src/core/migrations.ts
+      action: Edit
+      summary: 'Edit: migrations.ts'
+    - path: <project>/src/core/migrations.ts
+      action: Edit
+      summary: 'Edit: migrations.ts'
+    - path: <project>/src/tests/core/migrations.test.ts
+      action: Edit
+      summary: 'Edit: migrations.test.ts'
+    - path: <project>/src/tests/cli/dashboard.test.ts
+      action: Write
+      summary: 'Write: dashboard.test.ts'
+    - path: <project>/src/tests/core/stmt-cache.test.ts
+      action: Write
+      summary: 'Write: stmt-cache.test.ts'
+    - path: <project>/build.ts
+      action: Edit
+      summary: 'Edit: build.ts'
+    - path: <project>/src/checkpoint/writer.ts
+      action: Edit
+      summary: 'Edit: writer.ts'
+    - path: <project>/src/checkpoint/writer.ts
+      action: Edit
+      summary: 'Edit: writer.ts'
+    - path: <project>/src/checkpoint/writer.ts
+      action: Edit
+      summary: 'Edit: writer.ts'
+    - path: <project>/src/checkpoint/writer.ts
+      action: Edit
+      summary: 'Edit: writer.ts'
+    - path: <project>/src/tests/cli/dashboard.test.ts
+      action: Edit
+      summary: 'Edit: dashboard.test.ts'
+    - path: <project>/src/cli/dashboard.ts
+      action: Edit
+      summary: 'Edit: dashboard.ts'
+    - path: <project>/src/tests/adapters/openclaw-bridge/bridge-adapter.test.ts
+      action: Edit
+      summary: 'Edit: bridge-adapter.test.ts'
+    - path: <project>/src/adapters/openclaw-bridge/bridge-adapter.ts
+      action: Edit
+      summary: 'Edit: bridge-adapter.ts'
+    - path: <project>/src/adapters/shared/lifecycle.ts
+      action: Write
+      summary: 'Write: lifecycle.ts'
+    - path: <project>/src/adapters/cc-hooks/post-tool-use.ts
+      action: Write
+      summary: 'Write: post-tool-use.ts'
+    - path: <project>/src/adapters/cc-hooks/stop.ts
+      action: Write
+      summary: 'Write: stop.ts'
+    - path: <project>/src/adapters/cc-hooks/pre-compact.ts
+      action: Write
+      summary: 'Write: pre-compact.ts'
+    - path: <project>/src/adapters/cc-hooks/session-end.ts
+      action: Write
+      summary: 'Write: session-end.ts'
+    - path: <project>/src/tests/helpers/test-db.ts
+      action: Write
+      summary: 'Write: test-db.ts'
+    - path: <project>/src/adapters/openclaw-bridge/bridge-adapter.ts
+      action: Write
+      summary: 'Write: bridge-adapter.ts'
+    - path: <project>/src/adapters/openclaw-bridge/plugin-entry.ts
+      action: Write
+      summary: 'Write: plugin-entry.ts'
+    - path: <project>/src/tests/observability/telemetry.test.ts
+      action: Edit
+      summary: 'Edit: telemetry.test.ts'
+    - path: <project>/src/tests/core/sessions.test.ts
+      action: Edit
+      summary: 'Edit: sessions.test.ts'
+    - path: <project>/src/tests/core/sessions.test.ts
+      action: Edit
+      summary: 'Edit: sessions.test.ts'
+    - path: <project>/src/tests/core/sessions.test.ts
+      action: Edit
+      summary: 'Edit: sessions.test.ts'
+    - path: <project>/src/tests/core/crud-modules.test.ts
+      action: Edit
+      summary: 'Edit: crud-modules.test.ts'
+    - path: <project>/src/tests/adapters/shared/lifecycle.test.ts
+      action: Write
+      summary: 'Write: lifecycle.test.ts'
+    - path: <project>/src/tests/core/crud-modules.test.ts
+      action: Edit
+      summary: 'Edit: crud-modules.test.ts'
+    - path: <project>/src/tests/core/crud-modules.test.ts
+      action: Edit
+      summary: 'Edit: crud-modules.test.ts'
+    - path: <project>/src/tests/core/observations.test.ts
+      action: Edit
+      summary: 'Edit: observations.test.ts'
+    - path: <project>/src/tests/core/stmt-cache.test.ts
+      action: Edit
+      summary: 'Edit: stmt-cache.test.ts'
+    - path: <project>/src/tests/intelligence/decision-capture.test.ts
+      action: Edit
+      summary: 'Edit: decision-capture.test.ts'
+    - path: <project>/src/tests/intelligence/thread-tracker.test.ts
+      action: Edit
+      summary: 'Edit: thread-tracker.test.ts'
+    - path: <project>/src/tests/intelligence/learnings-promoter.test.ts
+      action: Edit
+      summary: 'Edit: learnings-promoter.test.ts'
+    - path: <project>/src/tests/intelligence/topic-shift.test.ts
+      action: Edit
+      summary: 'Edit: topic-shift.test.ts'
+    - path: <project>/src/tests/extraction/extractor.test.ts
+      action: Edit
+      summary: 'Edit: extractor.test.ts'
+    - path: <project>/src/tests/assembly/assembler.test.ts
+      action: Edit
+      summary: 'Edit: assembler.test.ts'
+  read: []
+  hot:
+    - C:\Users\[USER]\.claude\settings.json
+    - <project>/build.ts
+    - <project>/src/cli/setup.ts
+    - <project>/src/tests/cli/setup.test.ts
+    - <project>/src/core/storage.ts
+    - <project>/src/shared/paths.test.ts
+    - <project>/src/core/stmt-cache.ts
+    - <project>/src/embeddings/embedding-provider.ts
+    - <project>/src/shared/fs-helpers.test.ts
+    - <project>/src/core/observations.ts
+    - <project>/src/embeddings/templates.ts
+    - <project>/src/shared/scope-detector.test.ts
+    - <project>/src/adapters/openclaw-bridge/bridge-adapter.ts
+    - <project>/src/tests/shared/scope-detector.test.ts
+    - <project>/src/shared/constants.ts
+    - <project>/src/shared/tool-catalog.ts
+    - <project>/src/shared/config.ts
+    - <project>/src/core/sessions.ts
+    - <project>/src/shared/config.test.ts
+    - <project>/src/tests/shared/config.test.ts
+    - <project>/src/tests/shared/tool-catalog.test.ts
+    - <project>/src/checkpoint/writer.ts
+    - <project>/src/checkpoint/types.ts
+    - <project>/src/extraction/scoring.ts
+    - <project>/src/core/decisions.ts
+    - <project>/src/tests/embeddings/embedding-provider.test.ts
+    - <project>/src/tests/core/storage.test.ts
+    - <project>/src/tests/embeddings/templates.test.ts
+    - <project>/src/extraction/extractor.ts
+    - <project>/src/checkpoint/loader.ts
+    - <project>/src/extraction/quality-gate.ts
+    - <project>/src/intelligence/enrichment.ts
+    - <project>/src/core/learnings.ts
+    - <project>/src/core/thread.ts
+    - <project>/src/tests/adapters/openclaw-bridge/bridge-adapter.test.ts
+    - <project>/src/tests/intelligence/enrichment.test.ts
+    - <project>/src/core/pressure.ts
+    - <project>/src/tests/checkpoint/compression.test.ts
+    - <project>/src/core/checkpoint-tracking.ts
+    - <project>/src/cli/dashboard.ts
+    - <project>/src/core/migrations.ts
+    - <project>/src/tests/core/migrations.test.ts
+    - <project>/src/tests/cli/dashboard.test.ts
+    - <project>/src/tests/core/stmt-cache.test.ts
+    - <project>/src/adapters/shared/lifecycle.ts
+    - <project>/src/adapters/cc-hooks/post-tool-use.ts
+    - <project>/src/adapters/cc-hooks/stop.ts
+    - <project>/src/adapters/cc-hooks/pre-compact.ts
+    - <project>/src/adapters/cc-hooks/session-end.ts
+    - <project>/src/tests/helpers/test-db.ts
+    - <project>/src/adapters/openclaw-bridge/plugin-entry.ts
+    - <project>/src/tests/observability/telemetry.test.ts
+    - <project>/src/tests/core/sessions.test.ts
+    - <project>/src/tests/core/crud-modules.test.ts
+    - <project>/src/tests/adapters/shared/lifecycle.test.ts
+    - <project>/src/tests/core/observations.test.ts
+    - <project>/src/tests/intelligence/decision-capture.test.ts
+    - <project>/src/tests/intelligence/thread-tracker.test.ts
+    - <project>/src/tests/intelligence/learnings-promoter.test.ts
+    - <project>/src/tests/intelligence/topic-shift.test.ts
+    - <project>/src/tests/extraction/extractor.test.ts
+    - <project>/src/tests/assembly/assembler.test.ts
+gsd: null
+open_questions: []
+learnings: []
+thread:
+  summary: ''
+  key_exchanges:
+    - role: agent
+      gist: 'Write: Write: bridge-adapter.ts'
+    - role: agent
+      gist: 'Write: Write: plugin-entry.ts'
+    - role: agent
+      gist: 'Edit: Edit: telemetry.test.ts'
+    - role: agent
+      gist: 'Edit: Edit: sessions.test.ts'
+    - role: agent
+      gist: 'Edit: Edit: sessions.test.ts'
+    - role: agent
+      gist: 'Edit: Edit: sessions.test.ts'
+    - role: agent
+      gist: 'Edit: Edit: crud-modules.test.ts'
+    - role: agent
+      gist: 'Write: Write: lifecycle.test.ts'
+    - role: agent
+      gist: 'Edit: Edit: crud-modules.test.ts'
+    - role: agent
+      gist: 'Edit: Edit: crud-modules.test.ts'
+    - role: agent
+      gist: 'Edit: Edit: observations.test.ts'
+    - role: agent
+      gist: 'Edit: Edit: stmt-cache.test.ts'
+    - role: agent
+      gist: 'Edit: Edit: decision-capture.test.ts'
+    - role: agent
+      gist: 'Edit: Edit: thread-tracker.test.ts'
+    - role: agent
+      gist: 'Edit: Edit: learnings-promoter.test.ts'
+    - role: agent
+      gist: 'Edit: Edit: topic-shift.test.ts'
+    - role: user
+      gist: <task-notification>...
+    - role: agent
+      gist: 'Edit: Edit: extractor.test.ts'
+    - role: agent
+      gist: Responded to user query
+    - role: agent
+      gist: 'Edit: Edit: assembler.test.ts'
+pressure_snapshot:
+  hot:
+    - <project>/.planning/STATE.md
+    - <project>/ARCHITECTURE.md
+    - <project>/.planning/ROADMAP.md
+    - C:\Users\[USER]\.claude\teams\auto-gsd-pipeline\inboxes\team-lead.json
+    - <project>/src/core/migrations.ts
+    - <project>/src/adapters/openclaw-bridge/bridge-adapter.ts
+    - <project>/context/sessions/2026-03-10_session-2.md
+    - <project>/src/intelligence/enrichment.ts
+    - <project>/src/checkpoint/writer.ts
+    - <project>/src/cli/setup.ts
+    - <project>/src/core/observations.ts
+    - <project>/src/tests/intelligence/enrichment.test.ts
+  warm:
+    - <project>/src/core/sessions.ts
+    - <project>/src/core/decisions.ts
+    - <project>/src/core/checkpoint-tracking.ts
+    - <project>/src/extraction/extractor.ts
+    - <project>/src/checkpoint/loader.ts
+    - <project>/src/tests/cli/setup.test.ts
+    - <project>/src/shared/config.ts
+    - <project>/src/core/pressure.ts
+    - <project>/src/tests/core/migrations.test.ts
+    - <project>/src/core/thread.ts
+    - <project>/src/extraction/redaction.ts
+    - <project>/src/tests/embeddings/embedding-provider.test.ts
+    - <project>/src/tests/decay/pressure-decay.test.ts
+    - <project>/src/adapters/cc-hooks/infrastructure.ts
+    - <project>/src/tests/adapters/openclaw-bridge/bridge-adapter.test.ts
+    - <project>/src/tests/integration/e2e-flows.test.ts
+    - <project>/context/handoffs/ACTIVE.md
+    - <project>/build.ts
+    - <project>/src/shared/scope-detector.ts
+    - <project>/src/core/learnings.ts
+    - <project>/src/tests/core/sessions.test.ts
+    - <project>/src/tests/core/crud-modules.test.ts
+    - <project>/src/tests/intelligence/semantic-dedup.test.ts
+    - <project>/src/intelligence/decision-capture.ts
+    - <project>/src/tests/intelligence/learnings-promoter.test.ts
+    - <project>/src/embeddings/embedding-provider.ts
+    - <project>/src/tests/embeddings/templates.test.ts
+    - <project>/src/shared/scope-detector.test.ts
+    - <project>/src/tests/core/storage.test.ts
+    - <project>/src/extraction/quality-gate.ts
+    - <project>/src/extraction/scoring.ts
+    - <project>/src/tests/extraction/extractor.test.ts
+    - C:\Users\[USER]\.claudex\memory\topics\agent-teams.md
+    - <project>/src/tests/intelligence/decision-capture.test.ts
+    - <project>/src/tests/intelligence/topic-shift.test.ts
+    - <project>/src/tests/checkpoint/loader.test.ts
+    - <project>/src/decay/decay-engine.ts
+    - <project>/src/assembly/assembler.ts
+    - <project>/src/tests/assembly/assembler.test.ts
+    - <project>/src/adapters/cc-hooks/post-tool-use.ts
+    - <project>/src/adapters/cc-hooks/stop.ts
+    - <project>/src/tests/adapters/cc-hooks/infrastructure.test.ts
+    - <project>/src/tests/integration/cross-cutting.test.ts
+recent_observations:
+  - title: 'Edit: assembler.test.ts'
+    category: change
+    timestamp_epoch: 1773355245742
+  - title: 'Edit: extractor.test.ts'
+    category: change
+    timestamp_epoch: 1773355223407
+  - title: 'Edit: topic-shift.test.ts'
+    category: change
+    timestamp_epoch: 1773355204259
+  - title: 'Edit: learnings-promoter.test.ts'
+    category: change
+    timestamp_epoch: 1773355196208
+  - title: 'Edit: thread-tracker.test.ts'
+    category: change
+    timestamp_epoch: 1773355189624
+  - title: 'Edit: decision-capture.test.ts'
+    category: change
+    timestamp_epoch: 1773355183134
+  - title: 'Edit: stmt-cache.test.ts'
+    category: change
+    timestamp_epoch: 1773355175566
+  - title: 'Edit: observations.test.ts'
+    category: change
+    timestamp_epoch: 1773355169375
+boost_state:
+  files:
+    - C:\Users\[USER]\.claudex\memory\daily\2026-03-12.md
+    - <project>/context/handoffs/ACTIVE.md
+    - <project>/context/sessions/2026-03-12_session-4.md
+    - <project>/src/shared/scope-detector.test.ts
+    - <project>/src/tests/adapters/cc-hooks/infrastructure.test.ts
+    - <project>/src/tests/embeddings/embedding-provider.test.ts
+    - <project>/src/tests/cli/setup.test.ts
+    - <project>/src/adapters/cc-hooks/post-tool-use.ts
+    - <project>/src/cli/setup.ts
+    - <project>/src/tests/assembly/assembler.test.ts
+  turn: 2
+  applied_at: 1773335801210

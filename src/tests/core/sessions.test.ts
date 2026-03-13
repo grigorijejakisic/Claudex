@@ -1,5 +1,4 @@
-import Database from 'better-sqlite3';
-import { initializeSchema } from '../../core/migrations.js';
+import { createTestDb, type TestDatabase } from '../helpers/test-db.js';
 import {
   createSession,
   getSession,
@@ -20,11 +19,10 @@ import {
 } from '../../core/learnings.js';
 
 describe('sessions CRUD', () => {
-  let db: InstanceType<typeof Database>;
+  let db: TestDatabase;
 
   beforeEach(() => {
-    db = new Database(':memory:');
-    initializeSchema(db);
+    db = createTestDb();
   });
 
   afterEach(() => {
@@ -98,11 +96,10 @@ describe('sessions CRUD', () => {
 });
 
 describe('decisions CRUD', () => {
-  let db: InstanceType<typeof Database>;
+  let db: TestDatabase;
 
   beforeEach(() => {
-    db = new Database(':memory:');
-    initializeSchema(db);
+    db = createTestDb();
     createSession(db, { session_id: 's1', project: 'myproject' });
   });
 
@@ -165,6 +162,40 @@ describe('decisions CRUD', () => {
     expect(rows[0].project).toBe('myproject');
   });
 
+  it('getDecisionsBySession returns all decisions without hard limit', () => {
+    // Insert more than the old LIMIT 50 to verify no hard cap
+    for (let i = 0; i < 55; i++) {
+      insertDecision(db, {
+        session_id: 's1',
+        project: 'myproject',
+        content: `Decision ${i}`,
+        source: 'explicit',
+        fingerprint: `fp-mass-${i}`,
+      });
+    }
+
+    const rows = getDecisionsBySession(db, 's1');
+    expect(rows).toHaveLength(55);
+  });
+
+  it('getDecisionsBySession respects optional limit parameter', () => {
+    for (let i = 0; i < 10; i++) {
+      insertDecision(db, {
+        session_id: 's1',
+        project: 'myproject',
+        content: `Decision ${i}`,
+        source: 'explicit',
+        fingerprint: `fp-limit-${i}`,
+      });
+    }
+
+    const limited = getDecisionsBySession(db, 's1', { limit: 3 });
+    expect(limited).toHaveLength(3);
+
+    const unlimited = getDecisionsBySession(db, 's1');
+    expect(unlimited).toHaveLength(10);
+  });
+
   it('resetSessionDecisions deletes all session decisions', () => {
     insertDecision(db, {
       session_id: 's1',
@@ -188,11 +219,10 @@ describe('decisions CRUD', () => {
 });
 
 describe('learnings CRUD', () => {
-  let db: InstanceType<typeof Database>;
+  let db: TestDatabase;
 
   beforeEach(() => {
-    db = new Database(':memory:');
-    initializeSchema(db);
+    db = createTestDb();
   });
 
   afterEach(() => {

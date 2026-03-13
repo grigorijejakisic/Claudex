@@ -1,0 +1,60 @@
+changed:
+  - path: <project>/src/tests/adapters/shared/lifecycle.test.ts
+    action: Edit
+    summary: 'Edit: lifecycle.test.ts'
+  - path: <project>/src/tests/checkpoint/loader.test.ts
+    action: Edit
+    summary: 'Edit: loader.test.ts'
+  - path: <project>/src/intelligence/decision-capture.ts
+    action: Edit
+    summary: 'Edit: decision-capture.ts'
+  - path: <project>/src/tests/adapters/shared/lifecycle.test.ts
+    action: Edit
+    summary: 'Edit: lifecycle.test.ts'
+  - path: <project>/src/tests/checkpoint/writer.test.ts
+    action: Edit
+    summary: 'Edit: writer.test.ts'
+  - path: <project>/src/extraction/scoring.ts
+    action: Edit
+    summary: 'Edit: scoring.ts'
+  - path: <project>/src/core/observations.ts
+    action: Edit
+    summary: 'Edit: observations.ts'
+  - path: <project>/src/core/thread.ts
+    action: Edit
+    summary: 'Edit: thread.ts'
+  - path: <project>/src/core/thread.ts
+    action: Edit
+    summary: 'Edit: thread.ts'
+  - path: <project>/src/core/decisions.ts
+    action: Edit
+    summary: 'Edit: decisions.ts'
+  - path: <project>/src/intelligence/enrichment.ts
+    action: Write
+    summary: 'Write: enrichment.ts'
+  - path: <project>/src/extraction/extractor.ts
+    action: Edit
+    summary: 'Edit: extractor.ts'
+  - path: <project>/src/tests/embeddings/embedding-provider.test.ts
+    action: Edit
+    summary: 'Edit: embedding-provider.test.ts'
+  - path: <project>/src/shared/network-safety.ts
+    action: Write
+    summary: 'Write: network-safety.ts'
+  - path: <project>/src/tests/embeddings/embedding-provider.test.ts
+    action: Edit
+    summary: 'Edit: embedding-provider.test.ts'
+read: []
+hot:
+  - <project>/src/tests/adapters/shared/lifecycle.test.ts
+  - <project>/src/tests/checkpoint/loader.test.ts
+  - <project>/src/intelligence/decision-capture.ts
+  - <project>/src/tests/checkpoint/writer.test.ts
+  - <project>/src/extraction/scoring.ts
+  - <project>/src/core/observations.ts
+  - <project>/src/core/thread.ts
+  - <project>/src/core/decisions.ts
+  - <project>/src/intelligence/enrichment.ts
+  - <project>/src/extraction/extractor.ts
+  - <project>/src/tests/embeddings/embedding-provider.test.ts
+  - <project>/src/shared/network-safety.ts

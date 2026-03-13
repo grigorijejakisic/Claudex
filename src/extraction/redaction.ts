@@ -4,6 +4,8 @@
  * @see Architecture Section 5.4 — three-layer redaction
  */
 
+import { isPrivateIPv4 } from '../shared/network-safety.js';
+
 // --- Shannon Entropy ---
 
 /**
@@ -48,15 +50,29 @@ const SECRET_PATTERNS: Array<[RegExp, string]> = [
 
 const HEX_ONLY = /^[a-fA-F0-9]+$/;
 
+/**
+ * Heuristic: does this string look like a file path rather than base64?
+ * File paths have multiple `/`-separated segments with readable names.
+ */
+function looksLikeFilePath(s: string): boolean {
+  const segments = s.split('/').filter(Boolean);
+  // Real base64 rarely has 3+ slash-separated segments of readable text
+  if (segments.length >= 3) return true;
+  // Dot-separated extensions (file.test.ts)
+  if (/\.[a-zA-Z]{1,4}$/.test(s)) return true;
+  return false;
+}
+
 function redactSecrets(text: string): string {
   let result = text;
   for (const [pattern, replacement] of SECRET_PATTERNS) {
     // Reset lastIndex for global regexes
     pattern.lastIndex = 0;
     if (replacement === '__BASE64_CANDIDATE__') {
-      // Base64 candidate: skip pure hex strings (those are hashes, not secrets)
+      // Base64 candidate: skip pure hex strings and file paths
       result = result.replace(pattern, (match) => {
         if (HEX_ONLY.test(match)) return match;
+        if (looksLikeFilePath(match)) return match;
         return '[REDACTED_SECRET]';
       });
     } else {
@@ -78,15 +94,7 @@ function isPrivateOrLoopbackIP(ip: string): boolean {
   const parts = ip.split('.').map(Number);
   if (parts.length !== 4) return false;
   const [a, b] = parts;
-  // 10.x.x.x
-  if (a === 10) return true;
-  // 172.16-31.x.x
-  if (a === 172 && b >= 16 && b <= 31) return true;
-  // 192.168.x.x
-  if (a === 192 && b === 168) return true;
-  // 127.x.x.x (loopback)
-  if (a === 127) return true;
-  return false;
+  return isPrivateIPv4(a, b);
 }
 
 function redactPII(text: string): string {
@@ -123,8 +131,9 @@ const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{
 const HEX_PATTERN = /^[a-fA-F0-9]+$/;
 
 function isAllowlisted(token: string): boolean {
-  // File paths
+  // File paths (including sanitized <project>/ paths)
   if (/^[/.]/.test(token) || /^[A-Z]:[/\\]/.test(token)) return true;
+  if (/^<project>[/\\]/.test(token)) return true;
   // URLs
   if (/^https?:\/\//.test(token)) return true;
   // Hex strings (all hex chars)
