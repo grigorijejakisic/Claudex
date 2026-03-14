@@ -14,7 +14,7 @@ import type { TopicShiftResult } from '../../intelligence/topic-shift.js';
 import { EmbeddingProvider } from '../../embeddings/embedding-provider.js';
 import { getIdentityDir } from '../../shared/paths.js';
 import { emitTelemetry } from '../../observability/telemetry.js';
-import { persistTopicIfShifted } from '../shared/lifecycle.js';
+import { persistTopicIfShifted, captureFlowEntry } from '../shared/lifecycle.js';
 
 const main = wrapHook('UserPromptSubmit', async (input, ctx) => {
   const prompt = (input.user_prompt as string) || '';
@@ -53,6 +53,13 @@ const main = wrapHook('UserPromptSubmit', async (input, ctx) => {
 
   // Persist topic update to thread_state when a shift is detected
   persistTopicIfShifted(ctx.db, input.session_id, topicShift);
+
+  // Capture flow entry at topic shift boundaries — natural narrative breakpoints.
+  // This supplements compaction-time flow capture, ensuring flow is recorded
+  // even in long sessions that never hit compaction (especially on 1M context).
+  if (topicShift?.shifted) {
+    captureFlowEntry(ctx.db, input.session_id, ctx.project);
+  }
 
   const payload = assembleRegularPrompt({
     isPostCompaction,
