@@ -22,6 +22,12 @@ import { pruneTelemetry } from '../../../observability/telemetry.js';
 import { getIdentityDir } from '../../../shared/paths.js';
 import { DEFAULT_CONFIG } from '../../../shared/constants.js';
 import type { ClaudexConfig } from '../../../shared/config.js';
+import { addJournalEntry, getJournalBySession } from '../../../core/journal.js';
+import { upsertThreadState } from '../../../core/thread.js';
+import { insertDecision } from '../../../core/decisions.js';
+import { insertObservation } from '../../../core/observations.js';
+import { detectMilestone } from '../../../adapters/cc-hooks/post-tool-use.js';
+import { buildFlowEntry, captureFlowEntry, captureSessionSummary } from '../../../adapters/shared/lifecycle.js';
 
 const testConfig = { ...DEFAULT_CONFIG } as unknown as ClaudexConfig;
 
@@ -353,5 +359,253 @@ describe('SessionEnd hook logic', () => {
 
   it('returns {} (no injection)', () => {
     expect({}).toEqual({});
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Journal integration tests
+// ---------------------------------------------------------------------------
+
+describe('detectMilestone (pure function)', () => {
+  it('detects test pass results', () => {
+    expect(detectMilestone('Bash', '42 tests passed')).toBe('Tests: 42 passing');
+  });
+
+  it('detects test pass/fail results', () => {
+    expect(detectMilestone('Bash', '40 passed, 2 failed')).toBe('Tests: 40 passed, 2 failed');
+  });
+
+  it('detects build success', () => {
+    expect(detectMilestone('Bash', 'Build complete successfully')).toBe('Build succeeded');
+  });
+
+  it('detects git commits', () => {
+    expect(detectMilestone('Bash', '[main abc1234] fix: something')).toBe('Committed abc1234');
+  });
+
+  it('detects longer commit hashes', () => {
+    expect(detectMilestone('Bash', '[feature/x abc1234def] feat: thing')).toBe('Committed abc1234');
+  });
+
+  it('does not detect git commits from non-Bash tools', () => {
+    expect(detectMilestone('Read', '[main abc1234] fix: something')).toBeNull();
+  });
+
+  it('detects team deployment', () => {
+    expect(detectMilestone('Bash', '3 workers deployed')).toBe('Team agents deployed');
+    expect(detectMilestone('Bash', 'agent spawned successfully')).toBe('Team agents deployed');
+  });
+
+  it('returns null for no milestone', () => {
+    expect(detectMilestone('Read', 'just some file contents')).toBeNull();
+  });
+
+  it('returns null for empty output', () => {
+    expect(detectMilestone('Bash', '')).toBeNull();
+  });
+});
+
+describe('buildFlowEntry', () => {
+  let db: TestDatabase;
+
+  beforeEach(() => {
+    db = createTestDb();
+    createSession(db, {
+      session_id: 'flow-s1',
+      project: 'flow-proj',
+      cwd: '/tmp/test',
+    });
+  });
+
+  afterEach(() => {
+    db.close();
+  });
+
+  it('returns null when no data available', () => {
+    expect(buildFlowEntry(db, 'flow-s1', 'flow-proj')).toBeNull();
+  });
+
+  it('includes thread topic when available', () => {
+    upsertThreadState(db, {
+      session_id: 'flow-s1',
+      topic: 'Refactoring authentication module',
+    });
+
+    const flow = buildFlowEntry(db, 'flow-s1', 'flow-proj');
+    expect(flow).toContain('Refactoring authentication module');
+  });
+
+  it('includes recent decisions', () => {
+    insertDecision(db, {
+      session_id: 'flow-s1',
+      project: 'flow-proj',
+      content: 'Use JWT tokens for auth',
+      source: 'explicit',
+      fingerprint: 'fp-1',
+    });
+
+    const flow = buildFlowEntry(db, 'flow-s1', 'flow-proj');
+    expect(flow).toContain('Decisions:');
+    expect(flow).toContain('JWT tokens');
+  });
+
+  it('includes high-importance observation titles', () => {
+    insertObservation(db, {
+      session_id: 'flow-s1',
+      project: 'flow-proj',
+      tool_name: 'Read',
+      category: 'architecture',
+      title: 'Critical auth flow',
+      content: 'Details about auth',
+      importance: 5,
+      files_modified: [],
+    });
+
+    const flow = buildFlowEntry(db, 'flow-s1', 'flow-proj');
+    expect(flow).toContain('Key:');
+    expect(flow).toContain('Critical auth flow');
+  });
+
+  it('truncates to 200 chars', () => {
+    upsertThreadState(db, {
+      session_id: 'flow-s1',
+      topic: 'A'.repeat(100),
+    });
+
+    for (let i = 0; i < 3; i++) {
+      insertDecision(db, {
+        session_id: 'flow-s1',
+        project: 'flow-proj',
+        content: 'D'.repeat(60),
+        source: 'explicit',
+        fingerprint: `fp-${i}`,
+      });
+    }
+
+    const flow = buildFlowEntry(db, 'flow-s1', 'flow-proj');
+    expect(flow!.length).toBeLessThanOrEqual(200);
+  });
+});
+
+describe('captureFlowEntry', () => {
+  let db: TestDatabase;
+
+  beforeEach(() => {
+    db = createTestDb();
+    createSession(db, {
+      session_id: 'cap-s1',
+      project: 'cap-proj',
+      cwd: '/tmp/test',
+    });
+  });
+
+  afterEach(() => {
+    db.close();
+  });
+
+  it('stores flow entry in session_journal', () => {
+    upsertThreadState(db, {
+      session_id: 'cap-s1',
+      topic: 'Working on database schema',
+    });
+
+    captureFlowEntry(db, 'cap-s1', 'cap-proj');
+
+    const entries = getJournalBySession(db, 'cap-s1', { entryType: 'flow' });
+    expect(entries.length).toBe(1);
+    expect(entries[0].content).toContain('database schema');
+    expect(entries[0].entry_type).toBe('flow');
+  });
+
+  it('does not throw when no data available', () => {
+    expect(() => captureFlowEntry(db, 'cap-s1', 'cap-proj')).not.toThrow();
+
+    // No entry should be created when there's nothing to capture
+    const entries = getJournalBySession(db, 'cap-s1', { entryType: 'flow' });
+    expect(entries.length).toBe(0);
+  });
+});
+
+describe('captureSessionSummary', () => {
+  let db: TestDatabase;
+
+  beforeEach(() => {
+    db = createTestDb();
+    createSession(db, {
+      session_id: 'sum-s1',
+      project: 'sum-proj',
+      cwd: '/tmp/test',
+    });
+  });
+
+  afterEach(() => {
+    db.close();
+  });
+
+  it('stores a summary with topic', () => {
+    upsertThreadState(db, {
+      session_id: 'sum-s1',
+      topic: 'API redesign',
+    });
+
+    captureSessionSummary(db, 'sum-s1', 'sum-proj');
+
+    const entries = getJournalBySession(db, 'sum-s1', { entryType: 'summary' });
+    expect(entries.length).toBe(1);
+    expect(entries[0].content).toContain('Session worked on API redesign');
+  });
+
+  it('includes milestones in summary', () => {
+    addJournalEntry(db, 'sum-s1', 'sum-proj', 'milestone', 'Tests: 42 passing');
+    addJournalEntry(db, 'sum-s1', 'sum-proj', 'milestone', 'Build succeeded');
+
+    captureSessionSummary(db, 'sum-s1', 'sum-proj');
+
+    const entries = getJournalBySession(db, 'sum-s1', { entryType: 'summary' });
+    expect(entries.length).toBe(1);
+    expect(entries[0].content).toContain('Milestones:');
+    expect(entries[0].content).toContain('Tests: 42 passing');
+    expect(entries[0].content).toContain('Build succeeded');
+  });
+
+  it('includes decision count in summary', () => {
+    insertDecision(db, {
+      session_id: 'sum-s1',
+      project: 'sum-proj',
+      content: 'Use PostgreSQL',
+      source: 'explicit',
+      fingerprint: 'fp-1',
+    });
+    insertDecision(db, {
+      session_id: 'sum-s1',
+      project: 'sum-proj',
+      content: 'Use TypeScript strict',
+      source: 'confirmation',
+      fingerprint: 'fp-2',
+    });
+
+    captureSessionSummary(db, 'sum-s1', 'sum-proj');
+
+    const entries = getJournalBySession(db, 'sum-s1', { entryType: 'summary' });
+    expect(entries.length).toBe(1);
+    expect(entries[0].content).toContain('Decisions: 2 made');
+  });
+
+  it('includes flow narrative in summary', () => {
+    addJournalEntry(db, 'sum-s1', 'sum-proj', 'flow', 'Pivoted to artifact model after analysis');
+
+    captureSessionSummary(db, 'sum-s1', 'sum-proj');
+
+    const entries = getJournalBySession(db, 'sum-s1', { entryType: 'summary' });
+    expect(entries.length).toBe(1);
+    expect(entries[0].content).toContain('Flow: Pivoted to artifact model');
+  });
+
+  it('produces minimal summary when no data available', () => {
+    captureSessionSummary(db, 'sum-s1', 'sum-proj');
+
+    const entries = getJournalBySession(db, 'sum-s1', { entryType: 'summary' });
+    expect(entries.length).toBe(1);
+    expect(entries[0].content).toBe('Session completed.');
   });
 });

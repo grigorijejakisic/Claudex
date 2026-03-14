@@ -203,6 +203,18 @@ CREATE INDEX IF NOT EXISTS idx_cpmeta_session
   ON checkpoint_meta(session_id, created_at_epoch DESC);
 CREATE INDEX IF NOT EXISTS idx_cpmeta_status
   ON checkpoint_meta(status, updated_at_epoch);
+
+-- session_journal: flow breadcrumbs, milestones, and session summaries
+CREATE TABLE IF NOT EXISTS session_journal (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  session_id TEXT NOT NULL,
+  project TEXT NOT NULL,
+  entry_type TEXT NOT NULL CHECK(entry_type IN ('flow', 'milestone', 'summary')),
+  content TEXT NOT NULL,
+  timestamp_epoch INTEGER DEFAULT (unixepoch())
+);
+CREATE INDEX IF NOT EXISTS idx_journal_session ON session_journal(session_id);
+CREATE INDEX IF NOT EXISTS idx_journal_project_type ON session_journal(project, entry_type);
 `;
 
 /**
@@ -266,6 +278,27 @@ export function initializeSchema(db: Database): void {
   db.prepare('INSERT OR IGNORE INTO schema_versions (version) VALUES (?)').run(
     SCHEMA_VERSION
   );
+}
+
+/**
+ * Adds the session_journal table to an existing v3 database.
+ * Idempotent — uses IF NOT EXISTS for table and indexes.
+ * Called by initializeSchema (which runs all DDL), but also available
+ * standalone for databases that were created before this table existed.
+ */
+export function migrateAddSessionJournal(db: Database): void {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS session_journal (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      session_id TEXT NOT NULL,
+      project TEXT NOT NULL,
+      entry_type TEXT NOT NULL CHECK(entry_type IN ('flow', 'milestone', 'summary')),
+      content TEXT NOT NULL,
+      timestamp_epoch INTEGER DEFAULT (unixepoch())
+    );
+    CREATE INDEX IF NOT EXISTS idx_journal_session ON session_journal(session_id);
+    CREATE INDEX IF NOT EXISTS idx_journal_project_type ON session_journal(project, entry_type);
+  `);
 }
 
 /**
