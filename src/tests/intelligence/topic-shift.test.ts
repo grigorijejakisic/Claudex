@@ -369,6 +369,50 @@ describe('topic-shift detection', () => {
     });
   });
 
+  // --- CRIT-07: Empty history handling ---
+
+  describe('empty history — first invocation', () => {
+    it('detects topic shift on first prompt when similarity is low (empty history)', async () => {
+      setTopic('database storage implementation');
+
+      // Mock: topic and prompt have very different embeddings
+      const provider = createMockProvider((text: string) => {
+        if (text.includes('database')) return [1, 0, 0, 0, 0];
+        return [0, 0, 0, 0, 1]; // Very different direction
+      });
+
+      // Fresh detector — no history at all
+      const detector = new TopicShiftDetector(provider);
+      expect((detector as any).recentPromptEmbeddings).toHaveLength(0);
+
+      const result = await detector.detectTopicShift({
+        prompt: 'deploy the frontend to production now',
+        db,
+        sessionId,
+      });
+
+      // With empty history, computeAvgRecent should NOT block shift detection
+      expect(result.shifted).toBe(true);
+      expect(result.method).toBe('embedding');
+    });
+
+    it('computeAvgRecent returns 0 or sentinel with empty history (not 1.0)', async () => {
+      setTopic('database storage implementation');
+
+      const provider = createMockProvider((text: string) => {
+        if (text.includes('database')) return [1, 0, 0, 0, 0];
+        return [0, 0, 0, 0, 1];
+      });
+
+      const detector = new TopicShiftDetector(provider);
+
+      // Access private method to verify behavior directly
+      const avgRecent = (detector as any).computeAvgRecent([0, 0, 0, 0, 1]);
+      // Must be < 0.40 to not block shift detection
+      expect(avgRecent).toBeLessThan(0.40);
+    });
+  });
+
   describe('clearCache', () => {
     it('clears topic cache and recent prompt window', async () => {
       setTopic('database storage');

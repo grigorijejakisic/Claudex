@@ -23,6 +23,17 @@ import { truncateText } from '../shared/text-utils.js';
 import * as path from 'path';
 
 /**
+ * Wraps file content in <file-content>...</file-content> markers,
+ * escaping any literal sentinel sequences in the payload to prevent
+ * data boundary injection.
+ */
+export function wrapFileContent(content: string): string {
+  // Escape literal closing sentinel in content to prevent boundary break
+  const escaped = content.replace(/<\/file-content>/g, '<\\/file-content>');
+  return `<file-content>\n${escaped}\n</file-content>`;
+}
+
+/**
  * Priority 1: Identity section from USER.md.
  * Reads from identityDir or default ~/.claudex/identity/.
  */

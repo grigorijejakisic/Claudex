@@ -8,6 +8,7 @@ import {
   detectAdapter,
   getTranscriptPath,
   wrapHook,
+  validateCwd,
   type HookInput,
 } from '../../../adapters/cc-hooks/infrastructure.js';
 import { BRIDGE_KEY } from '../../../adapters/openclaw-bridge/bridge-types.js';
@@ -134,6 +135,51 @@ describe('bootstrapHook', () => {
     } catch {
       // DB path may not exist — acceptable
     }
+  });
+});
+
+// --- validateCwd tests ---
+
+describe('validateCwd', () => {
+  it('accepts normal absolute paths', () => {
+    expect(validateCwd('/home/user/project')).toBe(true);
+    expect(validateCwd('/tmp')).toBe(true);
+  });
+
+  it('accepts Windows absolute paths (drive letters)', () => {
+    expect(validateCwd('C:\\Users\\User\\project')).toBe(true);
+    expect(validateCwd('D:\\work')).toBe(true);
+  });
+
+  it('rejects UNC paths (\\\\server\\share)', () => {
+    expect(validateCwd('\\\\attacker\\share')).toBe(false);
+    expect(validateCwd('\\\\server\\share\\path')).toBe(false);
+  });
+
+  it('rejects UNC paths with forward slashes (//server/share)', () => {
+    expect(validateCwd('//server/share')).toBe(false);
+    expect(validateCwd('//attacker/payload')).toBe(false);
+  });
+
+  it('rejects Windows device paths (\\\\.\\)', () => {
+    expect(validateCwd('\\\\.\\COM1')).toBe(false);
+    expect(validateCwd('\\\\.\\PhysicalDrive0')).toBe(false);
+  });
+
+  it('rejects Windows device paths (\\\\?\\)', () => {
+    expect(validateCwd('\\\\?\\C:\\Users')).toBe(false);
+    expect(validateCwd('\\\\?\\Volume{guid}')).toBe(false);
+  });
+
+  it('rejects relative paths', () => {
+    expect(validateCwd('relative/path')).toBe(false);
+    expect(validateCwd('./here')).toBe(false);
+  });
+
+  it('rejects empty or non-string input', () => {
+    expect(validateCwd('')).toBe(false);
+    expect(validateCwd(null as any)).toBe(false);
+    expect(validateCwd(undefined as any)).toBe(false);
   });
 });
 

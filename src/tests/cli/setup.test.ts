@@ -179,6 +179,75 @@ describe('patchSettingsJson', () => {
   });
 });
 
+// --- Hook command Windows compatibility tests ---
+
+describe('hook command Windows compatibility', () => {
+  let tmpDir: string;
+
+  beforeEach(() => {
+    tmpDir = createTmpDir();
+  });
+
+  afterEach(() => {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  it('does not use POSIX single-quote escaping in commands', () => {
+    const settingsPath = path.join(tmpDir, 'settings.json');
+    const paths: Record<string, string> = {
+      SessionStart: '/opt/CLAUDEXv3/dist/session-start.js',
+    };
+    patchSettingsJson(settingsPath, paths);
+
+    const settings = JSON.parse(fs.readFileSync(settingsPath, 'utf-8'));
+    const cmd = settings.hooks.SessionStart[0].hooks[0].command;
+    // Must not contain POSIX single-quote escape sequence
+    expect(cmd).not.toContain("'\\''");
+    // Must not contain bare single quotes wrapping the path
+    expect(cmd).not.toMatch(/^node '/);
+  });
+
+  it('properly handles paths with spaces and special chars', () => {
+    const settingsPath = path.join(tmpDir, 'settings.json');
+    const paths: Record<string, string> = {
+      SessionStart: 'C:\\Users\\My User\\CLAUDEXv3\\dist\\session-start.js',
+    };
+    patchSettingsJson(settingsPath, paths);
+
+    const settings = JSON.parse(fs.readFileSync(settingsPath, 'utf-8'));
+    const cmd = settings.hooks.SessionStart[0].hooks[0].command;
+    // Path must be wrapped in double quotes for Windows compatibility
+    expect(cmd).toMatch(/^node "/);
+    expect(cmd).toContain('My User');
+  });
+
+  it('handles paths with ampersand characters safely', () => {
+    const settingsPath = path.join(tmpDir, 'settings.json');
+    const paths: Record<string, string> = {
+      SessionStart: 'C:\\Dev&Test\\CLAUDEXv3\\dist\\session-start.js',
+    };
+    patchSettingsJson(settingsPath, paths);
+
+    const settings = JSON.parse(fs.readFileSync(settingsPath, 'utf-8'));
+    const cmd = settings.hooks.SessionStart[0].hooks[0].command;
+    // Path with & must be wrapped in double quotes so it's not interpreted as shell operator
+    expect(cmd).toMatch(/^node ".*&.*"$/);
+  });
+
+  it('handles paths with pipe characters safely', () => {
+    const settingsPath = path.join(tmpDir, 'settings.json');
+    const paths: Record<string, string> = {
+      SessionStart: 'C:\\path|weird\\dist\\session-start.js',
+    };
+    patchSettingsJson(settingsPath, paths);
+
+    const settings = JSON.parse(fs.readFileSync(settingsPath, 'utf-8'));
+    const cmd = settings.hooks.SessionStart[0].hooks[0].command;
+    // Path with | must be quoted
+    expect(cmd).toMatch(/^node ".*\|.*"$/);
+  });
+});
+
 // --- detectV2Database tests (imported from core/migrations) ---
 
 describe('detectV2Database', () => {
