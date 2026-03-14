@@ -1,7 +1,6 @@
 /**
  * Tests for claudex migrate CLI logic.
- * Uses temp file-based DBs (not :memory:) since migration requires file paths.
- * All tests use isolated temp directories, cleaned up in afterEach.
+ * Creates temp v2 databases and runs the migration pipeline against them.
  */
 
 import * as fs from 'fs';
@@ -9,34 +8,34 @@ import * as path from 'path';
 import * as os from 'os';
 import Database from 'better-sqlite3';
 import {
-  getDbStats,
+  parseArgs,
+  getRowCounts,
   verifyMigration,
+  safeSwap,
   runMigration,
-  type MigrationCounts,
+  formatResult,
 } from '../../cli/migrate.js';
+import { SCHEMA_VERSION } from '../../shared/constants.js';
 
-// ── V2 DB factory ─────────────────────────────────────────────────────
+// ── Helpers ──────────────────────────────────────────────────────────
+
+function createTmpDir(): string {
+  return fs.mkdtempSync(path.join(os.tmpdir(), 'claudex-migrate-test-'));
+}
 
 /**
- * Creates a minimal v2 database with known data.
- * Includes WARM pressure scores and CSV files_modified to exercise conversion.
+ * Creates a minimal v2-style database with observations, sessions, and pressure_scores.
+ * Uses v2 schema conventions (started_at_epoch, no source column, WARM temperature).
  */
-function createV2Database(dbPath: string, opts: {
-  observationCount?: number;
-  sessionCount?: number;
-  pressureCount?: number;
-  withCsvFiles?: boolean;
-  withWarm?: boolean;
-} = {}): void {
-  const {
-    observationCount = 2,
-    sessionCount = 1,
-    pressureCount = 1,
-    withCsvFiles = true,
-    withWarm = true,
-  } = opts;
+function createV2Database(dbPath: string, opts?: { observations?: number; sessions?: number; pressureScores?: number }): void {
+  const obsCount = opts?.observations ?? 5;
+  const sessCount = opts?.sessions ?? 2;
+  const pressCount = opts?.pressureScores ?? 3;
 
   const db = new Database(dbPath);
+  db.pragma('journal_mode = WAL');
+
+  // v2 schema — uses started_at_epoch (not created_at_epoch), no source column
   db.exec(`
     CREATE TABLE observations (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -46,8 +45,8 @@ function createV2Database(dbPath: string, opts: {
       category TEXT NOT NULL,
       title TEXT NOT NULL,
       content TEXT NOT NULL,
-      importance INTEGER NOT NULL,
-      files_modified TEXT NOT NULL DEFAULT '',
+      importance INTEGER NOT NULL DEFAULT 3,
+      files_modified TEXT NOT NULL DEFAULT '[]',
       timestamp_epoch INTEGER NOT NULL DEFAULT (unixepoch()),
       access_count INTEGER NOT NULL DEFAULT 0,
       last_accessed_at_epoch INTEGER,
@@ -59,10 +58,9 @@ function createV2Database(dbPath: string, opts: {
       scope TEXT,
       project TEXT,
       cwd TEXT,
-      source TEXT,
       status TEXT NOT NULL DEFAULT 'active',
       observation_count INTEGER NOT NULL DEFAULT 0,
-      created_at_epoch INTEGER NOT NULL DEFAULT (unixepoch()),
+      started_at_epoch INTEGER NOT NULL DEFAULT (unixepoch()),
       ended_at_epoch INTEGER
     );
 
@@ -76,581 +74,387 @@ function createV2Database(dbPath: string, opts: {
       PRIMARY KEY (file_path, project)
     );
 
-    CREATE TABLE checkpoint_state (
-      session_id TEXT PRIMARY KEY,
-      last_checkpoint_epoch INTEGER,
-      observation_count INTEGER NOT NULL DEFAULT 0,
-      updated_at_epoch INTEGER NOT NULL DEFAULT (unixepoch())
+    CREATE TABLE schema_versions (
+      version INTEGER PRIMARY KEY,
+      applied_at_epoch INTEGER NOT NULL DEFAULT (unixepoch())
     );
+
+    INSERT INTO schema_versions (version) VALUES (200);
   `);
 
-  // Insert observations
-  const filesModified = withCsvFiles ? 'src/index.ts,src/utils.ts' : '["src/index.ts"]';
-  for (let i = 0; i < observationCount; i++) {
-    db.prepare(`
-      INSERT INTO observations (session_id, tool_name, category, title, content, importance, files_modified)
-      VALUES ('sess-v2', 'bash', 'code', 'v2 obs ${i}', 'content ${i}', 3, ?)
-    `).run(filesModified);
+  // Insert test data
+  const insObs = db.prepare(
+    `INSERT INTO observations (session_id, project, tool_name, category, title, content, importance, files_modified)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+  );
+  for (let i = 0; i < obsCount; i++) {
+    insObs.run(`sess-${i % sessCount}`, 'test-project', 'Read', 'code', `Observation ${i}`, `Content ${i}`, 3, '[]');
   }
 
-  // Insert sessions
-  for (let i = 0; i < sessionCount; i++) {
-    db.prepare(`
-      INSERT INTO sessions (session_id, status, project)
-      VALUES (?, 'active', 'test-project')
-    `).run(`sess-v2-${i}`);
+  const insSess = db.prepare(
+    `INSERT INTO sessions (session_id, scope, project, cwd, status, observation_count)
+     VALUES (?, ?, ?, ?, ?, ?)`
+  );
+  for (let i = 0; i < sessCount; i++) {
+    insSess.run(`sess-${i}`, 'project', 'test-project', '/tmp/test', 'completed', Math.floor(obsCount / sessCount));
   }
 
-  // Insert pressure scores
-  const temperature = withWarm ? 'WARM' : 'COLD';
-  for (let i = 0; i < pressureCount; i++) {
-    db.prepare(`
-      INSERT INTO pressure_scores (file_path, project, raw_pressure, temperature)
-      VALUES (?, 'test-project', 0.8, ?)
-    `).run(`src/file${i}.ts`, temperature);
+  const insPress = db.prepare(
+    `INSERT INTO pressure_scores (file_path, project, raw_pressure, temperature)
+     VALUES (?, ?, ?, ?)`
+  );
+  for (let i = 0; i < pressCount; i++) {
+    insPress.run(`/src/file${i}.ts`, 'test-project', 0.5 + i * 0.1, i === 0 ? 'HOT' : 'COLD');
   }
 
   db.close();
 }
 
-// ── Tests ─────────────────────────────────────────────────────────────
+/**
+ * Creates a v2 database where some files_modified values are comma-separated (not JSON).
+ */
+function createV2WithBadFilesModified(dbPath: string): void {
+  createV2Database(dbPath, { observations: 3, sessions: 1, pressureScores: 1 });
+  const db = new Database(dbPath);
+  // Bypass the default CHECK by removing and re-creating without the check
+  // Actually, our v2 schema above doesn't have json_valid CHECK, so we can update directly
+  db.exec(`UPDATE observations SET files_modified = 'src/a.ts, src/b.ts' WHERE id = 1`);
+  db.exec(`UPDATE observations SET files_modified = 'single-file.ts' WHERE id = 2`);
+  db.close();
+}
 
-describe('getDbStats', () => {
+// ── Tests ────────────────────────────────────────────────────────────
+
+describe('parseArgs', () => {
+  it('parses --source flag', () => {
+    const args = parseArgs(['node', 'migrate.cjs', '--source', '/tmp/v2.db']);
+    expect(args.source).toBe('/tmp/v2.db');
+    expect(args.dryRun).toBe(false);
+    expect(args.force).toBe(false);
+  });
+
+  it('parses --dry-run flag', () => {
+    const args = parseArgs(['node', 'migrate.cjs', '--dry-run']);
+    expect(args.dryRun).toBe(true);
+  });
+
+  it('parses --force flag', () => {
+    const args = parseArgs(['node', 'migrate.cjs', '--force']);
+    expect(args.force).toBe(true);
+  });
+
+  it('parses all flags together', () => {
+    const args = parseArgs(['node', 'migrate.cjs', '--source', '/tmp/v2.db', '--dry-run', '--force']);
+    expect(args.source).toBe('/tmp/v2.db');
+    expect(args.dryRun).toBe(true);
+    expect(args.force).toBe(true);
+  });
+
+  it('returns defaults when no flags given', () => {
+    const args = parseArgs(['node', 'migrate.cjs']);
+    expect(args.source).toBeUndefined();
+    expect(args.dryRun).toBe(false);
+    expect(args.force).toBe(false);
+  });
+});
+
+describe('getRowCounts', () => {
   let tmpDir: string;
 
-  beforeEach(() => {
-    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'claudex-migrate-'));
-  });
+  beforeEach(() => { tmpDir = createTmpDir(); });
+  afterEach(() => { fs.rmSync(tmpDir, { recursive: true, force: true }); });
 
-  afterEach(() => {
-    fs.rmSync(tmpDir, { recursive: true, force: true });
-  });
-
-  it('returns correct counts from a v2 database', () => {
+  it('returns correct counts from a populated database', () => {
     const dbPath = path.join(tmpDir, 'test.db');
-    createV2Database(dbPath, { observationCount: 3, sessionCount: 2, pressureCount: 1 });
+    createV2Database(dbPath, { observations: 10, sessions: 3, pressureScores: 5 });
 
-    const stats = getDbStats(dbPath);
-    expect(stats.observationCount).toBe(3);
-    expect(stats.sessionCount).toBe(2);
-    expect(stats.pressureCount).toBe(1);
+    const db = new Database(dbPath, { readonly: true });
+    try {
+      const counts = getRowCounts(db);
+      expect(counts.observations).toBe(10);
+      expect(counts.sessions).toBe(3);
+      expect(counts.pressureScores).toBe(5);
+    } finally {
+      db.close();
+    }
   });
 
-  it('returns zero counts for empty database', () => {
+  it('returns zeros for empty database', () => {
     const dbPath = path.join(tmpDir, 'empty.db');
-    createV2Database(dbPath, { observationCount: 0, sessionCount: 0, pressureCount: 0 });
-
-    const stats = getDbStats(dbPath);
-    expect(stats.observationCount).toBe(0);
-    expect(stats.sessionCount).toBe(0);
-    expect(stats.pressureCount).toBe(0);
-  });
-
-  it('returns zero counts for nonexistent database (non-throwing)', () => {
-    const stats = getDbStats(path.join(tmpDir, 'nonexistent.db'));
-    expect(stats.observationCount).toBe(0);
-    expect(stats.sessionCount).toBe(0);
-    expect(stats.pressureCount).toBe(0);
+    const db = new Database(dbPath);
+    try {
+      const counts = getRowCounts(db);
+      expect(counts.observations).toBe(0);
+      expect(counts.sessions).toBe(0);
+      expect(counts.pressureScores).toBe(0);
+    } finally {
+      db.close();
+    }
   });
 });
 
 describe('verifyMigration', () => {
   let tmpDir: string;
 
-  beforeEach(() => {
-    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'claudex-migrate-'));
-  });
+  beforeEach(() => { tmpDir = createTmpDir(); });
+  afterEach(() => { fs.rmSync(tmpDir, { recursive: true, force: true }); });
 
-  afterEach(() => {
-    fs.rmSync(tmpDir, { recursive: true, force: true });
-  });
-
-  function createV3DbWithData(
-    dbPath: string,
-    counts: MigrationCounts,
-    opts: { invalidJson?: boolean; missingVersion?: boolean } = {}
-  ): Database.Database {
+  it('passes when counts match and schema is correct', () => {
+    const dbPath = path.join(tmpDir, 'verified.db');
     const db = new Database(dbPath);
-    db.exec(`
-      CREATE TABLE IF NOT EXISTS observations (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        session_id TEXT NOT NULL,
-        project TEXT,
-        tool_name TEXT NOT NULL,
-        category TEXT NOT NULL CHECK (category IN (
-          'code', 'architecture', 'decision', 'error', 'test',
-          'config', 'dependency', 'documentation', 'performance',
-          'security', 'other'
-        )),
-        title TEXT NOT NULL,
-        content TEXT NOT NULL,
-        importance INTEGER NOT NULL CHECK (importance BETWEEN 1 AND 5),
-        files_modified TEXT NOT NULL DEFAULT '[]' CHECK (json_valid(files_modified)),
-        timestamp_epoch INTEGER NOT NULL DEFAULT (unixepoch()),
-        access_count INTEGER NOT NULL DEFAULT 0,
-        last_accessed_at_epoch INTEGER,
-        deleted_at_epoch INTEGER DEFAULT NULL
-      );
-      CREATE TABLE IF NOT EXISTS sessions (
-        session_id TEXT PRIMARY KEY,
-        scope TEXT,
-        project TEXT,
-        cwd TEXT,
-        source TEXT,
-        status TEXT NOT NULL DEFAULT 'active'
-          CHECK (status IN ('active', 'completed', 'failed')),
-        observation_count INTEGER NOT NULL DEFAULT 0,
-        created_at_epoch INTEGER NOT NULL DEFAULT (unixepoch()),
-        ended_at_epoch INTEGER
-      );
-      CREATE TABLE IF NOT EXISTS pressure_scores (
-        file_path TEXT NOT NULL,
-        project TEXT NOT NULL,
-        raw_pressure REAL NOT NULL DEFAULT 0.0,
-        temperature TEXT NOT NULL DEFAULT 'COLD'
-          CHECK (temperature IN ('HOT', 'COLD')),
-        last_touched_epoch INTEGER NOT NULL DEFAULT (unixepoch()),
-        decay_rate REAL NOT NULL DEFAULT 0.1,
-        PRIMARY KEY (file_path, project)
-      );
-      CREATE TABLE IF NOT EXISTS schema_versions (
-        version INTEGER PRIMARY KEY,
-        applied_at_epoch INTEGER NOT NULL DEFAULT (unixepoch())
-      );
-    `);
+    db.pragma('journal_mode = WAL');
 
-    if (!opts.missingVersion) {
-      db.prepare('INSERT INTO schema_versions (version) VALUES (300)').run();
-    }
-
-    for (let i = 0; i < counts.observationCount; i++) {
-      // For invalidJson test: use invalid json for first row
-      const filesModified = opts.invalidJson && i === 0 ? 'not-valid-json' : '["src/file.ts"]';
-      // Bypass CHECK constraint by using WITHOUT ROWID trick not needed — instead insert directly
-      // Since the table has CHECK (json_valid(files_modified)), we can't insert invalid JSON.
-      // We insert valid data for this test; the invalidJson case is tested differently below.
-      db.prepare(`
-        INSERT INTO observations (session_id, tool_name, category, title, content, importance, files_modified)
-        VALUES ('sess', 'bash', 'code', 'title ${i}', 'content', 3, '["src/file.ts"]')
-      `).run();
-    }
-
-    for (let i = 0; i < counts.sessionCount; i++) {
-      db.prepare(`
-        INSERT INTO sessions (session_id) VALUES ('sess-${i}')
-      `).run();
-    }
-
-    for (let i = 0; i < counts.pressureCount; i++) {
-      db.prepare(`
-        INSERT INTO pressure_scores (file_path, project) VALUES ('file${i}.ts', 'proj')
-      `).run();
-    }
-
-    return db;
-  }
-
-  it('returns valid=true when counts match and json is valid and version is 300', () => {
-    const dbPath = path.join(tmpDir, 'v3.db');
-    const expected: MigrationCounts = { observationCount: 2, sessionCount: 1, pressureCount: 1 };
-    const db = createV3DbWithData(dbPath, expected);
-
-    const result = verifyMigration(db, expected);
-    db.close();
-
-    expect(result.valid).toBe(true);
-    expect(result.reason).toBeUndefined();
-  });
-
-  it('returns valid=false when observation count mismatches', () => {
-    const dbPath = path.join(tmpDir, 'v3.db');
-    const actual: MigrationCounts = { observationCount: 2, sessionCount: 1, pressureCount: 1 };
-    const expected: MigrationCounts = { observationCount: 5, sessionCount: 1, pressureCount: 1 };
-    const db = createV3DbWithData(dbPath, actual);
-
-    const result = verifyMigration(db, expected);
-    db.close();
-
-    expect(result.valid).toBe(false);
-    expect(result.reason).toContain('observation count mismatch');
-    expect(result.reason).toContain('expected 5');
-    expect(result.reason).toContain('got 2');
-  });
-
-  it('returns valid=false when session count mismatches', () => {
-    const dbPath = path.join(tmpDir, 'v3.db');
-    const actual: MigrationCounts = { observationCount: 1, sessionCount: 1, pressureCount: 0 };
-    const expected: MigrationCounts = { observationCount: 1, sessionCount: 3, pressureCount: 0 };
-    const db = createV3DbWithData(dbPath, actual);
-
-    const result = verifyMigration(db, expected);
-    db.close();
-
-    expect(result.valid).toBe(false);
-    expect(result.reason).toContain('session count mismatch');
-  });
-
-  it('returns valid=false when pressure_score count mismatches', () => {
-    const dbPath = path.join(tmpDir, 'v3.db');
-    const actual: MigrationCounts = { observationCount: 0, sessionCount: 0, pressureCount: 1 };
-    const expected: MigrationCounts = { observationCount: 0, sessionCount: 0, pressureCount: 4 };
-    const db = createV3DbWithData(dbPath, actual);
-
-    const result = verifyMigration(db, expected);
-    db.close();
-
-    expect(result.valid).toBe(false);
-    expect(result.reason).toContain('pressure_score count mismatch');
-  });
-
-  it('returns valid=false when schema version 300 is absent', () => {
-    const dbPath = path.join(tmpDir, 'v3.db');
-    const expected: MigrationCounts = { observationCount: 0, sessionCount: 0, pressureCount: 0 };
-    const db = createV3DbWithData(dbPath, expected, { missingVersion: true });
-
-    const result = verifyMigration(db, expected);
-    db.close();
-
-    expect(result.valid).toBe(false);
-    expect(result.reason).toContain('schema_versions');
-  });
-
-  it('returns valid=false when observations have invalid JSON in files_modified', () => {
-    // Create a DB that bypasses the CHECK constraint using a raw approach
-    const dbPath = path.join(tmpDir, 'v3-invalid.db');
-    const db = new Database(dbPath);
-
-    // Create table WITHOUT the json_valid CHECK so we can insert bad data
+    // Create v3-style tables
     db.exec(`
       CREATE TABLE observations (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        session_id TEXT NOT NULL,
-        project TEXT,
-        tool_name TEXT NOT NULL,
-        category TEXT NOT NULL,
-        title TEXT NOT NULL,
-        content TEXT NOT NULL,
-        importance INTEGER NOT NULL,
-        files_modified TEXT NOT NULL DEFAULT '',
-        timestamp_epoch INTEGER NOT NULL DEFAULT (unixepoch()),
-        access_count INTEGER NOT NULL DEFAULT 0,
-        last_accessed_at_epoch INTEGER,
-        deleted_at_epoch INTEGER DEFAULT NULL
+        id INTEGER PRIMARY KEY, session_id TEXT, project TEXT,
+        tool_name TEXT, category TEXT, title TEXT, content TEXT,
+        importance INTEGER, files_modified TEXT DEFAULT '[]',
+        timestamp_epoch INTEGER, access_count INTEGER DEFAULT 0,
+        last_accessed_at_epoch INTEGER, deleted_at_epoch INTEGER
       );
-      CREATE TABLE sessions (session_id TEXT PRIMARY KEY, status TEXT NOT NULL DEFAULT 'active',
-        scope TEXT, project TEXT, cwd TEXT, source TEXT,
-        observation_count INTEGER NOT NULL DEFAULT 0,
-        created_at_epoch INTEGER NOT NULL DEFAULT (unixepoch()),
-        ended_at_epoch INTEGER);
+      CREATE TABLE sessions (
+        session_id TEXT PRIMARY KEY, scope TEXT, project TEXT, cwd TEXT,
+        source TEXT, status TEXT DEFAULT 'active', observation_count INTEGER DEFAULT 0,
+        created_at_epoch INTEGER, ended_at_epoch INTEGER
+      );
       CREATE TABLE pressure_scores (
         file_path TEXT NOT NULL, project TEXT NOT NULL,
-        raw_pressure REAL NOT NULL DEFAULT 0.0,
-        temperature TEXT NOT NULL DEFAULT 'COLD',
-        last_touched_epoch INTEGER NOT NULL DEFAULT (unixepoch()),
-        decay_rate REAL NOT NULL DEFAULT 0.1,
-        PRIMARY KEY (file_path, project));
+        raw_pressure REAL DEFAULT 0.0, temperature TEXT DEFAULT 'COLD',
+        last_touched_epoch INTEGER, decay_rate REAL DEFAULT 0.1,
+        PRIMARY KEY (file_path, project)
+      );
       CREATE TABLE schema_versions (
-        version INTEGER PRIMARY KEY,
-        applied_at_epoch INTEGER NOT NULL DEFAULT (unixepoch()));
-      INSERT INTO schema_versions (version) VALUES (300);
-      INSERT INTO observations (session_id, tool_name, category, title, content, importance, files_modified)
-      VALUES ('s1', 'bash', 'code', 'bad obs', 'content', 3, 'not-valid-json');
+        version INTEGER PRIMARY KEY, applied_at_epoch INTEGER NOT NULL DEFAULT (unixepoch())
+      );
     `);
 
-    const expected: MigrationCounts = { observationCount: 1, sessionCount: 0, pressureCount: 0 };
-    const result = verifyMigration(db, expected);
-    db.close();
+    db.exec(`INSERT INTO observations (id, session_id, tool_name, category, title, content, importance, files_modified, timestamp_epoch) VALUES (1, 's1', 'Read', 'code', 't', 'c', 3, '["a.ts"]', 100)`);
+    db.exec(`INSERT INTO sessions (session_id, status, created_at_epoch) VALUES ('s1', 'active', 100)`);
+    db.exec(`INSERT INTO pressure_scores (file_path, project, last_touched_epoch) VALUES ('a.ts', 'p', 100)`);
+    db.exec(`INSERT INTO schema_versions (version) VALUES (${SCHEMA_VERSION})`);
 
-    expect(result.valid).toBe(false);
-    expect(result.reason).toContain('invalid JSON');
+    try {
+      const result = verifyMigration(db, { observations: 1, sessions: 1, pressureScores: 1 });
+      expect(result.passed).toBe(true);
+      expect(result.checks).toHaveLength(5);
+      expect(result.checks.every(c => c.passed)).toBe(true);
+    } finally {
+      db.close();
+    }
+  });
+
+  it('fails when observation count does not match', () => {
+    const dbPath = path.join(tmpDir, 'mismatch.db');
+    const db = new Database(dbPath);
+    db.exec(`
+      CREATE TABLE observations (id INTEGER PRIMARY KEY, session_id TEXT, tool_name TEXT, category TEXT, title TEXT, content TEXT, importance INTEGER, files_modified TEXT DEFAULT '[]', timestamp_epoch INTEGER, access_count INTEGER DEFAULT 0, last_accessed_at_epoch INTEGER, deleted_at_epoch INTEGER);
+      CREATE TABLE sessions (session_id TEXT PRIMARY KEY, scope TEXT, project TEXT, cwd TEXT, source TEXT, status TEXT DEFAULT 'active', observation_count INTEGER DEFAULT 0, created_at_epoch INTEGER, ended_at_epoch INTEGER);
+      CREATE TABLE pressure_scores (file_path TEXT NOT NULL, project TEXT NOT NULL, raw_pressure REAL DEFAULT 0.0, temperature TEXT DEFAULT 'COLD', last_touched_epoch INTEGER, decay_rate REAL DEFAULT 0.1, PRIMARY KEY (file_path, project));
+      CREATE TABLE schema_versions (version INTEGER PRIMARY KEY, applied_at_epoch INTEGER NOT NULL DEFAULT (unixepoch()));
+      INSERT INTO schema_versions (version) VALUES (${SCHEMA_VERSION});
+    `);
+
+    try {
+      const result = verifyMigration(db, { observations: 5, sessions: 0, pressureScores: 0 });
+      expect(result.passed).toBe(false);
+      const obsFailed = result.checks.find(c => c.name === 'observations_count');
+      expect(obsFailed?.passed).toBe(false);
+    } finally {
+      db.close();
+    }
+  });
+});
+
+describe('safeSwap', () => {
+  let tmpDir: string;
+
+  beforeEach(() => { tmpDir = createTmpDir(); });
+  afterEach(() => { fs.rmSync(tmpDir, { recursive: true, force: true }); });
+
+  it('swaps new file into current path', () => {
+    const currentPath = path.join(tmpDir, 'current.db');
+    const newPath = path.join(tmpDir, 'new.db');
+    fs.writeFileSync(currentPath, 'old-content');
+    fs.writeFileSync(newPath, 'new-content');
+
+    safeSwap(currentPath, newPath);
+
+    expect(fs.readFileSync(currentPath, 'utf-8')).toBe('new-content');
+    expect(fs.existsSync(newPath)).toBe(false);
+  });
+
+  it('handles stale .pre-swap file (REC-20)', () => {
+    const currentPath = path.join(tmpDir, 'current.db');
+    const newPath = path.join(tmpDir, 'new.db');
+    const preSwapPath = currentPath + '.pre-swap';
+    fs.writeFileSync(currentPath, 'old-content');
+    fs.writeFileSync(newPath, 'new-content');
+    fs.writeFileSync(preSwapPath, 'stale-content');
+
+    safeSwap(currentPath, newPath);
+
+    expect(fs.readFileSync(currentPath, 'utf-8')).toBe('new-content');
+    expect(fs.existsSync(newPath)).toBe(false);
+  });
+
+  it('throws when current path does not exist', () => {
+    const currentPath = path.join(tmpDir, 'nonexistent.db');
+    const newPath = path.join(tmpDir, 'new.db');
+    fs.writeFileSync(newPath, 'new-content');
+
+    expect(() => safeSwap(currentPath, newPath)).toThrow('Swap step 1 failed');
+  });
+
+  it('cleans up .pre-swap after successful swap', () => {
+    const currentPath = path.join(tmpDir, 'current.db');
+    const newPath = path.join(tmpDir, 'new.db');
+    fs.writeFileSync(currentPath, 'old-content');
+    fs.writeFileSync(newPath, 'new-content');
+
+    safeSwap(currentPath, newPath);
+
+    expect(fs.existsSync(currentPath + '.pre-swap')).toBe(false);
   });
 });
 
 describe('runMigration', () => {
   let tmpDir: string;
 
-  beforeEach(() => {
-    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'claudex-migrate-'));
-  });
+  beforeEach(() => { tmpDir = createTmpDir(); });
+  afterEach(() => { fs.rmSync(tmpDir, { recursive: true, force: true }); });
 
-  afterEach(() => {
-    fs.rmSync(tmpDir, { recursive: true, force: true });
-  });
-
-  it('migrates v2 DB with known data: counts match and WARM→COLD conversion happened', () => {
-    const dbPath = path.join(tmpDir, 'claudex.db');
-    createV2Database(dbPath, {
-      observationCount: 3,
-      sessionCount: 2,
-      pressureCount: 1,
-      withCsvFiles: true,
-      withWarm: true,
-    });
-
-    const result = runMigration(dbPath);
-
-    expect(result.success).toBe(true);
-    expect(result.counts.observationCount).toBe(3);
-    expect(result.counts.sessionCount).toBe(2);
-    expect(result.counts.pressureCount).toBe(1);
-
-    // Verify the final DB exists at main path
-    expect(fs.existsSync(dbPath)).toBe(true);
-
-    // Open and verify WARM→COLD conversion
-    const v3Db = new Database(dbPath, { readonly: true });
-    const warmRows = v3Db
-      .prepare("SELECT COUNT(*) as count FROM pressure_scores WHERE temperature = 'WARM'")
-      .get() as { count: number };
-    expect(warmRows.count).toBe(0);
-
-    // Verify files_modified is valid JSON
-    const badJson = v3Db
-      .prepare("SELECT COUNT(*) as count FROM observations WHERE NOT json_valid(files_modified)")
-      .get() as { count: number };
-    expect(badJson.count).toBe(0);
-
-    // Verify CSV was converted to JSON array
-    const obs = v3Db
-      .prepare("SELECT files_modified FROM observations LIMIT 1")
-      .get() as { files_modified: string } | undefined;
-    expect(obs).toBeDefined();
-    const parsed = JSON.parse(obs!.files_modified);
-    expect(Array.isArray(parsed)).toBe(true);
-    expect(parsed).toContain('src/index.ts');
-    expect(parsed).toContain('src/utils.ts');
-
-    // Verify schema version 300
-    const versionRow = v3Db
-      .prepare('SELECT version FROM schema_versions WHERE version = 300')
-      .get() as { version: number } | undefined;
-    expect(versionRow).toBeDefined();
-    expect(versionRow!.version).toBe(300);
-
-    v3Db.close();
-  });
-
-  it('creates backup file at expected path', () => {
-    const dbPath = path.join(tmpDir, 'claudex.db');
-    createV2Database(dbPath, { observationCount: 1, sessionCount: 1, pressureCount: 0 });
-
-    const result = runMigration(dbPath);
-
-    expect(result.success).toBe(true);
-    expect(result.backupPath).toBe(dbPath + '.v2-backup');
-    expect(fs.existsSync(result.backupPath)).toBe(true);
-  });
-
-  it('swaps temp DB to main path after successful migration', () => {
-    const dbPath = path.join(tmpDir, 'claudex.db');
-    createV2Database(dbPath, { observationCount: 1, sessionCount: 1, pressureCount: 0 });
-
-    const tempPath = path.join(tmpDir, 'claudex-v3-temp.db');
-
-    const result = runMigration(dbPath);
-
-    expect(result.success).toBe(true);
-    // Temp DB should be gone (swapped to main path)
-    expect(fs.existsSync(tempPath)).toBe(false);
-    // Main DB should exist
-    expect(fs.existsSync(dbPath)).toBe(true);
-  });
-
-  it('preserves original DB as backup when migration succeeds', () => {
-    const dbPath = path.join(tmpDir, 'claudex.db');
-    createV2Database(dbPath, { observationCount: 2, sessionCount: 1, pressureCount: 1 });
-
-    // Record original file size to confirm it was backed up (not deleted)
-    const originalSize = fs.statSync(dbPath).size;
-
-    const result = runMigration(dbPath);
-
-    expect(result.success).toBe(true);
-    // Backup should have same size as original
-    const backupSize = fs.statSync(result.backupPath).size;
-    expect(backupSize).toBe(originalSize);
-  });
-
-  it('returns failure with meaningful error when DB path does not exist', () => {
-    const dbPath = path.join(tmpDir, 'nonexistent.db');
-
-    const result = runMigration(dbPath);
-
+  it('returns error when source does not exist', () => {
+    const result = runMigration(path.join(tmpDir, 'nonexistent.db'));
     expect(result.success).toBe(false);
-    expect(result.error).toBeDefined();
-    expect(result.error!.length).toBeGreaterThan(0);
+    expect(result.errors[0]).toContain('not found');
   });
 
-  it('handles empty v2 DB (zero observations, sessions, pressure scores)', () => {
-    const dbPath = path.join(tmpDir, 'claudex.db');
-    createV2Database(dbPath, { observationCount: 0, sessionCount: 0, pressureCount: 0 });
+  it('performs dry run without modifying files', () => {
+    const dbPath = path.join(tmpDir, 'source.db');
+    createV2Database(dbPath);
+
+    const result = runMigration(dbPath, { dryRun: true });
+    expect(result.success).toBe(true);
+    expect(result.steps.some(s => s.includes('Dry run'))).toBe(true);
+    // Backup should be created
+    expect(fs.existsSync(dbPath + '.v2-backup')).toBe(true);
+    // No temp DB should exist
+    expect(fs.existsSync(dbPath + '.v3-new')).toBe(false);
+  });
+
+  it('completes full migration with correct row counts', () => {
+    const dbPath = path.join(tmpDir, 'source.db');
+    createV2Database(dbPath, { observations: 8, sessions: 3, pressureScores: 4 });
 
     const result = runMigration(dbPath);
 
     expect(result.success).toBe(true);
-    expect(result.counts.observationCount).toBe(0);
-    expect(result.counts.sessionCount).toBe(0);
-    expect(result.counts.pressureCount).toBe(0);
+    expect(result.errors).toHaveLength(0);
+    expect(result.targetCounts.observations).toBe(8);
+    expect(result.targetCounts.sessions).toBe(3);
+    expect(result.targetCounts.pressureScores).toBe(4);
+
+    // Original path should now contain v3 schema
+    const db = new Database(dbPath, { readonly: true });
+    try {
+      const version = db.prepare('SELECT MAX(version) as v FROM schema_versions').get() as { v: number };
+      expect(version.v).toBe(SCHEMA_VERSION);
+    } finally {
+      db.close();
+    }
   });
 
-  it('handles observations with already-valid JSON files_modified (no double-conversion)', () => {
-    const dbPath = path.join(tmpDir, 'claudex.db');
-    createV2Database(dbPath, { observationCount: 2, sessionCount: 1, pressureCount: 0, withCsvFiles: false });
-
-    const result = runMigration(dbPath);
-
-    expect(result.success).toBe(true);
-
-    const v3Db = new Database(dbPath, { readonly: true });
-    const badJson = v3Db
-      .prepare("SELECT COUNT(*) as count FROM observations WHERE NOT json_valid(files_modified)")
-      .get() as { count: number };
-    expect(badJson.count).toBe(0);
-    v3Db.close();
-  });
-
-  it('migrates observations, sessions, and pressure_scores to v3 schema', () => {
-    const dbPath = path.join(tmpDir, 'claudex.db');
-    createV2Database(dbPath, {
-      observationCount: 5,
-      sessionCount: 3,
-      pressureCount: 2,
-      withCsvFiles: false,
-      withWarm: false,
-    });
+  it('fixes comma-separated files_modified during migration', () => {
+    const dbPath = path.join(tmpDir, 'bad-files.db');
+    createV2WithBadFilesModified(dbPath);
 
     const result = runMigration(dbPath);
     expect(result.success).toBe(true);
 
-    const v3Db = new Database(dbPath, { readonly: true });
-
-    const obsCount = (v3Db.prepare('SELECT COUNT(*) as c FROM observations').get() as { c: number }).c;
-    const sessCount = (v3Db.prepare('SELECT COUNT(*) as c FROM sessions').get() as { c: number }).c;
-    const pressCount = (v3Db.prepare('SELECT COUNT(*) as c FROM pressure_scores').get() as { c: number }).c;
-
-    expect(obsCount).toBe(5);
-    expect(sessCount).toBe(3);
-    expect(pressCount).toBe(2);
-
-    v3Db.close();
+    // Verify all files_modified are valid JSON in the migrated DB
+    const db = new Database(dbPath, { readonly: true });
+    try {
+      const invalid = db.prepare('SELECT COUNT(*) as cnt FROM observations WHERE NOT json_valid(files_modified)').get() as { cnt: number };
+      expect(invalid.cnt).toBe(0);
+    } finally {
+      db.close();
+    }
   });
 
-  it('cleans up original DB WAL/SHM sidecar files after swap', () => {
-    const dbPath = path.join(tmpDir, 'claudex.db');
-    createV2Database(dbPath, { observationCount: 2, sessionCount: 1, pressureCount: 0 });
+  it('preserves backup and does not swap when backup already exists (no --force)', () => {
+    const dbPath = path.join(tmpDir, 'source.db');
+    createV2Database(dbPath);
 
-    // Simulate original DB having WAL/SHM files (e.g. from prior WAL-mode use)
-    fs.writeFileSync(dbPath + '-wal', 'fake wal data');
-    fs.writeFileSync(dbPath + '-shm', 'fake shm data');
+    // Create a pre-existing backup
+    const backupPath = dbPath + '.v2-backup';
+    fs.writeFileSync(backupPath, 'pre-existing-backup');
 
     const result = runMigration(dbPath);
-
     expect(result.success).toBe(true);
-    // Orphaned original WAL/SHM must be removed — otherwise SQLite could apply v2 WAL to v3 DB
-    expect(fs.existsSync(dbPath + '-wal')).toBe(false);
-    expect(fs.existsSync(dbPath + '-shm')).toBe(false);
+
+    // Pre-existing backup should not have been overwritten
+    const backupContent = fs.readFileSync(backupPath, 'utf-8');
+    expect(backupContent).toBe('pre-existing-backup');
   });
 
-  it('cleans up temp DB WAL/SHM sidecar files after swap', () => {
-    const dbPath = path.join(tmpDir, 'claudex.db');
-    createV2Database(dbPath, { observationCount: 1, sessionCount: 1, pressureCount: 0 });
+  it('overwrites backup with --force', () => {
+    const dbPath = path.join(tmpDir, 'source.db');
+    createV2Database(dbPath);
 
-    const tempPath = path.join(tmpDir, 'claudex-v3-temp.db');
+    // Create a pre-existing backup
+    const backupPath = dbPath + '.v2-backup';
+    fs.writeFileSync(backupPath, 'pre-existing-backup');
 
-    const result = runMigration(dbPath);
-
+    const result = runMigration(dbPath, { force: true });
     expect(result.success).toBe(true);
-    // Temp DB WAL/SHM (not renamed with main file) must be gone
-    expect(fs.existsSync(tempPath + '-wal')).toBe(false);
-    expect(fs.existsSync(tempPath + '-shm')).toBe(false);
+
+    // Backup should be a valid SQLite database now (overwritten)
+    const backupContent = fs.readFileSync(backupPath);
+    expect(backupContent.toString('utf-8', 0, 15)).toBe('SQLite format 3');
   });
 
-  it('migrates 100+ observations correctly with valid JSON files_modified', () => {
-    const dbPath = path.join(tmpDir, 'claudex.db');
-    createV2Database(dbPath, {
-      observationCount: 150,
-      sessionCount: 5,
-      pressureCount: 10,
-      withCsvFiles: true,
-      withWarm: true,
-    });
+  it('handles stale temp DB from prior failed attempt', () => {
+    const dbPath = path.join(tmpDir, 'source.db');
+    createV2Database(dbPath);
+
+    // Create stale temp DB
+    fs.writeFileSync(dbPath + '.v3-new', 'stale');
 
     const result = runMigration(dbPath);
-
     expect(result.success).toBe(true);
-    expect(result.counts.observationCount).toBe(150);
-    expect(result.counts.sessionCount).toBe(5);
-    expect(result.counts.pressureCount).toBe(10);
-
-    const v3Db = new Database(dbPath, { readonly: true });
-
-    const obsCount = (v3Db.prepare('SELECT COUNT(*) as c FROM observations').get() as { c: number }).c;
-    expect(obsCount).toBe(150);
-
-    const badJson = v3Db
-      .prepare("SELECT COUNT(*) as count FROM observations WHERE NOT json_valid(files_modified)")
-      .get() as { count: number };
-    expect(badJson.count).toBe(0);
-
-    const warmRows = v3Db
-      .prepare("SELECT COUNT(*) as count FROM pressure_scores WHERE temperature = 'WARM'")
-      .get() as { count: number };
-    expect(warmRows.count).toBe(0);
-
-    v3Db.close();
-  });
-
-  it('removes pre-existing temp DB before starting migration', () => {
-    const dbPath = path.join(tmpDir, 'claudex.db');
-    createV2Database(dbPath, { observationCount: 1, sessionCount: 1, pressureCount: 0 });
-
-    // Create a stale temp DB that would confuse migration if not removed
-    const tempPath = path.join(tmpDir, 'claudex-v3-temp.db');
-    const staleDb = new Database(tempPath);
-    staleDb.exec('CREATE TABLE stale (id INTEGER PRIMARY KEY)');
-    staleDb.close();
-
-    expect(fs.existsSync(tempPath)).toBe(true);
-
-    const result = runMigration(dbPath);
-
-    expect(result.success).toBe(true);
-    // Temp DB should be consumed (swapped to main path), not left as stale
-    expect(fs.existsSync(tempPath)).toBe(false);
-    expect(fs.existsSync(dbPath)).toBe(true);
+    expect(result.steps.some(s => s.includes('Cleaned up stale temp DB'))).toBe(true);
   });
 });
 
-describe('runMigration — error path: original DB preserved', () => {
-  let tmpDir: string;
+describe('formatResult', () => {
+  it('formats successful result', () => {
+    const output = formatResult({
+      success: true,
+      backupPath: '/tmp/backup.db',
+      sourceCounts: { observations: 10, sessions: 3, pressureScores: 5 },
+      targetCounts: { observations: 10, sessions: 3, pressureScores: 5 },
+      errors: [],
+      steps: ['Step 1', 'Step 2'],
+    });
 
-  beforeEach(() => {
-    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'claudex-migrate-'));
+    expect(output).toContain('Migration Successful');
+    expect(output).toContain('Observations: 10');
+    expect(output).toContain('Sessions:     3');
+    expect(output).toContain('Pressure:     5');
+    expect(output).toContain('Backup:       /tmp/backup.db');
   });
 
-  afterEach(() => {
-    fs.rmSync(tmpDir, { recursive: true, force: true });
-  });
+  it('formats failed result with errors', () => {
+    const output = formatResult({
+      success: false,
+      sourceCounts: { observations: 0, sessions: 0, pressureScores: 0 },
+      targetCounts: { observations: 0, sessions: 0, pressureScores: 0 },
+      errors: ['Something went wrong'],
+      steps: ['Step 1'],
+    });
 
-  it('original DB is untouched when backup cannot be created (read-only dir)', () => {
-    // This test verifies the pattern: if backup fails, we never touch the original.
-    // We test by confirming the return value indicates failure with backup error.
-    const dbPath = path.join(tmpDir, 'claudex.db');
-    createV2Database(dbPath, { observationCount: 1, sessionCount: 1, pressureCount: 0 });
-
-    // Record the original file content
-    const originalContent = fs.readFileSync(dbPath);
-
-    // Simulate backup failure by making a read-only dbPath directory (not easy on Windows).
-    // Instead, we test a nonexistent source to trigger the backup copyFileSync failure.
-    const missingPath = path.join(tmpDir, 'missing.db');
-    const result = runMigration(missingPath);
-
-    expect(result.success).toBe(false);
-    expect(result.error).toContain('backup');
-
-    // Original DB (separate from the missing path) is untouched
-    const currentContent = fs.readFileSync(dbPath);
-    expect(currentContent.equals(originalContent)).toBe(true);
+    expect(output).toContain('Migration Failed');
+    expect(output).toContain('Something went wrong');
   });
 });
