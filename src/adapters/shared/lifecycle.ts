@@ -764,6 +764,36 @@ export async function runSessionEndCleanup(params: SessionEndParams): Promise<vo
     try { emitTelemetry(params.db, params.sessionId, 'error', { subsystem: 'session_end/pressure_decay', error: sanitizeErrorForTelemetry(e) }); } catch {}
   }
 
+  // Promote session learnings (decisions + discoveries) before ending.
+  // On 1M context, compaction may never fire — SessionEnd is the guaranteed trigger.
+  // Skip if compaction already promoted during this session (avoid double-counting).
+  try {
+    const compactionCheckpoint = cachedPrepare(params.db,
+      `SELECT 1 FROM checkpoint_meta WHERE session_id = ? AND trigger = 'compaction' LIMIT 1`
+    ).get(params.sessionId);
+    const compactionRan = !!compactionCheckpoint;
+
+    if (!compactionRan) {
+      const sessionLearnings: string[] = [];
+      const decisions = getDecisionsBySession(params.db, params.sessionId, { limit: 10 });
+      for (const d of decisions) {
+        if (d.content && d.content.length > 15) sessionLearnings.push(d.content);
+      }
+      const discoveries = cachedPrepare(params.db,
+        `SELECT DISTINCT title FROM observations
+         WHERE session_id = ? AND project = ? AND deleted_at_epoch IS NULL
+           AND obs_type = 'discovery' AND title IS NOT NULL AND LENGTH(title) > 10
+         ORDER BY importance DESC LIMIT 5`
+      ).all(params.sessionId, params.project) as Array<{ title: string }>;
+      for (const d of discoveries) sessionLearnings.push(d.title);
+      if (sessionLearnings.length > 0) {
+        promoteLearnings({ db: params.db, project: params.project, sessionLearnings });
+      }
+    }
+  } catch (e) {
+    try { emitTelemetry(params.db, params.sessionId, 'error', { subsystem: 'session_end/promote_learnings', error: sanitizeErrorForTelemetry(e) }); } catch {}
+  }
+
   // Capture session summary before ending session
   try {
     captureSessionSummary(params.db, params.sessionId, params.project);
