@@ -18,6 +18,17 @@ import type { TopicShiftResult } from '../intelligence/topic-shift.js';
 import { getIdentityDir, getHandoffsDir } from '../shared/paths.js';
 
 /**
+ * Wraps file content in <file-content>...</file-content> markers,
+ * escaping any literal sentinel sequences in the payload to prevent
+ * data boundary injection.
+ */
+export function wrapFileContent(content: string): string {
+  // Escape literal closing sentinel in content to prevent boundary break
+  const escaped = content.replace(/<\/file-content>/g, '<\\/file-content>');
+  return `<file-content>\n${escaped}\n</file-content>`;
+}
+
+/**
  * Priority 1: Identity section from USER.md.
  * Reads from identityDir or default ~/.claudex/identity/.
  */

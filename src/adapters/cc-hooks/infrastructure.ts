@@ -12,6 +12,7 @@ import { detectProjectScope, getProjectId } from '../../shared/scope-detector.js
 import { getDbPath } from '../../shared/paths.js';
 import { emitTelemetry } from '../../observability/telemetry.js';
 import { BRIDGE_KEY } from '../openclaw-bridge/bridge-types.js';
+import * as path from 'path';
 
 /** Parsed CC hook stdin payload. */
 export interface HookInput {
@@ -92,10 +93,31 @@ export function writeStdout(output: Record<string, unknown>): void {
 }
 
 /**
+ * Validates that a cwd path is safe: must be absolute and not a UNC or device path.
+ * Returns true if valid, false if rejected.
+ */
+export function validateCwd(cwd: string): boolean {
+  if (!cwd || typeof cwd !== 'string') return false;
+  if (!path.isAbsolute(cwd)) return false;
+
+  // Reject UNC paths (\\server\share or //server/share)
+  if (cwd.startsWith('\\\\') || cwd.startsWith('//')) return false;
+
+  // Reject Windows device paths (\\.\ or \\?\)
+  if (cwd.startsWith('\\\\.') || cwd.startsWith('\\\\?')) return false;
+
+  return true;
+}
+
+/**
  * Opens DB, loads config, detects project scope.
- * Throws if DB open fails (let wrapHook catch it).
+ * Throws if DB open fails or cwd validation fails (let wrapHook catch it).
  */
 export function bootstrapHook(input: HookInput): BootstrapResult {
+  if (!validateCwd(input.cwd)) {
+    throw new Error(`Invalid cwd: rejected by path validation`);
+  }
+
   const db = openDatabase(getDbPath());
   const config = loadConfig();
   const scope = detectProjectScope(input.cwd);

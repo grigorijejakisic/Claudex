@@ -73,4 +73,30 @@ describe('fetchJsonWithTimeout', () => {
     const result = await fetchJsonWithTimeout('http://localhost:1234/test');
     expect(result).toBeNull();
   });
+
+  it('rejects responses exceeding maxResponseBytes even without content-length header', async () => {
+    const largePayload = JSON.stringify({ data: 'x'.repeat(10000) });
+    // Response without content-length header (chunked transfer simulation)
+    mockFetch(async () => new Response(largePayload));
+    const result = await fetchJsonWithTimeout('http://localhost:1234/test', {
+      maxResponseBytes: 100,
+    });
+    expect(result).toBeNull();
+  });
+
+  it('allows responses within maxResponseBytes limit', async () => {
+    const smallPayload = JSON.stringify({ ok: true });
+    mockFetch(async () => new Response(smallPayload));
+    const result = await fetchJsonWithTimeout('http://localhost:1234/test', {
+      maxResponseBytes: 10000,
+    });
+    expect(result).toEqual({ ok: true });
+  });
+
+  it('does not enforce size limit when maxResponseBytes is not set', async () => {
+    const largePayload = JSON.stringify({ data: 'x'.repeat(10000) });
+    mockFetch(async () => new Response(largePayload));
+    const result = await fetchJsonWithTimeout('http://localhost:1234/test');
+    expect(result).toEqual({ data: 'x'.repeat(10000) });
+  });
 });

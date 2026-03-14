@@ -478,6 +478,75 @@ describe('migrateFromV2', () => {
   });
 });
 
+describe('migrateFromV2 — FTS shadow table handling', () => {
+  let v3Db: InstanceType<typeof Database>;
+  let tmpDir: string;
+
+  beforeEach(() => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'claudex-fts-mig-'));
+    v3Db = new Database(':memory:');
+  });
+
+  afterEach(() => {
+    try { v3Db.close(); } catch { /* already closed */ }
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  it('does not abort when v2 has FTS virtual tables with shadow tables', () => {
+    const v2DbPath = path.join(tmpDir, 'v2-fts.db');
+    const v2Db = new Database(v2DbPath);
+
+    // Create v2 schema with FTS virtual table (creates shadow tables)
+    v2Db.exec(`
+      CREATE TABLE observations (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        session_id TEXT NOT NULL,
+        project TEXT,
+        tool_name TEXT NOT NULL,
+        category TEXT NOT NULL,
+        title TEXT NOT NULL,
+        content TEXT NOT NULL,
+        importance INTEGER NOT NULL,
+        files_modified TEXT NOT NULL DEFAULT '[]',
+        timestamp_epoch INTEGER NOT NULL DEFAULT (unixepoch()),
+        access_count INTEGER NOT NULL DEFAULT 0,
+        last_accessed_at_epoch INTEGER,
+        deleted_at_epoch INTEGER DEFAULT NULL
+      );
+      CREATE TABLE sessions (
+        session_id TEXT PRIMARY KEY,
+        scope TEXT, project TEXT, cwd TEXT, source TEXT,
+        status TEXT NOT NULL DEFAULT 'active',
+        observation_count INTEGER NOT NULL DEFAULT 0,
+        created_at_epoch INTEGER NOT NULL DEFAULT (unixepoch()),
+        ended_at_epoch INTEGER
+      );
+      CREATE TABLE pressure_scores (
+        file_path TEXT NOT NULL, project TEXT NOT NULL,
+        raw_pressure REAL NOT NULL DEFAULT 0.0,
+        temperature TEXT NOT NULL DEFAULT 'COLD',
+        last_touched_epoch INTEGER NOT NULL DEFAULT (unixepoch()),
+        decay_rate REAL NOT NULL DEFAULT 0.1,
+        PRIMARY KEY (file_path, project)
+      );
+      CREATE VIRTUAL TABLE observations_fts USING fts5(title, content);
+      INSERT INTO observations (session_id, tool_name, category, title, content, importance)
+      VALUES ('s1', 'bash', 'code', 'test obs', 'test content', 3);
+    `);
+    v2Db.close();
+
+    // Migration should not abort even though FTS shadow tables exist
+    expect(() => migrateFromV2(v3Db, v2DbPath)).not.toThrow();
+
+    // Data should be migrated successfully
+    const obs = v3Db
+      .prepare("SELECT * FROM observations WHERE session_id = 's1'")
+      .get() as Record<string, unknown> | undefined;
+    expect(obs).toBeDefined();
+    expect(obs!.title).toBe('test obs');
+  });
+});
+
 describe('detectV2Database', () => {
   it('returns null when no v2 database exists', () => {
     // detectV2Database checks ~/.claudex paths which likely don't have a v2 db in CI/test

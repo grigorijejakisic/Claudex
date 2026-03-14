@@ -94,6 +94,32 @@ describe('quality gates', () => {
     expect(result.reason).toBe('grep_no_matches');
   });
 
+  it('Grep: passes with matchCount but no content field', () => {
+    const result = passesQualityGate('Grep', {}, { matchCount: 5 });
+    expect(result.pass).toBe(true);
+  });
+
+  it('Grep: passes with matches array but no matchCount', () => {
+    const result = passesQualityGate('Grep', {}, { matches: ['line1', 'line2'] });
+    expect(result.pass).toBe(true);
+  });
+
+  it('Grep: passes with files array but no matchCount', () => {
+    const result = passesQualityGate('Grep', {}, { files: ['file1.ts', 'file2.ts'] });
+    expect(result.pass).toBe(true);
+  });
+
+  it('Grep: passes with content string but no matchCount', () => {
+    const result = passesQualityGate('Grep', {}, { content: 'found: something' });
+    expect(result.pass).toBe(true);
+  });
+
+  it('Grep: fails with empty matches, empty files, and no content', () => {
+    const result = passesQualityGate('Grep', {}, { matchCount: 0, matches: [], files: [] });
+    expect(result.pass).toBe(false);
+    expect(result.reason).toBe('grep_no_matches');
+  });
+
   // --- Glob ---
 
   it('Glob: passes with >= 3 matches', () => {

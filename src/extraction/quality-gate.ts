@@ -74,10 +74,13 @@ export function passesQualityGate(
 
       case 'Grep': {
         const matchCount = Number(output?.matchCount ?? 0);
-        if (matchCount < 1) {
-          return { pass: false, reason: 'grep_no_matches' };
+        const hasMatches = Array.isArray(output?.matches) && (output.matches as unknown[]).length > 0;
+        const hasFiles = Array.isArray(output?.files) && (output.files as unknown[]).length > 0;
+        const hasContent = typeof output?.content === 'string' && (output.content as string).length > 0;
+        if (matchCount >= 1 || hasMatches || hasFiles || hasContent) {
+          return { pass: true };
         }
-        return { pass: true };
+        return { pass: false, reason: 'grep_no_matches' };
       }
 
       case 'Glob': {
