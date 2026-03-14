@@ -1,5 +1,5 @@
 /**
- * 10 stateless section formatters for the assembly pipeline.
+ * 12 stateless section formatters for the assembly pipeline.
  * All are pure functions taking pre-fetched data, returning string | null.
  * All non-throwing (return null on error).
  * @see Architecture Section 7.2
@@ -9,6 +9,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { renderCheckpointMarkdown } from '../checkpoint/inject.js';
 import type { CheckpointV3 } from '../checkpoint/types.js';
+import type { ArtifactRow } from '../core/artifacts.js';
 import type { LearningRow } from '../core/learnings.js';
 import type { PressureRow } from '../core/pressure.js';
 import type { ObservationRow } from '../core/observations.js';
@@ -248,6 +249,76 @@ export function formatTopicPivotSection(params: {
     }
 
     return parts.join('\n');
+  } catch {
+    return null;
+  }
+}
+
+/** Type abbreviation map for reference layer rendering. */
+const ARTIFACT_TYPE_ABBREV: Record<string, string> = {
+  observation: 'obs',
+  learning: 'learn',
+  decision: 'decision',
+  hot_file: 'hot',
+  flow: 'flow',
+  milestone: 'milestone',
+};
+
+/**
+ * Reference layer: renders packed artifact summaries.
+ * Always injected — gives the model awareness of all available context
+ * without paying full token cost. Each entry is ~30-50 tokens.
+ */
+export function formatReferenceLayer(artifacts: ArtifactRow[]): string | null {
+  try {
+    if (!artifacts || artifacts.length === 0) return null;
+
+    const bullets = artifacts.map((a) => {
+      const abbrev = ARTIFACT_TYPE_ABBREV[a.artifact_type] ?? a.artifact_type;
+      const parts = [`- [${abbrev}] "${a.summary}"`];
+      if (a.importance > 0) parts.push(`(importance: ${a.importance}`);
+      else parts.push('(');
+
+      // Add relative time if available
+      if (a.timestamp_epoch) {
+        const timeStr = formatRelativeTime(a.timestamp_epoch);
+        if (a.importance > 0) {
+          parts.push(`, ${timeStr})`);
+        } else {
+          parts.push(`${timeStr})`);
+        }
+      } else {
+        parts.push(')');
+      }
+
+      return parts.join('');
+    });
+
+    return `## Available Context\n${bullets.join('\n')}`;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Materialization layer: renders full artifact content.
+ * Only included for items selected by FTS5 search, topic relevance,
+ * and recency scoring. Artifacts in 'fresh' or 'materialized' state.
+ */
+export function formatMaterializationLayer(artifacts: ArtifactRow[]): string | null {
+  try {
+    if (!artifacts || artifacts.length === 0) return null;
+
+    // Only render artifacts that have content
+    const withContent = artifacts.filter((a) => a.content && a.content.trim().length > 0);
+    if (withContent.length === 0) return null;
+
+    const entries = withContent.map((a) => {
+      const abbrev = ARTIFACT_TYPE_ABBREV[a.artifact_type] ?? a.artifact_type;
+      return `### [${abbrev}] ${a.summary}\n${a.content}`;
+    });
+
+    return `## Materialized Context\n${entries.join('\n\n')}`;
   } catch {
     return null;
   }
