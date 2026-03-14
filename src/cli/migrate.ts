@@ -315,10 +315,14 @@ export function runMigration(sourcePath: string, opts: { dryRun?: boolean; force
   // ── Step 3: Create backup ───────────────────────────────────────
   // Checkpoint WAL before copying to ensure all committed data is in the main file.
   // Without this, copyFileSync only copies the main .db and misses WAL-committed rows.
+  // REC-21: Wrap pragma+close in try/finally to ensure DB is closed on error
   try {
     const checkpointDb = new Database(sourcePath);
-    checkpointDb.pragma('wal_checkpoint(TRUNCATE)');
-    checkpointDb.close();
+    try {
+      checkpointDb.pragma('wal_checkpoint(TRUNCATE)');
+    } finally {
+      checkpointDb.close();
+    }
     result.steps.push('WAL checkpointed before backup');
   } catch {
     // Non-critical: source may not be in WAL mode, or may not have a WAL file.

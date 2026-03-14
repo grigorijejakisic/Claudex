@@ -11,12 +11,27 @@ import * as path from 'path';
 import type { TokenUsage, RuntimeCapabilities } from '../shared/types.js';
 import { detectWindowSize } from './window-detector.js';
 
+// REC-26: Cache homedir at module level — avoids repeated os.homedir() + realpathSync per hook call.
+const CACHED_HOME = (() => {
+  let home = os.homedir();
+  try {
+    if (process.platform === 'win32') {
+      home = fs.realpathSync.native(home);
+    } else {
+      home = fs.realpathSync(home);
+    }
+  } catch {
+    // If realpath fails, use the raw homedir
+  }
+  return home;
+})();
+
 /**
  * Validates that a transcript path is safe to read.
  * Rejects UNC/device paths and paths outside the user's home directory.
- * @internal
+ * Exported for reuse by infrastructure.ts (REC-06).
  */
-function isPathSafe(transcriptPath: string): boolean {
+export function isPathSafe(transcriptPath: string): boolean {
   const resolved = path.resolve(transcriptPath);
   // Reject UNC paths (\\server\share or //server/share)
   if (resolved.startsWith('\\\\') || resolved.startsWith('//')) return false;
@@ -28,19 +43,16 @@ function isPathSafe(transcriptPath: string): boolean {
   // Use realpathSync on ALL platforms to resolve symlinks that could point outside home.
   // On Windows, use realpathSync.native to also resolve 8.3 short names (e.g. GRIGOR~1).
   let normalizedResolved = resolved;
-  let home = os.homedir();
   try {
     if (process.platform === 'win32') {
       normalizedResolved = fs.realpathSync.native(resolved);
-      home = fs.realpathSync.native(home);
     } else {
       normalizedResolved = fs.realpathSync(resolved);
-      home = fs.realpathSync(home);
     }
   } catch {
     // If file doesn't exist yet or realpath fails, use the resolved path as-is
   }
-  const rel = path.relative(home, normalizedResolved);
+  const rel = path.relative(CACHED_HOME, normalizedResolved);
   if (rel.startsWith('..') || path.isAbsolute(rel)) return false;
   return true;
 }

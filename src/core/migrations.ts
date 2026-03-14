@@ -284,6 +284,21 @@ CREATE INDEX IF NOT EXISTS idx_telemetry_kind ON telemetry(event_kind, timestamp
 `;
 
 /**
+ * REC-11: Checks if an SQLite error message matches a known benign pattern.
+ * Used in catch blocks to distinguish expected schema-evolution errors from real failures.
+ */
+export function isSqliteExpectedError(msg: string): boolean {
+  const BENIGN_PATTERNS = [
+    'already exists',
+    'no such table',
+    'may not be altered',
+    'already another table',
+  ];
+  const lower = msg.toLowerCase();
+  return BENIGN_PATTERNS.some(p => lower.includes(p));
+}
+
+/**
  * Checks whether a table exists in the database.
  */
 function hasTable(db: Database, table: string): boolean {
@@ -301,6 +316,21 @@ function hasColumn(db: Database, table: string, column: string): boolean {
 }
 
 /**
+ * REC-12: Ensures adapter columns exist on sessions and telemetry tables.
+ * Idempotent — checks column existence before ALTER.
+ * Called from migrateV1toV2 and available for any future migration path.
+ */
+function ensureAdapterColumns(db: Database): void {
+  if (hasTable(db, 'sessions') && !hasColumn(db, 'sessions', 'adapter')) {
+    db.exec("ALTER TABLE sessions ADD COLUMN adapter TEXT DEFAULT 'unknown'");
+  }
+  const telemetryCols = db.pragma('table_info(telemetry)') as Array<{ name: string }>;
+  if (telemetryCols.length > 0 && !telemetryCols.some(c => c.name === 'adapter')) {
+    db.exec("ALTER TABLE telemetry ADD COLUMN adapter TEXT DEFAULT 'unknown'");
+  }
+}
+
+/**
  * Migrates a V1 (legacy, pre-versioning) database to V2 schema.
  * All operations are idempotent — checks column existence before ALTER.
  *
@@ -308,9 +338,8 @@ function hasColumn(db: Database, table: string, column: string): boolean {
  * 1. pressure_scores: last_accessed_epoch → last_touched_epoch
  * 2. observations.consumed (INTEGER NOT NULL DEFAULT 0)
  * 3. observations.obs_type (TEXT)
- * 4. sessions.adapter (TEXT DEFAULT 'unknown')
- * 5. telemetry.adapter (TEXT DEFAULT 'unknown')
- * 6. idx_obs_consumed index
+ * 4. sessions.adapter + telemetry.adapter (via ensureAdapterColumns)
+ * 5. idx_obs_consumed index
  */
 function migrateV1toV2(db: Database): void {
   // 1. pressure_scores: rename last_accessed_epoch → last_touched_epoch
@@ -329,18 +358,10 @@ function migrateV1toV2(db: Database): void {
     db.exec('ALTER TABLE observations ADD COLUMN obs_type TEXT');
   }
 
-  // 4. sessions.adapter
-  if (hasTable(db, 'sessions') && !hasColumn(db, 'sessions', 'adapter')) {
-    db.exec("ALTER TABLE sessions ADD COLUMN adapter TEXT DEFAULT 'unknown'");
-  }
+  // 4. sessions.adapter + telemetry.adapter (REC-12)
+  ensureAdapterColumns(db);
 
-  // 5. telemetry.adapter (table may not exist in v2 databases — guard)
-  const telemetryCols = db.pragma('table_info(telemetry)') as Array<{ name: string }>;
-  if (telemetryCols.length > 0 && !telemetryCols.some(c => c.name === 'adapter')) {
-    db.exec("ALTER TABLE telemetry ADD COLUMN adapter TEXT DEFAULT 'unknown'");
-  }
-
-  // 6. idx_obs_consumed index
+  // 5. idx_obs_consumed index
   db.exec('CREATE INDEX IF NOT EXISTS idx_obs_consumed ON observations(project, consumed, timestamp_epoch DESC)');
 }
 
@@ -353,6 +374,14 @@ function migrateV1toV2(db: Database): void {
  *   0 — fresh DB (no tables) or legacy DB (pre-versioning, has tables)
  *   1 — reserved (unused currently)
  *   2 — current (all migrations applied)
+ *
+ * REC-13: Dual version tracking
+ * Both `PRAGMA user_version` and `schema_versions` table are needed:
+ *   - `PRAGMA user_version = 2` — fast O(1) check on every DB open (runMigrations hot path)
+ *   - `schema_versions.version = 300` — semantic version for cross-version detection
+ *     (detectV2Database, verifyMigration, migrateFromV2)
+ * user_version gates incremental ALTER migrations; schema_versions gates data migrations
+ * and cross-install compatibility checks.
  */
 export function runMigrations(db: Database): void {
   const row = db.pragma('user_version') as Array<{ user_version: number }>;

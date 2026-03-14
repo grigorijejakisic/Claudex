@@ -175,11 +175,14 @@ export async function enrichCheckpoint(
     for (const field of ['decisions', 'open_items', 'learnings'] as const) {
       const arr = enriched[field];
       if (Array.isArray(arr)) {
-        (enriched as Record<string, unknown>)[field] = arr.map((item: unknown) =>
-          typeof item === 'string' && item.length > MAX_ITEM_LENGTH
-            ? item.slice(0, MAX_ITEM_LENGTH)
-            : item
-        );
+        (enriched as Record<string, unknown>)[field] = arr
+          .filter((item: unknown) => typeof item === 'string')
+          .slice(0, 50)
+          .map((item: string) =>
+            item.length > MAX_ITEM_LENGTH
+              ? item.slice(0, MAX_ITEM_LENGTH)
+              : item
+          );
       }
     }
     if (Array.isArray(enriched.key_exchanges)) {

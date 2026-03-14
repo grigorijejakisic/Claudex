@@ -337,14 +337,16 @@ export function assembleFullContext(params: FullAssemblyParams): InjectPayload {
       const reclaimBudget = budget + Math.floor((preRedactionLength - postRedactionLength) / 4);
 
       // Re-attempt skipped sections in priority order
+      // REC-17: continue on validation failure so smaller candidates are still tried
       skipped.sort((a, b) => a.priority - b.priority);
       for (const { section, name } of skipped) {
         const cost = estimateTokens(section);
         if (cost <= reclaimBudget) {
           content += '\n\n' + redactContent(section);
           sources.push(name);
-          break; // Only reclaim one section to avoid over-budget
+          break; // Successful reclaim — stop to avoid over-budget
         }
+        // cost > reclaimBudget — this candidate is too large, try next (smaller) one
       }
     }
 

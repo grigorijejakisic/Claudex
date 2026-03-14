@@ -184,9 +184,8 @@ export function trackAfterTool(
  * Create a thread tracker and record an after-turn event.
  * Used by Stop (CC) and onTurnEnd (bridge).
  *
- * R19: See trackAfterTool comment — intentional single-event semantics.
- * ThreadTracker loads persisted state from DB on construction, ensuring
- * cross-event continuity without in-memory caching.
+ * R19: ThreadTracker is re-instantiated per hook call. State continuity is via DB,
+ * not in-memory caching.
  */
 export function trackAfterTurn(
   db: Database.Database,

@@ -153,7 +153,7 @@ function validateConfig(config: ClaudexConfig): ClaudexConfig {
 function validateNumericRanges(config: ClaudexConfig, defaults: ClaudexConfig): void {
   // Helper: clamp to finite positive integer with optional max
   const posInt = (val: number, def: number, max?: number): number => {
-    if (!Number.isFinite(val) || val <= 0) return def;
+    if (!Number.isInteger(val) || val <= 0) return def;
     if (max !== undefined && val > max) return def;
     return val;
   };

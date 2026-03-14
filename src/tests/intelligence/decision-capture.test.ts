@@ -501,6 +501,7 @@ describe('decision capture', () => {
         mode: 'after_turn',
       });
 
+      // REC-03: Second capture with same fingerprint is now deduped cross-session
       const result2 = await captureDecisions({
         db,
         sessionId: 'fp-sess-2',
@@ -510,14 +511,16 @@ describe('decision capture', () => {
       });
 
       expect(result1.length).toBeGreaterThanOrEqual(1);
-      expect(result2.length).toBeGreaterThanOrEqual(1);
+      // REC-03: result2 should be empty — fingerprint dedup catches cross-session duplicates
+      expect(result2.length).toBe(0);
 
       const stored1 = getDecisionsBySession(db, 'fp-sess-1');
-      const stored2 = getDecisionsBySession(db, 'fp-sess-2');
+      expect(stored1.length).toBeGreaterThanOrEqual(1);
 
-      // After redaction, both texts should produce the same fingerprint
-      // because the secret part is replaced with [REDACTED_SECRET]
-      expect(stored1[0].fingerprint).toBe(stored2[0].fingerprint);
+      // After redaction, the fingerprint should reflect the redacted content
+      // (both secret values produce the same redacted output)
+      const stored2 = getDecisionsBySession(db, 'fp-sess-2');
+      expect(stored2.length).toBe(0);
     });
   });
 

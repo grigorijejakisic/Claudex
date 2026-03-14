@@ -286,8 +286,8 @@ export async function writeCheckpoint(
         topic: threadState?.topic ?? null,
         summary: threadState?.summary ?? null,
         key_exchanges: (threadState?.key_exchanges ?? []).filter(
-          (ex: { role: string }) => ex.role !== '__cooldown'
-        ),
+          (ex: unknown) => ex && typeof ex === 'object' && typeof (ex as Record<string, unknown>).role === 'string' && (ex as Record<string, unknown>).role !== '__cooldown'
+        ) as Array<{ role: string; gist: string }>,
       },
       open_items: openItems,
       learnings: topLearnings.map((l) => l.content),

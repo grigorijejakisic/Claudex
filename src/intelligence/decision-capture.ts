@@ -158,6 +158,12 @@ export async function captureDecisions(params: {
 
     if (candidates.length === 0) return [];
 
+    // REC-25: Cap candidates BEFORE embedding to bound batch size
+    const MAX_CANDIDATES_PER_TURN = 20;
+    if (candidates.length > MAX_CANDIDATES_PER_TURN) {
+      candidates = candidates.slice(0, MAX_CANDIDATES_PER_TURN);
+    }
+
     // Stage 2: Embedding classification filter (when classifier provided)
     if (classifier) {
       const texts = candidates.map(c => c.content);
@@ -193,10 +199,17 @@ export async function captureDecisions(params: {
       const batchDup = stored.some((s) => isDuplicate(candidate.content, s.content));
       if (batchDup) continue;
 
-      // Store — redact content before fingerprinting and storage (REC-14)
-      // Ensures sensitive tokens are not recoverable via fingerprint or stored content
+      // REC-03: Secondary fingerprint-based dedup — catches near-duplicates that
+      // pass the semantic window check but have identical normalized content
       const redacted = redactContent(candidate.content);
       const fingerprint = normalizeForDedup(redacted);
+      const fpExists = db.prepare(
+        'SELECT 1 FROM decisions WHERE fingerprint = ? AND project = ? LIMIT 1'
+      ).get(fingerprint, project);
+      if (fpExists) continue;
+
+      // Store — redact content before fingerprinting and storage (REC-14)
+      // Ensures sensitive tokens are not recoverable via fingerprint or stored content
       const insertedId = insertDecision(db, {
         session_id: sessionId,
         project,

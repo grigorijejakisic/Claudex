@@ -5,8 +5,6 @@
  */
 
 import * as path from 'path';
-import * as os from 'os';
-import * as fs from 'fs';
 import { openDatabase, closeDatabase } from '../../core/storage.js';
 import type { Database } from 'better-sqlite3';
 import { loadConfig } from '../../shared/config.js';
@@ -14,6 +12,7 @@ import type { ClaudexConfig } from '../../shared/config.js';
 import { detectProjectScope, getProjectId } from '../../shared/scope-detector.js';
 import { getDbPath } from '../../shared/paths.js';
 import { emitTelemetry } from '../../observability/telemetry.js';
+import { isPathSafe } from '../../gauge/token-gauge.js';
 
 /** Parsed CC hook stdin payload. */
 export interface HookInput {
@@ -149,42 +148,15 @@ export function bootstrapHook(input: HookInput): BootstrapResult {
 }
 
 /**
- * Validates that a transcript path is safe to read.
- * R21: Rejects UNC/device paths and paths outside the user's home directory.
- * Mirrors the isPathSafe check from src/gauge/token-gauge.ts (C9).
- * @internal
- */
-function isTranscriptPathSafe(transcriptPath: string): boolean {
-  const resolved = path.resolve(transcriptPath);
-  // Reject UNC paths (\\server\share or //server/share)
-  if (resolved.startsWith('\\\\') || resolved.startsWith('//')) return false;
-  // Reject Windows device paths (\\.\ or \\?\)
-  if (resolved.startsWith('\\\\.\\') || resolved.startsWith('\\\\?\\')) return false;
-  // Must be under user's home directory
-  let normalizedResolved = resolved;
-  let home = os.homedir();
-  try {
-    if (process.platform === 'win32') {
-      normalizedResolved = fs.realpathSync.native(resolved);
-      home = fs.realpathSync.native(home);
-    }
-  } catch {
-    // If file doesn't exist yet or realpath fails, use the resolved path as-is
-  }
-  const rel = path.relative(home, normalizedResolved);
-  if (rel.startsWith('..') || path.isAbsolute(rel)) return false;
-  return true;
-}
-
-/**
  * Extracts and validates transcript path from hook input. Non-throwing.
  * R21: Applies trust-boundary validation — rejects UNC, device, and out-of-home paths.
+ * REC-06: Uses shared isPathSafe from token-gauge.ts instead of duplicating validation.
  */
 export function getTranscriptPath(input: HookInput): string | undefined {
   try {
     const raw = (input.transcript_path as string) || (input.transcriptPath as string);
     if (!raw) return undefined;
-    if (!isTranscriptPathSafe(raw)) return undefined;
+    if (!isPathSafe(raw)) return undefined;
     return raw;
   } catch {
     return undefined;

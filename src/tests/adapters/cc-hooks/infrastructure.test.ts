@@ -284,6 +284,54 @@ describe('wrapHook', () => {
     writeSpy.mockRestore();
   });
 
+  it('rejects missing session_id (fail-closed)', async () => {
+    mockStdinWithData('{"hook_event_name":"SessionStart","session_id":"","cwd":"/tmp"}');
+
+    const writeSpy = vi.spyOn(process.stdout, 'write').mockReturnValue(true);
+    const handler = vi.fn().mockResolvedValue({ ok: true });
+
+    const wrapped = wrapHook('TestHook', handler);
+    await wrapped();
+
+    expect(handler).not.toHaveBeenCalled();
+    const lastCall = writeSpy.mock.calls[writeSpy.mock.calls.length - 1][0] as string;
+    expect(JSON.parse(lastCall.trim())).toEqual({});
+
+    writeSpy.mockRestore();
+  });
+
+  it('rejects missing cwd (fail-closed)', async () => {
+    mockStdinWithData('{"hook_event_name":"SessionStart","session_id":"s1","cwd":""}');
+
+    const writeSpy = vi.spyOn(process.stdout, 'write').mockReturnValue(true);
+    const handler = vi.fn().mockResolvedValue({ ok: true });
+
+    const wrapped = wrapHook('TestHook', handler);
+    await wrapped();
+
+    expect(handler).not.toHaveBeenCalled();
+    const lastCall = writeSpy.mock.calls[writeSpy.mock.calls.length - 1][0] as string;
+    expect(JSON.parse(lastCall.trim())).toEqual({});
+
+    writeSpy.mockRestore();
+  });
+
+  it('rejects empty input (fail-closed)', async () => {
+    mockStdinWithData('{}');
+
+    const writeSpy = vi.spyOn(process.stdout, 'write').mockReturnValue(true);
+    const handler = vi.fn().mockResolvedValue({ ok: true });
+
+    const wrapped = wrapHook('TestHook', handler);
+    await wrapped();
+
+    expect(handler).not.toHaveBeenCalled();
+    const lastCall = writeSpy.mock.calls[writeSpy.mock.calls.length - 1][0] as string;
+    expect(JSON.parse(lastCall.trim())).toEqual({});
+
+    writeSpy.mockRestore();
+  });
+
   it('writes {} on handler error', async () => {
     mockStdinWithData('{"hook_event_name":"SessionStart","session_id":"s1","cwd":"/tmp"}');
 
