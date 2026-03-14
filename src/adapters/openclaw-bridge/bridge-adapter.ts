@@ -11,6 +11,7 @@ import { createSession } from '../../core/sessions.js';
 import { recoverFromDb } from '../../checkpoint/loader.js';
 import { pruneTelemetry, emitTelemetry } from '../../observability/telemetry.js';
 import { assembleFullContext, assembleRegularPrompt } from '../../assembly/assembler.js';
+import { searchArtifacts, materializeArtifacts } from '../../core/artifacts.js';
 import { getIdentityDir } from '../../shared/paths.js';
 import { getCheckpointTracking, clearPostCompactPending } from '../../core/checkpoint-tracking.js';
 import { getTokenGauge } from '../../gauge/token-gauge.js';
@@ -308,6 +309,17 @@ export function createBridgeCallbacks(bctx: BridgeContext): ClaudexBridge {
 
         // Persist topic update to thread_state when shift detected
         persistTopicIfShifted(bctx.db, sessionId, topicShift);
+
+        // Materialize artifacts before assembly reads them (ARCH-002)
+        try {
+          const query = prompt || topicShift?.newTopic;
+          if (query) {
+            const matches = searchArtifacts(bctx.db, project, query, 10);
+            if (matches.length > 0) {
+              materializeArtifacts(bctx.db, matches.map(a => a.id));
+            }
+          }
+        } catch { /* non-fatal */ }
 
         const payload = assembleRegularPrompt({
           isPostCompaction,

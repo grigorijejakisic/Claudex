@@ -15,6 +15,7 @@ import { EmbeddingProvider } from '../../embeddings/embedding-provider.js';
 import { getIdentityDir } from '../../shared/paths.js';
 import { emitTelemetry } from '../../observability/telemetry.js';
 import { persistTopicIfShifted, captureFlowEntry } from '../shared/lifecycle.js';
+import { searchArtifacts, materializeArtifacts } from '../../core/artifacts.js';
 import { getCooldownState, setCooldownState } from '../../core/thread.js';
 
 const main = wrapHook('UserPromptSubmit', async (input, ctx) => {
@@ -72,6 +73,18 @@ const main = wrapHook('UserPromptSubmit', async (input, ctx) => {
   if (topicShift?.shifted) {
     captureFlowEntry(ctx.db, input.session_id, ctx.project);
   }
+
+  // Materialize artifacts matching the current prompt/topic BEFORE assembly reads them.
+  // Assembly is pure read-render; state updates happen here at the turn boundary (ARCH-002).
+  try {
+    const query = prompt || topicShift?.newTopic;
+    if (query) {
+      const matches = searchArtifacts(ctx.db, ctx.project, query, 10);
+      if (matches.length > 0) {
+        materializeArtifacts(ctx.db, matches.map(a => a.id));
+      }
+    }
+  } catch { /* non-fatal */ }
 
   const payload = assembleRegularPrompt({
     isPostCompaction,

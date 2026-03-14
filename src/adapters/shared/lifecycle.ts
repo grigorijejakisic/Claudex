@@ -501,20 +501,18 @@ export async function runCompactionSequence(params: CompactionParams): Promise<v
       sessionLearnings: [],
     });
 
-    // Create artifacts from learnings — non-throwing
+    // Create artifacts from learnings — deduped by artifact_ref to prevent
+    // compaction from duplicating all 50 learnings on every cycle (ARCH-004).
     try {
       const learnings = getLearningsByProject(params.db, params.project, { limit: 50 });
       for (const learning of learnings) {
-        createArtifact(
-          params.db,
-          params.sessionId,
-          params.project,
-          'learning',
-          String(learning.id),
-          learning.content.slice(0, 150),
-          learning.content,
-          4,
-        );
+        const ref = String(learning.id);
+        const exists = params.db.prepare(
+          "SELECT 1 FROM artifacts WHERE artifact_type = 'learning' AND artifact_ref = ? AND project = ? LIMIT 1"
+        ).get(ref, params.project);
+        if (!exists) {
+          createArtifact(params.db, params.sessionId, params.project, 'learning', ref, learning.content.slice(0, 150), learning.content, 4);
+        }
       }
     } catch {
       // Non-throwing — artifact creation must not break compaction
@@ -604,15 +602,8 @@ export async function runSessionEndCleanup(params: SessionEndParams): Promise<vo
   // Capture session summary before ending session
   captureSessionSummary(params.db, params.sessionId, params.project);
 
-  // Create artifacts from session decisions
-  try {
-    const decisions = getDecisionsBySession(params.db, params.sessionId, { limit: 5 });
-    for (const decision of decisions) {
-      createArtifact(params.db, params.sessionId, params.project, 'decision', String(decision.id), decision.content.slice(0, 100), decision.content, 3);
-    }
-  } catch {
-    // Non-throwing
-  }
+  // Decision artifacts are created at capture time in decision-capture.ts.
+  // Removed duplicate creation here to prevent double artifacts (ARCH-006).
 
   endSession(params.db, params.sessionId, 'completed');
 
