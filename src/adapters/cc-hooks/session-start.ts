@@ -1,20 +1,15 @@
 /**
  * SessionStart hook -> session_init event.
  * Creates session, recovers checkpoints, prunes telemetry, assembles full context.
- * Appends DB-first session context summary for session continuity.
  * @see Architecture Section 3.2
  */
 
 import { wrapHook } from './infrastructure.js';
 import { createSession } from '../../core/sessions.js';
 import { recoverFromDb } from '../../checkpoint/loader.js';
-import { emitInjectionTelemetry, pruneTelemetry } from '../../observability/telemetry.js';
+import { pruneTelemetry, emitTelemetry } from '../../observability/telemetry.js';
 import { assembleFullContext } from '../../assembly/assembler.js';
 import { getIdentityDir } from '../../shared/paths.js';
-import {
-  getSessionContext,
-  renderSessionContextSummary,
-} from '../../core/session-query.js';
 
 const main = wrapHook('SessionStart', async (input, ctx) => {
   createSession(ctx.db, {
@@ -23,7 +18,6 @@ const main = wrapHook('SessionStart', async (input, ctx) => {
     scope: ctx.scope ?? undefined,
     cwd: input.cwd,
     source: 'cc-hooks',
-    adapter: 'cc-hooks',
   });
 
   await recoverFromDb(ctx.db);
@@ -41,33 +35,22 @@ const main = wrapHook('SessionStart', async (input, ctx) => {
     projectDir: input.cwd,
     config: ctx.config,
     identityDir: getIdentityDir(),
-    sessionId: input.session_id,
   });
 
-  if (ctx.config.observability.enabled) {
-    emitInjectionTelemetry(ctx.db, input.session_id, {
-      trigger: 'session_start',
-      sectionsIncluded: payload.sources,
-      totalTokens: payload.tokenEstimate,
-      budgetTokens: ctx.config.injection.budget_tokens,
-    });
+  if (payload.tokenEstimate > 0) {
+    try {
+      emitTelemetry(ctx.db, input.session_id, 'injection', {
+        trigger: 'session_start' as const,
+        sections_included: payload.sources,
+        sections_skipped: [],
+        total_tokens: payload.tokenEstimate,
+        budget_remaining: ctx.config.injection.budget_tokens - payload.tokenEstimate,
+      });
+    } catch { /* non-fatal */ }
   }
 
-  // DB-first session context: append concise summary from DB queries
-  let dbContextSuffix = '';
-  try {
-    const sessionCtx = getSessionContext(ctx.db, ctx.project, input.session_id);
-    const rendered = renderSessionContextSummary(sessionCtx);
-    if (rendered) {
-      dbContextSuffix = '\n\n' + rendered;
-    }
-  } catch {
-    // Non-fatal — DB context is supplementary
-  }
-
-  const combined = (payload.content || '') + dbContextSuffix;
-  if (combined.trim()) {
-    return { additionalContext: combined };
+  if (payload.content) {
+    return { additionalContext: payload.content };
   }
   return {};
 });

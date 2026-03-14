@@ -35,18 +35,18 @@ function makeConfig(overrides?: Partial<ClaudexConfig['injection']> & { features
     version: 3,
     injection: {
       budget_tokens: 4000,
+      boundary_only: true,
       gauge_threshold: 0.70,
       topic_shift_budget: 800,
       ...overrides,
     },
     observations: { enabled: true, retention_days: 90, prune_threshold: 1000, prune_count: 50 },
-    checkpoint: { debounce_seconds: 60, compression: false, compaction_instructions: '' },
+    checkpoint: { debounce_seconds: 60 },
     learnings: { max_per_project: 50, surface_count: 10, publish_to_memory_md: false },
     enrichment: { enabled: false, provider: 'auto', ollama_base_url: '', ollama_model: 'auto', timeout_ms: 10000 },
-    embeddings: { enabled: false, provider: 'ollama', model: 'nomic-embed-text', ollama_base_url: '', topic_shift_threshold: 0.35, topic_shift_window: 3, decision_confidence_threshold: 0.15, jaccard_shift_threshold: 0.15 },
+    embeddings: { enabled: false, provider: 'ollama', model: 'nomic-embed-text', ollama_base_url: '', topic_shift_threshold: 0.35, topic_shift_window: 3, decision_confidence_threshold: 0.15 },
     observability: { enabled: false, retention_days: 7, retain_error_count: 1000 },
     gsd: { enabled: true, phase_boost: 0.10 },
-    context: { advisory_threshold: 0.50, warning_threshold: 0.65, critical_threshold: 0.80, checkpoint_cooldown_seconds: 120 },
     features: {
       observation_capture: true,
       checkpoint_system: true,
@@ -129,7 +129,7 @@ describe('assembleFullContext', () => {
     expect(result.tokenEstimate).toBeLessThanOrEqual(250); // some overhead
   });
 
-  it('uses full FTS5 mode when small content fits in remaining budget', () => {
+  it('activates reference mode when budget < 500 after priority 5', () => {
     const projDir = mkDir('ref-mode');
     const idDir = mkDir('ref-mode-id');
     writeFile(idDir, 'USER.md', 'A'.repeat(1600)); // ~400 tokens
@@ -141,7 +141,7 @@ describe('assembleFullContext', () => {
       importance: 4, files_modified: ['src/auth.ts'],
     });
 
-    // Budget 500: identity takes ~400, leaves ~100 -> small FTS5 content fits in full mode
+    // Budget 500: identity takes ~400, leaves < 500 -> reference mode
     const result = assembleFullContext({
       db, project: 'proj', projectDir: projDir,
       config: makeConfig({ budget_tokens: 500 }),
@@ -150,9 +150,10 @@ describe('assembleFullContext', () => {
     });
 
     expect(result.sources).toContain('identity');
-    // Small FTS5 content fits in full mode; if included, it uses ### headers
+    // If FTS5 made it in reference mode, it should have compact format
     if (result.content.includes('Relevant Observations')) {
-      expect(result.content).toContain('### Auth module');
+      // Reference mode: one-liner format, not ### headers
+      expect(result.content).not.toContain('### Auth module');
     }
   });
 
@@ -245,6 +246,46 @@ describe('assembleFullContext', () => {
     expect(result.tokenEstimate).toBeGreaterThan(0);
   });
 
+  it('skips identity and project when isPostCompaction is true', () => {
+    const projDir = mkDir('full-postcompact');
+    const idDir = mkDir('full-postcompact-id');
+    writeFile(idDir, 'USER.md', 'Test user identity');
+    writeFile(projDir, 'PROJECT_PRIMER.md', 'Test project primer');
+
+    // Seed learnings to verify non-skipped sections still included
+    upsertLearning(db, { project: 'proj', fingerprint: 'lpc2', content: 'Learning for postcompact' });
+
+    const result = assembleFullContext({
+      db, project: 'proj', projectDir: projDir, config: makeConfig(),
+      identityDir: idDir, isPostCompaction: true,
+    });
+
+    // Identity and project should be skipped
+    expect(result.sources).not.toContain('identity');
+    expect(result.sources).not.toContain('project');
+    expect(result.content).not.toContain('## Identity');
+    expect(result.content).not.toContain('## Project');
+
+    // Learnings should still be present
+    expect(result.sources).toContain('learnings');
+    expect(result.tokenEstimate).toBeGreaterThan(0);
+  });
+
+  it('includes identity and project when isPostCompaction is false/undefined', () => {
+    const projDir = mkDir('full-normal');
+    const idDir = mkDir('full-normal-id');
+    writeFile(idDir, 'USER.md', 'Test user identity');
+    writeFile(projDir, 'PROJECT_PRIMER.md', 'Test project primer');
+
+    const result = assembleFullContext({
+      db, project: 'proj', projectDir: projDir, config: makeConfig(),
+      identityDir: idDir,
+    });
+
+    expect(result.sources).toContain('identity');
+    expect(result.sources).toContain('project');
+  });
+
   it('sources array correctly tracks contributing sections', () => {
     const projDir = mkDir('sources');
     const idDir = mkDir('sources-id');
@@ -278,10 +319,14 @@ describe('assembleRegularPrompt', () => {
     db.close();
   });
 
-  it('returns full assembly on post-compaction', () => {
+  it('returns full assembly on post-compaction (skipping identity and project)', () => {
     const projDir = mkDir('reg-compact');
     const idDir = mkDir('reg-compact-id');
     writeFile(idDir, 'USER.md', 'User identity');
+    writeFile(projDir, 'PROJECT_PRIMER.md', 'Project primer');
+
+    // Seed a learning so the payload is non-empty
+    upsertLearning(db, { project: 'proj', fingerprint: 'lpc1', content: 'Post-compaction learning' });
 
     const result = assembleRegularPrompt({
       isPostCompaction: true, prompt: 'Hello',
@@ -290,7 +335,10 @@ describe('assembleRegularPrompt', () => {
       config: makeConfig(), identityDir: idDir,
     });
 
-    expect(result.sources).toContain('identity');
+    // Post-compaction skips identity and project (already in system prompt)
+    expect(result.sources).not.toContain('identity');
+    expect(result.sources).not.toContain('project');
+    expect(result.sources).toContain('learnings');
     expect(result.tokenEstimate).toBeGreaterThan(0);
   });
 
@@ -309,7 +357,7 @@ describe('assembleRegularPrompt', () => {
     expect(result.sources).toContain('topic_pivot');
   });
 
-  it('returns gauge injection at warning zone (75%)', () => {
+  it('returns gauge injection at >= 70% utilization', () => {
     const projDir = mkDir('reg-gauge');
 
     const gauge: TokenUsage = { inputTokens: 150000, outputTokens: 0, contextWindowTokens: 200000, utilization: 0.75 };
@@ -322,35 +370,18 @@ describe('assembleRegularPrompt', () => {
       config: makeConfig(),
     });
 
-    expect(result.content).toContain('Zone: warning');
-    expect(result.sources).toContain('pressure_response');
+    expect(result.content).toContain('Token Gauge');
+    expect(result.sources).toContain('gauge');
   });
 
-  it('returns gauge injection on normal turn (Upgrade 1: always-on gauge)', () => {
+  it('returns zero injection on normal turn', () => {
     const projDir = mkDir('reg-zero');
 
-    const gauge: TokenUsage = { inputTokens: 80000, outputTokens: 0, contextWindowTokens: 200000, utilization: 0.40 };
+    const gauge: TokenUsage = { inputTokens: 100000, outputTokens: 0, contextWindowTokens: 200000, utilization: 0.50 };
 
     const result = assembleRegularPrompt({
       isPostCompaction: false, prompt: 'Continue working',
       gauge,
-      topicShift: null,
-      db, project: 'proj', projectDir: projDir,
-      config: makeConfig(),
-    });
-
-    // Upgrade 1: gauge always fires when gauge data is available
-    expect(result.content).toContain('Zone: normal');
-    expect(result.sources).toContain('gauge');
-    expect(result.tokenEstimate).toBeGreaterThan(0);
-  });
-
-  it('returns zero injection when gauge is null', () => {
-    const projDir = mkDir('reg-null-gauge');
-
-    const result = assembleRegularPrompt({
-      isPostCompaction: false, prompt: 'Continue working',
-      gauge: null,
       topicShift: null,
       db, project: 'proj', projectDir: projDir,
       config: makeConfig(),
@@ -366,6 +397,9 @@ describe('assembleRegularPrompt', () => {
     const idDir = mkDir('reg-priority-compact-id');
     writeFile(idDir, 'USER.md', 'User identity');
 
+    // Seed a learning so post-compaction payload is non-empty
+    upsertLearning(db, { project: 'proj', fingerprint: 'lpri1', content: 'Priority learning' });
+
     const result = assembleRegularPrompt({
       isPostCompaction: true, prompt: 'switch to deployment',
       gauge: null,
@@ -374,8 +408,10 @@ describe('assembleRegularPrompt', () => {
       config: makeConfig(), identityDir: idDir,
     });
 
-    // Full assembly (has identity), not just pivot
-    expect(result.sources).toContain('identity');
+    // Post-compaction full assembly (not just pivot), but identity/project skipped
+    expect(result.sources).not.toContain('topic_pivot');
+    expect(result.sources).not.toContain('identity');
+    expect(result.sources).toContain('learnings');
   });
 
   it('prioritizes topic-shift over gauge', () => {
@@ -431,7 +467,7 @@ describe('assembleTopicPivot', () => {
       db, project: 'proj', config: makeConfig(),
     });
 
-    expect(result.content).toContain('Switching context: "auth" -> "deployment"');
+    expect(result.content).toContain('Switching context: auth -> deployment');
     expect(result.sources).toContain('topic_pivot');
     expect(result.tokenEstimate).toBeGreaterThan(0);
   });
