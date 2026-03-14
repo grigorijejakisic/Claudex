@@ -1,5 +1,15 @@
 /**
- * Priority-budgeted assembly orchestrator with three-tier degradation.
+ * Three-layer assembly orchestrator with legacy fallback.
+ *
+ * Primary path (artifact count >= 5):
+ *   Layer 1: Structural — identity, project, checkpoint, session flow
+ *   Layer 2: Reference — packed artifact summaries (metadata only)
+ *   Layer 3: Materialization — FTS5-selected full content with provenance
+ *
+ * Legacy fallback (artifact count < 5):
+ *   Budget-cascade with learnings, hot files, GSD, FTS5 observations, recent.
+ *   DEPRECATED — will be removed when artifact system is proven stable.
+ *
  * Boundary-only injection: full assembly at session-start and post-compaction only.
  * Topic-shift pivot and gauge injection for regular turns.
  * All public functions are non-throwing.
@@ -107,6 +117,9 @@ export function assembleFullContext(params: FullAssemblyParams): InjectPayload {
         sources.push('checkpoint');
       }
     }
+
+    // DEPRECATED: Legacy fallback sections (priorities 4-8) — superseded by artifact
+    // materialization layer. Will be removed when artifact system is proven stable.
 
     // Priority 4: Learnings (top 10)
     const learnings = getTopLearnings(params.db, params.project, 10);

@@ -1,7 +1,10 @@
 /**
- * 10 stateless section formatters for the assembly pipeline.
+ * Stateless section formatters for the assembly pipeline.
  * All are pure functions taking pre-fetched data, returning string | null.
  * All non-throwing (return null on error).
+ *
+ * Formatters marked @deprecated are part of the legacy budget-cascade and will
+ * be removed when the artifact materialization layer is proven stable.
  * @see Architecture Section 7.2
  */
 
@@ -86,6 +89,7 @@ export function formatCheckpointSection(checkpoint: CheckpointV3 | null): string
 
 /**
  * Priority 4: Cross-session learnings.
+ * @deprecated Superseded by artifact reference + materialization.
  */
 export function formatLearningsSection(learnings: LearningRow[]): string | null {
   try {
@@ -99,6 +103,7 @@ export function formatLearningsSection(learnings: LearningRow[]): string | null 
 
 /**
  * Priority 5: HOT files (pressure >= 0.851).
+ * @deprecated Superseded by artifact reference + materialization.
  */
 export function formatHotFilesSection(hotFiles: PressureRow[]): string | null {
   try {
@@ -150,6 +155,7 @@ function formatRelativeTime(epochSeconds: number): string {
 /**
  * Priority 7: FTS5 search results.
  * referenceMode=true produces compact one-line format.
+ * @deprecated Superseded by artifact materialization layer.
  */
 export function formatFts5Section(observations: ObservationRow[], referenceMode?: boolean): string | null {
   try {
@@ -176,6 +182,7 @@ export function formatFts5Section(observations: ObservationRow[], referenceMode?
 
 /**
  * Priority 8: Recent high-quality observations (always compact format).
+ * @deprecated Superseded by artifact materialization layer.
  */
 export function formatRecentSection(observations: ObservationRow[]): string | null {
   try {
