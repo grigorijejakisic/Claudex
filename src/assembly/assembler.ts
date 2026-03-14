@@ -28,6 +28,7 @@ import {
   formatRecentSection,
   formatGaugeSection,
   formatTopicPivotSection,
+  renderSessionContinuity,
 } from './sections.js';
 import { redactContent } from '../extraction/redaction.js';
 import { loadCheckpoint, loadFromFile } from '../checkpoint/loader.js';
@@ -36,6 +37,9 @@ import { getTopLearnings } from '../core/learnings.js';
 import { getHotFiles } from '../core/pressure.js';
 import { searchObservations, getObservationsByProject } from '../core/observations.js';
 import { readGsdState } from '../gsd/state-reader.js';
+import { getPressureZone } from '../shared/constants.js';
+import { getHandoffsDir, getSessionsDir } from '../shared/paths.js';
+import * as path from 'path';
 import type { Database } from 'better-sqlite3';
 import type { InjectPayload, TokenUsage } from '../shared/types.js';
 import type { ClaudexConfig } from '../shared/config.js';
@@ -85,8 +89,11 @@ export function assembleFullContext(params: FullAssemblyParams): InjectPayload {
     const skipped: Array<{ priority: number; section: string; name: string }> = [];
     let referenceMode = false;
 
-    // Priority 1: Identity (skip post-compaction — already in system prompt)
+    // Post-compaction skips identity, project, and session continuity sections —
+    // these are already in the LLM's context from the system prompt (CLAUDE.md, /starthere).
+    // Saves ~780 tokens per compaction recovery.
     if (!params.isPostCompaction) {
+      // Priority 1: Identity
       const identity = formatIdentitySection(params.identityDir);
       if (identity) {
         const cost = estimateTokens(identity);
@@ -96,10 +103,8 @@ export function assembleFullContext(params: FullAssemblyParams): InjectPayload {
           sources.push('identity');
         }
       }
-    }
 
-    // Priority 2: Project context (skip post-compaction — already in system prompt)
-    if (!params.isPostCompaction) {
+      // Priority 2: Project context
       const project = formatProjectSection(params.projectDir);
       if (project) {
         const cost = estimateTokens(project);
@@ -107,6 +112,23 @@ export function assembleFullContext(params: FullAssemblyParams): InjectPayload {
           sections.push(project);
           budget -= cost;
           sources.push('project');
+        }
+      }
+
+      // Priority 2.5: Session continuity (handoff + latest session log, compressed)
+      let handoffPath: string | undefined;
+      let sessionsDir: string | undefined;
+      try {
+        handoffPath = path.join(getHandoffsDir(params.projectDir), 'ACTIVE.md');
+        sessionsDir = getSessionsDir(params.projectDir);
+      } catch { /* non-fatal */ }
+      const continuity = renderSessionContinuity(handoffPath, sessionsDir);
+      if (continuity) {
+        const cost = estimateTokens(continuity);
+        if (cost <= budget) {
+          sections.push(continuity);
+          budget -= cost;
+          sources.push('session_continuity');
         }
       }
     }
@@ -302,8 +324,9 @@ export function assembleRegularPrompt(params: RegularPromptParams): InjectPayloa
       }
     }
 
-    // 3. Gauge injection at >= threshold
-    const gaugeSection = formatGaugeSection(params.gauge, params.config.injection.gauge_threshold);
+    // 3. Gauge injection at advisory+ pressure zone
+    const zone = params.gauge ? getPressureZone(params.gauge.utilization) : 'normal';
+    const gaugeSection = zone !== 'normal' ? formatGaugeSection(params.gauge) : null;
     if (gaugeSection) {
       return {
         content: gaugeSection,

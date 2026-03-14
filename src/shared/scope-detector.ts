@@ -117,5 +117,11 @@ function normalizePath(p: string): string {
   if (process.platform === 'win32') {
     normalized = normalized.toLowerCase();
   }
+  // R32: Strip trailing separators to prevent prefix-match edge cases
+  normalized = normalized.replace(/[/\\]+$/, '');
+  // REC-22: Protect filesystem roots from being corrupted to empty/incomplete strings
+  if (normalized === '' || /^[a-zA-Z]:$/.test(normalized)) {
+    normalized = normalized + path.sep;
+  }
   return normalized;
 }

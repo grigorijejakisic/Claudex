@@ -281,3 +281,17 @@ export class ThreadTracker {
     return this.summary;
   }
 }
+
+/**
+ * Persists a new topic to thread_state when a topic shift is detected.
+ * Standalone function so CC hooks can call it without instantiating a full ThreadTracker.
+ * Non-throwing.
+ */
+export function persistTopicUpdate(db: Database, sessionId: string, newTopic: string): void {
+  try {
+    const tracker = new ThreadTracker(db, sessionId);
+    tracker.updateTopic(newTopic);
+  } catch {
+    // Non-throwing
+  }
+}

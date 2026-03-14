@@ -8,10 +8,11 @@
 import type { Database } from 'better-sqlite3';
 import { insertDecision, getDecisionsBySession } from '../core/decisions.js';
 import { normalizeForDedup, isDuplicate } from './semantic-dedup.js';
+import { redactContent } from '../extraction/redaction.js';
 import type { EmbeddingProvider } from '../embeddings/embedding-provider.js';
 import type { DecisionTemplates } from '../embeddings/templates.js';
 import { classifyDecision } from '../embeddings/templates.js';
-import { redactContent } from '../extraction/redaction.js';
+import { createArtifact } from '../core/artifacts.js';
 
 export interface CapturedDecision {
   content: string;
@@ -196,13 +197,21 @@ export async function captureDecisions(params: {
       // Ensures sensitive tokens are not recoverable via fingerprint or stored content
       const redacted = redactContent(candidate.content);
       const fingerprint = normalizeForDedup(redacted);
-      insertDecision(db, {
+      const insertedId = insertDecision(db, {
         session_id: sessionId,
         project,
         content: redacted,
         source: candidate.source,
         fingerprint,
       });
+
+      if (insertedId !== null) {
+        try {
+          createArtifact(db, sessionId, project, 'decision', String(insertedId), candidate.content.slice(0, 100), candidate.content, candidate.tier >= 3 ? 4 : 3);
+        } catch {
+          // Non-throwing — artifact creation must not break decision capture
+        }
+      }
 
       stored.push(candidate);
     }

@@ -370,14 +370,14 @@ describe('assembleRegularPrompt', () => {
       config: makeConfig(),
     });
 
-    expect(result.content).toContain('Token Gauge');
+    expect(result.content).toContain('[Context:');
     expect(result.sources).toContain('gauge');
   });
 
   it('returns zero injection on normal turn', () => {
     const projDir = mkDir('reg-zero');
 
-    const gauge: TokenUsage = { inputTokens: 100000, outputTokens: 0, contextWindowTokens: 200000, utilization: 0.50 };
+    const gauge: TokenUsage = { inputTokens: 80000, outputTokens: 0, contextWindowTokens: 200000, utilization: 0.40 };
 
     const result = assembleRegularPrompt({
       isPostCompaction: false, prompt: 'Continue working',
@@ -467,7 +467,9 @@ describe('assembleTopicPivot', () => {
       db, project: 'proj', config: makeConfig(),
     });
 
-    expect(result.content).toContain('Switching context: auth -> deployment');
+    expect(result.content).toContain('Switching context:');
+    expect(result.content).toContain('auth');
+    expect(result.content).toContain('deployment');
     expect(result.sources).toContain('topic_pivot');
     expect(result.tokenEstimate).toBeGreaterThan(0);
   });

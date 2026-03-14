@@ -13,6 +13,8 @@ import {
   checkpointIfThresholdMet,
 } from '../shared/lifecycle.js';
 import { addJournalEntry } from '../../core/journal.js';
+import { createArtifact } from '../../core/artifacts.js';
+import { getObservationsByProject } from '../../core/observations.js';
 import type Database from 'better-sqlite3';
 
 /**
@@ -103,6 +105,17 @@ const main = wrapHook('PostToolUse', async (input, ctx) => {
     toolInput,
     toolOutput,
   });
+
+  // Create artifact from the just-captured observation (importance >= 3 only)
+  try {
+    const recent = getObservationsByProject(ctx.db, ctx.project, { limit: 1 });
+    const obs = recent[0];
+    if (obs && obs.session_id === input.session_id && obs.importance >= 3) {
+      createArtifact(ctx.db, input.session_id, ctx.project, 'observation', String(obs.id), obs.title, obs.content, obs.importance);
+    }
+  } catch {
+    // Non-throwing — artifact creation must never break tool processing
+  }
 
   // Milestone detection — capture significant tool outcomes
   captureMilestone(ctx.db, input.session_id, ctx.project, toolName, toolOutput);

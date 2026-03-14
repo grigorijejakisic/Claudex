@@ -61,6 +61,9 @@ export function getCoOccurrences(
     }
     if (!Array.isArray(files) || files.length === 0) return 0;
 
+    // REC-15: Cap file list to bound execution time
+    files = files.slice(0, 10);
+
     const start = Date.now();
     let total = 0;
 

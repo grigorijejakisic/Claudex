@@ -488,6 +488,16 @@ export async function runSessionEndCleanup(params: SessionEndParams): Promise<vo
   // Capture session summary before ending session
   captureSessionSummary(params.db, params.sessionId, params.project);
 
+  // Create artifacts from session decisions
+  try {
+    const decisions = getDecisionsBySession(params.db, params.sessionId, { limit: 5 });
+    for (const decision of decisions) {
+      createArtifact(params.db, params.sessionId, params.project, 'decision', String(decision.id), decision.content.slice(0, 100), decision.content, 3);
+    }
+  } catch {
+    // Non-throwing
+  }
+
   endSession(params.db, params.sessionId, 'completed');
 
   pruneTelemetry(params.db, {

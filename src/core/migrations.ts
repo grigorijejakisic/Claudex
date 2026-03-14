@@ -34,7 +34,9 @@ CREATE TABLE IF NOT EXISTS observations (
   timestamp_epoch INTEGER NOT NULL DEFAULT (unixepoch()),
   access_count INTEGER NOT NULL DEFAULT 0,
   last_accessed_at_epoch INTEGER,
-  deleted_at_epoch INTEGER DEFAULT NULL
+  deleted_at_epoch INTEGER DEFAULT NULL,
+  consumed INTEGER NOT NULL DEFAULT 0,
+  obs_type TEXT
 );
 
 -- FTS5 virtual table for full-text search on observations
@@ -85,6 +87,10 @@ CREATE INDEX IF NOT EXISTS idx_obs_project_active
 CREATE INDEX IF NOT EXISTS idx_obs_project_importance
   ON observations(project, deleted_at_epoch, importance);
 
+-- Consumed observations index (post-compaction filtering)
+CREATE INDEX IF NOT EXISTS idx_obs_consumed
+  ON observations(project, consumed, timestamp_epoch DESC);
+
 -- sessions
 CREATE TABLE IF NOT EXISTS sessions (
   session_id TEXT PRIMARY KEY,
@@ -96,7 +102,8 @@ CREATE TABLE IF NOT EXISTS sessions (
     CHECK (status IN ('active', 'completed', 'failed')),
   observation_count INTEGER NOT NULL DEFAULT 0,
   created_at_epoch INTEGER NOT NULL DEFAULT (unixepoch()),
-  ended_at_epoch INTEGER
+  ended_at_epoch INTEGER,
+  adapter TEXT DEFAULT 'unknown'
 );
 
 -- getActiveSession: WHERE status='active' AND project=? ORDER BY created_at_epoch DESC
@@ -203,6 +210,45 @@ CREATE INDEX IF NOT EXISTS idx_cpmeta_session
   ON checkpoint_meta(session_id, created_at_epoch DESC);
 CREATE INDEX IF NOT EXISTS idx_cpmeta_status
   ON checkpoint_meta(status, updated_at_epoch);
+
+-- session_journal: flow breadcrumbs, milestones, session summaries
+CREATE TABLE IF NOT EXISTS session_journal (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  session_id TEXT NOT NULL,
+  project TEXT NOT NULL,
+  entry_type TEXT NOT NULL CHECK (entry_type IN ('flow', 'milestone', 'summary')),
+  content TEXT NOT NULL,
+  timestamp_epoch INTEGER NOT NULL DEFAULT (unixepoch())
+);
+
+CREATE INDEX IF NOT EXISTS idx_journal_session
+  ON session_journal(session_id, timestamp_epoch DESC);
+CREATE INDEX IF NOT EXISTS idx_journal_project_type
+  ON session_journal(project, entry_type, timestamp_epoch DESC);
+
+-- artifacts: reference + materialization context model
+CREATE TABLE IF NOT EXISTS artifacts (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  session_id TEXT NOT NULL,
+  project TEXT NOT NULL,
+  artifact_type TEXT NOT NULL CHECK (artifact_type IN (
+    'observation', 'learning', 'decision', 'hot_file', 'flow', 'milestone'
+  )),
+  artifact_ref TEXT,
+  summary TEXT NOT NULL,
+  content TEXT,
+  state TEXT NOT NULL DEFAULT 'fresh'
+    CHECK (state IN ('fresh', 'packed', 'materialized')),
+  ttl INTEGER NOT NULL DEFAULT 3,
+  importance INTEGER NOT NULL DEFAULT 3 CHECK (importance BETWEEN 1 AND 5),
+  timestamp_epoch INTEGER NOT NULL DEFAULT (unixepoch()),
+  last_materialized_epoch INTEGER
+);
+
+CREATE INDEX IF NOT EXISTS idx_artifacts_project_state
+  ON artifacts(project, state, importance DESC, timestamp_epoch DESC);
+CREATE INDEX IF NOT EXISTS idx_artifacts_session
+  ON artifacts(session_id, timestamp_epoch DESC);
 `;
 
 /**
@@ -219,12 +265,112 @@ CREATE TABLE IF NOT EXISTS telemetry (
   )),
   detail TEXT NOT NULL DEFAULT '{}' CHECK (json_valid(detail)),
   latency_ms REAL,
-  timestamp_epoch INTEGER NOT NULL DEFAULT (unixepoch())
+  timestamp_epoch INTEGER NOT NULL DEFAULT (unixepoch()),
+  adapter TEXT DEFAULT 'unknown'
 );
 
 CREATE INDEX IF NOT EXISTS idx_telemetry_session ON telemetry(session_id, timestamp_epoch DESC);
 CREATE INDEX IF NOT EXISTS idx_telemetry_kind ON telemetry(event_kind, timestamp_epoch DESC);
 `;
+
+/**
+ * Checks whether a table exists in the database.
+ */
+function hasTable(db: Database, table: string): boolean {
+  const row = db.prepare("SELECT COUNT(*) as cnt FROM sqlite_master WHERE type='table' AND name=?").get(table) as { cnt: number };
+  return row.cnt > 0;
+}
+
+/**
+ * Checks whether a column exists on a table.
+ * Uses PRAGMA table_info for reliable detection.
+ */
+function hasColumn(db: Database, table: string, column: string): boolean {
+  const cols = db.pragma(`table_info(${table})`) as Array<{ name: string }>;
+  return cols.some(c => c.name === column);
+}
+
+/**
+ * Migrates a V1 (legacy, pre-versioning) database to V2 schema.
+ * All operations are idempotent — checks column existence before ALTER.
+ *
+ * Steps:
+ * 1. pressure_scores: last_accessed_epoch → last_touched_epoch
+ * 2. observations.consumed (INTEGER NOT NULL DEFAULT 0)
+ * 3. observations.obs_type (TEXT)
+ * 4. sessions.adapter (TEXT DEFAULT 'unknown')
+ * 5. telemetry.adapter (TEXT DEFAULT 'unknown')
+ * 6. idx_obs_consumed index
+ */
+function migrateV1toV2(db: Database): void {
+  // 1. pressure_scores: rename last_accessed_epoch → last_touched_epoch
+  if (hasTable(db, 'pressure_scores') && hasColumn(db, 'pressure_scores', 'last_accessed_epoch') && !hasColumn(db, 'pressure_scores', 'last_touched_epoch')) {
+    db.exec('ALTER TABLE pressure_scores ADD COLUMN last_touched_epoch INTEGER');
+    db.exec('UPDATE pressure_scores SET last_touched_epoch = last_accessed_epoch');
+  }
+
+  // 2. observations.consumed
+  if (!hasColumn(db, 'observations', 'consumed')) {
+    db.exec('ALTER TABLE observations ADD COLUMN consumed INTEGER NOT NULL DEFAULT 0');
+  }
+
+  // 3. observations.obs_type
+  if (!hasColumn(db, 'observations', 'obs_type')) {
+    db.exec('ALTER TABLE observations ADD COLUMN obs_type TEXT');
+  }
+
+  // 4. sessions.adapter
+  if (hasTable(db, 'sessions') && !hasColumn(db, 'sessions', 'adapter')) {
+    db.exec("ALTER TABLE sessions ADD COLUMN adapter TEXT DEFAULT 'unknown'");
+  }
+
+  // 5. telemetry.adapter (table may not exist in v2 databases — guard)
+  const telemetryCols = db.pragma('table_info(telemetry)') as Array<{ name: string }>;
+  if (telemetryCols.length > 0 && !telemetryCols.some(c => c.name === 'adapter')) {
+    db.exec("ALTER TABLE telemetry ADD COLUMN adapter TEXT DEFAULT 'unknown'");
+  }
+
+  // 6. idx_obs_consumed index
+  db.exec('CREATE INDEX IF NOT EXISTS idx_obs_consumed ON observations(project, consumed, timestamp_epoch DESC)');
+}
+
+/**
+ * PRAGMA user_version migration runner.
+ * Detects DB version and applies incremental migrations.
+ * Called by openDatabase() (hot path) and initializeSchema() (CLI/test path).
+ *
+ * Version map:
+ *   0 — fresh DB (no tables) or legacy DB (pre-versioning, has tables)
+ *   1 — reserved (unused currently)
+ *   2 — current (all migrations applied)
+ */
+export function runMigrations(db: Database): void {
+  const row = db.pragma('user_version') as Array<{ user_version: number }>;
+  const version = row[0]?.user_version ?? 0;
+
+  if (version >= 2) {
+    return; // Already current — no-op
+  }
+
+  if (version === 0) {
+    // Could be fresh DB or legacy DB created before versioning
+    const tables = (db.prepare("SELECT name FROM sqlite_master WHERE type='table'").all() as Array<{ name: string }>).map(t => t.name);
+
+    if (tables.includes('observations')) {
+      // Legacy DB — run all migrations from V1
+      migrateV1toV2(db);
+      db.pragma('user_version = 2');
+    }
+    // Fresh DB — no tables yet; initializeSchema() will create them and set version.
+    // Don't run CREATE TABLE here — that's initializeSchema()'s job.
+    return;
+  }
+
+  if (version === 1) {
+    migrateV1toV2(db);
+    db.pragma('user_version = 2');
+  }
+}
 
 /**
  * Upgrades v2 tables in-place when v3 opens the same database file.
@@ -260,12 +406,14 @@ function upgradeV2SchemaInPlace(db: Database): void {
  */
 export function initializeSchema(db: Database): void {
   upgradeV2SchemaInPlace(db);
+  runMigrations(db);
   db.exec(SCHEMA_V3);
   db.exec(TELEMETRY_SCHEMA);
 
   db.prepare('INSERT OR IGNORE INTO schema_versions (version) VALUES (?)').run(
     SCHEMA_VERSION
   );
+  db.pragma('user_version = 2');
 }
 
 /**

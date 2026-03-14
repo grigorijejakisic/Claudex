@@ -173,9 +173,8 @@ describe('onContext callback', () => {
     const ctx = createMockPiContext();
 
     const result = await bridge.onContext(ctx);
-    // Upgrade 1: gauge fires on every turn — returns gauge even at low utilization
-    expect(result).toBeDefined();
-    expect(result!.sources).toContain('gauge');
+    // At low utilization (normal zone), no gauge injection
+    expect(result).toBeUndefined();
   });
 
   it('uses native token usage from ctx.getContextUsage()', async () => {
