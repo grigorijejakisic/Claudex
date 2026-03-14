@@ -144,7 +144,18 @@ export function isPathSafe(targetPath: string): boolean {
       normalizedResolved = fs.realpathSync(resolved);
     }
   } catch {
-    // If file doesn't exist yet or realpath fails, use the resolved path as-is
+    // CROSS-006: File doesn't exist — resolve parent directory to catch symlink escapes.
+    // A symlinked directory under home pointing outside home would pass with the raw path.
+    const parent = path.dirname(resolved);
+    try {
+      const realParent = process.platform === 'win32'
+        ? fs.realpathSync.native(parent)
+        : fs.realpathSync(parent);
+      normalizedResolved = path.join(realParent, path.basename(resolved));
+    } catch {
+      // Parent also doesn't exist — reject as unsafe
+      return false;
+    }
   }
   const rel = path.relative(CACHED_HOME, normalizedResolved);
   if (rel.startsWith('..') || path.isAbsolute(rel)) return false;

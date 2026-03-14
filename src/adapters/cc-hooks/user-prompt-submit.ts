@@ -83,6 +83,7 @@ const main = wrapHook('UserPromptSubmit', async (input, ctx) => {
     projectDir: input.cwd,
     config: ctx.config,
     identityDir: getIdentityDir(),
+    sessionId: input.session_id,
   });
 
   if (isPostCompaction) {

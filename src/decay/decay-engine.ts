@@ -75,20 +75,23 @@ export function getCoOccurrences(
     const stmt = project != null
       ? cachedPrepare(db,
           `SELECT id FROM observations
-           WHERE id != ? AND deleted_at_epoch IS NULL AND project = ? AND files_modified LIKE ?
+           WHERE id != ? AND deleted_at_epoch IS NULL AND project = ? AND files_modified LIKE ? ESCAPE '\\'
            LIMIT 6`
         )
       : cachedPrepare(db,
           `SELECT id FROM observations
-           WHERE id != ? AND deleted_at_epoch IS NULL AND files_modified LIKE ?
+           WHERE id != ? AND deleted_at_epoch IS NULL AND files_modified LIKE ? ESCAPE '\\'
            LIMIT 6`
         );
 
     for (const file of files) {
       if (Date.now() - start > 100) return Math.min(seen.size, cap);
+      // CDX-DEC-001 fix: Escape LIKE wildcards in file names
+      const escapedFile = file.replace(/\\/g, '\\\\').replace(/%/g, '\\%').replace(/_/g, '\\_');
+      const pattern = `%"${escapedFile}"%`;
       const rows = project != null
-        ? stmt.all(observationId, project, `%"${file}"%`) as Array<{ id: number }>
-        : stmt.all(observationId, `%"${file}"%`) as Array<{ id: number }>;
+        ? stmt.all(observationId, project, pattern) as Array<{ id: number }>
+        : stmt.all(observationId, pattern) as Array<{ id: number }>;
       for (const row of rows) {
         seen.add(row.id);
       }
@@ -139,8 +142,14 @@ export function pruneObservations(
         files_modified: string;
       }>;
 
+    // CDX-DEC-002 fix: Cap candidates to avoid N+1 query explosion
+    const MAX_PRUNE_CANDIDATES = 200;
+    const cappedCandidates = candidates.length > MAX_PRUNE_CANDIDATES
+      ? candidates.slice(0, MAX_PRUNE_CANDIDATES)
+      : candidates;
+
     // Compute EI for each candidate
-    const scored = candidates.map((c) => ({
+    const scored = cappedCandidates.map((c) => ({
       id: c.id,
       ei: computeEI({
         importance: c.importance,

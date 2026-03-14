@@ -59,15 +59,28 @@ const SECRET_PATTERNS: Array<[RegExp, string]> = [
 const HEX_ONLY = /^[a-fA-F0-9]+$/;
 
 /**
+ * Known secret prefixes that should never be exempted as file paths.
+ * CDX-RED-001: Slash-heavy secrets (e.g. API keys containing `/`) could bypass
+ * base64 redaction if the path heuristic only counts `/` segments.
+ */
+const SECRET_PREFIXES = /^(?:sk-|key-|token-|Bearer\s)/i;
+
+/**
  * Heuristic: does this string look like a file path rather than base64?
  * File paths have multiple `/`-separated segments with readable names.
+ * CDX-RED-001: Also rejects strings that contain known secret prefixes or
+ * don't start with a path-like character (/, ., or drive letter).
  */
 function looksLikeFilePath(s: string): boolean {
+  // Never exempt strings that look like secrets
+  if (SECRET_PREFIXES.test(s)) return false;
+  // Require path-like start: /, ., drive letter (C:\), or <project>
+  const hasPathStart = /^[/.]/.test(s) || /^[A-Za-z]:[/\\]/.test(s) || s.startsWith('<project>');
+  // Dot-separated extensions (file.test.ts) — only if it starts like a path
+  if (hasPathStart && /\.[a-zA-Z]{1,4}$/.test(s)) return true;
+  // Multiple /-separated segments — only if it starts like a path
   const segments = s.split('/').filter(Boolean);
-  // Real base64 rarely has 3+ slash-separated segments of readable text
-  if (segments.length >= 3) return true;
-  // Dot-separated extensions (file.test.ts)
-  if (/\.[a-zA-Z]{1,4}$/.test(s)) return true;
+  if (hasPathStart && segments.length >= 3) return true;
   return false;
 }
 

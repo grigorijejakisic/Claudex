@@ -11,6 +11,7 @@ import { DEFAULT_CONFIG } from '../../../shared/constants.js';
 import type { ClaudexConfig } from '../../../shared/config.js';
 import { createBridgeCallbacks, mapTokenUsage } from '../../../adapters/openclaw-bridge/bridge-adapter.js';
 import type { BridgeContext } from '../../../adapters/openclaw-bridge/bridge-adapter.js';
+import { getProjectId } from '../../../shared/scope-detector.js';
 import type {
   BridgeInitContext,
   PiContext,
@@ -47,11 +48,11 @@ function createBctx(db: TestDatabase): BridgeContext {
   return {
     db,
     config: testConfig,
-    project: 'test-proj',
-    scope: null,
-    sessionId: 'test-s1',
-    cwd: '/tmp/test',
     adapter: 'openclaw' as const,
+    lastSessionId: 'test-s1',
+    lastCwd: '/tmp/test',
+    lastProject: 'test-proj',
+    lastScope: null,
   };
 }
 
@@ -136,17 +137,17 @@ describe('onInit callback', () => {
     }
   });
 
-  it('updates bctx.sessionId and bctx.cwd from init context', async () => {
+  it('updates bctx.lastSessionId and bctx.lastCwd from init context', async () => {
     const bctx = createBctx(db);
-    bctx.sessionId = '';
-    bctx.cwd = '';
+    bctx.lastSessionId = '';
+    bctx.lastCwd = '';
     const bridge = createBridgeCallbacks(bctx);
     const initCtx: BridgeInitContext = { sessionKey: 'new-session', cwd: '/new/cwd' };
 
     await bridge.onInit(initCtx);
 
-    expect(bctx.sessionId).toBe('new-session');
-    expect(bctx.cwd).toBe('/new/cwd');
+    expect(bctx.lastSessionId).toBe('new-session');
+    expect(bctx.lastCwd).toBe('/new/cwd');
   });
 });
 
@@ -220,6 +221,21 @@ describe('onContext callback', () => {
     const tracking = getCheckpointTracking(db, 'test-s1');
     expect(tracking?.post_compact_pending).toBe(0);
   });
+
+  it('uses ctx.sessionKey instead of shared bctx state (CROSS-001)', async () => {
+    const bctx = createBctx(db);
+    // Set lastSessionId to a DIFFERENT value to prove onContext uses ctx, not bctx
+    bctx.lastSessionId = 'stale-session';
+    bctx.lastCwd = '/stale/cwd';
+    const bridge = createBridgeCallbacks(bctx);
+    const ctx = createMockPiContext({ sessionKey: 'test-s1', cwd: '/tmp/test' });
+
+    // Should use ctx.sessionKey='test-s1' not bctx.lastSessionId='stale-session'
+    const result = await bridge.onContext(ctx);
+    expect(result === undefined || (result && 'content' in result)).toBe(true);
+    // bctx.lastSessionId should NOT have been mutated by onContext
+    expect(bctx.lastSessionId).toBe('stale-session');
+  });
 });
 
 describe('onToolResult callback', () => {
@@ -265,9 +281,11 @@ describe('onToolResult callback', () => {
 
     await bridge.onToolResult(ctx);
 
+    // Project is derived from ctx.cwd by the callback (CROSS-001 fix)
+    const derivedProject = getProjectId('/tmp/test');
     const allFiles = db
       .prepare('SELECT * FROM pressure_scores WHERE project = ?')
-      .all('test-proj');
+      .all(derivedProject);
     expect(allFiles.length).toBeGreaterThan(0);
   });
 
@@ -519,11 +537,11 @@ describe('Error handling', () => {
     const bctx: BridgeContext = {
       db: closedDb,
       config: testConfig,
-      project: 'test-proj',
-      scope: null,
-      sessionId: 'test-s1',
-      cwd: '/tmp/test',
       adapter: 'openclaw' as const,
+      lastSessionId: 'test-s1',
+      lastCwd: '/tmp/test',
+      lastProject: 'test-proj',
+      lastScope: null,
     };
 
     const bridge = createBridgeCallbacks(bctx);
@@ -559,11 +577,11 @@ describe('Error handling', () => {
     const errorBctx: BridgeContext = {
       db: closedDb,
       config: testConfig,
-      project: 'test-proj',
-      scope: null,
-      sessionId: 'test-s1',
-      cwd: '/tmp/test',
       adapter: 'openclaw' as const,
+      lastSessionId: 'test-s1',
+      lastCwd: '/tmp/test',
+      lastProject: 'test-proj',
+      lastScope: null,
     };
     const errorBridge = createBridgeCallbacks(errorBctx);
 

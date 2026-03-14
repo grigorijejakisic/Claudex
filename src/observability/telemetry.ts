@@ -44,39 +44,44 @@ export function pruneTelemetry(
   db: Database,
   opts?: { retentionDays?: number; retainErrorCount?: number }
 ): number {
-  const retentionDays =
-    opts?.retentionDays ?? DEFAULT_CONFIG.observability.retention_days;
-  const retainErrorCount =
-    opts?.retainErrorCount ?? DEFAULT_CONFIG.observability.retain_error_count;
+  try {
+    const retentionDays =
+      opts?.retentionDays ?? DEFAULT_CONFIG.observability.retention_days;
+    const retainErrorCount =
+      opts?.retainErrorCount ?? DEFAULT_CONFIG.observability.retain_error_count;
 
-  const cutoffEpoch = Math.floor(Date.now() / 1000) - retentionDays * 86400;
-  let totalPruned = 0;
+    const cutoffEpoch = Math.floor(Date.now() / 1000) - retentionDays * 86400;
+    let totalPruned = 0;
 
-  // 1. Delete non-error rows older than retention period
-  const ageResult = db
-    .prepare(
-      `DELETE FROM telemetry
-       WHERE timestamp_epoch < ? AND event_kind != 'error'`
-    )
-    .run(cutoffEpoch);
-  totalPruned += ageResult.changes;
+    // 1. Delete non-error rows older than retention period
+    const ageResult = db
+      .prepare(
+        `DELETE FROM telemetry
+         WHERE timestamp_epoch < ? AND event_kind != 'error'`
+      )
+      .run(cutoffEpoch);
+    totalPruned += ageResult.changes;
 
-  // 2. Delete error events beyond retain count (keep most recent N)
-  const errorResult = db
-    .prepare(
-      `DELETE FROM telemetry
-       WHERE event_kind = 'error'
-         AND id NOT IN (
-           SELECT id FROM telemetry
-           WHERE event_kind = 'error'
-           ORDER BY timestamp_epoch DESC
-           LIMIT ?
-         )`
-    )
-    .run(retainErrorCount);
-  totalPruned += errorResult.changes;
+    // 2. Delete error events beyond retain count (keep most recent N)
+    const errorResult = db
+      .prepare(
+        `DELETE FROM telemetry
+         WHERE event_kind = 'error'
+           AND id NOT IN (
+             SELECT id FROM telemetry
+             WHERE event_kind = 'error'
+             ORDER BY timestamp_epoch DESC
+             LIMIT ?
+           )`
+      )
+      .run(retainErrorCount);
+    totalPruned += errorResult.changes;
 
-  return totalPruned;
+    return totalPruned;
+  } catch {
+    // CDX-SUP-001: Non-throwing — consistent with all other functions in this module
+    return 0;
+  }
 }
 
 /**

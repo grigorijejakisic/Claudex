@@ -147,6 +147,11 @@ export function searchObservations(
 ): ObservationRow[] {
   const limit = opts?.limit ?? 100;
 
+  // CDX-COR-003: Sanitize FTS5 operator syntax to prevent query injection.
+  // FTS5 MATCH interprets *, ", (), etc. as operators — strip them.
+  const sanitized = query.replace(/[*"(){}[\]:^~!@#$%&|\\]/g, ' ').trim();
+  if (!sanitized) return [];
+
   const rows = cachedPrepare(db,
       `SELECT o.*, bm25(observations_fts) as bm25_rank
        FROM observations_fts fts
@@ -158,7 +163,7 @@ export function searchObservations(
        ORDER BY bm25(observations_fts)
        LIMIT ?`
     )
-    .all(query, project, limit) as Array<ObservationRow & { bm25_rank: number }>;
+    .all(sanitized, project, limit) as Array<ObservationRow & { bm25_rank: number }>;
 
   const nowEpoch = Date.now() / 1000;
 

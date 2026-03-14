@@ -108,6 +108,10 @@ export interface SessionEndParams {
 // Shared lifecycle functions
 // ---------------------------------------------------------------------------
 
+// CROSS-007: Module-level epoch guard to prevent tickArtifactTTL from firing
+// multiple times within the same turn (tool-heavy turns can have 10+ calls).
+let _lastTickEpoch = 0;
+
 /**
  * Process a tool observation and update file pressure scores.
  * Used by PostToolUse (CC) and onToolResult (bridge).
@@ -157,10 +161,15 @@ export function processToolAndPressure(params: ToolObservationParams): void {
     }
   }
 
-  // ARCH-003: Tick artifact TTL once per tool use.
-  // Idempotent within a turn (decrements by 1 max), so safe to call per tool call.
+  // CROSS-007: Tick artifact TTL once per turn, not per tool call.
+  // In tool-heavy turns with 10+ calls, ticking per call over-decrements TTL.
+  // Guard: skip if already ticked within the last 5 seconds (same turn).
   try {
-    tickArtifactTTL(params.db, params.project);
+    const now = Math.floor(Date.now() / 1000);
+    if (now - _lastTickEpoch >= 5) {
+      tickArtifactTTL(params.db, params.project);
+      _lastTickEpoch = now;
+    }
   } catch {
     // Non-throwing — artifact TTL tick must not break tool processing
   }

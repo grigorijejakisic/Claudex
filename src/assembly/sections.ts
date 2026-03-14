@@ -566,8 +566,11 @@ export function formatMaterializationLayer(
     const withContent = artifacts.filter((a) => a.content && a.content.trim().length > 0);
     if (withContent.length === 0) return null;
 
-    const rationaleStr = selectionRationale
-      ? ` (selected by: ${selectionRationale})`
+    const safeRationale = selectionRationale
+      ? sanitizeTopicText(selectionRationale, 100)
+      : undefined;
+    const rationaleStr = safeRationale
+      ? ` (selected by: ${safeRationale})`
       : '';
 
     const lines: string[] = [

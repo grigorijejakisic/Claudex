@@ -1,5 +1,5 @@
 /**
- * Tests for activate(): globalThis registration, session_end cleanup, DB lifecycle.
+ * Tests for activate()/deactivate(): globalThis registration, session_end cleanup, DB lifecycle.
  * Uses in-memory SQLite with initialized schema.
  */
 
@@ -8,7 +8,7 @@ import { vi } from 'vitest';
 import { initializeSchema } from '../../../core/migrations.js';
 import { BRIDGE_KEY } from '../../../adapters/openclaw-bridge/bridge-types.js';
 import type { OpenClawPluginApi, ClaudexBridge } from '../../../adapters/openclaw-bridge/bridge-types.js';
-import { activate } from '../../../adapters/openclaw-bridge/plugin-entry.js';
+import { activate, deactivate } from '../../../adapters/openclaw-bridge/plugin-entry.js';
 
 // Mock external dependencies that touch filesystem
 vi.mock('../../../shared/paths.js', () => ({
@@ -41,7 +41,7 @@ function getBridge(): ClaudexBridge | undefined {
 describe('activate() registration', () => {
   afterEach(() => {
     // Clean up globalThis between tests
-    (globalThis as any)[BRIDGE_KEY] = undefined;
+    deactivate();
   });
 
   it('registers bridge on globalThis[BRIDGE_KEY]', () => {
@@ -79,10 +79,10 @@ describe('activate() registration', () => {
 
 describe('activate() lifecycle', () => {
   afterEach(() => {
-    (globalThis as any)[BRIDGE_KEY] = undefined;
+    deactivate();
   });
 
-  it('session_end hook clears globalThis[BRIDGE_KEY]', async () => {
+  it('session_end hook does NOT clear globalThis (CROSS-002 fix)', async () => {
     const api = createMockApi();
     activate(api);
 
@@ -91,7 +91,8 @@ describe('activate() lifecycle', () => {
     // Call session_end handler
     await api.handlers['session_end']();
 
-    expect(getBridge()).toBeUndefined();
+    // Bridge should still be registered — DB stays open for subsequent sessions
+    expect(getBridge()).toBeDefined();
   });
 
   it('session_end hook does not throw', async () => {
@@ -101,11 +102,37 @@ describe('activate() lifecycle', () => {
     // session_end should be non-throwing
     await expect(api.handlers['session_end']()).resolves.not.toThrow();
   });
+
+  it('deactivate clears globalThis[BRIDGE_KEY]', () => {
+    const api = createMockApi();
+    activate(api);
+
+    expect(getBridge()).toBeDefined();
+
+    deactivate();
+
+    expect(getBridge()).toBeUndefined();
+  });
+
+  it('deactivate does not throw when called without activate', () => {
+    expect(() => deactivate()).not.toThrow();
+  });
+
+  it('deactivate is idempotent', () => {
+    const api = createMockApi();
+    activate(api);
+
+    deactivate();
+    expect(getBridge()).toBeUndefined();
+
+    // Second call should not throw
+    expect(() => deactivate()).not.toThrow();
+  });
 });
 
 describe('activate() graceful degradation', () => {
   afterEach(() => {
-    (globalThis as any)[BRIDGE_KEY] = undefined;
+    deactivate();
   });
 
   it('activate does not throw if getDbPath returns bad path', () => {
@@ -117,10 +144,10 @@ describe('activate() graceful degradation', () => {
 
 describe('full lifecycle integration', () => {
   afterEach(() => {
-    (globalThis as any)[BRIDGE_KEY] = undefined;
+    deactivate();
   });
 
-  it('activate -> onInit -> session_end completes without error', async () => {
+  it('activate -> onInit -> session_end -> bridge still alive (CROSS-002)', async () => {
     const api = createMockApi();
     activate(api);
 
@@ -130,10 +157,29 @@ describe('full lifecycle integration', () => {
     // onInit sets up session
     await bridge!.onInit({ sessionKey: 'integration-test', cwd: '/tmp/test' });
 
-    // session_end cleans up
+    // session_end does per-session cleanup
     await api.handlers['session_end']();
 
-    // globalThis cleaned up
+    // Bridge should still be registered for subsequent sessions
+    expect(getBridge()).toBeDefined();
+
+    // Explicit deactivate cleans up
+    deactivate();
     expect(getBridge()).toBeUndefined();
+  });
+
+  it('activate -> onInit -> session_end -> onInit works for second session', async () => {
+    const api = createMockApi();
+    activate(api);
+
+    const bridge = getBridge();
+    expect(bridge).toBeDefined();
+
+    // First session
+    await bridge!.onInit({ sessionKey: 'session-1', cwd: '/tmp/test' });
+    await api.handlers['session_end']();
+
+    // Second session should work (DB still open)
+    await expect(bridge!.onInit({ sessionKey: 'session-2', cwd: '/tmp/test' })).resolves.not.toThrow();
   });
 });

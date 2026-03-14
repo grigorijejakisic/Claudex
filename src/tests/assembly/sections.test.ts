@@ -641,10 +641,12 @@ describe('formatMaterializationLayer', () => {
     expect(result).toContain('Detailed analysis of the auth module.');
   });
 
-  it('includes selection rationale in header', () => {
+  it('includes selection rationale in header (sanitized)', () => {
     const artifacts = [makeArtifactRow('Test', 'decision', 'Content')];
     const result = formatMaterializationLayer(artifacts, 'FTS5 match on "auth"');
-    expect(result).toContain('selected by: FTS5 match on "auth"');
+    // CDX-ASM-001: rationale is now sanitized via sanitizeTopicText —
+    // double quotes become single quotes and result is wrapped in quotes
+    expect(result).toContain("selected by: \"FTS5 match on 'auth'\"");
   });
 
   it('includes freshness indicator (relative time)', () => {

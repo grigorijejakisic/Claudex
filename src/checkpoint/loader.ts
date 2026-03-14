@@ -62,7 +62,15 @@ function readCheckpointFile(filePath: string): string | null {
       const compressed = fs.readFileSync(filePath);
       // Fix 3: Gzip bomb guard — reject oversized compressed input
       if (compressed.length > MAX_COMPRESSED_BYTES) return null;
-      const decompressed = zlib.gunzipSync(compressed);
+      // CDX-CP-001 fix: Ratio guard — if compressed is so small that even MAX_RATIO
+      // expansion would exceed limits, the file is suspiciously high-ratio.
+      // Decompress with maxOutputLength to cap memory usage.
+      const MAX_RATIO = 100;
+      const maxOutput = Math.min(
+        MAX_DECOMPRESSED_BYTES,
+        compressed.length * MAX_RATIO
+      );
+      const decompressed = zlib.gunzipSync(compressed, { maxOutputLength: maxOutput });
       // Fix 3: Gzip bomb guard — reject oversized decompressed output
       if (decompressed.length > MAX_DECOMPRESSED_BYTES) return null;
       return decompressed.toString('utf-8');
@@ -77,7 +85,7 @@ function readCheckpointFile(filePath: string): string | null {
  * DB recovery at sessionInit: re-mirror committed rows, discard pending rows.
  * Non-throwing — silently skips errors per row.
  */
-export async function recoverFromDb(db: Database): Promise<void> {
+export async function recoverFromDb(db: Database, projectDir?: string): Promise<void> {
   try {
     // Re-mirror committed rows
     const committedRows = db
@@ -102,10 +110,15 @@ export async function recoverFromDb(db: Database): Promise<void> {
           // C1 fix: Validate mirror_path is within a checkpoints directory
           const resolvedMirror = path.resolve(mirrorPath);
           if (!isSafeBasename(path.basename(resolvedMirror))) continue;
-          // Ensure the resolved path is within its parent checkpoints directory
-          const mirrorParent = path.dirname(resolvedMirror);
-          if (!mirrorParent.split(path.sep).includes('checkpoints')) continue;
-          if (!isWithinDir(resolvedMirror, mirrorParent)) continue;
+          // CROSS-003 fix: Validate against trusted root, not file's own parent
+          if (projectDir) {
+            const trustedRoot = getCheckpointsDir(projectDir);
+            if (!isWithinDir(resolvedMirror, trustedRoot)) continue;
+          } else {
+            // Fallback: heuristic check that path contains a 'checkpoints' segment
+            const mirrorParent = path.dirname(resolvedMirror);
+            if (!mirrorParent.split(path.sep).includes('checkpoints')) continue;
+          }
 
           // Fix 6: Use JSON_SCHEMA for round-trip consistency
           const yamlContent = yaml.dump(checkpoint, { lineWidth: 120, noRefs: true, schema: yaml.JSON_SCHEMA });

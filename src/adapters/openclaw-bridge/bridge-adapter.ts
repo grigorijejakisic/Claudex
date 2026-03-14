@@ -1,6 +1,7 @@
 /**
  * Bridge adapter callbacks mapping Pi SDK events to core pipeline functions.
- * Persistent DB lifecycle (opened once in activate, closed in session_end).
+ * Persistent DB lifecycle (opened once in activate, closed via deactivate).
+ * Session-scoped state (sessionId, cwd, project, scope) derived per-callback from ctx.
  * @see Architecture Section 3.3
  */
 
@@ -59,18 +60,27 @@ export interface EmbeddingCache {
   topicShiftDetector: TopicShiftDetector;
 }
 
-/** Persistent context shared across all bridge callbacks. */
+/** Persistent context shared across all bridge callbacks.
+ * Only truly shared resources (DB, config) live here.
+ * Session-scoped state (sessionId, cwd, project, scope) is derived per-callback from ctx.
+ * lastSessionId/lastCwd/lastProject/lastScope are set by onInit solely for session_end
+ * (which receives no ctx).
+ */
 export interface BridgeContext {
   db: Database.Database;
   config: ClaudexConfig;
-  project: string;
-  scope: string | null;
-  sessionId: string;
-  cwd: string;
   /** Adapter identity for multi-adapter isolation. */
   adapter: 'openclaw';
   /** Cached embedding resources — reused across callbacks, invalidated on config change. */
   embeddingCache?: EmbeddingCache;
+  /** Last sessionId set by onInit — used only by session_end handler (which has no ctx). */
+  lastSessionId: string;
+  /** Last cwd set by onInit — used only by session_end handler (which has no ctx). */
+  lastCwd: string;
+  /** Last project set by onInit — used only by session_end handler. */
+  lastProject: string;
+  /** Last scope set by onInit — used only by session_end handler. */
+  lastScope: string | null;
 }
 
 /**
@@ -192,6 +202,7 @@ async function buildCachedClassifier(bctx: BridgeContext): Promise<{ provider: E
 
 /**
  * Creates the 5 bridge callbacks that map Pi SDK events to core pipeline calls.
+ * Each callback derives session-scoped state from its own ctx (not shared bctx).
  * Each callback is defensive non-throwing -- errors caught and logged via telemetry.
  */
 export function createBridgeCallbacks(bctx: BridgeContext): ClaudexBridge {
@@ -199,15 +210,19 @@ export function createBridgeCallbacks(bctx: BridgeContext): ClaudexBridge {
     async onInit(ctx: BridgeInitContext): Promise<InjectPayload | void> {
       const startMs = Date.now();
       try {
-        bctx.sessionId = ctx.sessionKey;
-        bctx.cwd = ctx.cwd;
-        bctx.scope = detectProjectScope(ctx.cwd);
-        bctx.project = getProjectId(ctx.cwd);
+        const project = getProjectId(ctx.cwd);
+        const scope = detectProjectScope(ctx.cwd);
+
+        // Store for session_end handler (which receives no ctx)
+        bctx.lastSessionId = ctx.sessionKey;
+        bctx.lastCwd = ctx.cwd;
+        bctx.lastProject = project;
+        bctx.lastScope = scope;
 
         createSession(bctx.db, {
           session_id: ctx.sessionKey,
-          project: bctx.project,
-          scope: bctx.scope ?? undefined,
+          project,
+          scope: scope ?? undefined,
           cwd: ctx.cwd,
           source: 'openclaw-bridge',
           adapter: 'openclaw',
@@ -224,7 +239,7 @@ export function createBridgeCallbacks(bctx: BridgeContext): ClaudexBridge {
 
         const payload = assembleFullContext({
           db: bctx.db,
-          project: bctx.project,
+          project,
           projectDir: ctx.cwd,
           config: bctx.config,
           identityDir: getIdentityDir(),
@@ -240,7 +255,7 @@ export function createBridgeCallbacks(bctx: BridgeContext): ClaudexBridge {
 
         return payload.content ? payload : undefined;
       } catch (e) {
-        emitTelemetry(bctx.db, bctx.sessionId, 'error', {
+        emitTelemetry(bctx.db, ctx.sessionKey, 'error', {
           subsystem: 'bridge:onInit',
           error: sanitizeErrorForTelemetry(e),
         }, undefined, 'openclaw');
@@ -251,10 +266,14 @@ export function createBridgeCallbacks(bctx: BridgeContext): ClaudexBridge {
     async onContext(ctx: PiContext): Promise<InjectPayload | void> {
       const startMs = Date.now();
       try {
+        const sessionId = ctx.sessionKey;
+        const cwd = ctx.cwd;
+        const project = getProjectId(cwd);
+
         const lastUserMsg = [...ctx.messages].reverse().find(m => m.role === 'user');
         const prompt = lastUserMsg?.content ?? '';
 
-        const tracking = getCheckpointTracking(bctx.db, bctx.sessionId);
+        const tracking = getCheckpointTracking(bctx.db, sessionId);
         const isPostCompaction = ctx.isPostCompaction ?? (tracking?.post_compact_pending === 1);
 
         const sdkUsage = ctx.getContextUsage();
@@ -274,7 +293,7 @@ export function createBridgeCallbacks(bctx: BridgeContext): ClaudexBridge {
               topicShift = await detector.detectTopicShift({
                 prompt,
                 db: bctx.db,
-                sessionId: bctx.sessionId,
+                sessionId,
                 config: {
                   topicShiftThreshold: bctx.config.embeddings.topic_shift_threshold,
                   topicShiftWindow: bctx.config.embeddings.topic_shift_window,
@@ -288,7 +307,7 @@ export function createBridgeCallbacks(bctx: BridgeContext): ClaudexBridge {
         }
 
         // Persist topic update to thread_state when shift detected
-        persistTopicIfShifted(bctx.db, bctx.sessionId, topicShift);
+        persistTopicIfShifted(bctx.db, sessionId, topicShift);
 
         const payload = assembleRegularPrompt({
           isPostCompaction,
@@ -296,19 +315,19 @@ export function createBridgeCallbacks(bctx: BridgeContext): ClaudexBridge {
           gauge,
           topicShift,
           db: bctx.db,
-          project: bctx.project,
-          projectDir: bctx.cwd,
+          project,
+          projectDir: cwd,
           config: bctx.config,
           identityDir: getIdentityDir(),
-          sessionId: bctx.sessionId,
+          sessionId,
         });
 
         if (isPostCompaction) {
-          clearPostCompactPending(bctx.db, bctx.sessionId);
+          clearPostCompactPending(bctx.db, sessionId);
         }
 
         const elapsed = Date.now() - startMs;
-        emitTelemetry(bctx.db, bctx.sessionId, 'hook_invocation', {
+        emitTelemetry(bctx.db, sessionId, 'hook_invocation', {
           hook: 'onContext',
           duration_ms: elapsed,
           result: payload.content ? 'inject' as const : 'skip' as const,
@@ -316,7 +335,7 @@ export function createBridgeCallbacks(bctx: BridgeContext): ClaudexBridge {
 
         return payload.content ? payload : undefined;
       } catch (e) {
-        emitTelemetry(bctx.db, bctx.sessionId, 'error', {
+        emitTelemetry(bctx.db, ctx.sessionKey, 'error', {
           subsystem: 'bridge:onContext',
           error: sanitizeErrorForTelemetry(e),
         }, undefined, 'openclaw');
@@ -327,20 +346,24 @@ export function createBridgeCallbacks(bctx: BridgeContext): ClaudexBridge {
     async onToolResult(ctx: PiToolResultContext): Promise<void> {
       const startMs = Date.now();
       try {
+        const sessionId = ctx.sessionKey;
+        const cwd = ctx.cwd;
+        const project = getProjectId(cwd);
+        const scope = detectProjectScope(cwd);
         const { toolName, toolInput, toolOutput } = ctx;
 
         processToolAndPressure({
           db: bctx.db,
-          sessionId: bctx.sessionId,
-          project: bctx.project,
-          cwd: bctx.cwd,
+          sessionId,
+          project,
+          cwd,
           toolName,
           toolInput,
           toolOutput,
         });
 
         // Thread tracking
-        trackAfterTool(bctx.db, bctx.sessionId, undefined, toolName, toolInput);
+        trackAfterTool(bctx.db, sessionId, undefined, toolName, toolInput);
 
         // Checkpoint threshold check
         const sdkUsage = ctx.getContextUsage();
@@ -352,22 +375,22 @@ export function createBridgeCallbacks(bctx: BridgeContext): ClaudexBridge {
 
         await checkpointIfThresholdMet({
           db: bctx.db,
-          sessionId: bctx.sessionId,
-          project: bctx.project,
-          cwd: bctx.cwd,
-          scope: bctx.scope ?? undefined,
+          sessionId,
+          project,
+          cwd,
+          scope: scope ?? undefined,
           config: bctx.config,
           gauge,
         });
 
         const elapsed = Date.now() - startMs;
-        emitTelemetry(bctx.db, bctx.sessionId, 'hook_invocation', {
+        emitTelemetry(bctx.db, sessionId, 'hook_invocation', {
           hook: 'onToolResult',
           duration_ms: elapsed,
           result: 'skip' as const,
         }, elapsed, 'openclaw');
       } catch (e) {
-        emitTelemetry(bctx.db, bctx.sessionId, 'error', {
+        emitTelemetry(bctx.db, ctx.sessionKey, 'error', {
           subsystem: 'bridge:onToolResult',
           error: sanitizeErrorForTelemetry(e),
         }, undefined, 'openclaw');
@@ -377,6 +400,10 @@ export function createBridgeCallbacks(bctx: BridgeContext): ClaudexBridge {
     async onTurnEnd(ctx: PiMessageEndContext): Promise<void> {
       const startMs = Date.now();
       try {
+        const sessionId = ctx.sessionKey;
+        const cwd = ctx.cwd;
+        const project = getProjectId(cwd);
+        const scope = detectProjectScope(cwd);
         const { lastAssistantText, lastUserText } = ctx;
 
         // Decision capture with optional embedding classifier (cached across calls)
@@ -384,8 +411,8 @@ export function createBridgeCallbacks(bctx: BridgeContext): ClaudexBridge {
 
         await captureDecisionsWithClassifier({
           db: bctx.db,
-          sessionId: bctx.sessionId,
-          project: bctx.project,
+          sessionId,
+          project,
           config: bctx.config,
           userText: lastUserText,
           assistantText: lastAssistantText,
@@ -393,7 +420,7 @@ export function createBridgeCallbacks(bctx: BridgeContext): ClaudexBridge {
         });
 
         // Thread tracking
-        trackAfterTurn(bctx.db, bctx.sessionId, lastUserText, lastAssistantText);
+        trackAfterTurn(bctx.db, sessionId, lastUserText, lastAssistantText);
 
         // Checkpoint threshold check
         const sdkUsage = ctx.getContextUsage();
@@ -405,22 +432,22 @@ export function createBridgeCallbacks(bctx: BridgeContext): ClaudexBridge {
 
         await checkpointIfThresholdMet({
           db: bctx.db,
-          sessionId: bctx.sessionId,
-          project: bctx.project,
-          cwd: bctx.cwd,
-          scope: bctx.scope ?? undefined,
+          sessionId,
+          project,
+          cwd,
+          scope: scope ?? undefined,
           config: bctx.config,
           gauge,
         });
 
         const elapsed = Date.now() - startMs;
-        emitTelemetry(bctx.db, bctx.sessionId, 'hook_invocation', {
+        emitTelemetry(bctx.db, sessionId, 'hook_invocation', {
           hook: 'onTurnEnd',
           duration_ms: elapsed,
           result: 'skip' as const,
         }, elapsed, 'openclaw');
       } catch (e) {
-        emitTelemetry(bctx.db, bctx.sessionId, 'error', {
+        emitTelemetry(bctx.db, ctx.sessionKey, 'error', {
           subsystem: 'bridge:onTurnEnd',
           error: sanitizeErrorForTelemetry(e),
         }, undefined, 'openclaw');
@@ -430,13 +457,18 @@ export function createBridgeCallbacks(bctx: BridgeContext): ClaudexBridge {
     async onCompact(ctx: PiCompactContext, _prep: PiCompactPrep, _runtime: PiRuntime): Promise<void> {
       const startMs = Date.now();
       try {
+        const sessionId = ctx.sessionKey;
+        const cwd = ctx.cwd;
+        const project = getProjectId(cwd);
+        const scope = detectProjectScope(cwd);
+
         const sdkUsage = ctx.getContextUsage();
         const nativeUsage = mapTokenUsage(sdkUsage);
         const gauge = getTokenGauge({
           capabilities: OPENCLAW_CAPABILITIES,
           nativeUsage,
         });
-        const gsd = readGsdState(bctx.cwd);
+        const gsd = readGsdState(cwd);
 
         const enrichProvider = await detectEnrichmentProvider({
           baseUrl: bctx.config.enrichment.ollama_base_url,
@@ -447,23 +479,23 @@ export function createBridgeCallbacks(bctx: BridgeContext): ClaudexBridge {
 
         await runCompactionSequence({
           db: bctx.db,
-          sessionId: bctx.sessionId,
-          project: bctx.project,
-          cwd: bctx.cwd,
-          scope: bctx.scope ?? undefined,
+          sessionId,
+          project,
+          cwd,
+          scope: scope ?? undefined,
           gauge: gauge ?? undefined,
           gsd: gsd ?? undefined,
           enrichmentProvider: enrichProvider ?? undefined,
         });
 
         const elapsed = Date.now() - startMs;
-        emitTelemetry(bctx.db, bctx.sessionId, 'hook_invocation', {
+        emitTelemetry(bctx.db, sessionId, 'hook_invocation', {
           hook: 'onCompact',
           duration_ms: elapsed,
           result: 'skip' as const,
         }, elapsed, 'openclaw');
       } catch (e) {
-        emitTelemetry(bctx.db, bctx.sessionId, 'error', {
+        emitTelemetry(bctx.db, ctx.sessionKey, 'error', {
           subsystem: 'bridge:onCompact',
           error: sanitizeErrorForTelemetry(e),
         }, undefined, 'openclaw');

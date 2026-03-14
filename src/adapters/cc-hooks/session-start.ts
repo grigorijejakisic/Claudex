@@ -20,7 +20,7 @@ const main = wrapHook('SessionStart', async (input, ctx) => {
     source: 'cc-hooks',
   });
 
-  await recoverFromDb(ctx.db);
+  await recoverFromDb(ctx.db, input.cwd);
 
   if (ctx.config.observability.enabled) {
     pruneTelemetry(ctx.db, {
@@ -35,6 +35,7 @@ const main = wrapHook('SessionStart', async (input, ctx) => {
     projectDir: input.cwd,
     config: ctx.config,
     identityDir: getIdentityDir(),
+    sessionId: input.session_id,
   });
 
   if (payload.tokenEstimate > 0) {

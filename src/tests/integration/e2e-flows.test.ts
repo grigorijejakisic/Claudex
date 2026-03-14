@@ -185,13 +185,14 @@ describe('OpenClaw Bridge E2E Flow', () => {
 
   it('full OpenClaw bridge lifecycle produces correct accumulated state', { timeout: 15000 }, async () => {
     const bctx: BridgeContext = {
-      db, config, project: 'test-project', scope: null, sessionId: '', cwd: '/test', adapter: 'openclaw' as const,
+      db, config, adapter: 'openclaw' as const,
+      lastSessionId: '', lastCwd: '/test', lastProject: '', lastScope: null,
     };
     const bridge = createBridgeCallbacks(bctx);
 
     // Step 1: onInit
     const initResult = await bridge.onInit({ sessionKey: 'oc-session-1', cwd: '/test' });
-    expect(bctx.sessionId).toBe('oc-session-1');
+    expect(bctx.lastSessionId).toBe('oc-session-1');
     const session = db.prepare('SELECT status FROM sessions WHERE session_id = ?').get('oc-session-1') as { status: string } | undefined;
     expect(session).toBeDefined();
     expect(session!.status).toBe('active');
@@ -219,7 +220,7 @@ describe('OpenClaw Bridge E2E Flow', () => {
     await bridge.onToolResult(toolCtx2);
 
     // Verify observations stored
-    const obs = getObservationsByProject(db, bctx.project);
+    const obs = getObservationsByProject(db, bctx.lastProject);
     expect(obs.length).toBeGreaterThanOrEqual(1);
 
     // Verify thread state populated

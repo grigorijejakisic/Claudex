@@ -24,6 +24,8 @@ import { classifyCategory } from './scoring.js';
 import { scoreImportance } from './scoring.js';
 import { classifyObservationType, applyTypePrior } from './type-classifier.js';
 import { insertObservation } from '../core/observations.js';
+import { CONTENT_MAX_CHARS } from '../shared/constants.js';
+import { truncateText } from '../shared/text-utils.js';
 
 /** Input for processToolObservation. */
 export interface ProcessToolObservationInput {
@@ -123,6 +125,13 @@ export function processToolObservation(input: ProcessToolObservationInput): numb
       // No files — dedup on tool+category+project+session+title+content+time window
       // (empty files_modified means tools like Bash; include title to avoid collapsing
       // different commands with identical output)
+      // CDX-EXT-001: Apply the same normalization that insertObservation applies before
+      // storage, so the dedup comparison matches what's actually in the DB.
+      const canonTitle = redactedTitle.replace(/\[REDACTED_\w+\]/g, '[REDACTED]');
+      const canonContent = truncateText(
+        redactedContent.replace(/\[REDACTED_\w+\]/g, '[REDACTED]'),
+        CONTENT_MAX_CHARS,
+      );
       existing = db
         .prepare(
           `SELECT id FROM observations
@@ -133,7 +142,7 @@ export function processToolObservation(input: ProcessToolObservationInput): numb
              AND deleted_at_epoch IS NULL
            LIMIT 1`
         )
-        .get(toolName, category, project, sessionId, redactedContent, redactedTitle, fiveMinutesAgo) as { id: number } | undefined;
+        .get(toolName, category, project, sessionId, canonContent, canonTitle, fiveMinutesAgo) as { id: number } | undefined;
     }
 
     if (existing) return null;
