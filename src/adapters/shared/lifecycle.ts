@@ -456,16 +456,16 @@ export async function buildDecisionClassifier(
 }
 
 /**
- * Capture user-side decisions (Tier 1 confirmations, Tier 3 rejections, Tier 4 markers)
- * from the user's prompt at submit time. CC's Stop hook doesn't receive user_prompt,
- * so this runs at UserPromptSubmit to capture what Stop would miss.
+ * Capture explicit decision markers (Tier 4 only: "DECISION:", "decided:", etc.)
+ * from the user's prompt at submit time. Tier 1 confirmations are intentionally
+ * NOT captured here — they're captured in the Stop hook where assistant text is
+ * available, so the confirmed CONTENT is stored instead of the raw "yes" message.
  * Non-throwing.
  */
-export async function captureDecisionsFromUserPrompt(params: {
+export async function captureExplicitDecisions(params: {
   db: Database.Database;
   sessionId: string;
   project: string;
-  config: ClaudexConfig;
   userText: string;
 }): Promise<void> {
   try {
@@ -474,7 +474,7 @@ export async function captureDecisionsFromUserPrompt(params: {
       sessionId: params.sessionId,
       project: params.project,
       userText: params.userText,
-      mode: 'after_tool', // Tier 1 + 4 only (no Tier 2 assistant scan)
+      mode: 'explicit_only',
     });
   } catch {
     // Non-throwing

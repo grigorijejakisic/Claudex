@@ -129,7 +129,7 @@ export async function captureDecisions(params: {
   project: string;
   userText?: string;
   assistantText?: string;
-  mode: 'after_turn' | 'after_tool';
+  mode: 'after_turn' | 'after_tool' | 'explicit_only';
   classifier?: {
     provider: EmbeddingProvider;
     templates: DecisionTemplates;
@@ -140,21 +140,26 @@ export async function captureDecisions(params: {
     const { db, sessionId, project, userText, assistantText, mode, classifier, confidenceThreshold = 0.15 } = params;
     let candidates: CapturedDecision[] = [];
 
-    // Stage 1: Tier extraction (always active)
+    // Stage 1: Tier extraction
 
-    // Tier 1: user confirmations (both modes)
-    if (userText) {
-      candidates.push(...extractTier1(userText, assistantText));
-    }
+    if (mode === 'explicit_only') {
+      // Tier 4 only — explicit markers from user text (UserPromptSubmit path)
+      if (userText) candidates.push(...extractTier4(userText));
+    } else {
+      // Tier 1: user confirmations (after_tool + after_turn)
+      if (userText) {
+        candidates.push(...extractTier1(userText, assistantText));
+      }
 
-    // Tier 4: explicit markers (both modes)
-    if (userText) candidates.push(...extractTier4(userText));
-    if (assistantText) candidates.push(...extractTier4(assistantText));
+      // Tier 4: explicit markers (after_tool + after_turn)
+      if (userText) candidates.push(...extractTier4(userText));
+      if (assistantText) candidates.push(...extractTier4(assistantText));
 
-    // Tier 2 + 3: full-turn only
-    if (mode === 'after_turn') {
-      if (assistantText) candidates.push(...extractTier2(assistantText));
-      if (userText) candidates.push(...extractTier3(userText));
+      // Tier 2 + 3: full-turn only
+      if (mode === 'after_turn') {
+        if (assistantText) candidates.push(...extractTier2(assistantText));
+        if (userText) candidates.push(...extractTier3(userText));
+      }
     }
 
     if (candidates.length === 0) return [];
