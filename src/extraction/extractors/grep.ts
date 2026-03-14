@@ -1,6 +1,5 @@
 /**
  * Grep tool extractor — pattern, matches, files.
- * @see Architecture Section 5.2
  */
 
 import { truncateText } from '../../shared/text-utils.js';
@@ -20,10 +19,11 @@ export function extractGrep(
     const pattern = String(input.pattern ?? '');
     if (!pattern) return null;
 
-    const matchCount = Number(output?.matchCount ?? 0);
+    const matchCount = Number(output?.matchCount ?? output?.numFiles ?? 0);
     const title = truncateText(`Grep: ${pattern} (${matchCount} matches)`, 120);
 
-    const files = Array.isArray(output?.files) ? output.files as string[] : [];
+    const rawFiles = output?.files ?? output?.filenames;
+    const files = Array.isArray(rawFiles) ? rawFiles as string[] : [];
     const matches = output?.matches;
 
     let content: string;

@@ -1,6 +1,5 @@
 /**
  * Core type system for CLAUDEXv3.
- * All types defined per Architecture Section 3.1.
  */
 
 /** Conversation message (for OpenClaw messageHistory). */
@@ -21,7 +20,6 @@ export interface TokenUsage {
 /**
  * Runtime capabilities — declared once per adapter at init.
  * Adapters declare what they can provide; core checks before using host-specific features.
- * @see Architecture Section 3.1
  */
 export interface RuntimeCapabilities {
   /** Can provide conversation messages (OpenClaw: yes, CC: no) */

@@ -1,7 +1,6 @@
 /**
  * Thread state CRUD — topic, summary, and key_exchanges tracking.
  * Plain functions with `db: Database` as first param.
- * @see Architecture Section 4.2 (thread_state table)
  */
 
 import type { Database } from 'better-sqlite3';
@@ -25,7 +24,9 @@ interface RawThreadStateRow {
 }
 
 /**
- * Creates or replaces thread state for a session.
+ * Creates or merges thread state for a session.
+ * Uses ON CONFLICT with COALESCE so omitted optional fields preserve
+ * existing values instead of being silently cleared.
  * JSON.stringifies key_exchanges for storage.
  */
 export function upsertThreadState(
@@ -38,8 +39,16 @@ export function upsertThreadState(
   }
 ): void {
   cachedPrepare(db,
-    `INSERT OR REPLACE INTO thread_state (session_id, topic, summary, key_exchanges, updated_at_epoch)
-     VALUES (?, ?, ?, ?, unixepoch())`
+    `INSERT INTO thread_state (session_id, topic, summary, key_exchanges, updated_at_epoch)
+     VALUES (?, ?, ?, ?, unixepoch())
+     ON CONFLICT(session_id) DO UPDATE SET
+       topic = COALESCE(excluded.topic, thread_state.topic),
+       summary = COALESCE(excluded.summary, thread_state.summary),
+       key_exchanges = CASE
+         WHEN excluded.key_exchanges = '[]' THEN thread_state.key_exchanges
+         ELSE excluded.key_exchanges
+       END,
+       updated_at_epoch = unixepoch()`
   ).run(
     state.session_id,
     state.topic ?? null,

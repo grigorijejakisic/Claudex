@@ -1,14 +1,13 @@
 /**
  * Config loading, validation, and defaults.
- * Defensive non-throwing (QUAL-01).
- * @see Architecture Section 11.1
+ * Defensive non-throwing.
  */
 
 import { getConfigPath } from './paths.js';
 import { readJsonFile } from './fs-helpers.js';
 import { DEFAULT_CONFIG } from './constants.js';
 
-/** Full config type matching Architecture Section 11.1 JSON schema. */
+/** Full config type. */
 export interface ClaudexConfig {
   schema: string;
   version: number;
@@ -68,11 +67,12 @@ export interface ClaudexConfig {
   adapter: string;
 }
 
-/** Returns the full default config object matching Architecture Section 11.1. Never throws. */
+/** Returns the full default config object. Never throws. */
 export function getDefaultConfig(): ClaudexConfig {
   try {
     return deepClone(DEFAULT_CONFIG) as ClaudexConfig;
   } catch {
+    // Non-throwing: if first clone fails (shouldn't happen), retry — caller always gets valid config
     return deepClone(DEFAULT_CONFIG) as ClaudexConfig;
   }
 }
@@ -90,6 +90,7 @@ export function loadConfig(): ClaudexConfig {
     const merged = deepMerge(getDefaultConfig() as unknown as Record<string, unknown>, loaded as unknown as Record<string, unknown>) as unknown as ClaudexConfig;
     return validateConfig(merged);
   } catch {
+    // Non-throwing: no DB access — caller handles missing config via getDefaultConfig() fallback
     return getDefaultConfig();
   }
 }
@@ -139,7 +140,7 @@ function validateConfig(config: ClaudexConfig): ClaudexConfig {
     }
   }
 
-  // R30: Semantic range validation for numeric fields
+  // Semantic range validation for numeric fields
   validateNumericRanges(config, defaults);
 
   return config;
@@ -148,7 +149,7 @@ function validateConfig(config: ClaudexConfig): ClaudexConfig {
 /**
  * Validates numeric config fields have sensible ranges.
  * Falls back to defaults for out-of-range values. Never throws.
- * R30: Ensures finiteness, non-negativity, and domain-specific bounds.
+ * Ensures finiteness, non-negativity, and domain-specific bounds.
  */
 function validateNumericRanges(config: ClaudexConfig, defaults: ClaudexConfig): void {
   // Helper: clamp to finite positive integer with optional max
@@ -214,7 +215,7 @@ function validateNumericRanges(config: ClaudexConfig, defaults: ClaudexConfig): 
 function deepMerge(defaults: Record<string, unknown>, overrides: Record<string, unknown>): Record<string, unknown> {
   const result = { ...defaults };
   for (const key of Object.keys(overrides)) {
-    if (!Object.hasOwn(defaults, key)) continue; // R28: strip unknown keys
+    if (!Object.hasOwn(defaults, key)) continue; // strip unknown keys
     const defaultVal = defaults[key];
     const overrideVal = overrides[key];
     if (

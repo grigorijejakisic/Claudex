@@ -1,6 +1,5 @@
 /**
  * Typed event detail interfaces for all 10 telemetry event kinds.
- * @see Architecture Section 10c (Telemetry event schemas)
  */
 
 export interface HookInvocationDetail {

@@ -1,32 +1,45 @@
 /**
  * SessionStart hook -> session_init event.
  * Creates session, recovers checkpoints, prunes telemetry, assembles full context.
- * @see Architecture Section 3.2
  */
 
 import { wrapHook } from './infrastructure.js';
 import { createSession } from '../../core/sessions.js';
 import { recoverFromDb } from '../../checkpoint/loader.js';
-import { pruneTelemetry, emitTelemetry } from '../../observability/telemetry.js';
+import { pruneTelemetry, emitTelemetry, sanitizeErrorForTelemetry } from '../../observability/telemetry.js';
 import { assembleFullContext } from '../../assembly/assembler.js';
 import { getIdentityDir } from '../../shared/paths.js';
 
 const main = wrapHook('SessionStart', async (input, ctx) => {
-  createSession(ctx.db, {
-    session_id: input.session_id,
-    project: ctx.project,
-    scope: ctx.scope ?? undefined,
-    cwd: input.cwd,
-    source: 'cc-hooks',
-  });
-
-  await recoverFromDb(ctx.db, input.cwd);
-
-  if (ctx.config.observability.enabled) {
-    pruneTelemetry(ctx.db, {
-      retentionDays: ctx.config.observability.retention_days,
-      retainErrorCount: ctx.config.observability.retain_error_count,
+  // Each operation isolated — if A fails, B and C still run
+  try {
+    createSession(ctx.db, {
+      session_id: input.session_id,
+      project: ctx.project,
+      scope: ctx.scope ?? undefined,
+      cwd: input.cwd,
+      source: 'cc-hooks',
+      adapter: 'cc-hooks',
     });
+  } catch (e) {
+    try { emitTelemetry(ctx.db, input.session_id, 'error', { subsystem: 'session_start/create', error: sanitizeErrorForTelemetry(e) }); } catch {}
+  }
+
+  try {
+    await recoverFromDb(ctx.db, input.cwd);
+  } catch (e) {
+    try { emitTelemetry(ctx.db, input.session_id, 'error', { subsystem: 'session_start/recover', error: sanitizeErrorForTelemetry(e) }); } catch {}
+  }
+
+  try {
+    if (ctx.config.observability.enabled) {
+      pruneTelemetry(ctx.db, {
+        retentionDays: ctx.config.observability.retention_days,
+        retainErrorCount: ctx.config.observability.retain_error_count,
+      });
+    }
+  } catch (e) {
+    try { emitTelemetry(ctx.db, input.session_id, 'error', { subsystem: 'session_start/prune_telemetry', error: sanitizeErrorForTelemetry(e) }); } catch {}
   }
 
   const payload = assembleFullContext({

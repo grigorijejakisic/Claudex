@@ -1,7 +1,6 @@
 /**
  * Auto-detect context window size from model name and observed tokens.
  * Pure function, no IO.
- * @see Architecture Section 7.4
  */
 
 /**

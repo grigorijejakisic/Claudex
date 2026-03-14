@@ -69,18 +69,18 @@ describe('loadConfig', () => {
 
   it('replaces entire section when section is an array instead of object', () => {
     mockReadJsonFile.mockReturnValue({
-      features: [1, 2, 3], // array instead of object
+      observability: [1, 2, 3], // array instead of object
     });
     const config = loadConfig();
-    expect(config.features).toEqual(getDefaultConfig().features);
+    expect(config.observability).toEqual(getDefaultConfig().observability);
   });
 
   it('replaces entire section when section is null', () => {
     mockReadJsonFile.mockReturnValue({
-      gsd: null,
+      context: null,
     });
     const config = loadConfig();
-    expect(config.gsd).toEqual(getDefaultConfig().gsd);
+    expect(config.context).toEqual(getDefaultConfig().context);
   });
 
   it('preserves valid override while fixing invalid sibling field', () => {
@@ -109,17 +109,15 @@ describe('loadConfig', () => {
     expect((config.injection as Record<string, unknown>)['unknown_field']).toBeUndefined();
   });
 
-  it('validates top-level fields: schema, version, adapter', () => {
+  it('validates top-level fields: schema, version', () => {
     mockReadJsonFile.mockReturnValue({
       schema: 123,        // number instead of string
       version: 'three',   // string instead of number
-      adapter: false,      // boolean instead of string
     });
     const config = loadConfig();
     const defaults = getDefaultConfig();
     expect(config.schema).toBe(defaults.schema);
     expect(config.version).toBe(defaults.version);
-    expect(config.adapter).toBe(defaults.adapter);
   });
 
   it('loads config with unicode values without corruption', () => {
@@ -149,11 +147,9 @@ describe('loadConfig', () => {
 
   it('handles config with unicode string values in all sections', () => {
     mockReadJsonFile.mockReturnValue({
-      adapter: 'адаптер',
       embeddings: { provider: '提供者' },
     });
     const config = loadConfig();
-    expect(config.adapter).toBe('адаптер');
     expect(config.embeddings.provider).toBe('提供者');
   });
 });

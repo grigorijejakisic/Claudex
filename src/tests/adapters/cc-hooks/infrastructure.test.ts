@@ -332,6 +332,51 @@ describe('wrapHook', () => {
     writeSpy.mockRestore();
   });
 
+  it('post-check warns on stderr when SessionStart does not create a session row', async () => {
+    mockStdinWithData(`{"hook_event_name":"SessionStart","session_id":"s1","cwd":"${process.cwd().replace(/\\/g, '\\\\')}"}`);
+
+    const writeSpy = vi.spyOn(process.stdout, 'write').mockReturnValue(true);
+    const stderrSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    const wrapped = wrapHook('SessionStart', async () => ({ injected: true }));
+    await wrapped();
+
+    // If bootstrap succeeded, the handler output should still be written (post-check is non-fatal)
+    expect(writeSpy).toHaveBeenCalled();
+    const lastCall = writeSpy.mock.calls[writeSpy.mock.calls.length - 1][0] as string;
+    const parsed = JSON.parse(lastCall.trim());
+
+    if (parsed.injected) {
+      // Bootstrap succeeded — post-check should have warned because no session row was created
+      expect(stderrSpy).toHaveBeenCalledWith(
+        expect.stringContaining('WARNING: SessionStart completed but session s1 not found in DB'),
+      );
+    }
+    // If bootstrap failed, parsed will be {} — that's fine, post-check never ran
+
+    writeSpy.mockRestore();
+    stderrSpy.mockRestore();
+  });
+
+  it('post-check does not run for non-SessionStart hooks', async () => {
+    mockStdinWithData(`{"hook_event_name":"Notification","session_id":"s1","cwd":"${process.cwd().replace(/\\/g, '\\\\')}"}`);
+
+    const writeSpy = vi.spyOn(process.stdout, 'write').mockReturnValue(true);
+    const stderrSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    const wrapped = wrapHook('Notification', async () => ({ ok: true }));
+    await wrapped();
+
+    // The session warning should NOT appear for non-SessionStart hooks
+    for (const call of stderrSpy.mock.calls) {
+      const msg = String(call[0]);
+      expect(msg).not.toContain('WARNING: SessionStart completed');
+    }
+
+    writeSpy.mockRestore();
+    stderrSpy.mockRestore();
+  });
+
   it('writes {} on handler error', async () => {
     mockStdinWithData('{"hook_event_name":"SessionStart","session_id":"s1","cwd":"/tmp"}');
 

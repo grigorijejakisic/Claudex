@@ -1,7 +1,6 @@
 /**
  * Checkpoint v3 schema interfaces, status types, and threshold constants.
  * No runtime logic — pure type definitions.
- * @see Architecture Section 8.1
  */
 
 import type { Database } from 'better-sqlite3';
@@ -54,7 +53,7 @@ export interface CheckpointDecision {
   timestamp: number;
 }
 
-/** Full schema v3 checkpoint. @see Architecture Section 8.1 */
+/** Full schema v3 checkpoint. */
 export interface CheckpointV3 {
   schema: 'claudex/checkpoint';
   version: 3;
@@ -78,9 +77,9 @@ export interface CheckpointV3 {
   open_items: string[];
   learnings: string[];
   gsd: unknown | null;
-  /** 1-2 line recitation: current task, step, what's next. @see Upgrade 10 */
+  /** 1-2 line recitation: current task, step, what's next. */
   current_objective?: string | null;
-  /** Verified facts that should not be re-checked. @see Upgrade 12 */
+  /** Verified facts that should not be re-checked. */
   verified_facts?: string[];
 }
 

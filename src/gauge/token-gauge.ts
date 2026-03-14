@@ -2,14 +2,13 @@
  * Capability-aware token utilization gauge.
  * Native SDK path (OpenClaw) or transcript JSONL tail-read (CC).
  * Non-throwing.
- * @see Architecture Section 7.4
  */
 
 import * as fs from 'fs';
 import * as path from 'path';
 import type { TokenUsage, RuntimeCapabilities } from '../shared/types.js';
 import { detectWindowSize } from './window-detector.js';
-// ARCH-001: isPathSafe moved to shared/fs-helpers.ts — re-export for backward compatibility.
+// isPathSafe moved to shared/fs-helpers.ts — re-export for backward compatibility.
 import { isPathSafe } from '../shared/fs-helpers.js';
 export { isPathSafe };
 
@@ -52,7 +51,7 @@ export function getTokenGauge(params: GetTokenGaugeParams): TokenUsage | null {
  */
 function readTranscriptTail(transcriptPath: string, model?: string): TokenUsage | null {
   try {
-    // C9: Validate transcript path — reject UNC, device, and out-of-home paths
+    // Validate transcript path — reject UNC, device, and out-of-home paths
     if (!isPathSafe(transcriptPath)) return null;
     const resolved = path.resolve(transcriptPath);
 

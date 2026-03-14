@@ -1,7 +1,6 @@
 /**
  * Pressure score accumulation, temperature transitions, and decay.
  * Plain functions with `db: Database` as first param.
- * @see Architecture Section 4.2 (pressure_scores table)
  */
 
 import type { Database } from 'better-sqlite3';
@@ -23,7 +22,7 @@ const HOT_THRESHOLD = 0.5;
  * Accumulates pressure for a file within a project.
  * On conflict, adds the increment to raw_pressure.
  * Sets temperature to HOT if raw_pressure exceeds threshold, else COLD.
- * QUAL-04: Scoped by (file_path, project) composite key.
+ * Scoped by (file_path, project) composite key.
  */
 export function updatePressureScore(
   db: Database,
@@ -50,7 +49,7 @@ export function updatePressureScore(
 
 /**
  * Returns HOT files for a project, ordered by raw_pressure DESC.
- * QUAL-04: Scoped by project and temperature.
+ * Scoped by project and temperature.
  */
 export function getHotFiles(
   db: Database,

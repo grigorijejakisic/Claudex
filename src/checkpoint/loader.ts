@@ -1,8 +1,7 @@
 /**
  * Two-layer checkpoint recovery: DB-first + file fallback.
- * Selective loading presets filter fields per Architecture Section 8.5.
+ * Selective loading presets filter fields by preset.
  * All public functions are non-throwing.
- * @see Architecture Section 8.4
  */
 
 import type { Database } from 'better-sqlite3';
@@ -10,8 +9,10 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as zlib from 'zlib';
 import * as yaml from 'js-yaml';
+import { emitTelemetry, sanitizeErrorForTelemetry } from '../observability/telemetry.js';
 import { atomicWriteFile, writeCompressedFile } from '../shared/fs-helpers.js';
 import { getCheckpointsDir } from '../shared/paths.js';
+import { hasFields } from '../shared/db-utils.js';
 import type {
   CheckpointV3,
   CheckpointMeta,
@@ -60,9 +61,9 @@ function readCheckpointFile(filePath: string): string | null {
   try {
     if (isCompressedPath(filePath)) {
       const compressed = fs.readFileSync(filePath);
-      // Fix 3: Gzip bomb guard — reject oversized compressed input
+      // Gzip bomb guard — reject oversized compressed input
       if (compressed.length > MAX_COMPRESSED_BYTES) return null;
-      // CDX-CP-001 fix: Ratio guard — if compressed is so small that even MAX_RATIO
+      // Ratio guard — if compressed is so small that even MAX_RATIO
       // expansion would exceed limits, the file is suspiciously high-ratio.
       // Decompress with maxOutputLength to cap memory usage.
       const MAX_RATIO = 100;
@@ -71,7 +72,7 @@ function readCheckpointFile(filePath: string): string | null {
         compressed.length * MAX_RATIO
       );
       const decompressed = zlib.gunzipSync(compressed, { maxOutputLength: maxOutput });
-      // Fix 3: Gzip bomb guard — reject oversized decompressed output
+      // Gzip bomb guard — reject oversized decompressed output
       if (decompressed.length > MAX_DECOMPRESSED_BYTES) return null;
       return decompressed.toString('utf-8');
     }
@@ -102,15 +103,15 @@ export async function recoverFromDb(db: Database, projectDir?: string): Promise<
         if (!row.data) continue;
 
         const checkpoint = JSON.parse(row.data);
-        // C11 fix: Validate DB-loaded JSON has required schema fields
-        if (!checkpoint || checkpoint.schema !== 'claudex/checkpoint' || !checkpoint.version) continue;
+        // Validate DB-loaded JSON has required schema fields
+        if (!checkpoint || !hasFields(checkpoint, ['schema', 'version']) || checkpoint.schema !== 'claudex/checkpoint' || !checkpoint.version) continue;
         const mirrorPath = row.mirror_path;
 
         if (mirrorPath) {
-          // C1 fix: Validate mirror_path is within a checkpoints directory
+          // Validate mirror_path is within a checkpoints directory
           const resolvedMirror = path.resolve(mirrorPath);
           if (!isSafeBasename(path.basename(resolvedMirror))) continue;
-          // CROSS-003 fix: Validate against trusted root, not file's own parent
+          // Validate against trusted root, not file's own parent
           if (projectDir) {
             const trustedRoot = getCheckpointsDir(projectDir);
             if (!isWithinDir(resolvedMirror, trustedRoot)) continue;
@@ -120,11 +121,11 @@ export async function recoverFromDb(db: Database, projectDir?: string): Promise<
             if (!mirrorParent.split(path.sep).includes('checkpoints')) continue;
           }
 
-          // Fix 6: Use JSON_SCHEMA for round-trip consistency
+          // Use JSON_SCHEMA for round-trip consistency
           const yamlContent = yaml.dump(checkpoint, { lineWidth: 120, noRefs: true, schema: yaml.JSON_SCHEMA });
           let writeOk: boolean;
 
-          // Fix 1: Use writeCompressedFile for .yaml.gz/.yml.gz paths
+          // Use writeCompressedFile for .yaml.gz/.yml.gz paths
           if (isCompressedPath(mirrorPath)) {
             writeOk = await writeCompressedFile(mirrorPath, yamlContent);
           } else {
@@ -137,7 +138,7 @@ export async function recoverFromDb(db: Database, projectDir?: string): Promise<
                WHERE checkpoint_id = ?`
             ).run(row.checkpoint_id);
 
-            // Fix 5: Track newest mirrored row per directory
+            // Track newest mirrored row per directory
             const dir = path.dirname(mirrorPath);
             const existing = mirroredDirs.get(dir);
             if (!existing || row.created_at_epoch > existing.epoch) {
@@ -150,7 +151,7 @@ export async function recoverFromDb(db: Database, projectDir?: string): Promise<
       }
     }
 
-    // Fix 5: Write per-directory latest.yaml (not just one global)
+    // Write per-directory latest.yaml (not just one global)
     for (const [dir, info] of mirroredDirs) {
       try {
         await atomicWriteFile(path.join(dir, 'latest.yaml'), `ref: ${info.basename}\n`);
@@ -181,13 +182,13 @@ export function loadFromFile(projectDir: string): CheckpointV3 | null {
       const match = latestContent.match(/ref:\s*(.+)/);
       if (match) {
         const refFile = match[1].trim();
-        // Fix 2: Path traversal guard on ref from latest.yaml
+        // Path traversal guard on ref from latest.yaml
         if (isSafeBasename(refFile)) {
           const refPath = path.resolve(checkpointsDir, refFile);
           if (isWithinDir(refPath, checkpointsDir)) {
             const content = readCheckpointFile(refPath);
             if (content) {
-              // Fix 6: Use JSON_SCHEMA to prevent type coercion
+              // Use JSON_SCHEMA to prevent type coercion
               const parsed = yaml.load(content, { schema: yaml.JSON_SCHEMA }) as CheckpointV3;
               if (parsed && parsed.schema === 'claudex/checkpoint') return parsed;
             }
@@ -219,9 +220,9 @@ export function loadFromFile(projectDir: string): CheckpointV3 | null {
         try {
           const content = readCheckpointFile(path.join(checkpointsDir, file));
           if (!content) continue;
-          // Fix 6: Use JSON_SCHEMA to prevent type coercion
+          // Use JSON_SCHEMA to prevent type coercion
           const parsed = yaml.load(content, { schema: yaml.JSON_SCHEMA });
-          // R8 fix: Runtime shape validation before cast
+          // Runtime shape validation before cast
           if (parsed && typeof parsed === 'object' && (parsed as Record<string, unknown>).schema === 'claudex/checkpoint' && (parsed as Record<string, unknown>).version) return parsed as CheckpointV3;
         } catch {
           // Invalid YAML — try next
@@ -277,7 +278,6 @@ function applyPreset(
  * Main entry point: two-layer recovery with selective loading.
  * Layer 1: DB-first. Layer 2: File fallback.
  * Non-throwing — returns null if no checkpoint found.
- * @see Architecture Section 8.4
  */
 export function loadCheckpoint(
   db: Database | null,
@@ -313,15 +313,15 @@ export function loadCheckpoint(
             .get() as CheckpointMeta | undefined;
         }
 
-        if (row?.data) {
+        if (row && hasFields(row, ['checkpoint_id', 'session_id', 'status', 'data']) && row.data) {
           const parsed = JSON.parse(row.data);
-          // C11 fix: Validate DB-loaded JSON has required schema fields
-          if (parsed && parsed.schema === 'claudex/checkpoint' && parsed.version) {
+          // Validate DB-loaded JSON has required schema fields
+          if (parsed && hasFields(parsed, ['schema', 'version']) && parsed.schema === 'claudex/checkpoint' && parsed.version) {
 
             // If committed but not mirrored: re-mirror (sync path)
             if (row.status === 'committed' && row.mirror_path) {
               try {
-                // C1 fix: Validate mirror_path is within checkpoints directory
+                // Validate mirror_path is within checkpoints directory
                 const resolvedMirror = path.resolve(row.mirror_path);
                 const expectedDir = getCheckpointsDir(projectDir);
                 if (!isWithinDir(resolvedMirror, expectedDir)) {
@@ -329,9 +329,9 @@ export function loadCheckpoint(
                 }
                 const dir = path.dirname(resolvedMirror);
                 fs.mkdirSync(dir, { recursive: true });
-                // Fix 6: Use JSON_SCHEMA for round-trip consistency
+                // Use JSON_SCHEMA for round-trip consistency
                 const yamlContent = yaml.dump(parsed, { lineWidth: 120, noRefs: true, schema: yaml.JSON_SCHEMA });
-                // Fix 1: Use compression for .yaml.gz/.yml.gz paths
+                // Use compression for .yaml.gz/.yml.gz paths
                 if (isCompressedPath(row.mirror_path)) {
                   const compressed = zlib.gzipSync(Buffer.from(yamlContent, 'utf-8'));
                   fs.writeFileSync(row.mirror_path, compressed);
@@ -369,7 +369,11 @@ export function loadCheckpoint(
     }
 
     return checkpoint;
-  } catch {
+  } catch (e) {
+    // No sessionId available in loadCheckpoint — emit with empty session if DB exists
+    if (db) {
+      try { emitTelemetry(db, '', 'error', { subsystem: 'checkpoint/load', error: sanitizeErrorForTelemetry(e) }); } catch {}
+    }
     return null;
   }
 }

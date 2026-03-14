@@ -1,7 +1,6 @@
 /**
  * Telemetry subsystem — emit, query, and prune structured observability events.
  * Plain functions with `db: Database` as first param.
- * @see Architecture Section 10c (Telemetry table, event detail schemas, retention rules)
  */
 
 import type { Database } from 'better-sqlite3';
@@ -38,7 +37,7 @@ export function emitTelemetry<K extends EventKind>(
  * 2. Deletes error rows beyond retainErrorCount (default 1000).
  * Returns total number of rows pruned.
  *
- * @see Architecture Section 10c retention rules
+
  */
 export function pruneTelemetry(
   db: Database,
@@ -79,15 +78,14 @@ export function pruneTelemetry(
 
     return totalPruned;
   } catch {
-    // CDX-SUP-001: Non-throwing — consistent with all other functions in this module
+    // Non-throwing — consistent with all other functions in this module
     return 0;
   }
 }
 
 /**
- * ARCH-004: Sanitize error messages before persisting to telemetry.
+ * Sanitize error messages before persisting to telemetry.
  * Truncates to 200 chars and redacts file paths to prevent sensitive content leakage.
- * Moved from infrastructure.ts for adapter-agnostic access.
  */
 export function sanitizeErrorForTelemetry(err: unknown): string {
   const raw = err instanceof Error ? err.message : String(err);

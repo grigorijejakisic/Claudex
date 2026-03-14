@@ -1,7 +1,6 @@
 /**
  * Read-only .planning/ filesystem reader for GSD integration.
  * Non-throwing.
- * @see Architecture Section 10
  */
 
 import * as fs from 'fs';

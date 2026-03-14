@@ -1,5 +1,5 @@
 /**
- * Text utilities with defensive non-throwing pattern (QUAL-01).
+ * Text utilities with defensive non-throwing pattern.
  */
 
 /**
@@ -12,6 +12,7 @@ export function truncateText(text: string, maxLength: number): string {
     if (text.length <= maxLength) return text;
     return text.slice(0, maxLength) + '...';
   } catch {
+    // Non-throwing: no DB access — caller handles empty string as safe default
     return '';
   }
 }
@@ -25,6 +26,7 @@ export function normalize(text: string): string {
     if (!text) return '';
     return text.toLowerCase().trim().replace(/\s+/g, ' ');
   } catch {
+    // Non-throwing: no DB access — caller handles empty string as safe default
     return '';
   }
 }
@@ -38,6 +40,7 @@ export function estimateTokens(text: string): number {
     if (!text) return 0;
     return Math.ceil(text.length / 4);
   } catch {
+    // Non-throwing: no DB access — caller handles 0 as safe default (zero-token estimate)
     return 0;
   }
 }

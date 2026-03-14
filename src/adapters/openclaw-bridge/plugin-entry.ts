@@ -2,7 +2,6 @@
  * OpenClaw plugin entry point.
  * Opens DB once, creates bridge callbacks, registers on globalThis, sets up session_end cleanup.
  * DB stays open across sessions; explicit deactivate() closes it.
- * @see Architecture Section 3.3
  */
 
 import { BRIDGE_KEY } from './bridge-types.js';

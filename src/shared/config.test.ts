@@ -32,19 +32,16 @@ describe('config', () => {
       // Verify all top-level keys exist
       expect(config.schema).toBe('claudex/config');
       expect(config.version).toBe(3);
-      expect(config.adapter).toBe('auto');
 
       // Verify nested sections
       expect(config.injection.budget_tokens).toBe(4000);
       expect(config.injection.topic_shift_budget).toBe(800);
 
-      expect(config.observations.enabled).toBe(true);
       expect(config.observations.retention_days).toBe(90);
 
       expect(config.checkpoint.debounce_seconds).toBe(60);
 
       expect(config.learnings.max_per_project).toBe(50);
-      expect(config.learnings.surface_count).toBe(10);
 
       expect(config.enrichment.enabled).toBe(true);
       expect(config.enrichment.provider).toBe('auto');
@@ -55,12 +52,7 @@ describe('config', () => {
       expect(config.embeddings.model).toBe('nomic-embed-text');
       expect(config.embeddings.topic_shift_threshold).toBe(0.35);
 
-      expect(config.observability.enabled).toBe(true);
       expect(config.observability.retention_days).toBe(7);
-
-      expect(config.gsd.enabled).toBe(true);
-
-      expect(config.features.fts5_search).toBe(true);
     });
 
     it('returns a new object each time (not shared reference)', () => {
@@ -90,8 +82,7 @@ describe('config', () => {
       // Overridden value
       expect(config.injection.budget_tokens).toBe(8000);
       // Default values preserved
-      expect(config.observations.enabled).toBe(true);
-      expect(config.adapter).toBe('auto');
+      expect(config.observations.retention_days).toBe(90);
     });
 
     it('returns defaults on malformed JSON', () => {
@@ -143,7 +134,7 @@ describe('config', () => {
 
       const config = loadConfig();
       expect(config.observations.retention_days).toBe(30);
-      expect(config.observations.enabled).toBe(true); // default preserved
+      expect(config.observations.prune_threshold).toBe(1000); // default preserved
 
       try { fs.rmSync(unicodeDir, { recursive: true, force: true }); } catch { /* cleanup */ }
     });

@@ -9,9 +9,9 @@
  * Topic-shift pivot and gauge injection for regular turns.
  * Assembly is a pure read-render operation — no DB writes.
  * All public functions are non-throwing.
- * @see Architecture Section 7
  */
 
+import { emitTelemetry, sanitizeErrorForTelemetry } from '../observability/telemetry.js';
 import { estimateTokens } from '../shared/text-utils.js';
 import {
   formatIdentitySection,
@@ -29,8 +29,8 @@ import {
 import { redactContent } from '../extraction/redaction.js';
 import { loadCheckpoint, loadFromFile } from '../checkpoint/loader.js';
 import { renderCheckpointMarkdown } from '../checkpoint/inject.js';
-import { getTopLearnings } from '../core/learnings.js';
-import { getHotFiles } from '../core/pressure.js';
+import { getTopLearnings, type LearningRow } from '../core/learnings.js';
+import { getHotFiles, type PressureRow } from '../core/pressure.js';
 import {
   getPackedArtifacts,
   searchArtifacts,
@@ -232,8 +232,11 @@ export function assembleFullContext(params: FullAssemblyParams): InjectPayload {
       tokenEstimate: estimateTokens(content),
       sources,
     };
-  } catch {
+  } catch (e) {
     // Tier 1 failed — fall through to Tier 2
+    if (params.db && params.sessionId) {
+      try { emitTelemetry(params.db, params.sessionId, 'error', { subsystem: 'assembly/tier_fallback', error: sanitizeErrorForTelemetry(e) }); } catch {}
+    }
   }
 
   // Tier 2: Checkpoint-only
@@ -250,8 +253,11 @@ export function assembleFullContext(params: FullAssemblyParams): InjectPayload {
       if (checkpointMd) tierSources.push('checkpoint');
       return { content, tokenEstimate: estimateTokens(content), sources: tierSources };
     }
-  } catch {
+  } catch (e) {
     // Tier 2 failed — fall through to Tier 3
+    if (params.db && params.sessionId) {
+      try { emitTelemetry(params.db, params.sessionId, 'error', { subsystem: 'assembly/tier_fallback', error: sanitizeErrorForTelemetry(e) }); } catch {}
+    }
   }
 
   // Tier 3: Identity-only
@@ -261,8 +267,11 @@ export function assembleFullContext(params: FullAssemblyParams): InjectPayload {
       let content = redactContent(identity);
       return { content, tokenEstimate: estimateTokens(content), sources: ['identity'] };
     }
-  } catch {
+  } catch (e) {
     // Tier 3 failed
+    if (params.db && params.sessionId) {
+      try { emitTelemetry(params.db, params.sessionId, 'error', { subsystem: 'assembly/tier_fallback', error: sanitizeErrorForTelemetry(e) }); } catch {}
+    }
   }
 
   // Final fallback: empty
@@ -358,8 +367,8 @@ export function assembleTopicPivot(params: TopicPivotParams): InjectPayload {
     const budget = config.injection.topic_shift_budget;
 
     // Fetch relevant data for new topic
-    let relevantLearnings: any[] = [];
-    let relevantHotFiles: any[] = [];
+    let relevantLearnings: LearningRow[] = [];
+    let relevantHotFiles: PressureRow[] = [];
 
     if (shift.newTopic) {
       try {

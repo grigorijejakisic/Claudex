@@ -2,10 +2,10 @@
  * Extraction dispatcher — routes tool events through the full pipeline.
  * Pipeline: dispatch -> quality gate -> extract -> redact -> classify -> score -> dedup -> store.
  * Non-throwing: returns null on any error.
- * @see Architecture Section 5.1 — pipeline overview
  */
 
 import type { Database } from 'better-sqlite3';
+import { emitTelemetry, sanitizeErrorForTelemetry } from '../observability/telemetry.js';
 import type { ExtractorFn } from './extractors/types.js';
 import { extractRead } from './extractors/read.js';
 import { extractEdit } from './extractors/edit.js';
@@ -125,7 +125,7 @@ export function processToolObservation(input: ProcessToolObservationInput): numb
       // No files — dedup on tool+category+project+session+title+content+time window
       // (empty files_modified means tools like Bash; include title to avoid collapsing
       // different commands with identical output)
-      // CDX-EXT-001: Apply the same normalization that insertObservation applies before
+      // Apply the same normalization that insertObservation applies before
       // storage, so the dedup comparison matches what's actually in the DB.
       const canonTitle = redactedTitle.replace(/\[REDACTED_\w+\]/g, '[REDACTED]');
       const canonContent = truncateText(
@@ -165,7 +165,8 @@ export function processToolObservation(input: ProcessToolObservationInput): numb
     });
 
     return id;
-  } catch {
+  } catch (e) {
+    try { emitTelemetry(input.db, input.sessionId, 'error', { subsystem: 'extraction/observe', error: sanitizeErrorForTelemetry(e) }); } catch {}
     return null;
   }
 }

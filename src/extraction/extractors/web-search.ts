@@ -1,6 +1,5 @@
 /**
  * WebSearch tool extractor — query, results.
- * @see Architecture Section 5.2
  */
 
 import { truncateText } from '../../shared/text-utils.js';

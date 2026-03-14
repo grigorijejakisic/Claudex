@@ -1,7 +1,6 @@
 /**
- * File system utilities with defensive non-throwing pattern (QUAL-01).
- * Atomic writes use tmp+rename with Windows EPERM fallback (QUAL-05).
- * @see Architecture Section 15.5
+ * File system utilities with defensive non-throwing pattern.
+ * Atomic writes use tmp+rename with Windows EPERM handling.
  */
 
 import * as fs from 'fs';
@@ -10,7 +9,7 @@ import * as path from 'path';
 import * as zlib from 'zlib';
 import { randomBytes } from 'crypto';
 
-// ARCH-001: Cache homedir at module level — avoids repeated os.homedir() + realpathSync per call.
+// Cache homedir at module level — avoids repeated os.homedir() + realpathSync per call.
 const CACHED_HOME = (() => {
   let home = os.homedir();
   try {
@@ -33,9 +32,11 @@ export function ensureDir(dirPath: string): boolean {
     fs.mkdirSync(dirPath, { recursive: true });
     return true;
   } catch {
+    // Non-throwing: no DB access — mkdir failed, check if dir already exists
     try {
       return fs.statSync(dirPath).isDirectory();
     } catch {
+      // Non-throwing: no DB access — dir doesn't exist and can't be created, caller gets false
       return false;
     }
   }
@@ -45,7 +46,7 @@ export function ensureDir(dirPath: string): boolean {
  * Atomic file write: writes to tmp file, then renames.
  * On Windows, if rename fails with EPERM, cleans up tmp and fails.
  * Creates parent directories if needed. Returns true on success. Never throws.
- * R29: Synchronous — all I/O is sync, so the function is explicitly sync.
+ * Synchronous — all I/O is sync, so the function is explicitly sync.
  * Callers that `await` the return value will still work (awaiting a non-Promise resolves immediately).
  */
 export function atomicWriteFile(filePath: string, content: string): boolean {
@@ -61,7 +62,7 @@ export function atomicWriteFile(filePath: string, content: string): boolean {
     try {
       fs.renameSync(tmpPath, filePath);
     } catch (renameErr: unknown) {
-      // C8: Removed unsafe copyFileSync fallback — on EPERM, clean up tmp and fail
+      // On EPERM, clean up tmp and fail (no copyFileSync fallback)
       try {
         fs.unlinkSync(tmpPath);
       } catch {
@@ -72,6 +73,7 @@ export function atomicWriteFile(filePath: string, content: string): boolean {
 
     return true;
   } catch {
+    // Non-throwing: no DB access — write failed (disk full, permissions, etc.), caller gets false
     return false;
   }
 }
@@ -84,6 +86,7 @@ export function readJsonFile<T>(filePath: string): T | null {
     const raw = fs.readFileSync(filePath, 'utf-8');
     return JSON.parse(raw) as T;
   } catch {
+    // Non-throwing: no DB access — file missing or invalid JSON, caller handles null return
     return null;
   }
 }
@@ -91,7 +94,7 @@ export function readJsonFile<T>(filePath: string): T | null {
 /**
  * JSON.stringifies with 2-space indent and writes via atomicWriteFile.
  * Returns true on success. Never throws.
- * R29: Synchronous — delegates to sync atomicWriteFile.
+ * Synchronous — delegates to sync atomicWriteFile.
  * Callers that `await` the return value will still work.
  */
 export function writeJsonFile(filePath: string, data: unknown): boolean {
@@ -99,6 +102,7 @@ export function writeJsonFile(filePath: string, data: unknown): boolean {
     const content = JSON.stringify(data, null, 2) + '\n';
     return atomicWriteFile(filePath, content);
   } catch {
+    // Non-throwing: no DB access — JSON.stringify failed (circular ref, etc.), caller gets false
     return false;
   }
 }
@@ -116,6 +120,7 @@ export async function writeCompressedFile(filePath: string, content: string): Pr
     fs.writeFileSync(filePath, compressed);
     return true;
   } catch {
+    // Non-throwing: no DB access — compression or write failed, caller gets false
     return false;
   }
 }
@@ -123,7 +128,7 @@ export async function writeCompressedFile(filePath: string, content: string): Pr
 /**
  * Validates that a path is safe to read/write.
  * Rejects UNC/device paths and paths outside the user's home directory.
- * ARCH-001: Moved from token-gauge.ts — this is a security utility, not a gauge concern.
+ * Security utility — validates path is within the user's home directory.
  */
 export function isPathSafe(targetPath: string): boolean {
   const resolved = path.resolve(targetPath);
@@ -144,7 +149,7 @@ export function isPathSafe(targetPath: string): boolean {
       normalizedResolved = fs.realpathSync(resolved);
     }
   } catch {
-    // CROSS-006: File doesn't exist — resolve parent directory to catch symlink escapes.
+    // File doesn't exist — resolve parent directory to catch symlink escapes.
     // A symlinked directory under home pointing outside home would pass with the raw path.
     const parent = path.dirname(resolved);
     try {

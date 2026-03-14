@@ -1,6 +1,5 @@
 /**
  * Cross-session learnings promotion with dedup and 50-per-project cap.
- * @see Architecture Section 6.5
  */
 
 import type { Database } from 'better-sqlite3';
@@ -30,7 +29,7 @@ export function promoteLearnings(params: {
     let promoted = 0;
     let inserted = 0;
 
-    // R15: Load all learnings for the project once upfront (avoid N+1 queries)
+    // Load all learnings for the project once upfront (avoid N+1 queries)
     let existing = getLearningsByProject(db, project, { limit: 100 });
 
     for (const learning of sessionLearnings) {
@@ -59,12 +58,12 @@ export function promoteLearnings(params: {
           content: redacted,
         });
         inserted++;
-        // R15: Refresh in-memory list so subsequent iterations see the new entry
+        // Refresh in-memory list so subsequent iterations see the new entry
         existing = [...existing, { content: redacted, fingerprint: fp } as (typeof existing)[number]];
       }
     }
 
-    // R14/R45: Cap enforcement scoped by project only (not per agent_id)
+    // Cap enforcement scoped by project only (not per agent_id)
     let pruned = 0;
     const scopedCount = (db.prepare(
       `SELECT COUNT(*) AS cnt FROM learnings WHERE project = ?`

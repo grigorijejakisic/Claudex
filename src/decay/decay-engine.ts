@@ -1,7 +1,6 @@
 /**
  * EI computation, observation pruning, and retention policy.
  * Non-throwing public API.
- * @see Architecture Section 9
  */
 
 import type { Database } from 'better-sqlite3';
@@ -62,7 +61,7 @@ export function getCoOccurrences(
     }
     if (!Array.isArray(files) || files.length === 0) return 0;
 
-    // REC-15: Cap file list to bound execution time
+    // Cap file list to bound execution time
     files = files.slice(0, 10);
 
     const start = Date.now();
@@ -86,7 +85,7 @@ export function getCoOccurrences(
 
     for (const file of files) {
       if (Date.now() - start > 100) return Math.min(seen.size, cap);
-      // CDX-DEC-001 fix: Escape LIKE wildcards in file names
+      // Escape LIKE wildcards in file names
       const escapedFile = file.replace(/\\/g, '\\\\').replace(/%/g, '\\%').replace(/_/g, '\\_');
       const pattern = `%"${escapedFile}"%`;
       const rows = project != null
@@ -142,7 +141,7 @@ export function pruneObservations(
         files_modified: string;
       }>;
 
-    // CDX-DEC-002 fix: Cap candidates to avoid N+1 query explosion
+    // Cap candidates to avoid N+1 query explosion
     const MAX_PRUNE_CANDIDATES = 200;
     const cappedCandidates = candidates.length > MAX_PRUNE_CANDIDATES
       ? candidates.slice(0, MAX_PRUNE_CANDIDATES)

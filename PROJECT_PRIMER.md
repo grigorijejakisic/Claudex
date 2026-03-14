@@ -4,7 +4,7 @@
 
 Claudex v3 is a unified context management system that gives LLMs persistent memory across sessions and compaction events. It replaces two predecessors (Claudex v2 + OpenClaw's Context Manager) with a single codebase that runs on both Claude Code (as lifecycle hooks) and OpenClaw (as a bridge plugin). One core, two swappable runtime adapters, standalone install.
 
-**Status**: All phases implemented. Artifact-based assembly architecture shipped (Session 8). 1226 tests, 69 test files.
+**Status**: All phases implemented. Runtime correctness fixes + error visibility + code quality cleanup shipped (Session 9). 1197 tests, 70 test files. `claudex health` CLI available for live DB validation.
 
 ## Core Architecture (30-second version)
 

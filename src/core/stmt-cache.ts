@@ -1,7 +1,6 @@
 /**
  * Prepared statement cache — avoids re-parsing SQL on every invocation.
  * Uses WeakMap keyed by Database instance so cache is GC'd when DB is closed.
- * @see Architecture Section 4.1
  */
 
 import type { Database, Statement } from 'better-sqlite3';

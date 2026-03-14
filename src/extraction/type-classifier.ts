@@ -1,7 +1,6 @@
 /**
  * Observation Type Prior classifier -- cheap keyword/pattern classification.
  * No LLM calls. Used by the extraction pipeline to apply importance multipliers.
- * @see Upgrade 8: Admission Scoring Enhancement
  */
 
 /** Observation semantic types with importance multipliers. */

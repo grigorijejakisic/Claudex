@@ -12,6 +12,7 @@ const requiredEntryPoints = [
   'src/cli/setup.ts',
   'src/cli/dashboard.ts',
   'src/cli/migrate.ts',
+  'src/cli/health.ts',
 ];
 
 /** Optional/scaffolding entry points — warn-and-skip if missing. */

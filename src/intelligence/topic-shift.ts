@@ -2,7 +2,6 @@
  * 3-layer topic-shift detection: explicit pivot regex, embedding cosine
  * with sliding window, and keyword Jaccard fallback.
  * Non-throwing — returns { shifted: false } on error.
- * @see Architecture Section 7.3.1
  */
 
 import type { Database } from 'better-sqlite3';
@@ -95,7 +94,7 @@ export class TopicShiftDetector {
       // Layer 1: Explicit pivot signals (always checked first)
       if (EXPLICIT_PIVOT.test(prompt.trim())) {
         const thread = getThreadState(db, sessionId);
-        // R47: If there's no existing topic, this is a first topic, not a shift
+        // If there's no existing topic, this is a first topic, not a shift
         if (!thread?.topic) {
           return { shifted: false };
         }

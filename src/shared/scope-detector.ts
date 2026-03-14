@@ -1,15 +1,19 @@
 /**
  * Project scope detection from ~/.claudex/projects.json.
- * Defensive non-throwing (QUAL-01). Case-insensitive path matching on Windows (QUAL-05).
- * @see Architecture Section 15.6
+ * Defensive non-throwing. Case-insensitive path matching on Windows.
  */
 
 import * as path from 'path';
 import { getProjectsJsonPath } from './paths.js';
 import { readJsonFile } from './fs-helpers.js';
 
+interface ProjectEntry {
+  path: string;
+  [key: string]: unknown;
+}
+
 interface ProjectsFile {
-  projects: Record<string, string>;
+  projects: Record<string, string | ProjectEntry>;
 }
 
 /**
@@ -26,12 +30,27 @@ export function detectProjectScope(cwd: string): string | null {
     let bestMatch: string | null = null;
     let bestLength = 0;
 
-    for (const [projectPath, projectId] of Object.entries(data.projects)) {
+    for (const [key, value] of Object.entries(data.projects)) {
+      // Support both formats:
+      //   { "path": "projectId" }          — Record<path, string>
+      //   { "projectId": { path: "..." } } — Record<id, ProjectEntry>
+      let projectPath: string;
+      let projectId: string;
+      if (typeof value === 'string') {
+        projectPath = key;
+        projectId = value;
+      } else if (value && typeof value === 'object' && typeof (value as ProjectEntry).path === 'string') {
+        projectPath = (value as ProjectEntry).path;
+        projectId = key;
+      } else {
+        continue;
+      }
+
       const normalizedProject = normalizePath(projectPath);
-      // Skip empty/falsy project paths (REC-22)
+      // Skip empty/falsy project paths
       if (!normalizedProject) continue;
       // When project path is a filesystem root (ends with separator),
-      // don't append an extra separator for prefix matching (REC-22)
+      // don't append an extra separator for prefix matching
       const prefix = normalizedProject.endsWith(path.sep)
         ? normalizedProject
         : normalizedProject + path.sep;
@@ -46,6 +65,7 @@ export function detectProjectScope(cwd: string): string | null {
 
     return bestMatch;
   } catch {
+    // Non-throwing: no DB access — caller handles null (no project scope detected)
     return null;
   }
 }
@@ -65,6 +85,7 @@ export function getProjectId(cwd: string): string {
     const hash = simpleHash(normalizePath(path.resolve(cwd)));
     return `${sanitized}-${hash}`;
   } catch {
+    // Non-throwing: no DB access — caller always gets a valid project ID string
     return 'unknown';
   }
 }
@@ -89,7 +110,7 @@ function normalizePath(p: string): string {
   // but guard against collapsing filesystem roots to empty/invalid forms
   if (normalized.endsWith(path.sep) && normalized.length > 1) {
     const stripped = normalized.slice(0, -1);
-    // Guard: don't collapse "C:\" to "C:" or "/" to "" (REC-22)
+    // Guard: don't collapse "C:\" to "C:" or "/" to ""
     if (stripped.length === 0) {
       // Unix root "/" stripped to "" — restore
       normalized = path.sep;
@@ -100,13 +121,13 @@ function normalizePath(p: string): string {
       normalized = stripped;
     }
   }
-  // Case-insensitive on Windows (QUAL-05, 2nd allowed platform check)
+  // Case-insensitive on Windows
   if (process.platform === 'win32') {
     normalized = normalized.toLowerCase();
   }
-  // R32: Strip trailing separators to prevent prefix-match edge cases
+  // Strip trailing separators to prevent prefix-match edge cases
   normalized = normalized.replace(/[/\\]+$/, '');
-  // REC-22: Protect filesystem roots from being corrupted to empty/incomplete strings
+  // Protect filesystem roots from being corrupted to empty/incomplete strings
   if (normalized === '' || /^[a-zA-Z]:$/.test(normalized)) {
     normalized = normalized + path.sep;
   }

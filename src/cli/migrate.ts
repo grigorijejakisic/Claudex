@@ -5,8 +5,6 @@
  *
  * Usage:
  *   node dist/cli/migrate.cjs [--source <path>] [--dry-run] [--force]
- *
- * @see Architecture Section 4.3.2 (Migration)
  */
 
 import * as fs from 'fs';
@@ -181,12 +179,12 @@ export function verifyMigration(
  *   2. Move new -> current
  * On failure, attempts rollback of step 1.
  *
- * Handles stale .pre-swap from prior failed attempt (REC-20).
+ * Handles stale .pre-swap from prior failed attempt.
  */
 export function safeSwap(currentPath: string, newPath: string): void {
   const preSwapPath = currentPath + '.pre-swap';
 
-  // REC-20: Clean up stale .pre-swap if it exists
+  // Clean up stale .pre-swap if it exists from a prior failed attempt
   if (fs.existsSync(preSwapPath)) {
     try {
       fs.unlinkSync(preSwapPath);
@@ -315,7 +313,7 @@ export function runMigration(sourcePath: string, opts: { dryRun?: boolean; force
   // ── Step 3: Create backup ───────────────────────────────────────
   // Checkpoint WAL before copying to ensure all committed data is in the main file.
   // Without this, copyFileSync only copies the main .db and misses WAL-committed rows.
-  // REC-21: Wrap pragma+close in try/finally to ensure DB is closed on error
+  // Wrap pragma+close in try/finally to ensure DB is closed on error
   try {
     const checkpointDb = new Database(sourcePath);
     try {
@@ -450,7 +448,7 @@ export function runMigration(sourcePath: string, opts: { dryRun?: boolean; force
       return result;
     }
 
-    // Close the fresh DB before swap (REC-21: ensure DB is closed)
+    // Close the fresh DB before swap to release file handles
     closeDatabase(freshDb);
     freshDb = null;
     result.steps.push('Database handles closed');

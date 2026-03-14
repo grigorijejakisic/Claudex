@@ -128,7 +128,7 @@ export function queryLearnings(db: Database.Database, project?: string): Learnin
  */
 export function queryDecisions(db: Database.Database, project?: string, session?: string): DecisionResult[] {
   try {
-    // R42: Warn when both --session and --project are provided (session takes precedence)
+    // Warn when both --session and --project are provided (session takes precedence)
     if (session && project) {
       console.warn('Warning: both --session and --project provided. Filtering by session only (--project ignored).');
     }

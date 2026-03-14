@@ -1,6 +1,5 @@
 /**
  * GSD state interfaces matching checkpoint gsd: field schema.
- * @see Architecture Section 10
  */
 
 export interface GsdState {

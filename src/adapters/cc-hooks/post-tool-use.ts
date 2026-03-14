@@ -1,12 +1,12 @@
 /**
  * PostToolUse hook -> after_tool event.
  * Extracts observations, updates pressure, tracks thread, checks checkpoint threshold.
- * @see Architecture Section 3.2
  */
 
 import { wrapHook, getTranscriptPath } from './infrastructure.js';
 import { getTokenGauge } from '../../gauge/token-gauge.js';
 import { CC_CAPABILITIES } from '../../shared/constants.js';
+import { emitTelemetry, sanitizeErrorForTelemetry } from '../../observability/telemetry.js';
 import {
   processToolAndPressure,
   trackAfterTool,
@@ -16,17 +16,23 @@ import {
 const main = wrapHook('PostToolUse', async (input, ctx) => {
   const toolName = (input.tool_name as string) || '';
   const toolInput = (input.tool_input as Record<string, unknown>) || {};
-  const toolOutput = (input.tool_output as Record<string, unknown>) || undefined;
+  const toolOutput = (input.tool_response as Record<string, unknown>) || undefined;
 
-  processToolAndPressure({
-    db: ctx.db,
-    sessionId: input.session_id,
-    project: ctx.project,
-    cwd: input.cwd,
-    toolName,
-    toolInput,
-    toolOutput,
-  });
+  // Each operation isolated — if A fails, B and C still run
+
+  try {
+    processToolAndPressure({
+      db: ctx.db,
+      sessionId: input.session_id,
+      project: ctx.project,
+      cwd: input.cwd,
+      toolName,
+      toolInput,
+      toolOutput,
+    });
+  } catch (e) {
+    try { emitTelemetry(ctx.db, input.session_id, 'error', { subsystem: 'post_tool_use/process', error: sanitizeErrorForTelemetry(e) }); } catch {}
+  }
 
   // Note: observation artifact creation and milestone detection happen in
   // lifecycle.ts processToolAndPressure, not here — avoids duplication and
@@ -42,29 +48,37 @@ const main = wrapHook('PostToolUse', async (input, ctx) => {
   // multiple tool calls within a turn. In the CC hooks adapter, only the DB-persisted
   // state (via tracker.persist()) survives between invocations — the pending exchange
   // count and any volatile accumulation are reset on each hook call.
-  trackAfterTool(
-    ctx.db,
-    input.session_id,
-    (input.user_prompt as string) ?? undefined,
-    toolName,
-    toolInput,
-  );
+  try {
+    trackAfterTool(
+      ctx.db,
+      input.session_id,
+      (input.prompt as string) ?? (input.user_prompt as string) ?? undefined,
+      toolName,
+      toolInput,
+    );
+  } catch (e) {
+    try { emitTelemetry(ctx.db, input.session_id, 'error', { subsystem: 'post_tool_use/track', error: sanitizeErrorForTelemetry(e) }); } catch {}
+  }
 
   // Checkpoint threshold check
-  const gauge = getTokenGauge({
-    capabilities: CC_CAPABILITIES,
-    transcriptPath: getTranscriptPath(input),
-  });
+  try {
+    const gauge = getTokenGauge({
+      capabilities: CC_CAPABILITIES,
+      transcriptPath: getTranscriptPath(input),
+    });
 
-  await checkpointIfThresholdMet({
-    db: ctx.db,
-    sessionId: input.session_id,
-    project: ctx.project,
-    cwd: input.cwd,
-    scope: ctx.scope ?? undefined,
-    config: ctx.config,
-    gauge,
-  });
+    await checkpointIfThresholdMet({
+      db: ctx.db,
+      sessionId: input.session_id,
+      project: ctx.project,
+      cwd: input.cwd,
+      scope: ctx.scope ?? undefined,
+      config: ctx.config,
+      gauge,
+    });
+  } catch (e) {
+    try { emitTelemetry(ctx.db, input.session_id, 'error', { subsystem: 'post_tool_use/checkpoint', error: sanitizeErrorForTelemetry(e) }); } catch {}
+  }
 
   return {};
 });

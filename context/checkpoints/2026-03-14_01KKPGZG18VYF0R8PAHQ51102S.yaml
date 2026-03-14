@@ -1,0 +1,49 @@
+schema: claudex/checkpoint
+version: 3
+meta:
+  checkpoint_id: 01KKPGZG18VYF0R8PAHQ51102S
+  session_id: cb2558cf-8e5f-4b3d-a4f3-f078394006b3
+  scope: null
+  trigger: compaction
+  token_usage:
+    input_tokens: 1
+    output_tokens: 34
+    window_size: 200000
+    utilization: 0.000005
+  previous_checkpoint: null
+working:
+  task: null
+  status: null
+  next_action: null
+  branch: null
+decisions: []
+files:
+  hot:
+    - path: <project>/src\adapters\shared\lifecycle.ts
+  read:
+    - <project>/context\sessions\2026-03-14_session-8-final.md
+    - <project>/context\handoffs\ACTIVE.md
+    - <project>/src\adapters\openclaw-bridge\bridge-adapter.ts
+    - <project>/src\adapters\cc-hooks\user-prompt-submit.ts
+    - <project>/src\adapters\shared\lifecycle.ts
+thread:
+  topic: null
+  summary: ''
+  key_exchanges: []
+open_items: []
+learnings: []
+gsd:
+  phase: 11
+  plan: 1
+  status: All 12 phases complete -- Claudex v3 fully implemented, tested, and deployment-ready
+  goal: Claudex v3 is running in production on both adapters, verified on fresh installs, with predecessor systems archived
+  success_criteria:
+    - Fresh `claudex setup` on a clean Windows machine produces a fully operational CC hook system
+    - Fresh OpenClaw plugin install produces a fully operational bridge adapter
+    - Optional v2 migration completes successfully for existing Claudex users (data preserved, backup created)
+    - Both adapters verified independently for one week of real usage
+  completion: 0/0 requirements met
+current_objective: >-
+  Goal: Claudex v3 is running in production on both adapters, verified on fresh installs, with predecessor systems
+  archived
+verified_facts: []

@@ -2,13 +2,13 @@
  * Two-stage model-agnostic decision capture.
  * Stage 1: 4-tier regex extraction (always active).
  * Stage 2: Embedding classification filtering (when classifier provided).
- * @see Architecture Section 6.1
  */
 
 import type { Database } from 'better-sqlite3';
 import { insertDecision, getDecisionsBySession } from '../core/decisions.js';
 import { normalizeForDedup, isDuplicate } from './semantic-dedup.js';
 import { redactContent } from '../extraction/redaction.js';
+import { emitTelemetry, sanitizeErrorForTelemetry } from '../observability/telemetry.js';
 import type { EmbeddingProvider } from '../embeddings/embedding-provider.js';
 import type { DecisionTemplates } from '../embeddings/templates.js';
 import { classifyDecision } from '../embeddings/templates.js';
@@ -158,7 +158,7 @@ export async function captureDecisions(params: {
 
     if (candidates.length === 0) return [];
 
-    // REC-25: Cap candidates BEFORE embedding to bound batch size
+    // Cap candidates before embedding to bound batch size
     const MAX_CANDIDATES_PER_TURN = 20;
     if (candidates.length > MAX_CANDIDATES_PER_TURN) {
       candidates = candidates.slice(0, MAX_CANDIDATES_PER_TURN);
@@ -199,7 +199,7 @@ export async function captureDecisions(params: {
       const batchDup = stored.some((s) => isDuplicate(candidate.content, s.content));
       if (batchDup) continue;
 
-      // REC-03: Secondary fingerprint-based dedup — catches near-duplicates that
+      // Secondary fingerprint-based dedup — catches near-duplicates that
       // pass the semantic window check but have identical normalized content
       const redacted = redactContent(candidate.content);
       const fingerprint = normalizeForDedup(redacted);
@@ -208,8 +208,8 @@ export async function captureDecisions(params: {
       ).get(fingerprint, project);
       if (fpExists) continue;
 
-      // Store — redact content before fingerprinting and storage (REC-14)
-      // Ensures sensitive tokens are not recoverable via fingerprint or stored content
+      // Store — redact content before fingerprinting and storage to
+      // ensure sensitive tokens are not recoverable via fingerprint or stored content
       const insertedId = insertDecision(db, {
         session_id: sessionId,
         project,
@@ -230,7 +230,8 @@ export async function captureDecisions(params: {
     }
 
     return stored;
-  } catch {
+  } catch (e) {
+    try { emitTelemetry(params.db, params.sessionId, 'error', { subsystem: 'decision_capture', error: sanitizeErrorForTelemetry(e) }); } catch {}
     return [];
   }
 }

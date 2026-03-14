@@ -1,7 +1,6 @@
 /**
  * Importance scoring (1-5) and category auto-classification.
  * Pure functions. Non-throwing.
- * @see Architecture Section 5.3 — importance scoring
  */
 
 import type { ObservationCategory } from '../core/observations.js';
@@ -56,7 +55,6 @@ const TEST_FAILURE_SIGNALS = /FAIL|failed|error/;
 /**
  * Scores observation importance from 1-5.
  * Returns highest matching score (checks 5 first, then 4, etc.).
- * @see Architecture Section 5.3
  */
 export function scoreImportance(
   toolName: string,

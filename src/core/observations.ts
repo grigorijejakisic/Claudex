@@ -1,7 +1,6 @@
 /**
  * Observation CRUD with FTS5 full-text search and BM25 temporal re-ranking.
  * Plain functions with `db: Database` as first param.
- * @see Architecture Section 4.2 (observations table + FTS5 schema)
  */
 
 import type { Database } from 'better-sqlite3';
@@ -82,6 +81,13 @@ export function insertObservation(
       obs.obs_type ?? null
     );
 
+  // Keep session observation_count in sync
+  try {
+    cachedPrepare(db,
+      `UPDATE sessions SET observation_count = observation_count + 1 WHERE session_id = ?`
+    ).run(obs.session_id);
+  } catch { /* non-fatal — observation was stored successfully */ }
+
   return Number(result.lastInsertRowid);
 }
 
@@ -89,7 +95,7 @@ export function insertObservation(
  * Retrieves observations for a given project.
  * Excludes soft-deleted rows unless includeDeleted is true.
  * Ordered by timestamp_epoch DESC. Default limit 100.
- * QUAL-04: Filters by project scope.
+ * Filters by project scope.
  */
 export function getObservationsByProject(
   db: Database,
@@ -137,7 +143,9 @@ export function getObservationById(
  * BM25 returns negative values (lower = more relevant), so temporal decay
  * pushes older results toward zero (less relevant). Sort ascending.
  *
- * @see Architecture Section 4.2 (FTS5 search)
+ * @internal Test-only. Not called in production code — the assembler uses
+ * artifact-based retrieval (searchArtifacts with LIKE) rather than FTS5.
+ * Retained for test coverage and potential future use.
  */
 export function searchObservations(
   db: Database,
@@ -147,7 +155,7 @@ export function searchObservations(
 ): ObservationRow[] {
   const limit = opts?.limit ?? 100;
 
-  // CDX-COR-003: Sanitize FTS5 operator syntax to prevent query injection.
+  // Sanitize FTS5 operator syntax to prevent query injection.
   // FTS5 MATCH interprets *, ", (), etc. as operators — strip them.
   const sanitized = query.replace(/[*"(){}[\]:^~!@#$%&|\\]/g, ' ').trim();
   if (!sanitized) return [];

@@ -1,18 +1,16 @@
 /**
  * SQLite connection lifecycle — open, close, and Database type re-export.
  * Plain functions with `db: Database` as first param (no class wrapper).
- * @see Architecture Section 4.1 (PRAGMAs), Section 4.3 (Initialization)
  */
 
 import Database from 'better-sqlite3';
-import { runMigrations } from './migrations.js';
+import { initializeSchema } from './migrations.js';
 
 export type { Database } from 'better-sqlite3';
 
 /**
  * Opens a SQLite database at the given path with production PRAGMAs.
  * Sets WAL mode, NORMAL synchronous, 10k cache, and foreign keys ON.
- * @see Architecture Section 4.1
  */
 export function openDatabase(path: string): Database.Database {
   const db = new Database(path);
@@ -23,7 +21,7 @@ export function openDatabase(path: string): Database.Database {
   db.pragma('foreign_keys = ON');
   db.pragma('busy_timeout = 5000');
 
-  runMigrations(db);
+  initializeSchema(db);
 
   return db;
 }

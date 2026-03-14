@@ -1,12 +1,10 @@
 /**
  * 3-tier semantic deduplication engine with Porter stemmer.
  * Pure functions, no DB dependency. Non-throwing pattern.
- * @see Architecture Section 6.3
  */
 
 /**
  * Stop words filtered before Jaccard keyword extraction.
- * @see Architecture Section 6.3
  */
 const STOP_WORDS = new Set([
   'the', 'a', 'an', 'is', 'are', 'was', 'were', 'be', 'been', 'being',

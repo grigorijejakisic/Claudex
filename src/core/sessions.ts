@@ -1,7 +1,6 @@
 /**
  * Session lifecycle CRUD — create, query, end, and observation counting.
  * Plain functions with `db: Database` as first param.
- * @see Architecture Section 4.2 (sessions table)
  */
 
 import type { Database } from 'better-sqlite3';
@@ -39,10 +38,10 @@ export function createSession(
      VALUES (?, ?, ?, ?, ?, ?)`
   ).run(
     session.session_id,
-    session.scope ?? null,
-    session.project ?? null,
-    session.cwd ?? null,
-    session.source ?? null,
+    session.scope ?? 'unknown',
+    session.project ?? '__global__',
+    session.cwd ?? '.',
+    session.source ?? 'unknown',
     session.adapter ?? 'unknown'
   );
 }
@@ -63,7 +62,7 @@ export function endSession(
 
 /**
  * Returns the most recent active session, optionally filtered by project.
- * QUAL-04: Filters by project scope when provided.
+ * Filters by project scope when provided.
  */
 export function getActiveSession(
   db: Database,

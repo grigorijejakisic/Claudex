@@ -7,7 +7,7 @@
  * The reference layer (packed summaries) is always visible; the materialization
  * layer (full content) is query-driven.
  *
- * @see Architecture: artifact model replaces binary inclusion/exclusion cascade
+
  */
 
 import type { Database } from 'better-sqlite3';
@@ -24,7 +24,7 @@ export interface ArtifactRow {
   id: number;
   session_id: string;
   project: string;
-  artifact_type: string;
+  artifact_type: ArtifactType;
   artifact_ref: string | null;
   summary: string;
   content: string | null;
@@ -49,10 +49,14 @@ export function createArtifact(
   content: string | null,
   importance: number,
 ): number {
+  // TTL scales with importance — high-signal artifacts stay visible longer.
+  // Each tick happens at ~120s intervals, so TTL=6 ≈ 12 minutes of visibility.
+  const ttl = importance >= 5 ? 8 : importance >= 4 ? 6 : 4;
+
   const result = cachedPrepare(db,
     `INSERT INTO artifacts (session_id, project, artifact_type, artifact_ref, summary, content, state, ttl, importance)
-     VALUES (?, ?, ?, ?, ?, ?, 'fresh', 3, ?)`
-  ).run(sessionId, project, artifactType, artifactRef, summary, content, importance);
+     VALUES (?, ?, ?, ?, ?, ?, 'fresh', ?, ?)`
+  ).run(sessionId, project, artifactType, artifactRef, summary, content, ttl, importance);
 
   return Number(result.lastInsertRowid);
 }
@@ -203,10 +207,22 @@ export function packAllArtifacts(
   return result.changes;
 }
 
+/** Stop words for keyword extraction in artifact search. */
+const SEARCH_STOP_WORDS = new Set([
+  'the', 'a', 'an', 'is', 'are', 'was', 'were', 'be', 'been', 'being',
+  'have', 'has', 'had', 'do', 'does', 'did', 'will', 'would', 'could',
+  'should', 'may', 'might', 'shall', 'can', 'to', 'of', 'in', 'for',
+  'on', 'with', 'at', 'by', 'from', 'it', 'this', 'that', 'these',
+  'those', 'i', 'we', 'you', 'he', 'she', 'they', 'me', 'my', 'your',
+  'let', 'just', 'now', 'so', 'if', 'but', 'or', 'and', 'not', 'no',
+  'how', 'what', 'when', 'where', 'why', 'which', 'who', 'whom',
+]);
+
 /**
- * Searches artifacts by summary and content text using LIKE matching.
+ * Searches artifacts using a two-stage strategy:
+ * 1. FTS5 search on observations_fts → find observation IDs → match via artifact_ref
+ * 2. Fallback: keyword LIKE matching on artifact summary
  * Returns matching artifacts ordered by importance DESC.
- * Used for materialization selection based on prompt analysis.
  */
 export function searchArtifacts(
   db: Database,
@@ -214,14 +230,59 @@ export function searchArtifacts(
   query: string,
   limit?: number,
 ): ArtifactRow[] {
-  const pattern = `%${query}%`;
-  return cachedPrepare(db,
-    `SELECT * FROM artifacts
-     WHERE project = ?
-       AND (summary LIKE ? OR content LIKE ?)
-     ORDER BY importance DESC, timestamp_epoch DESC
-     LIMIT ?`
-  ).all(project, pattern, pattern, limit ?? 20) as ArtifactRow[];
+  if (!query || query.length < 3) return [];
+
+  const maxResults = limit ?? 10;
+
+  // Stage 1: FTS5 search on observations → artifact_ref join
+  try {
+    // Extract keywords for FTS query
+    const keywords = query
+      .toLowerCase()
+      .replace(/[^\w\s]/g, '')
+      .split(/\s+/)
+      .filter(w => w.length > 2 && !SEARCH_STOP_WORDS.has(w));
+
+    if (keywords.length > 0) {
+      const ftsQuery = keywords.join(' OR ');
+      const ftsResults = cachedPrepare(db,
+        `SELECT a.* FROM artifacts a
+         INNER JOIN observations_fts fts ON CAST(a.artifact_ref AS INTEGER) = fts.rowid
+         WHERE a.project = ? AND a.artifact_type = 'observation'
+           AND observations_fts MATCH ?
+         ORDER BY a.importance DESC, a.timestamp_epoch DESC
+         LIMIT ?`
+      ).all(project, ftsQuery, maxResults) as ArtifactRow[];
+
+      if (ftsResults.length > 0) return ftsResults;
+    }
+  } catch {
+    // FTS may fail on invalid query syntax — fall through to keyword search
+  }
+
+  // Stage 2: Keyword LIKE fallback for non-observation artifacts and FTS failures
+  try {
+    const keywords = query
+      .toLowerCase()
+      .replace(/[^\w\s]/g, '')
+      .split(/\s+/)
+      .filter(w => w.length > 2 && !SEARCH_STOP_WORDS.has(w))
+      .slice(0, 5);
+
+    if (keywords.length === 0) return [];
+
+    const conditions = keywords.map(() => '(LOWER(summary) LIKE ?)').join(' OR ');
+    const params = keywords.map(k => `%${k}%`);
+
+    return cachedPrepare(db,
+      `SELECT * FROM artifacts
+       WHERE project = ? AND (${conditions})
+       ORDER BY importance DESC, timestamp_epoch DESC
+       LIMIT ?`
+    ).all(project, ...params, maxResults) as ArtifactRow[];
+  } catch {
+    return [];
+  }
 }
 
 /**

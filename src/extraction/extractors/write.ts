@@ -1,6 +1,5 @@
 /**
  * Write tool extractor — file path and content summary.
- * @see Architecture Section 5.2
  */
 
 import { truncateText } from '../../shared/text-utils.js';

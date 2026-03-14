@@ -1,11 +1,10 @@
 /**
  * Schema versions, capability constants, and default configuration values.
- * @see Architecture Sections 3.1, 11.1
  */
 
 import type { RuntimeCapabilities } from './types.js';
 
-/** CC Hook Adapter capabilities. @see Architecture Section 3.1 */
+/** CC Hook Adapter capabilities. */
 export const CC_CAPABILITIES: RuntimeCapabilities = {
   hasFullMessageHistory: false,
   hasNativeContextUsage: false,
@@ -16,7 +15,7 @@ export const CC_CAPABILITIES: RuntimeCapabilities = {
   supportsTurnEndEvent: true,
 };
 
-/** OpenClaw Bridge Adapter capabilities. @see Architecture Section 3.1 */
+/** OpenClaw Bridge Adapter capabilities. */
 export const OPENCLAW_CAPABILITIES: RuntimeCapabilities = {
   hasFullMessageHistory: true,
   hasNativeContextUsage: true,
@@ -30,7 +29,7 @@ export const OPENCLAW_CAPABILITIES: RuntimeCapabilities = {
 /** Database schema version. */
 export const SCHEMA_VERSION = 300;
 
-/** Default custom compaction instructions for CC. @see Upgrade 13 */
+/** Default custom compaction instructions for CC. */
 export const DEFAULT_COMPACTION_INSTRUCTIONS = [
   'Preserve all file paths verbatim — do not abbreviate, shorten, or summarize paths.',
   'Preserve error messages and stack traces verbatim.',
@@ -41,7 +40,7 @@ export const DEFAULT_COMPACTION_INSTRUCTIONS = [
   'Keep the most recent context gauge line verbatim.',
 ].join('\n');
 
-/** Default config values matching Architecture Section 11.1. */
+/** Default config values. */
 export const DEFAULT_CONFIG = {
   schema: 'claudex/config' as const,
   version: 3,
@@ -50,19 +49,16 @@ export const DEFAULT_CONFIG = {
     topic_shift_budget: 800,
   },
   observations: {
-    enabled: true,
     retention_days: 90,
     prune_threshold: 1000,
     prune_count: 50,
   },
   checkpoint: {
     debounce_seconds: 60,
-    compression: false,
     compaction_instructions: DEFAULT_COMPACTION_INSTRUCTIONS,
   },
   learnings: {
     max_per_project: 50,
-    surface_count: 10,
   },
   enrichment: {
     enabled: true,
@@ -82,12 +78,8 @@ export const DEFAULT_CONFIG = {
     jaccard_shift_threshold: 0.15,
   },
   observability: {
-    enabled: true,
     retention_days: 7,
     retain_error_count: 1000,
-  },
-  gsd: {
-    enabled: true,
   },
   context: {
     advisory_threshold: 0.50,
@@ -95,15 +87,11 @@ export const DEFAULT_CONFIG = {
     critical_threshold: 0.80,
     checkpoint_cooldown_seconds: 300,
   },
-  features: {
-    fts5_search: true,
-  },
-  adapter: 'auto' as const,
 } as const;
 
 /**
- * Context pressure zone thresholds for gauge injection. @see Upgrade 1
- * R50: Derived from DEFAULT_CONFIG.context — single source of truth.
+ * Context pressure zone thresholds for gauge injection.
+ * Derived from DEFAULT_CONFIG.context — single source of truth.
  */
 export const PRESSURE_ZONES = {
   normal:   { max: DEFAULT_CONFIG.context.advisory_threshold },
@@ -122,5 +110,5 @@ export function getPressureZone(utilization: number): PressureZone {
   return 'normal';
 }
 
-/** Maximum content length for observation extraction. @see Architecture Section 5.2 */
+/** Maximum content length for observation extraction. */
 export const CONTENT_MAX_CHARS = 500;

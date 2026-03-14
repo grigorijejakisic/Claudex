@@ -47,7 +47,7 @@ describe('artifact CRUD', () => {
     expect(rows).toHaveLength(1);
     expect(rows[0].id).toBe(id);
     expect(rows[0].state).toBe('fresh');
-    expect(rows[0].ttl).toBe(3);
+    expect(rows[0].ttl).toBe(8); // importance 5 → TTL 8
     expect(rows[0].importance).toBe(5);
     expect(rows[0].artifact_ref).toBeNull();
     expect(rows[0].last_materialized_epoch).toBeNull();
@@ -137,14 +137,15 @@ describe('artifact TTL lifecycle', () => {
     tickArtifactTTL(db, 'myproject');
 
     const rows = getArtifactsByProject(db, 'myproject');
-    expect(rows[0].ttl).toBe(2);
+    expect(rows[0].ttl).toBe(3); // importance 3 → TTL 4, after 1 tick → 3
     expect(rows[0].state).toBe('fresh');
   });
 
   it('tickArtifactTTL packs at TTL 0', () => {
     createArtifact(db, 'sess-1', 'myproject', 'observation', null, 'Test', 'content', 3);
 
-    // Tick 3 times: TTL 3 -> 2 -> 1 -> 0 (then pack)
+    // importance 3 → TTL 4. Tick 4 times to reach 0
+    tickArtifactTTL(db, 'myproject');
     tickArtifactTTL(db, 'myproject');
     tickArtifactTTL(db, 'myproject');
     const result = tickArtifactTTL(db, 'myproject');
@@ -177,8 +178,8 @@ describe('artifact TTL lifecycle', () => {
 
     const a = getArtifactsByProject(db, 'project-a');
     const b = getArtifactsByProject(db, 'project-b');
-    expect(a[0].ttl).toBe(2);
-    expect(b[0].ttl).toBe(3); // untouched
+    expect(a[0].ttl).toBe(3); // importance 3 → TTL 4, after 1 tick → 3
+    expect(b[0].ttl).toBe(4); // untouched (importance 3 → TTL 4)
   });
 });
 
@@ -319,13 +320,13 @@ describe('searchArtifacts', () => {
     expect(results[0].summary).toBe('API endpoint analysis');
   });
 
-  it('finds artifacts by content text', () => {
-    createArtifact(db, 'sess-1', 'myproject', 'observation', null, 'Some title', 'Uses JWT for authentication', 4);
-    createArtifact(db, 'sess-1', 'myproject', 'decision', null, 'Other title', 'Plain password storage', 3);
+  it('finds artifacts by keyword in summary', () => {
+    createArtifact(db, 'sess-1', 'myproject', 'observation', null, 'JWT authentication analysis', 'Uses JWT for auth', 4);
+    createArtifact(db, 'sess-1', 'myproject', 'decision', null, 'Password storage choice', 'Plain password storage', 3);
 
-    const results = searchArtifacts(db, 'myproject', 'JWT');
+    const results = searchArtifacts(db, 'myproject', 'authentication analysis');
     expect(results).toHaveLength(1);
-    expect(results[0].content).toContain('JWT');
+    expect(results[0].summary).toContain('JWT');
   });
 
   it('respects project scope', () => {
@@ -338,10 +339,10 @@ describe('searchArtifacts', () => {
 
   it('respects limit', () => {
     for (let i = 0; i < 5; i++) {
-      createArtifact(db, 'sess-1', 'myproject', 'observation', null, `Item ${i}`, `content ${i}`, 3);
+      createArtifact(db, 'sess-1', 'myproject', 'observation', null, `Database migration step ${i}`, `migration content ${i}`, 3);
     }
 
-    const results = searchArtifacts(db, 'myproject', 'content', 2);
+    const results = searchArtifacts(db, 'myproject', 'database migration', 2);
     expect(results).toHaveLength(2);
   });
 

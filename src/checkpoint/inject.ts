@@ -1,7 +1,6 @@
 /**
  * Checkpoint-to-markdown renderer for assembly pipeline injection.
  * Non-throwing — returns empty string on error.
- * @see Architecture Section 7
  */
 
 import type { CheckpointV3, SelectiveLoadPreset } from './types.js';

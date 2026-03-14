@@ -1,7 +1,6 @@
 /**
  * LLM enrichment with auto-detecting provider and safety-net merge.
  * Non-throwing — returns null on error, heuristic data on merge failure.
- * @see Architecture Section 6.4
  */
 
 import type { RuntimeCapabilities } from '../shared/types.js';
@@ -34,7 +33,7 @@ export interface CheckpointData {
  * but never implemented (returned null). If OpenClaw native enrichment becomes
  * feasible in the future, add it back with an actual API call implementation.
  *
- * R53: `provider` and `_capabilities` are reserved for future use.
+ * `provider` and `_capabilities` are reserved for future use.
  * Currently only Ollama is supported. When additional providers are added,
  * `provider` will select the backend and `_capabilities` will gate features.
  */
@@ -91,7 +90,7 @@ export async function detectEnrichmentProvider(
   }
 }
 
-/** Build enrichment prompt per Architecture 6.4. */
+/** Build enrichment prompt for checkpoint refinement. */
 function buildEnrichmentPrompt(data: CheckpointData): string {
   return `You are reviewing a session checkpoint. Refine the following heuristic data.
 For each field, keep what's accurate, fix what's imprecise, remove what's noise.
@@ -150,7 +149,7 @@ export async function enrichCheckpoint(
     // Parse LLM response as JSON
     const raw = JSON.parse(content);
 
-    // R16: Validate the result is a plain object with expected keys only
+    // Validate the result is a plain object with expected keys only
     if (raw === null || typeof raw !== 'object' || Array.isArray(raw)) return null;
     const ALLOWED_KEYS = new Set([
       'topic', 'task', 'status', 'decisions', 'open_items',
@@ -164,7 +163,7 @@ export async function enrichCheckpoint(
       // Unknown keys are silently stripped
     }
 
-    // R17: Enforce max string lengths to prevent prompt injection via persistent data
+    // Enforce max string lengths to prevent prompt injection via persistent data
     const MAX_STRING_LENGTH = 2000;
     const MAX_ITEM_LENGTH = 500;
     for (const field of ['topic', 'task', 'status', 'summary'] as const) {
@@ -216,7 +215,6 @@ type StringField = (typeof STRING_FIELDS)[number];
  * Safety-net merge: LLM enrichment can improve but never silently drop
  * heuristic data. Uncovered heuristic entries appended to enriched arrays.
  * Pure function. Non-throwing (returns heuristic on error).
- * @see Architecture Section 6.4
  */
 export function mergeEnrichment(
   heuristic: CheckpointData,

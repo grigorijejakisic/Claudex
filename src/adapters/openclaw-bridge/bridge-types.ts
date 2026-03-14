@@ -1,7 +1,6 @@
 /**
  * Bridge types for the OpenClaw adapter.
  * BRIDGE_KEY Symbol, ClaudexBridge interface, and minimal Pi SDK type stubs.
- * @see Architecture Section 3.3
  */
 
 /** globalThis key for bridge discovery. */
@@ -9,7 +8,7 @@ export const BRIDGE_KEY = Symbol.for('claudex.v3.bridge');
 
 /**
  * Minimal Pi SDK context stubs -- compile-time only, not runtime dependency.
- * Match Architecture Section 3.3 usage patterns.
+ * Matches Pi SDK usage patterns.
  */
 
 /** Context object passed to bridge onInit. */

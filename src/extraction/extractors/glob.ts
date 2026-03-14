@@ -1,6 +1,5 @@
 /**
  * Glob tool extractor — pattern and matched files.
- * @see Architecture Section 5.2
  */
 
 import { truncateText } from '../../shared/text-utils.js';
@@ -20,7 +19,8 @@ export function extractGlob(
     const pattern = String(input.pattern ?? '');
     if (!pattern) return null;
 
-    const files = Array.isArray(output?.files) ? output.files as string[] : [];
+    const rawFiles = output?.files ?? output?.filenames;
+    const files = Array.isArray(rawFiles) ? rawFiles as string[] : [];
     const fileCount = files.length;
 
     const title = truncateText(`Glob: ${pattern} (${fileCount} files)`, 120);

@@ -2,7 +2,6 @@
  * Centralized tool catalog — single source of truth for tool names,
  * key fields, behavior hints, and observation categories.
  * All extraction, quality-gate, and scoring modules import from here.
- * @see Architecture Section 5.2 — per-tool extractors
  */
 
 import type { ObservationCategory } from '../core/observations.js';

@@ -1,7 +1,6 @@
 /**
  * Cosine similarity computation. Pure math, no dependencies.
  * Non-throwing (returns 0 on error).
- * @see Architecture Section 6.1 — Stage 2 embedding classification
  */
 
 /**

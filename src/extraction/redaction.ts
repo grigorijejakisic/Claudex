@@ -1,7 +1,6 @@
 /**
  * Three-layer redaction engine with path sanitization.
  * Pure functions, no DB dependency. Non-throwing pattern.
- * @see Architecture Section 5.4 — three-layer redaction
  */
 
 import { isPrivateIPv4 } from '../shared/network-safety.js';

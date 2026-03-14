@@ -167,8 +167,32 @@ describe('processToolAndPressure', () => {
     expect(paths).toContain('/other/dir/file.ts');
   });
 
-  it('creates an artifact when an observation is stored', () => {
-    // Content must pass quality gate: >= 100 chars + structural patterns
+  it('creates an artifact when a high-importance observation is stored', () => {
+    // Edit/Write get importance 3 — above the artifact creation threshold
+    processToolAndPressure({
+      db,
+      sessionId: 'test-s1',
+      project: 'test-proj',
+      cwd: '/tmp/test',
+      toolName: 'Edit',
+      toolInput: { file_path: '/tmp/test/src/index.ts', old_string: 'const oldConfig = loadLegacyConfiguration(defaultPath);', new_string: 'const newConfig = loadModernConfiguration(resolvedPath);' },
+    });
+
+    // Verify observation was created first
+    const obs = db.prepare('SELECT id, importance, obs_type FROM observations WHERE project = ?').all('test-proj');
+    expect(obs.length).toBeGreaterThanOrEqual(1);
+
+    const artifacts = getArtifactsByProject(db, 'test-proj', { type: 'observation' });
+    expect(artifacts.length).toBeGreaterThanOrEqual(1);
+    expect(artifacts[0].artifact_type).toBe('observation');
+    expect(artifacts[0].state).toBe('fresh');
+    // importance 3 → TTL 4, rate-limited tick may or may not fire
+    expect(artifacts[0].ttl).toBeGreaterThanOrEqual(3);
+    expect(artifacts[0].artifact_ref).toBeTruthy();
+  });
+
+  it('does not create an artifact for low-importance observations', () => {
+    // Read gets importance 2 — below threshold
     const fileContent = 'export function main() {\n  const result = computeValue();\n  return result;\n}\n\nexport function computeValue() {\n  return 42;\n}\n';
     processToolAndPressure({
       db,
@@ -181,14 +205,7 @@ describe('processToolAndPressure', () => {
     });
 
     const artifacts = getArtifactsByProject(db, 'test-proj', { type: 'observation' });
-    expect(artifacts.length).toBeGreaterThanOrEqual(1);
-    expect(artifacts[0].artifact_type).toBe('observation');
-    expect(artifacts[0].state).toBe('fresh');
-    // CROSS-007: tickArtifactTTL now rate-limited (once per 5s), so TTL stays at 3
-    // when a prior processToolAndPressure call in the same test suite already ticked.
-    expect(artifacts[0].ttl).toBeGreaterThanOrEqual(2);
-    // artifact_ref should be the observation row ID
-    expect(artifacts[0].artifact_ref).toBeTruthy();
+    expect(artifacts).toHaveLength(0);
   });
 
   it('does not create an artifact when no observation is stored', () => {
@@ -524,8 +541,9 @@ describe('runCompactionSequence', () => {
     expect(artifacts.every(a => a.state === 'fresh')).toBe(true);
   });
 
-  it('skips promoteLearnings and markPostCompactPending when checkpoint fails', async () => {
-    // Close the DB to force writeCheckpoint to return null
+  it('still marks post-compact-pending even when checkpoint fails', async () => {
+    // markPostCompactPending must run regardless of checkpoint success —
+    // the agent needs context recovery after compaction even if checkpoint write failed.
     const failDb = createTestDb();
     createSession(failDb, {
       session_id: 'test-s2',
@@ -543,10 +561,10 @@ describe('runCompactionSequence', () => {
       cwd: '/tmp/test',
     });
 
-    // post_compact_pending should NOT be set since checkpoint failed
-    // checkpoint_tracking should still exist but not be marked pending
+    // post_compact_pending MUST be set even though checkpoint failed —
+    // post-compaction context recovery is critical regardless
     const tracking = getCheckpointTracking(failDb, 'test-s2');
-    expect(tracking?.post_compact_pending).not.toBe(1);
+    expect(tracking?.post_compact_pending).toBe(1);
 
     failDb.close();
   });

@@ -2,12 +2,12 @@
  * DB-first checkpoint writer with ULID IDs, threshold logic, debounce,
  * YAML serialization, and optional LLM enrichment.
  * All public functions are non-throwing.
- * @see Architecture Section 8.3
  */
 
 import type { Database } from 'better-sqlite3';
 import { ulid } from 'ulid';
 import * as yaml from 'js-yaml';
+import { emitTelemetry, sanitizeErrorForTelemetry } from '../observability/telemetry.js';
 import type { TokenUsage } from '../shared/types.js';
 import type { CheckpointTrackingRow } from '../core/checkpoint-tracking.js';
 import { recordThresholdHit } from '../core/checkpoint-tracking.js';
@@ -60,8 +60,7 @@ export function extractOpenItems(text: string | null | undefined): string[] {
   }
 }
 
-// writeCompressedFile moved to shared/fs-helpers.ts (DEP-003)
-// Re-exported for backward compatibility
+// writeCompressedFile moved to shared/fs-helpers.ts — re-exported for backward compatibility
 export { writeCompressedFile };
 
 /**
@@ -115,7 +114,6 @@ export function shouldTriggerCheckpoint(params: {
  * DB-first checkpoint writer. Full lifecycle:
  * INSERT pending -> build data -> UPDATE committed -> enrich -> write file -> UPDATE mirrored.
  * Non-throwing — returns null on error.
- * @see Architecture Section 8.3
  */
 export async function writeCheckpoint(
   params: WriteCheckpointParams
@@ -194,8 +192,8 @@ export async function writeCheckpoint(
           const parts = prevRow.mirror_path.replace(/\\/g, '/').split('/');
           previousCheckpoint = parts[parts.length - 1];
         }
-        // Fix 4: No fallback — without mirror_path we lack the date prefix,
-        // so skip rather than generate a wrong basename like ${id}.yaml
+        // No fallback — without mirror_path we lack the date prefix,
+        // so skip rather than generate a wrong basename
       }
     } catch {
       // No previous checkpoint — ok
@@ -326,7 +324,7 @@ export async function writeCheckpoint(
     }
 
     // Step 6-7: Write YAML file (optionally compressed)
-    // Fix 6: Use JSON_SCHEMA for round-trip consistency (prevents "true" -> boolean coercion)
+    // Use JSON_SCHEMA for round-trip consistency (prevents "true" -> boolean coercion)
     const yamlContent = yaml.dump(checkpoint, { lineWidth: 120, noRefs: true, schema: yaml.JSON_SCHEMA });
     let writeOk: boolean;
     if (compression) {
@@ -394,6 +392,7 @@ export async function writeCheckpoint(
     } catch {
       // Best effort
     }
+    try { emitTelemetry(db, sessionId, 'error', { subsystem: 'checkpoint/write', error: sanitizeErrorForTelemetry(err) }); } catch {}
     return null;
   }
 }
@@ -402,7 +401,6 @@ export async function writeCheckpoint(
  * Records a verified fact for the current session.
  * Facts are persisted in the verified_facts table and included in subsequent checkpoints.
  * Non-throwing — silently fails if table doesn't exist.
- * @see Upgrade 12
  */
 export function addVerifiedFact(db: Database, sessionId: string, fact: string): void {
   try {

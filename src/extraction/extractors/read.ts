@@ -1,6 +1,5 @@
 /**
  * Read tool extractor — file path and structural content.
- * @see Architecture Section 5.2
  */
 
 import { truncateText } from '../../shared/text-utils.js';
@@ -23,7 +22,8 @@ export function extractRead(
     const basename = filePath.split(/[/\\]/).pop() ?? filePath;
     const title = truncateText(`Read: ${basename}`, 120);
 
-    const content = truncateText(String(output?.content ?? ''), CONTENT_MAX_CHARS);
+    const fileObj = output?.file as Record<string, unknown> | undefined;
+    const content = truncateText(String(output?.content ?? fileObj?.content ?? ''), CONTENT_MAX_CHARS);
 
     return {
       title,

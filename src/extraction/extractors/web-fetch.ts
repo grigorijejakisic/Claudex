@@ -1,6 +1,5 @@
 /**
  * WebFetch tool extractor — URL, status, content.
- * @see Architecture Section 5.2
  */
 
 import { truncateText } from '../../shared/text-utils.js';

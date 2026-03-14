@@ -1,7 +1,6 @@
 /**
  * Learnings CRUD with promotion UPSERT semantics.
  * Plain functions with `db: Database` as first param.
- * @see Architecture Section 4.2 (learnings table)
  */
 
 import type { Database } from 'better-sqlite3';
@@ -49,7 +48,7 @@ export function upsertLearning(
 
 /**
  * Returns learnings for a project (including __global__), ordered by promotion_count DESC.
- * QUAL-04: Scoped by project, includes __global__ for cross-project learnings.
+ * Scoped by project, includes __global__ for cross-project learnings.
  * Default limit: 50 (per config max_per_project).
  */
 export function getLearningsByProject(

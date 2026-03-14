@@ -1,7 +1,6 @@
 /**
  * Ollama nomic-embed-text client with health check and graceful fallback.
  * Non-throwing class — all public methods return null/false on error.
- * @see Architecture Section 6.1 — Stage 2 embedding classification
  */
 
 import { fetchJsonWithTimeout } from '../shared/fetch-utils.js';

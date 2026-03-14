@@ -1,6 +1,6 @@
 /**
  * Runtime path helpers using os.homedir() + path.join().
- * All functions are defensive non-throwing (QUAL-01) and cross-platform (QUAL-05).
+ * All functions are defensive non-throwing and cross-platform.
  */
 
 import * as path from 'path';
@@ -13,6 +13,7 @@ export function getClaudexHome(): string {
   try {
     return path.normalize(path.join(os.homedir(), CLAUDEX_DIR));
   } catch {
+    // Non-throwing: no DB access — os.homedir() failed, fall back to relative path
     return path.normalize(path.join('.', CLAUDEX_DIR));
   }
 }
@@ -22,6 +23,7 @@ export function getDbPath(): string {
   try {
     return path.normalize(path.join(getClaudexHome(), 'db', 'claudex.db'));
   } catch {
+    // Non-throwing: no DB access — getClaudexHome() failed, fall back to relative path
     return path.normalize(path.join('.', CLAUDEX_DIR, 'db', 'claudex.db'));
   }
 }
@@ -31,6 +33,7 @@ export function getConfigPath(): string {
   try {
     return path.normalize(path.join(getClaudexHome(), 'config.json'));
   } catch {
+    // Non-throwing: no DB access — fall back to relative path
     return path.normalize(path.join('.', CLAUDEX_DIR, 'config.json'));
   }
 }
@@ -40,6 +43,7 @@ export function getProjectsJsonPath(): string {
   try {
     return path.normalize(path.join(getClaudexHome(), 'projects.json'));
   } catch {
+    // Non-throwing: no DB access — fall back to relative path
     return path.normalize(path.join('.', CLAUDEX_DIR, 'projects.json'));
   }
 }
@@ -49,6 +53,7 @@ export function getIdentityDir(): string {
   try {
     return path.normalize(path.join(getClaudexHome(), 'identity'));
   } catch {
+    // Non-throwing: no DB access — fall back to relative path
     return path.normalize(path.join('.', CLAUDEX_DIR, 'identity'));
   }
 }
@@ -58,6 +63,7 @@ export function getCheckpointsDir(projectDir: string): string {
   try {
     return path.normalize(path.join(projectDir, 'context', 'checkpoints'));
   } catch {
+    // Non-throwing: no DB access — path.join failed (invalid input), fall back to relative path
     return path.normalize(path.join('.', 'context', 'checkpoints'));
   }
 }
@@ -67,6 +73,7 @@ export function getSessionsDir(projectDir: string): string {
   try {
     return path.normalize(path.join(projectDir, 'context', 'sessions'));
   } catch {
+    // Non-throwing: no DB access — fall back to relative path
     return path.normalize(path.join('.', 'context', 'sessions'));
   }
 }
@@ -76,6 +83,7 @@ export function getHandoffsDir(projectDir: string): string {
   try {
     return path.normalize(path.join(projectDir, 'context', 'handoffs'));
   } catch {
+    // Non-throwing: no DB access — fall back to relative path
     return path.normalize(path.join('.', 'context', 'handoffs'));
   }
 }

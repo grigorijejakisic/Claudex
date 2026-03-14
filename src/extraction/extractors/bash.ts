@@ -1,6 +1,5 @@
 /**
  * Bash tool extractor — command, exit code, output.
- * @see Architecture Section 5.2
  */
 
 import { truncateText } from '../../shared/text-utils.js';

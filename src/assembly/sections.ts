@@ -2,7 +2,6 @@
  * Stateless section formatters for the assembly pipeline.
  * All are pure functions taking pre-fetched data, returning string | null.
  * All non-throwing (return null on error).
- * @see Architecture Section 7.2
  */
 
 import * as fs from 'fs';
@@ -24,7 +23,6 @@ import type { ToolCostEstimate } from '../observability/telemetry.js';
 /**
  * Wraps file-derived content in data boundary markers with provenance.
  * Ensures file content is clearly marked as DATA, not system instructions.
- * @see Security fix C3
  */
 function wrapFileContent(content: string, source: string): string {
   // Escape literal closing sentinel in content to prevent data boundary injection (C3)
@@ -36,7 +34,6 @@ function wrapFileContent(content: string, source: string): string {
  * Sanitizes user-controlled topic text before embedding in system messages.
  * Truncates to maxLen, strips control characters and instruction-like patterns,
  * and wraps in quotes so it cannot be interpreted as instructions.
- * @see Security fix C4
  */
 function sanitizeTopicText(text: string | null | undefined, maxLen: number = 100): string {
   if (!text) return 'unknown';
@@ -160,7 +157,6 @@ function formatRelativeTime(epochSeconds: number): string {
  * Priority 2.5: Session continuity — compressed handoff + latest session log.
  * Reads ACTIVE.md and the most recent session log, compresses into ~300 tokens.
  * Returns null if no handoff exists (cost: 0). Non-throwing.
- * @see Upgrade 4
  */
 export function renderSessionContinuity(handoffPath?: string, sessionsDir?: string): string | null {
   try {
@@ -405,7 +401,6 @@ export function formatGaugeSection(
 /**
  * Graduated pressure response — behavioral changes at different utilization levels.
  * Returns zone-appropriate advisory/warning/critical message, or null for normal zone.
- * @see Upgrade 7: Graduated Pressure Response
  */
 export function formatPressureResponse(
   gauge: TokenUsage | null,

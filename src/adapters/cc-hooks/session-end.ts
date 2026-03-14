@@ -1,12 +1,12 @@
 /**
  * SessionEnd hook -> session_end event.
  * Writes final checkpoint, runs decay, ends session, prunes telemetry.
- * @see Architecture Section 3.2
  */
 
 import { wrapHook, getTranscriptPath } from './infrastructure.js';
 import { getTokenGauge } from '../../gauge/token-gauge.js';
 import { CC_CAPABILITIES } from '../../shared/constants.js';
+import { emitTelemetry, sanitizeErrorForTelemetry } from '../../observability/telemetry.js';
 import { runSessionEndCleanup } from '../shared/lifecycle.js';
 
 const main = wrapHook('SessionEnd', async (input, ctx) => {
@@ -15,15 +15,21 @@ const main = wrapHook('SessionEnd', async (input, ctx) => {
     transcriptPath: getTranscriptPath(input),
   });
 
-  await runSessionEndCleanup({
-    db: ctx.db,
-    sessionId: input.session_id,
-    project: ctx.project,
-    cwd: input.cwd,
-    scope: ctx.scope ?? undefined,
-    config: ctx.config,
-    gauge: gauge ?? undefined,
-  });
+  // Isolated — W1 handles internal isolation within runSessionEndCleanup,
+  // this wraps the hook-level call so gauge errors don't prevent cleanup
+  try {
+    await runSessionEndCleanup({
+      db: ctx.db,
+      sessionId: input.session_id,
+      project: ctx.project,
+      cwd: input.cwd,
+      scope: ctx.scope ?? undefined,
+      config: ctx.config,
+      gauge: gauge ?? undefined,
+    });
+  } catch (e) {
+    try { emitTelemetry(ctx.db, input.session_id, 'error', { subsystem: 'session_end/cleanup', error: sanitizeErrorForTelemetry(e) }); } catch {}
+  }
 
   return {};
 });

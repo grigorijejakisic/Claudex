@@ -1,7 +1,6 @@
 /**
  * Precomputed decision/non-decision template embeddings and classification.
  * Non-throwing — returns null/0 on error.
- * @see Architecture Section 6.1 — Stage 2 embedding classification
  */
 
 import { EmbeddingProvider } from './embedding-provider.js';

@@ -1,7 +1,6 @@
 /**
  * UserPromptSubmit hook -> before_prompt event.
  * Checks post-compaction, reads gauge, detects topic shift, assembles regular prompt.
- * @see Architecture Section 3.2
  */
 
 import { wrapHook, getTranscriptPath } from './infrastructure.js';
@@ -14,12 +13,12 @@ import type { TopicShiftResult } from '../../intelligence/topic-shift.js';
 import { EmbeddingProvider } from '../../embeddings/embedding-provider.js';
 import { getIdentityDir } from '../../shared/paths.js';
 import { emitTelemetry } from '../../observability/telemetry.js';
-import { persistTopicIfShifted, captureFlowEntry } from '../shared/lifecycle.js';
+import { persistTopicIfShifted, ensureInitialTopic, captureFlowEntry, captureDecisionsFromUserPrompt } from '../shared/lifecycle.js';
 import { searchArtifacts, materializeArtifacts } from '../../core/artifacts.js';
 import { getCooldownState, setCooldownState } from '../../core/thread.js';
 
 const main = wrapHook('UserPromptSubmit', async (input, ctx) => {
-  const prompt = (input.user_prompt as string) || '';
+  const prompt = (input.prompt as string) || (input.user_prompt as string) || '';
 
   const tracking = getCheckpointTracking(ctx.db, input.session_id);
   const isPostCompaction = tracking?.post_compact_pending === 1;
@@ -38,8 +37,8 @@ const main = wrapHook('UserPromptSubmit', async (input, ctx) => {
         model: ctx.config.embeddings.model,
       });
       const available = await embedProvider.isAvailable();
-      // CTR-002: Load cooldown state from DB so fresh detector instances
-      // (created each hook invocation) respect existing cooldown windows.
+      // Load cooldown state from DB — fresh detector instances
+      // (created each hook invocation) need to respect existing cooldown windows.
       const cooldown = getCooldownState(ctx.db, input.session_id);
       const detector = new TopicShiftDetector(
         available ? embedProvider : null,
@@ -54,7 +53,7 @@ const main = wrapHook('UserPromptSubmit', async (input, ctx) => {
           topicShiftWindow: ctx.config.embeddings.topic_shift_window,
         },
       });
-      // CTR-002: Persist updated cooldown state so next hook invocation
+      // Persist updated cooldown state so next hook invocation
       // (fresh process / fresh detector) picks up where we left off.
       try {
         setCooldownState(ctx.db, input.session_id, detector.getCooldownState());
@@ -66,6 +65,25 @@ const main = wrapHook('UserPromptSubmit', async (input, ctx) => {
 
   // Persist topic update to thread_state when a shift is detected
   persistTopicIfShifted(ctx.db, input.session_id, topicShift);
+
+  // Set initial topic from user prompt if none exists yet
+  if (prompt && !topicShift?.shifted) {
+    ensureInitialTopic(ctx.db, input.session_id, prompt);
+  }
+
+  // Capture user-side decisions (confirmations, rejections, explicit markers).
+  // CC's Stop hook doesn't receive user_prompt, so we capture Tier 1+4 here.
+  if (prompt) {
+    try {
+      await captureDecisionsFromUserPrompt({
+        db: ctx.db,
+        sessionId: input.session_id,
+        project: ctx.project,
+        config: ctx.config,
+        userText: prompt,
+      });
+    } catch { /* non-fatal */ }
+  }
 
   // Capture flow entry at topic shift boundaries — natural narrative breakpoints.
   // This supplements compaction-time flow capture, ensuring flow is recorded

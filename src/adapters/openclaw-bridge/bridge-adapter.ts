@@ -2,7 +2,6 @@
  * Bridge adapter callbacks mapping Pi SDK events to core pipeline functions.
  * Persistent DB lifecycle (opened once in activate, closed via deactivate).
  * Session-scoped state (sessionId, cwd, project, scope) derived per-callback from ctx.
- * @see Architecture Section 3.3
  */
 
 import { OPENCLAW_CAPABILITIES } from '../../shared/constants.js';
@@ -135,7 +134,7 @@ async function getEmbeddingCache(bctx: BridgeContext): Promise<EmbeddingCache> {
       available,
       templates: null,
       templatesInitialized: false,
-      // R20: Always create TopicShiftDetector — when provider is unavailable,
+      // Always create TopicShiftDetector — when provider is unavailable,
       // pass null so Layer 3 (keyword Jaccard) fallback still runs.
       topicShiftDetector: new TopicShiftDetector(available ? provider : null),
     };
@@ -149,7 +148,7 @@ async function getEmbeddingCache(bctx: BridgeContext): Promise<EmbeddingCache> {
       available: false,
       templates: null,
       templatesInitialized: true,
-      // R20: Jaccard fallback still works with null provider
+      // Jaccard fallback still works with null provider
       topicShiftDetector: new TopicShiftDetector(null),
     };
     bctx.embeddingCache = fallback;

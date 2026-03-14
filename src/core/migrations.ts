@@ -1,6 +1,5 @@
 /**
  * Schema DDL for fresh install + v2 migration SQL functions.
- * @see Architecture Section 4.2 (Schema), Section 4.3.2 (Migration), Section 10c (Telemetry)
  */
 
 import type { Database } from 'better-sqlite3';
@@ -13,7 +12,6 @@ import { getClaudexHome } from '../shared/paths.js';
 /**
  * Complete v3 schema DDL — 9 tables + FTS5 virtual table + triggers + indexes.
  * All CREATE statements use IF NOT EXISTS for idempotency.
- * @see Architecture Section 4.2
  */
 const SCHEMA_V3 = `
 -- observations: core data table
@@ -39,7 +37,10 @@ CREATE TABLE IF NOT EXISTS observations (
   obs_type TEXT
 );
 
--- FTS5 virtual table for full-text search on observations
+-- FTS5 virtual table for full-text search on observations.
+-- NOTE: FTS5 index is retained for potential future use but searchObservations()
+-- is not called in production code (test-only). Triggers keep the index in sync
+-- so it's ready if we wire up FTS5-based search in the assembler.
 CREATE VIRTUAL TABLE IF NOT EXISTS observations_fts USING fts5(
   title, content,
   content=observations,
@@ -263,7 +264,6 @@ CREATE INDEX IF NOT EXISTS idx_verified_facts_session
 
 /**
  * Telemetry table DDL — separate constant for clarity.
- * @see Architecture Section 10c
  */
 const TELEMETRY_SCHEMA = `
 CREATE TABLE IF NOT EXISTS telemetry (
@@ -284,7 +284,7 @@ CREATE INDEX IF NOT EXISTS idx_telemetry_kind ON telemetry(event_kind, timestamp
 `;
 
 /**
- * REC-11: Checks if an SQLite error message matches a known benign pattern.
+ * Checks if an SQLite error message matches a known benign pattern.
  * Used in catch blocks to distinguish expected schema-evolution errors from real failures.
  */
 export function isSqliteExpectedError(msg: string): boolean {
@@ -316,7 +316,7 @@ function hasColumn(db: Database, table: string, column: string): boolean {
 }
 
 /**
- * REC-12: Ensures adapter columns exist on sessions and telemetry tables.
+ * Ensures adapter columns exist on sessions and telemetry tables.
  * Idempotent — checks column existence before ALTER.
  * Called from migrateV1toV2 and available for any future migration path.
  */
@@ -327,6 +327,43 @@ function ensureAdapterColumns(db: Database): void {
   const telemetryCols = db.pragma('table_info(telemetry)') as Array<{ name: string }>;
   if (telemetryCols.length > 0 && !telemetryCols.some(c => c.name === 'adapter')) {
     db.exec("ALTER TABLE telemetry ADD COLUMN adapter TEXT DEFAULT 'unknown'");
+  }
+}
+
+/**
+ * Detects and drops a stale v2 FTS5 index that has the wrong column count.
+ * The v2 schema had 4 FTS columns (title, content, category, tool_name) but v3
+ * triggers only populate 2 (title, content). If the old 4-column FTS exists,
+ * drops the table and its sync triggers so SCHEMA_V3 can recreate them correctly.
+ * Idempotent — no-op if FTS5 doesn't exist or already has the correct 2-column schema.
+ */
+function rebuildStaleFts5(db: Database): void {
+  // FTS5 virtual tables don't appear in PRAGMA table_info in all SQLite versions.
+  // Instead, check the column count by querying the FTS5 table's own metadata.
+  // A content-synced FTS5 table's columns can be inspected via a zero-row query.
+  if (!hasTable(db, 'observations_fts')) return;
+
+  try {
+    // PRAGMA table_info works for FTS5 virtual tables and returns only user-defined columns
+    // (excludes hidden internal columns like rank and the table-name column).
+    // For a 2-column FTS (title, content), it returns exactly 2.
+    // For a 4-column FTS (title, content, category, tool_name), it returns 4.
+    const ftsColInfo = db.pragma('table_info(observations_fts)') as Array<{ name: string }>;
+    if (ftsColInfo.length <= 2) return; // Already correct 2-column schema
+
+    // Stale v2 FTS5 with extra columns — drop it and its triggers
+    db.exec('DROP TABLE IF EXISTS observations_fts');
+    db.exec('DROP TRIGGER IF EXISTS observations_ai');
+    db.exec('DROP TRIGGER IF EXISTS observations_ad');
+    db.exec('DROP TRIGGER IF EXISTS observations_au');
+  } catch {
+    // If anything goes wrong (e.g., corrupted FTS), drop and let SCHEMA_V3 recreate
+    try {
+      db.exec('DROP TABLE IF EXISTS observations_fts');
+      db.exec('DROP TRIGGER IF EXISTS observations_ai');
+      db.exec('DROP TRIGGER IF EXISTS observations_ad');
+      db.exec('DROP TRIGGER IF EXISTS observations_au');
+    } catch { /* truly broken — initializeSchema will attempt CREATE anyway */ }
   }
 }
 
@@ -358,7 +395,7 @@ function migrateV1toV2(db: Database): void {
     db.exec('ALTER TABLE observations ADD COLUMN obs_type TEXT');
   }
 
-  // 4. sessions.adapter + telemetry.adapter (REC-12)
+  // 4. sessions.adapter + telemetry.adapter
   ensureAdapterColumns(db);
 
   // 5. idx_obs_consumed index
@@ -375,7 +412,7 @@ function migrateV1toV2(db: Database): void {
  *   1 — reserved (unused currently)
  *   2 — current (all migrations applied)
  *
- * REC-13: Dual version tracking
+ * Dual version tracking:
  * Both `PRAGMA user_version` and `schema_versions` table are needed:
  *   - `PRAGMA user_version = 2` — fast O(1) check on every DB open (runMigrations hot path)
  *   - `schema_versions.version = 300` — semantic version for cross-version detection
@@ -432,6 +469,9 @@ function upgradeV2SchemaInPlace(db: Database): void {
     db.exec("ALTER TABLE sessions ADD COLUMN source TEXT");
   }
 
+  // sessions + telemetry: v3 needs 'adapter' column (ensureAdapterColumns handles both)
+  ensureAdapterColumns(db);
+
   // pressure_scores: check for v2 WARM temperature values
   try {
     db.exec("UPDATE pressure_scores SET temperature = 'COLD' WHERE temperature NOT IN ('HOT', 'COLD')");
@@ -446,19 +486,40 @@ function upgradeV2SchemaInPlace(db: Database): void {
 export function initializeSchema(db: Database): void {
   upgradeV2SchemaInPlace(db);
   runMigrations(db);
+
+  // FTS5: detect stale v2 index with wrong column count (4 cols: title, content, category, tool_name)
+  // and drop it so SCHEMA_V3 recreates it with the correct 2-column schema (title, content only).
+  // Must run BEFORE db.exec(SCHEMA_V3) so the CREATE VIRTUAL TABLE IF NOT EXISTS succeeds.
+  // Idempotent: no-op on fresh DBs (no observations_fts yet) or already-migrated DBs (2 cols).
+  rebuildStaleFts5(db);
+
   db.exec(SCHEMA_V3);
   db.exec(TELEMETRY_SCHEMA);
 
-  db.prepare('INSERT OR IGNORE INTO schema_versions (version) VALUES (?)').run(
-    SCHEMA_VERSION
-  );
+  // Rebuild FTS5 content index from observations table.
+  // Needed after upgradeV2SchemaInPlace drops a stale 4-column FTS and SCHEMA_V3 recreates
+  // the 2-column version — existing observation rows won't be in the new FTS index otherwise.
+  // The 'rebuild' command is idempotent and fast on fresh DBs (no rows to reindex).
+  if (hasTable(db, 'observations') && hasTable(db, 'observations_fts')) {
+    try {
+      db.exec("INSERT INTO observations_fts(observations_fts) VALUES('rebuild')");
+    } catch { /* FTS rebuild failed — non-fatal, search won't work but writes are fine */ }
+  }
+
+  // Live DB may have v2 schema (applied_at TEXT NOT NULL, no DEFAULT) or v3 (applied_at_epoch).
+  // Provide both to handle either table shape; OR IGNORE handles the UNIQUE constraint.
+  const svCols = (db.pragma('table_info(schema_versions)') as Array<{ name: string }>).map(c => c.name);
+  if (svCols.includes('applied_at')) {
+    db.prepare('INSERT OR IGNORE INTO schema_versions (version, applied_at) VALUES (?, datetime())').run(SCHEMA_VERSION);
+  } else {
+    db.prepare('INSERT OR IGNORE INTO schema_versions (version) VALUES (?)').run(SCHEMA_VERSION);
+  }
   db.pragma('user_version = 2');
 }
 
 /**
  * Migrates data from a v2 database into the current v3 database.
  * Wraps entire migration in a transaction for atomicity.
- * @see Architecture Section 4.3.2
  */
 export function migrateFromV2(db: Database, v2DbPath: string): void {
   // Guard: prevent same-database source/target
@@ -483,7 +544,7 @@ export function migrateFromV2(db: Database, v2DbPath: string): void {
       db.exec(SCHEMA_V3);
       db.exec(TELEMETRY_SCHEMA);
 
-      // Helper: check if a table exists in the v2 database (REC-10)
+      // Helper: check if a table exists in the v2 database
       const v2HasTable = (tableName: string): boolean => {
         const row = db.prepare(
           "SELECT 1 FROM v2.sqlite_master WHERE type='table' AND name = ?"
@@ -492,7 +553,7 @@ export function migrateFromV2(db: Database, v2DbPath: string): void {
       };
 
       // 3. Copy observations, sessions, pressure_scores from v2
-      // Guard each table copy with existence check for partial legacy DBs (REC-10)
+      // Guard each table copy with existence check for partial legacy DBs
 
       // Note: files_modified may be comma-separated in v2, which fails json_valid CHECK.
       // We copy with files_modified defaulting to '[]' and fix in step 7.
@@ -561,7 +622,7 @@ export function migrateFromV2(db: Database, v2DbPath: string): void {
 
       // 7. Fix files_modified from comma-separated to JSON array
       // Read original non-JSON values from v2 and convert to JSON arrays in v3
-      // Guard: v2.observations may not exist in partial legacy DBs (REC-10)
+      // Guard: v2.observations may not exist in partial legacy DBs
       if (v2HasTable('observations')) {
         const rows = db
           .prepare(

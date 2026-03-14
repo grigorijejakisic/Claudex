@@ -1,7 +1,6 @@
 /**
  * Decision CRUD with fingerprint-based deduplication.
  * Plain functions with `db: Database` as first param.
- * @see Architecture Section 4.2 (decisions table)
  */
 
 import type { Database } from 'better-sqlite3';
@@ -21,7 +20,7 @@ export interface DecisionRow {
 /**
  * Inserts a decision with fingerprint dedup (INSERT OR IGNORE on session_id+fingerprint).
  * Returns the inserted row id, or null if duplicate.
- * QUAL-04: project defaults to '__global__' for scope isolation.
+ * Project defaults to '__global__' for scope isolation.
  */
 export function insertDecision(
   db: Database,
@@ -75,7 +74,7 @@ export function getDecisionsBySession(
 
 /**
  * Returns all decisions for a project, newest first.
- * QUAL-04: Scoped by project.
+ * Scoped by project.
  */
 export function getDecisionsByProject(
   db: Database,

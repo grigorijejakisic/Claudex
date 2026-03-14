@@ -2,7 +2,6 @@
  * Per-tool quality gates that filter low-signal observations.
  * Pure function, no DB dependency. Non-throwing.
  * Tool names must match TOOL_CATALOG keys in shared/tool-catalog.ts.
- * @see Architecture Section 5.2 + 5.5 — quality gates
  */
 
 export interface QualityGateResult {
@@ -42,7 +41,8 @@ export function passesQualityGate(
   try {
     switch (toolName) {
       case 'Read': {
-        const content = String(output?.content ?? '');
+        const fileObj = output?.file as Record<string, unknown> | undefined;
+        const content = String(output?.content ?? fileObj?.content ?? '');
         if (content.length < 100) {
           return { pass: false, reason: 'read_too_short' };
         }
@@ -75,9 +75,10 @@ export function passesQualityGate(
       }
 
       case 'Grep': {
-        const matchCount = Number(output?.matchCount ?? 0);
+        const matchCount = Number(output?.matchCount ?? output?.numFiles ?? 0);
         const hasMatches = Array.isArray(output?.matches) && (output.matches as unknown[]).length > 0;
-        const hasFiles = Array.isArray(output?.files) && (output.files as unknown[]).length > 0;
+        const rawFiles = output?.files ?? output?.filenames;
+        const hasFiles = Array.isArray(rawFiles) && (rawFiles as unknown[]).length > 0;
         const hasContent = typeof output?.content === 'string' && (output.content as string).length > 0;
         if (matchCount >= 1 || hasMatches || hasFiles || hasContent) {
           return { pass: true };
@@ -86,7 +87,7 @@ export function passesQualityGate(
       }
 
       case 'Glob': {
-        const files = output?.files;
+        const files = output?.files ?? output?.filenames;
         const fileCount = Array.isArray(files) ? files.length : 0;
         if (fileCount < 3) {
           return { pass: false, reason: 'glob_too_few' };

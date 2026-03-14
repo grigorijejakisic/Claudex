@@ -1,11 +1,11 @@
 /**
  * Checkpoint tracking lifecycle — thresholds, observation counts, post-compact flags.
  * Plain functions with `db: Database` as first param.
- * @see Architecture Section 4.2 (checkpoint_tracking table)
  */
 
 import type { Database } from 'better-sqlite3';
 import { cachedPrepare } from './stmt-cache.js';
+import { hasFields } from '../shared/db-utils.js';
 
 export interface CheckpointTrackingRow {
   session_id: string;
@@ -33,13 +33,25 @@ export function getCheckpointTracking(
   sessionId: string
 ): CheckpointTrackingRow | undefined {
   const row = cachedPrepare(db, 'SELECT * FROM checkpoint_tracking WHERE session_id = ?')
-    .get(sessionId) as RawCheckpointTrackingRow | undefined;
+    .get(sessionId);
 
-  if (!row) return undefined;
+  if (!row || !hasFields(row, ['session_id', 'thresholds_hit', 'observation_count', 'post_compact_pending', 'updated_at_epoch'])) {
+    return undefined;
+  }
+
+  const raw = row as RawCheckpointTrackingRow;
+
+  let thresholds: number[];
+  try {
+    const parsed = JSON.parse(raw.thresholds_hit);
+    thresholds = Array.isArray(parsed) ? parsed : [];
+  } catch {
+    thresholds = [];
+  }
 
   return {
-    ...row,
-    thresholds_hit: JSON.parse(row.thresholds_hit),
+    ...raw,
+    thresholds_hit: thresholds,
   };
 }
 

@@ -2,7 +2,6 @@
  * Stratified half-life pressure score decay.
  * Replaces Phase 1's decayPressure placeholder.
  * Non-throwing.
- * @see Architecture Section 9.3
  */
 
 import type { Database } from 'better-sqlite3';

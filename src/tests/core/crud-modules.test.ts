@@ -57,6 +57,60 @@ describe('thread state CRUD', () => {
     expect(state!.key_exchanges[0].gist).toBe('switch to new approach');
   });
 
+  it('upsertThreadState preserves omitted fields on update (merge semantics)', () => {
+    // Set all fields initially
+    upsertThreadState(db, {
+      session_id: 's1',
+      topic: 'auth refactor',
+      summary: 'Working on JWT',
+      key_exchanges: [{ role: 'user', gist: 'start auth' }],
+    });
+
+    // Update only the topic — summary and key_exchanges should be preserved
+    upsertThreadState(db, {
+      session_id: 's1',
+      topic: 'new topic',
+    });
+
+    const state = getThreadState(db, 's1');
+    expect(state!.topic).toBe('new topic');
+    expect(state!.summary).toBe('Working on JWT');
+    expect(state!.key_exchanges).toEqual([{ role: 'user', gist: 'start auth' }]);
+  });
+
+  it('upsertThreadState preserves key_exchanges when caller passes empty array', () => {
+    upsertThreadState(db, {
+      session_id: 's1',
+      topic: 'topic',
+      key_exchanges: [{ role: 'user', gist: 'important exchange' }],
+    });
+
+    // Caller passes no key_exchanges (defaults to []) — existing should be preserved
+    upsertThreadState(db, {
+      session_id: 's1',
+      summary: 'updated summary',
+    });
+
+    const state = getThreadState(db, 's1');
+    expect(state!.summary).toBe('updated summary');
+    expect(state!.key_exchanges).toEqual([{ role: 'user', gist: 'important exchange' }]);
+  });
+
+  it('upsertThreadState replaces key_exchanges when caller passes actual data', () => {
+    upsertThreadState(db, {
+      session_id: 's1',
+      key_exchanges: [{ role: 'user', gist: 'old exchange' }],
+    });
+
+    upsertThreadState(db, {
+      session_id: 's1',
+      key_exchanges: [{ role: 'agent', gist: 'new exchange' }],
+    });
+
+    const state = getThreadState(db, 's1');
+    expect(state!.key_exchanges).toEqual([{ role: 'agent', gist: 'new exchange' }]);
+  });
+
   it('getThreadState returns parsed key_exchanges', () => {
     const exchanges = [
       { role: 'user', gist: 'asked about auth' },

@@ -664,6 +664,163 @@ describe('upgradeV2SchemaInPlace — partial legacy DBs (REC-10)', () => {
   });
 });
 
+describe('FTS5 rebuild — stale v2 index migration', () => {
+  it('rebuilds 4-column FTS5 index to 2-column on initializeSchema', () => {
+    const db = new Database(':memory:');
+
+    // Simulate a v2 database with a 4-column FTS5 index (title, content, category, tool_name)
+    db.exec(`
+      CREATE TABLE observations (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        session_id TEXT NOT NULL,
+        project TEXT,
+        tool_name TEXT NOT NULL,
+        category TEXT NOT NULL,
+        title TEXT NOT NULL,
+        content TEXT NOT NULL,
+        importance INTEGER NOT NULL DEFAULT 3,
+        files_modified TEXT NOT NULL DEFAULT '[]',
+        timestamp_epoch INTEGER NOT NULL DEFAULT (unixepoch()),
+        access_count INTEGER NOT NULL DEFAULT 0,
+        last_accessed_at_epoch INTEGER,
+        deleted_at_epoch INTEGER DEFAULT NULL,
+        consumed INTEGER NOT NULL DEFAULT 0,
+        obs_type TEXT
+      );
+
+      CREATE VIRTUAL TABLE observations_fts USING fts5(
+        title, content, category, tool_name,
+        content=observations,
+        content_rowid=id,
+        tokenize='porter unicode61'
+      );
+
+      CREATE TRIGGER observations_ai AFTER INSERT ON observations BEGIN
+        INSERT INTO observations_fts(rowid, title, content, category, tool_name)
+        VALUES (new.id, new.title, new.content, new.category, new.tool_name);
+      END;
+
+      CREATE TRIGGER observations_ad AFTER DELETE ON observations BEGIN
+        INSERT INTO observations_fts(observations_fts, rowid, title, content, category, tool_name)
+        VALUES ('delete', old.id, old.title, old.content, old.category, old.tool_name);
+      END;
+
+      CREATE TRIGGER observations_au AFTER UPDATE ON observations BEGIN
+        INSERT INTO observations_fts(observations_fts, rowid, title, content, category, tool_name)
+        VALUES ('delete', old.id, old.title, old.content, old.category, old.tool_name);
+        INSERT INTO observations_fts(rowid, title, content, category, tool_name)
+        VALUES (new.id, new.title, new.content, new.category, new.tool_name);
+      END;
+
+      INSERT INTO observations (session_id, project, tool_name, category, title, content, importance)
+      VALUES ('s1', 'proj', 'bash', 'code', 'test title alpha', 'test content beta', 3);
+
+      INSERT INTO observations (session_id, project, tool_name, category, title, content, importance)
+      VALUES ('s1', 'proj', 'bash', 'architecture', 'arch title gamma', 'arch content delta', 4);
+    `);
+
+    // Verify 4-column FTS5 exists before migration
+    const colsBefore = db.pragma('table_info(observations_fts)') as Array<{ name: string }>;
+    expect(colsBefore.length).toBe(4);
+
+    // Run initializeSchema — should detect and rebuild FTS5
+    initializeSchema(db);
+
+    // Verify FTS5 now has 2-column schema (title, content)
+    const colsAfter = db.pragma('table_info(observations_fts)') as Array<{ name: string }>;
+    expect(colsAfter.length).toBe(2);
+    expect(colsAfter.map(c => c.name)).toContain('title');
+    expect(colsAfter.map(c => c.name)).toContain('content');
+
+    // Verify existing observations are searchable in the rebuilt FTS5 index
+    const results = db
+      .prepare("SELECT rowid FROM observations_fts WHERE observations_fts MATCH 'alpha'")
+      .all();
+    expect(results.length).toBe(1);
+
+    const results2 = db
+      .prepare("SELECT rowid FROM observations_fts WHERE observations_fts MATCH 'gamma'")
+      .all();
+    expect(results2.length).toBe(1);
+
+    db.close();
+  });
+
+  it('is idempotent — does not break already-correct 2-column FTS5', () => {
+    const db = new Database(':memory:');
+    initializeSchema(db);
+
+    // Insert an observation
+    db.prepare(`
+      INSERT INTO observations (session_id, project, tool_name, category, title, content, importance)
+      VALUES ('s1', 'proj', 'bash', 'code', 'idempotent title', 'idempotent content', 3)
+    `).run();
+
+    // Run initializeSchema again — should not break anything
+    expect(() => initializeSchema(db)).not.toThrow();
+
+    // Verify FTS5 still works
+    const results = db
+      .prepare("SELECT rowid FROM observations_fts WHERE observations_fts MATCH 'idempotent'")
+      .all();
+    expect(results.length).toBe(1);
+
+    // Verify still 2 columns
+    const cols = db.pragma('table_info(observations_fts)') as Array<{ name: string }>;
+    expect(cols.length).toBe(2);
+
+    db.close();
+  });
+
+  it('rebuilds FTS5 and new inserts are indexed correctly', () => {
+    const db = new Database(':memory:');
+
+    // Simulate v2 4-column FTS5
+    db.exec(`
+      CREATE TABLE observations (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        session_id TEXT NOT NULL,
+        project TEXT,
+        tool_name TEXT NOT NULL,
+        category TEXT NOT NULL,
+        title TEXT NOT NULL,
+        content TEXT NOT NULL,
+        importance INTEGER NOT NULL DEFAULT 3,
+        files_modified TEXT NOT NULL DEFAULT '[]',
+        timestamp_epoch INTEGER NOT NULL DEFAULT (unixepoch()),
+        access_count INTEGER NOT NULL DEFAULT 0,
+        last_accessed_at_epoch INTEGER,
+        deleted_at_epoch INTEGER DEFAULT NULL,
+        consumed INTEGER NOT NULL DEFAULT 0,
+        obs_type TEXT
+      );
+
+      CREATE VIRTUAL TABLE observations_fts USING fts5(
+        title, content, category, tool_name,
+        content=observations,
+        content_rowid=id,
+        tokenize='porter unicode61'
+      );
+    `);
+
+    // Run initializeSchema to rebuild
+    initializeSchema(db);
+
+    // Insert a new observation AFTER rebuild — should be indexed by the new 2-column triggers
+    db.prepare(`
+      INSERT INTO observations (session_id, project, tool_name, category, title, content, importance)
+      VALUES ('s2', 'proj', 'bash', 'code', 'post rebuild title', 'post rebuild content', 3)
+    `).run();
+
+    const results = db
+      .prepare("SELECT rowid FROM observations_fts WHERE observations_fts MATCH 'rebuild'")
+      .all();
+    expect(results.length).toBe(1);
+
+    db.close();
+  });
+});
+
 describe('detectV2Database', () => {
   it('returns null when no v2 database exists', () => {
     // detectV2Database checks ~/.claudex paths which likely don't have a v2 db in CI/test

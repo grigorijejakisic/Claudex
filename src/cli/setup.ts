@@ -2,7 +2,6 @@
  * claudex setup CLI — fresh install entry point.
  * Creates directory structure, initializes DB, writes config,
  * patches ~/.claude/settings.json with hook paths, offers optional v2 migration.
- * @see Architecture Section 4.3
  */
 
 import * as fs from 'fs';

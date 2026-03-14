@@ -1,6 +1,5 @@
 /**
  * Shared types for per-tool extractors.
- * @see Architecture Section 5.2 — per-tool extractors
  */
 
 /** Result produced by a per-tool extractor. */

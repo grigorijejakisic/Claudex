@@ -1,7 +1,6 @@
 /**
  * Shared infrastructure for all CC hook entry points.
  * Provides stdin/stdout JSON protocol, DB bootstrap, and wrapHook latency/error wrapper.
- * @see Architecture Section 3.2
  */
 
 import * as path from 'path';
@@ -139,8 +138,7 @@ export function bootstrapHook(input: HookInput): BootstrapResult {
 
 /**
  * Extracts and validates transcript path from hook input. Non-throwing.
- * R21: Applies trust-boundary validation — rejects UNC, device, and out-of-home paths.
- * REC-06: Uses shared isPathSafe from fs-helpers.ts instead of duplicating validation.
+ * Applies trust-boundary validation — rejects UNC, device, and out-of-home paths.
  */
 export function getTranscriptPath(input: HookInput): string | undefined {
   try {
@@ -153,7 +151,7 @@ export function getTranscriptPath(input: HookInput): string | undefined {
   }
 }
 
-// ARCH-004: sanitizeErrorForTelemetry moved to ../../observability/telemetry.ts.
+// sanitizeErrorForTelemetry moved to ../../observability/telemetry.ts.
 // Re-exported here for backward compatibility (bridge-adapter.ts imports from here).
 export { sanitizeErrorForTelemetry };
 
@@ -173,7 +171,7 @@ export function wrapHook(hookName: string, handler: HookHandler): () => Promise<
     try {
       input = await readStdin();
 
-      // C5: Fail-closed validation — reject missing/invalid required fields
+      // Fail-closed validation — reject missing/invalid required fields
       if (!input.session_id || typeof input.session_id !== 'string' ||
           !input.cwd || typeof input.cwd !== 'string' || !path.isAbsolute(input.cwd)) {
         writeStdout({});
@@ -182,6 +180,18 @@ export function wrapHook(hookName: string, handler: HookHandler): () => Promise<
 
       ctx = bootstrapHook(input);
       const output = await handler(input, ctx);
+
+      // Post-execution sanity check: verify session was created
+      if (hookName === 'SessionStart' && ctx?.db && input?.session_id) {
+        try {
+          const row = ctx.db.prepare('SELECT 1 FROM sessions WHERE session_id = ?').get(input.session_id);
+          if (!row) {
+            console.error(`[claudex] WARNING: SessionStart completed but session ${input.session_id} not found in DB`);
+          }
+        } catch {
+          // Non-fatal — don't break the hook for a diagnostic check
+        }
+      }
 
       const elapsed = Date.now() - startMs;
       const hasInjection = !!(output.additionalContext || output.systemMessage);
@@ -193,6 +203,8 @@ export function wrapHook(hookName: string, handler: HookHandler): () => Promise<
 
       writeStdout(output);
     } catch (err) {
+      // Log to stderr so failures are visible even if DB is broken
+      try { console.error(`[claudex] ${hookName} error:`, err instanceof Error ? err.message : String(err)); } catch {}
       // Try to emit error telemetry if DB is available
       if (ctx?.db) {
         try {

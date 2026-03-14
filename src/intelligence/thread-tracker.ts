@@ -1,7 +1,6 @@
 /**
  * Thread state tracker with exchange accumulation, gist extraction, and summary construction.
  * Stateful class: holds in-memory buffer between after_tool calls, flushed at after_turn.
- * @see Architecture Section 6.2
  */
 
 import type { Database } from 'better-sqlite3';
@@ -165,9 +164,9 @@ export class ThreadTracker {
     try {
       // Add remaining exchanges
       if (userText && !this.hasUserThisTurn) {
-        // CTR-003: Guard against cross-process duplicate. PostToolUse (process A) may
-        // have already recorded this user prompt via onAfterTool→trackAfterTool, persisted
-        // to DB, then Stop (process B) re-creates the tracker and calls onAfterTurn with the
+        // Guard against cross-process duplicate. PostToolUse (process A) may
+        // have already recorded this user prompt via onAfterTool, persisted to DB,
+        // then Stop (process B) re-creates the tracker and calls onAfterTurn with the
         // same userText. Check if last DB-loaded exchange is already a 'user' with matching gist.
         const userGist = extractGist(userText);
         const lastExchange = this.keyExchanges[this.keyExchanges.length - 1];
@@ -253,7 +252,7 @@ export class ThreadTracker {
   /**
    * Update the current topic (e.g., after topic-shift detection).
    * Persists immediately to DB. Non-throwing.
-   * REC-08: Provides the call site for topic-shift results to be persisted.
+   * Provides the call site for topic-shift results to be persisted.
    */
   updateTopic(newTopic: string): void {
     try {
