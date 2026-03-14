@@ -63,8 +63,11 @@ export function scoreImportance(
 ): number {
   try {
     // Score 5: security, architecture, or breaking change signals
-    if (category === 'security' || category === 'architecture') return 5;
-    if (BREAKING_SIGNALS.test(content)) return 5;
+    // (but NOT for Bash — terminal output is signal, not knowledge)
+    if (category === 'security' || category === 'architecture') {
+      return toolName === 'Bash' ? 4 : 5;
+    }
+    if (BREAKING_SIGNALS.test(content)) return toolName === 'Bash' ? 4 : 5;
 
     // Score 4: config, dependency, or test failure signals
     if (category === 'config' || category === 'dependency') return 4;

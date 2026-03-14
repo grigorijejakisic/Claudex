@@ -111,7 +111,9 @@ export function getArtifactsByProject(
 /**
  * Returns packed artifacts for the reference layer.
  * These provide metadata-only listings of available context.
- * Ordered by importance DESC, timestamp_epoch DESC.
+ * Sorted by type priority (decision > learning > observation) then importance.
+ * This ensures architectural decisions and cross-session learnings always
+ * appear above routine tool observations in the reference layer.
  */
 export function getPackedArtifacts(
   db: Database,
@@ -121,7 +123,18 @@ export function getPackedArtifacts(
   return cachedPrepare(db,
     `SELECT * FROM artifacts
      WHERE project = ? AND state = 'packed'
-     ORDER BY importance DESC, timestamp_epoch DESC
+     ORDER BY
+       CASE artifact_type
+         WHEN 'decision' THEN 0
+         WHEN 'learning' THEN 1
+         WHEN 'flow' THEN 2
+         WHEN 'milestone' THEN 3
+         WHEN 'hot_file' THEN 4
+         WHEN 'observation' THEN 5
+         ELSE 6
+       END,
+       importance DESC,
+       timestamp_epoch DESC
      LIMIT ?`
   ).all(project, limit ?? 100) as ArtifactRow[];
 }
