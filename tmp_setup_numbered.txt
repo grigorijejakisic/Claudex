@@ -1,0 +1,258 @@
+   1: /**
+   2:  * claudex setup CLI — fresh install entry point.
+   3:  * Creates directory structure, initializes DB, writes config,
+   4:  * patches ~/.claude/settings.json with hook paths, offers optional v2 migration.
+   5:  * @see Architecture Section 4.3
+   6:  */
+   7: 
+   8: import * as fs from 'fs';
+   9: import * as path from 'path';
+  10: import * as os from 'os';
+  11: import * as readline from 'readline';
+  12: import { openDatabase, closeDatabase } from '../core/storage.js';
+  13: import { initializeSchema, migrateFromV2, detectV2Database } from '../core/migrations.js';
+  14: import { getDbPath, getClaudexHome, getConfigPath } from '../shared/paths.js';
+  15: import { ensureDir, readJsonFile, writeJsonFile } from '../shared/fs-helpers.js';
+  16: import { DEFAULT_CONFIG } from '../shared/constants.js';
+  17: import Database from 'better-sqlite3';
+  18: 
+  19: /** Hook file paths matching build.ts output in dist/adapters/cc-hooks/. */
+  20: const HOOK_FILES: Record<string, string> = {
+  21:   SessionStart: path.join('adapters', 'cc-hooks', 'session-start.cjs'),
+  22:   UserPromptSubmit: path.join('adapters', 'cc-hooks', 'user-prompt-submit.cjs'),
+  23:   PostToolUse: path.join('adapters', 'cc-hooks', 'post-tool-use.cjs'),
+  24:   Stop: path.join('adapters', 'cc-hooks', 'stop.cjs'),
+  25:   PreCompact: path.join('adapters', 'cc-hooks', 'pre-compact.cjs'),
+  26:   SessionEnd: path.join('adapters', 'cc-hooks', 'session-end.cjs'),
+  27: };
+  28: 
+  29: /**
+  30:  * Returns absolute paths to all hook dist files for the given install directory.
+  31:  */
+  32: export function getHookPaths(installDir: string): Record<string, string> {
+  33:   const result: Record<string, string> = {};
+  34:   for (const [hookName, fileName] of Object.entries(HOOK_FILES)) {
+  35:     result[hookName] = path.resolve(installDir, 'dist', fileName);
+  36:   }
+  37:   return result;
+  38: }
+  39: 
+  40: /**
+  41:  * Returns the path to ~/.claude/settings.json.
+  42:  */
+  43: export function getSettingsJsonPath(): string {
+  44:   return path.join(os.homedir(), '.claude', 'settings.json');
+  45: }
+  46: 
+  47: /**
+  48:  * Patches settings.json with hook entries, preserving existing hooks and settings.
+  49:  * Claudex hooks are identified by 'claudex' or 'CLAUDEXv3' in the command path.
+  50:  * Returns { patched: true, created: boolean }.
+  51:  */
+  52: export function patchSettingsJson(
+  53:   settingsPath: string,
+  54:   hookPaths: Record<string, string>
+  55: ): { patched: boolean; created: boolean } {
+  56:   let settings = readJsonFile<Record<string, unknown>>(settingsPath);
+  57:   const existed = settings !== null;
+  58: 
+  59:   if (!settings) {
+  60:     settings = {};
+  61:   }
+  62: 
+  63:   if (!settings.hooks || typeof settings.hooks !== 'object' || Array.isArray(settings.hooks)) {
+  64:     settings.hooks = {};
+  65:   }
+  66: 
+  67:   const hooks = settings.hooks as Record<string, unknown[]>;
+  68: 
+  69:   for (const [hookName, hookPath] of Object.entries(hookPaths)) {
+  70:     const command = `node "${hookPath}"`;
+  71:     const newEntry = {
+  72:       matcher: '',
+  73:       hooks: [{ type: 'command', command }],
+  74:     };
+  75: 
+  76:     if (!Array.isArray(hooks[hookName])) {
+  77:       hooks[hookName] = [newEntry];
+  78:       continue;
+  79:     }
+  80: 
+  81:     const hookArray = hooks[hookName] as Array<{
+  82:       matcher?: string;
+  83:       hooks?: Array<{ type?: string; command?: string }>;
+  84:     }>;
+  85: 
+  86:     // Find existing Claudex entry
+  87:     const claudexIndex = hookArray.findIndex((entry) => {
+  88:       if (!entry.hooks || !Array.isArray(entry.hooks)) return false;
+  89:       return entry.hooks.some(
+  90:         (h) =>
+  91:           typeof h.command === 'string' &&
+  92:           (h.command.includes('claudex') || h.command.includes('CLAUDEXv3'))
+  93:       );
+  94:     });
+  95: 
+  96:     if (claudexIndex >= 0) {
+  97:       // Update in-place
+  98:       hookArray[claudexIndex] = newEntry;
+  99:     } else {
+ 100:       // Append
+ 101:       hookArray.push(newEntry);
+ 102:     }
+ 103:   }
+ 104: 
+ 105:   // Write synchronously for setup (simpler than async)
+ 106:   try {
+ 107:     const dir = path.dirname(settingsPath);
+ 108:     fs.mkdirSync(dir, { recursive: true });
+ 109:     fs.writeFileSync(settingsPath, JSON.stringify(settings, null, 2) + '\n', 'utf-8');
+ 110:   } catch {
+ 111:     return { patched: false, created: false };
+ 112:   }
+ 113: 
+ 114:   return { patched: true, created: !existed };
+ 115: }
+ 116: 
+ 117: /**
+ 118:  * Gathers row counts from a v2 database for display during setup.
+ 119:  * Non-throwing — returns zeroed stats on any error.
+ 120:  */
+ 121: function getV2Stats(dbPath: string): { observationCount: number; sessionCount: number; pressureCount: number } {
+ 122:   const stats = { observationCount: 0, sessionCount: 0, pressureCount: 0 };
+ 123:   try {
+ 124:     const db = new Database(dbPath, { readonly: true });
+ 125:     try {
+ 126:       try {
+ 127:         const obs = db.prepare('SELECT COUNT(*) as count FROM observations').get() as { count: number };
+ 128:         stats.observationCount = obs.count;
+ 129:       } catch { /* table may not exist */ }
+ 130:       try {
+ 131:         const sess = db.prepare('SELECT COUNT(*) as count FROM sessions').get() as { count: number };
+ 132:         stats.sessionCount = sess.count;
+ 133:       } catch { /* table may not exist */ }
+ 134:       try {
+ 135:         const press = db.prepare('SELECT COUNT(*) as count FROM pressure_scores').get() as { count: number };
+ 136:         stats.pressureCount = press.count;
+ 137:       } catch { /* table may not exist */ }
+ 138:       db.close();
+ 139:     } catch {
+ 140:       try { db.close(); } catch { /* ignore */ }
+ 141:     }
+ 142:   } catch { /* non-throwing */ }
+ 143:   return stats;
+ 144: }
+ 145: 
+ 146: /**
+ 147:  * Prompts user for y/N input. Returns true if answered yes.
+ 148:  */
+ 149: async function askYesNo(question: string): Promise<boolean> {
+ 150:   if (!process.stdin.isTTY) return false;
+ 151: 
+ 152:   const rl = readline.createInterface({
+ 153:     input: process.stdin,
+ 154:     output: process.stdout,
+ 155:   });
+ 156: 
+ 157:   return new Promise((resolve) => {
+ 158:     rl.question(question, (answer) => {
+ 159:       rl.close();
+ 160:       resolve(answer.trim().toLowerCase() === 'y' || answer.trim().toLowerCase() === 'yes');
+ 161:     });
+ 162:   });
+ 163: }
+ 164: 
+ 165: /**
+ 166:  * Main setup entry point.
+ 167:  */
+ 168: export async function main(): Promise<void> {
+ 169:   console.log('Claudex v3 Setup');
+ 170:   console.log('================\n');
+ 171: 
+ 172:   // 1. Create directory structure
+ 173:   const claudexHome = getClaudexHome();
+ 174:   ensureDir(claudexHome);
+ 175:   ensureDir(path.join(claudexHome, 'db'));
+ 176:   ensureDir(path.join(claudexHome, 'identity'));
+ 177:   console.log(`[OK] Directory structure created: ${claudexHome}`);
+ 178: 
+ 179:   // 2. Database initialization
+ 180:   const dbPath = getDbPath();
+ 181: 
+ 182:   // Check for v2 before initializing (uses core detectV2Database which scans known paths)
+ 183:   const v2Path = detectV2Database();
+ 184:   if (v2Path) {
+ 185:     const v2Stats = getV2Stats(v2Path);
+ 186:     console.log(`\n[INFO] Existing v2 database detected:`);
+ 187:     console.log(`  Observations: ${v2Stats.observationCount}`);
+ 188:     console.log(`  Sessions: ${v2Stats.sessionCount}`);
+ 189:     console.log(`  Pressure scores: ${v2Stats.pressureCount}`);
+ 190: 
+ 191:     const shouldMigrate = await askYesNo('Migrate v2 data? [y/N] ');
+ 192:     if (shouldMigrate) {
+ 193:       const backupPath = v2Path + '.v2-backup';
+ 194:       fs.copyFileSync(v2Path, backupPath);
+ 195:       console.log(`[OK] v2 backup created: ${backupPath}`);
+ 196: 
+ 197:       const db = openDatabase(dbPath);
+ 198:       try {
+ 199:         migrateFromV2(db, v2Path);
+ 200:         console.log('[OK] v2 data migrated');
+ 201:       } finally {
+ 202:         closeDatabase(db);
+ 203:       }
+ 204:     }
+ 205:   }
+ 206: 
+ 207:   // Initialize schema (safe with CREATE IF NOT EXISTS)
+ 208:   const db = openDatabase(dbPath);
+ 209:   try {
+ 210:     initializeSchema(db);
+ 211:   } finally {
+ 212:     closeDatabase(db);
+ 213:   }
+ 214:   console.log(`[OK] Database initialized: ${dbPath}`);
+ 215: 
+ 216:   // 3. Write default config (only if not exists)
+ 217:   const configPath = getConfigPath();
+ 218:   if (!fs.existsSync(configPath)) {
+ 219:     await writeJsonFile(configPath, DEFAULT_CONFIG);
+ 220:     console.log(`[OK] Config written: ${configPath}`);
+ 221:   } else {
+ 222:     console.log(`[OK] Config already exists: ${configPath} (preserved)`);
+ 223:   }
+ 224: 
+ 225:   // 4. Patch settings.json
+ 226:   const installDir = path.resolve(__dirname, '..', '..');
+ 227:   const hookPaths = getHookPaths(installDir);
+ 228:   const settingsPath = getSettingsJsonPath();
+ 229:   const patchResult = patchSettingsJson(settingsPath, hookPaths);
+ 230: 
+ 231:   if (patchResult.patched) {
+ 232:     const suffix = patchResult.created ? ' (created)' : '';
+ 233:     console.log(`[OK] Hook paths registered in: ${settingsPath}${suffix}`);
+ 234:   } else {
+ 235:     console.log(`[WARN] Could not patch settings.json at: ${settingsPath}`);
+ 236:   }
+ 237: 
+ 238:   // 5. Summary
+ 239:   console.log(`\nSetup complete! Claudex v3 is ready.`);
+ 240:   console.log(`  - Database: ${dbPath}`);
+ 241:   console.log(`  - Config: ${configPath}`);
+ 242:   console.log(`  - Hooks: 6 registered in ${settingsPath}`);
+ 243: 
+ 244:   process.exit(0);
+ 245: }
+ 246: 
+ 247: // Only auto-run when executed directly (not when imported for tests)
+ 248: const isDirectRun = typeof require !== 'undefined' && require.main === module
+ 249:   || process.argv[1]?.endsWith('setup.cjs')
+ 250:   || process.argv[1]?.endsWith('setup.js')
+ 251:   || process.argv[1]?.endsWith('setup.ts');
+ 252: 
+ 253: if (isDirectRun) {
+ 254:   main().catch((err) => {
+ 255:     console.error(`[ERROR] Setup failed: ${err instanceof Error ? err.message : String(err)}`);
+ 256:     process.exit(1);
+ 257:   });
+ 258: }

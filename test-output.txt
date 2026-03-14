@@ -1,0 +1,108 @@
+
+[1m[7m[36m RUN [39m[27m[22m [36mv2.1.9 [39m[90mC:/Users/Grigorije/Desktop/Projects/CLAUDEXv3[39m
+
+ [31m❯[39m src/tests/assembly/sections.test.ts [2m([22m[2m0 test[22m[2m)[22m
+ [32m✓[39m src/tests/checkpoint/inject.test.ts [2m([22m[2m20 tests[22m[2m)[22m[90m 6[2mms[22m[39m
+ [32m✓[39m src/tests/intelligence/enrichment.test.ts [2m([22m[2m26 tests[22m[2m)[22m[90m 17[2mms[22m[39m
+ [32m✓[39m src/tests/gauge/token-gauge.test.ts [2m([22m[2m15 tests[22m[2m)[22m[90m 21[2mms[22m[39m
+ [32m✓[39m src/tests/gsd/state-reader.test.ts [2m([22m[2m17 tests[22m[2m)[22m[90m 58[2mms[22m[39m
+ [31m❯[39m src/tests/cli/setup.test.ts [2m([22m[2m17 tests[22m[2m | [22m[31m4 failed[39m[2m)[22m[90m 54[2mms[22m[39m
+[31m   [31m×[31m hook command Windows compatibility[2m > [22mdoes not use POSIX single-quote escaping in commands[90m 7[2mms[22m[31m[39m
+[31m     → expected 'node \'/opt/CLAUDEXv3/dist/session-st…' not to match /^node '/[39m
+[31m   [31m×[31m hook command Windows compatibility[2m > [22mproperly handles paths with spaces and special chars[90m 2[2mms[22m[31m[39m
+[31m     → expected 'node \'C:\Users\My User\CLAUDEXv3\dis…' to match /^node "/[39m
+[31m   [31m×[31m hook command Windows compatibility[2m > [22mhandles paths with ampersand characters safely[90m 2[2mms[22m[31m[39m
+[31m     → expected 'node \'C:\Dev&Test\CLAUDEXv3\dist\ses…' to match /^node ".*&.*"$/[39m
+[31m   [31m×[31m hook command Windows compatibility[2m > [22mhandles paths with pipe characters safely[90m 2[2mms[22m[31m[39m
+[31m     → expected 'node \'C:\path|weird\dist\session-sta…' to match /^node ".*\|.*"$/[39m
+ [31m❯[39m src/tests/core/artifacts.test.ts [2m([22m[2m0 test[22m[2m)[22m
+ [32m✓[39m src/tests/core/journal.test.ts [2m([22m[2m20 tests[22m[2m)[22m[90m 61[2mms[22m[39m
+ [32m✓[39m src/tests/core/observations.test.ts [2m([22m[2m13 tests[22m[2m)[22m[90m 43[2mms[22m[39m
+ [32m✓[39m src/tests/adapters/cc-hooks/infrastructure.test.ts [2m([22m[2m27 tests[22m[2m)[22m[90m 48[2mms[22m[39m
+ [32m✓[39m src/tests/core/sessions.test.ts [2m([22m[2m16 tests[22m[2m)[22m[90m 58[2mms[22m[39m
+ [32m✓[39m src/tests/core/storage.test.ts [2m([22m[2m12 tests[22m[2m)[22m[90m 233[2mms[22m[39m
+ [31m❯[39m src/tests/assembly/assembler.test.ts [2m([22m[2m0 test[22m[2m)[22m
+ [31m❯[39m src/tests/integration/cross-cutting.test.ts [2m([22m[2m0 test[22m[2m)[22m
+ [31m❯[39m src/tests/adapters/cc-hooks/hooks.test.ts [2m([22m[2m0 test[22m[2m)[22m
+ [31m❯[39m src/tests/adapters/openclaw-bridge/bridge-adapter.test.ts [2m([22m[2m0 test[22m[2m)[22m
+ [32m✓[39m src/tests/intelligence/thread-tracker.test.ts [2m([22m[2m27 tests[22m[2m)[22m[90m 95[2mms[22m[39m
+ [32m✓[39m src/tests/intelligence/learnings-promoter.test.ts [2m([22m[2m15 tests[22m[2m)[22m[90m 192[2mms[22m[39m
+ [32m✓[39m src/tests/core/crud-modules.test.ts [2m([22m[2m16 tests[22m[2m)[22m[90m 52[2mms[22m[39m
+ [31m❯[39m src/tests/cli/migrate.test.ts [2m([22m[2m22 tests[22m[2m | [22m[31m5 failed[39m[2m)[22m[90m 294[2mms[22m[39m
+[31m   [31m×[31m runMigration[2m > [22mcompletes full migration with correct row counts[90m 42[2mms[22m[31m[39m
+[31m     → expected false to be true // Object.is equality[39m
+[31m     → EBUSY: resource busy or locked, unlink 'C:\Users\GRIGOR~1\AppData\Local\Temp\claudex-migrate-test-wV6QkU\source.db.v2-migration-source'[39m
+[31m   [31m×[31m runMigration[2m > [22mfixes comma-separated files_modified during migration[90m 35[2mms[22m[31m[39m
+[31m     → expected false to be true // Object.is equality[39m
+[31m     → EBUSY: resource busy or locked, unlink 'C:\Users\GRIGOR~1\AppData\Local\Temp\claudex-migrate-test-EZIV53\bad-files.db.v2-migration-source'[39m
+[31m   [31m×[31m runMigration[2m > [22mpreserves backup and does not swap when backup already exists (no --force)[90m 26[2mms[22m[31m[39m
+[31m     → expected false to be true // Object.is equality[39m
+[31m     → EBUSY: resource busy or locked, unlink 'C:\Users\GRIGOR~1\AppData\Local\Temp\claudex-migrate-test-ce4RIY\source.db.v2-migration-source'[39m
+[31m   [31m×[31m runMigration[2m > [22moverwrites backup with --force[90m 25[2mms[22m[31m[39m
+[31m     → expected false to be true // Object.is equality[39m
+[31m     → EBUSY: resource busy or locked, unlink 'C:\Users\GRIGOR~1\AppData\Local\Temp\claudex-migrate-test-A7sO7K\source.db.v2-migration-source'[39m
+[31m   [31m×[31m runMigration[2m > [22mhandles stale temp DB from prior failed attempt[90m 30[2mms[22m[31m[39m
+[31m     → expected false to be true // Object.is equality[39m
+[31m     → EBUSY: resource busy or locked, unlink 'C:\Users\GRIGOR~1\AppData\Local\Temp\claudex-migrate-test-Oliw6a\source.db.v2-migration-source'[39m
+ [32m✓[39m src/tests/intelligence/decision-capture.test.ts [2m([22m[2m36 tests[22m[2m)[22m[90m 109[2mms[22m[39m
+ [31m❯[39m src/tests/intelligence/topic-shift.test.ts [2m([22m[2m31 tests[22m[2m | [22m[31m2 failed[39m[2m)[22m[90m 107[2mms[22m[39m
+[31m   [31m×[31m topic-shift detection[2m > [22mempty history — first invocation[2m > [22mdetects topic shift on first prompt when similarity is low (empty history)[90m 14[2mms[22m[31m[39m
+[31m     → expected false to be true // Object.is equality[39m
+[31m   [31m×[31m topic-shift detection[2m > [22mempty history — first invocation[2m > [22mcomputeAvgRecent returns 0 or sentinel with empty history (not 1.0)[90m 4[2mms[22m[31m[39m
+[31m     → expected 1 to be less than 0.4[39m
+ [32m✓[39m src/tests/observability/telemetry.test.ts [2m([22m[2m11 tests[22m[2m)[22m[90m 43[2mms[22m[39m
+ [32m✓[39m src/tests/extraction/redaction.test.ts [2m([22m[2m25 tests[22m[2m)[22m[90m 10[2mms[22m[39m
+ [32m✓[39m src/tests/decay/decay-engine.test.ts [2m([22m[2m22 tests[22m[2m)[22m[90m 295[2mms[22m[39m
+ [32m✓[39m src/tests/checkpoint/compression.test.ts [2m([22m[2m17 tests[22m[2m)[22m[90m 211[2mms[22m[39m
+ [32m✓[39m src/tests/checkpoint/writer.test.ts [2m([22m[2m34 tests[22m[2m)[22m[90m 233[2mms[22m[39m
+ [32m✓[39m src/tests/core/adapter-isolation.test.ts [2m([22m[2m12 tests[22m[2m)[22m[90m 40[2mms[22m[39m
+ [32m✓[39m src/shared/scope-detector.test.ts [2m([22m[2m18 tests[22m[2m)[22m[90m 55[2mms[22m[39m
+ [32m✓[39m src/tests/embeddings/templates.test.ts [2m([22m[2m11 tests[22m[2m)[22m[90m 6[2mms[22m[39m
+ [32m✓[39m src/tests/shared/scope-detector.test.ts [2m([22m[2m20 tests[22m[2m)[22m[90m 10[2mms[22m[39m
+ [32m✓[39m src/shared/fs-helpers.test.ts [2m([22m[2m20 tests[22m[2m)[22m[90m 122[2mms[22m[39m
+ [32m✓[39m src/tests/shared/config.test.ts [2m([22m[2m15 tests[22m[2m)[22m[90m 8[2mms[22m[39m
+ [32m✓[39m src/tests/checkpoint/loader.test.ts [2m([22m[2m33 tests[22m[2m)[22m[33m 329[2mms[22m[39m
+ [31m❯[39m src/tests/extraction/quality-gate.test.ts [2m([22m[2m25 tests[22m[2m | [22m[31m1 failed[39m[2m)[22m[90m 13[2mms[22m[39m
+[31m   [31m×[31m quality gates[2m > [22mGrep: fails with matches but empty content[90m 7[2mms[22m[31m[39m
+[31m     → expected true to be false // Object.is equality[39m
+ [31m❯[39m src/tests/integration/e2e-flows.test.ts [2m([22m[2m0 test[22m[2m)[22m
+ [32m✓[39m src/tests/intelligence/semantic-dedup.test.ts [2m([22m[2m27 tests[22m[2m)[22m[90m 12[2mms[22m[39m
+ [32m✓[39m src/shared/paths.test.ts [2m([22m[2m21 tests[22m[2m)[22m[90m 8[2mms[22m[39m
+ [32m✓[39m src/shared/config.test.ts [2m([22m[2m8 tests[22m[2m)[22m[90m 21[2mms[22m[39m
+ [32m✓[39m src/tests/extraction/extractor.test.ts [2m([22m[2m21 tests[22m[2m)[22m[90m 74[2mms[22m[39m
+ [32m✓[39m src/shared/fetch-utils.test.ts [2m([22m[2m11 tests[22m[2m)[22m[90m 64[2mms[22m[39m
+ [32m✓[39m src/tests/checkpoint/types.test.ts [2m([22m[2m7 tests[22m[2m)[22m[90m 5[2mms[22m[39m
+ [32m✓[39m src/tests/shared/tool-catalog.test.ts [2m([22m[2m14 tests[22m[2m)[22m[90m 7[2mms[22m[39m
+ [32m✓[39m src/tests/extraction/scoring.test.ts [2m([22m[2m17 tests[22m[2m)[22m[90m 6[2mms[22m[39m
+ [32m✓[39m src/tests/core/migrations.test.ts [2m([22m[2m27 tests[22m[2m)[22m[33m 664[2mms[22m[39m
+ [32m✓[39m src/tests/embeddings/cosine.test.ts [2m([22m[2m8 tests[22m[2m)[22m[90m 4[2mms[22m[39m
+ [32m✓[39m src/tests/decay/pressure-decay.test.ts [2m([22m[2m10 tests[22m[2m)[22m[90m 34[2mms[22m[39m
+ [32m✓[39m src/shared/text-utils.test.ts [2m([22m[2m13 tests[22m[2m)[22m[90m 5[2mms[22m[39m
+ [32m✓[39m src/tests/gauge/window-detector.test.ts [2m([22m[2m8 tests[22m[2m)[22m[90m 5[2mms[22m[39m
+ [32m✓[39m src/tests/extraction/extractors/cross-cutting.test.ts [2m([22m[2m2 tests[22m[2m)[22m[90m 4[2mms[22m[39m
+ [32m✓[39m src/tests/extraction/extractors/bash-extractor.test.ts [2m([22m[2m5 tests[22m[2m)[22m[90m 4[2mms[22m[39m
+ [32m✓[39m src/tests/core/stmt-cache.test.ts [2m([22m[2m6 tests[22m[2m)[22m[90m 25[2mms[22m[39m
+ [31m❯[39m src/tests/adapters/openclaw-bridge/plugin-entry.test.ts [2m([22m[2m0 test[22m[2m)[22m
+ [32m✓[39m src/tests/extraction/extractors/edit-extractor.test.ts [2m([22m[2m4 tests[22m[2m)[22m[90m 4[2mms[22m[39m
+ [32m✓[39m src/tests/extraction/extractors/grep-extractor.test.ts [2m([22m[2m4 tests[22m[2m)[22m[90m 4[2mms[22m[39m
+ [32m✓[39m src/tests/adapters/shared/lifecycle.test.ts [2m([22m[2m31 tests[22m[2m)[22m[90m 160[2mms[22m[39m
+ [32m✓[39m src/tests/extraction/extractors/read-extractor.test.ts [2m([22m[2m4 tests[22m[2m)[22m[90m 4[2mms[22m[39m
+ [32m✓[39m src/tests/core/network-safety.test.ts [2m([22m[2m7 tests[22m[2m)[22m[90m 4[2mms[22m[39m
+ [32m✓[39m src/tests/extraction/extractors/web-search-extractor.test.ts [2m([22m[2m3 tests[22m[2m)[22m[90m 3[2mms[22m[39m
+ [32m✓[39m src/tests/extraction/extractors/glob-extractor.test.ts [2m([22m[2m4 tests[22m[2m)[22m[90m 3[2mms[22m[39m
+ [32m✓[39m src/tests/extraction/extractors/notebook-edit-extractor.test.ts [2m([22m[2m3 tests[22m[2m)[22m[90m 3[2mms[22m[39m
+ [32m✓[39m src/tests/assembly/token-estimator.test.ts [2m([22m[2m7 tests[22m[2m)[22m[90m 4[2mms[22m[39m
+ [32m✓[39m src/tests/extraction/extractors/task-extractor.test.ts [2m([22m[2m3 tests[22m[2m)[22m[90m 3[2mms[22m[39m
+ [32m✓[39m src/tests/extraction/extractors/web-fetch-extractor.test.ts [2m([22m[2m3 tests[22m[2m)[22m[90m 3[2mms[22m[39m
+ [32m✓[39m src/tests/setup.test.ts [2m([22m[2m1 test[22m[2m)[22m[90m 2[2mms[22m[39m
+ [32m✓[39m src/tests/extraction/extractors/write-extractor.test.ts [2m([22m[2m3 tests[22m[2m)[22m[90m 2[2mms[22m[39m
+ [32m✓[39m src/tests/cli/dashboard.test.ts [2m([22m[2m42 tests[22m[2m)[22m[33m 1819[2mms[22m[39m
+   [33m[2m✓[22m[39m runDashboard[2m > [22mreturns topics output [33m508[2mms[22m[39m
+ [32m✓[39m src/tests/embeddings/embedding-provider.test.ts [2m([22m[2m41 tests[22m[2m)[22m[33m 5028[2mms[22m[39m
+   [33m[2m✓[22m[39m EmbeddingProvider[2m > [22medge cases[2m > [22mhandles timeout gracefully (returns null) [33m5009[2mms[22m[39m
+
+[2m Test Files [22m [1m[31m12 failed[39m[22m[2m | [22m[1m[32m56 passed[39m[22m[90m (68)[39m
+[2m      Tests [22m [1m[31m12 failed[39m[22m[2m | [22m[1m[32m946 passed[39m[22m[90m (958)[39m
+[2m   Start at [22m 10:14:15
+[2m   Duration [22m 5.71s[2m (transform 4.88s, setup 0ms, collect 10.36s, tests 10.81s, environment 13ms, prepare 8.65s)[22m
+

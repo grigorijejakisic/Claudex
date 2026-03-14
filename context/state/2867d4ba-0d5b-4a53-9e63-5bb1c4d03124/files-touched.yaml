@@ -8,7 +8,15 @@ changed:
   - path: <project>/src/tests/extraction/extractor.test.ts
     action: Edit
     summary: 'Edit: extractor.test.ts'
+  - path: <project>/src/cli/setup.ts
+    action: Edit
+    summary: 'Edit: setup.ts'
+  - path: <project>/strip-v2-hooks.js
+    action: Write
+    summary: 'Write: strip-v2-hooks.js'
 read: []
 hot:
   - <project>/src/tests/core/network-safety.test.ts
   - <project>/src/tests/extraction/extractor.test.ts
+  - <project>/src/cli/setup.ts
+  - <project>/strip-v2-hooks.js

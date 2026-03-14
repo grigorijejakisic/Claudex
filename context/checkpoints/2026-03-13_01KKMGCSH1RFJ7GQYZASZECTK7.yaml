@@ -1,0 +1,39 @@
+schema: claudex/checkpoint
+version: 3
+meta:
+  checkpoint_id: 01KKMGCSH1RFJ7GQYZASZECTK7
+  session_id: 0bcc905b-bcd5-4d61-8032-e50c5a6bfbbb
+  scope: null
+  trigger: compaction
+  token_usage: null
+  previous_checkpoint: 2026-03-13_01KKME6XGZ40HEZA5HCJYA8RM9.yaml
+working:
+  task: null
+  status: null
+  next_action: null
+  branch: null
+decisions: []
+files:
+  hot: []
+  read: []
+thread:
+  topic: null
+  summary: null
+  key_exchanges: []
+open_items: []
+learnings: []
+gsd:
+  phase: 11
+  plan: 1
+  status: All 12 phases complete -- Claudex v3 fully implemented, tested, and deployment-ready
+  goal: Claudex v3 is running in production on both adapters, verified on fresh installs, with predecessor systems archived
+  success_criteria:
+    - Fresh `claudex setup` on a clean Windows machine produces a fully operational CC hook system
+    - Fresh OpenClaw plugin install produces a fully operational bridge adapter
+    - Optional v2 migration completes successfully for existing Claudex users (data preserved, backup created)
+    - Both adapters verified independently for one week of real usage
+  completion: 0/0 requirements met
+current_objective: >-
+  Goal: Claudex v3 is running in production on both adapters, verified on fresh installs, with predecessor systems
+  archived
+verified_facts: []

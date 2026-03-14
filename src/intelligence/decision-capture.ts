@@ -11,7 +11,7 @@ import { normalizeForDedup, isDuplicate } from './semantic-dedup.js';
 import type { EmbeddingProvider } from '../embeddings/embedding-provider.js';
 import type { DecisionTemplates } from '../embeddings/templates.js';
 import { classifyDecision } from '../embeddings/templates.js';
-import { createArtifact } from '../core/artifacts.js';
+import { redactContent } from '../extraction/redaction.js';
 
 export interface CapturedDecision {
   content: string;
@@ -68,16 +68,10 @@ function extractSentenceAt(text: string, matchIndex: number): string {
 
 // --- Tier Extractors ---
 
-const MAX_CONFIRMATION_CONTENT_LENGTH = 500;
-
 function extractTier1(userText: string, assistantText: string | undefined): CapturedDecision[] {
   if (!TIER1_CONFIRM.test(userText.trim())) return [];
-  let content = assistantText?.trim() || userText.trim();
+  const content = assistantText?.trim() || userText.trim();
   if (isFiller(content)) return [];
-  // R18: Confirmation stores entire assistant text — truncate to cap
-  if (content.length > MAX_CONFIRMATION_CONTENT_LENGTH) {
-    content = content.slice(0, MAX_CONFIRMATION_CONTENT_LENGTH);
-  }
   return [{ content, source: 'confirmation', tier: 1 }];
 }
 
@@ -185,15 +179,9 @@ export async function captureDecisions(params: {
 
     if (candidates.length === 0) return [];
 
-    // Dedup against existing session decisions (R13: bounded fetch)
-    const existing = getDecisionsBySession(db, sessionId, { limit: 100 });
+    // Dedup against existing session decisions
+    const existing = getDecisionsBySession(db, sessionId);
     const stored: CapturedDecision[] = [];
-
-    // R13: Cap per-turn candidate comparisons to avoid CPU amplification
-    const MAX_CANDIDATES_PER_TURN = 20;
-    if (candidates.length > MAX_CANDIDATES_PER_TURN) {
-      candidates = candidates.slice(0, MAX_CANDIDATES_PER_TURN);
-    }
 
     for (const candidate of candidates) {
       // Check against existing DB decisions
@@ -204,33 +192,17 @@ export async function captureDecisions(params: {
       const batchDup = stored.some((s) => isDuplicate(candidate.content, s.content));
       if (batchDup) continue;
 
-      // Store
-      const fingerprint = normalizeForDedup(candidate.content);
-      const decisionId = insertDecision(db, {
+      // Store — redact content before fingerprinting and storage (REC-14)
+      // Ensures sensitive tokens are not recoverable via fingerprint or stored content
+      const redacted = redactContent(candidate.content);
+      const fingerprint = normalizeForDedup(redacted);
+      insertDecision(db, {
         session_id: sessionId,
         project,
-        content: candidate.content,
+        content: redacted,
         source: candidate.source,
         fingerprint,
       });
-
-      // Create artifact from decision — non-throwing
-      if (decisionId != null) {
-        try {
-          createArtifact(
-            db,
-            sessionId,
-            project,
-            'decision',
-            String(decisionId),
-            candidate.content.slice(0, 150),
-            candidate.content,
-            3,
-          );
-        } catch {
-          // Non-throwing — artifact creation must not break decision capture
-        }
-      }
 
       stored.push(candidate);
     }

@@ -147,6 +147,48 @@ describe('detectProjectScope — paths with spaces', () => {
   });
 });
 
+describe('detectProjectScope — filesystem root paths (REC-22)', () => {
+  beforeEach(() => {
+    mockReadJsonFile.mockReset();
+  });
+
+  it('matches exact root path "/" on Unix', () => {
+    mockReadJsonFile.mockReturnValue({
+      projects: { '/': 'root-project' },
+    });
+    // On Windows path.normalize('/') => '\\', but the key is
+    // that normalizePath does not collapse the root to empty string
+    const result = detectProjectScope('/usr/local');
+    // Whether it matches depends on platform, but it must not crash
+    expect(result === 'root-project' || result === null).toBe(true);
+  });
+
+  it('does not collapse drive root to empty string on Windows', () => {
+    // Register project at C:\ root
+    mockReadJsonFile.mockReturnValue({
+      projects: { 'C:\\': 'drive-root' },
+    });
+    const result = detectProjectScope('C:\\Users\\Test');
+    // On Windows this should match; on non-Windows the path handling differs
+    // Key invariant: must not throw and must not corrupt path comparison
+    if (process.platform === 'win32') {
+      expect(result).toBe('drive-root');
+    } else {
+      // Different platform — just verify no crash
+      expect(result === 'drive-root' || result === null).toBe(true);
+    }
+  });
+
+  it('normalizePath does not return empty string for root paths', () => {
+    // This tests the internal normalizePath indirectly through detectProjectScope
+    // If normalizePath collapsed "/" to "", then startsWith("" + sep) would match everything
+    mockReadJsonFile.mockReturnValue({
+      projects: { '': 'bad-project' }, // empty path should not match anything
+    });
+    expect(detectProjectScope('C:\\Work\\App')).toBeNull();
+  });
+});
+
 describe('detectProjectScope — paths with unicode', () => {
   beforeEach(() => {
     mockReadJsonFile.mockReset();

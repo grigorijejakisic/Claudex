@@ -61,28 +61,39 @@ export function getCoOccurrences(
     }
     if (!Array.isArray(files) || files.length === 0) return 0;
 
+    const start = Date.now();
+    let total = 0;
+
+    // REC-15: Add LIMIT to bound per-file query execution.
+    // Since result is capped at 5, we only need to count up to 6 per file
+    // (6 to know if there are "at least 6" to properly cap the running total).
     const stmt = project != null
       ? db.prepare(
-          `SELECT COUNT(DISTINCT o.id) as cnt
-           FROM observations o, json_each(o.files_modified) je
-           WHERE o.id != ?
-             AND o.deleted_at_epoch IS NULL
-             AND o.project = ?
-             AND je.value IN (SELECT value FROM json_each(?))`
+          `SELECT COUNT(*) as cnt FROM (
+             SELECT id FROM observations
+             WHERE id != ? AND deleted_at_epoch IS NULL AND project = ? AND files_modified LIKE ?
+             LIMIT 6
+           )`
         )
       : db.prepare(
-          `SELECT COUNT(DISTINCT o.id) as cnt
-           FROM observations o, json_each(o.files_modified) je
-           WHERE o.id != ?
-             AND o.deleted_at_epoch IS NULL
-             AND je.value IN (SELECT value FROM json_each(?))`
+          `SELECT COUNT(*) as cnt FROM (
+             SELECT id FROM observations
+             WHERE id != ? AND deleted_at_epoch IS NULL AND files_modified LIKE ?
+             LIMIT 6
+           )`
         );
 
-    const row = project != null
-      ? stmt.get(observationId, project, JSON.stringify(files)) as { cnt: number } | undefined
-      : stmt.get(observationId, JSON.stringify(files)) as { cnt: number } | undefined;
+    for (const file of files) {
+      if (Date.now() - start > 100) return Math.min(total, 5);
+      const row = project != null
+        ? stmt.get(observationId, project, `%"${file}"%`) as { cnt: number } | undefined
+        : stmt.get(observationId, `%"${file}"%`) as { cnt: number } | undefined;
+      if (row) total += row.cnt;
+      // Early exit: if already at cap, no need to check more files
+      if (total >= 5) return 5;
+    }
 
-    return Math.min(row?.cnt ?? 0, 5);
+    return Math.min(total, 5);
   } catch {
     return 0;
   }

@@ -1,0 +1,414 @@
+   1: /**
+   2:  * Cross-session learning dashboard — read-only inspection CLI.
+   3:  * Queries SQLite DB and displays accumulated learnings, decisions,
+   4:  * and topic/observation patterns across sessions.
+   5:  *
+   6:  * Usage:
+   7:  *   claudex dashboard learnings [--project X]
+   8:  *   claudex dashboard decisions [--project X] [--session S]
+   9:  *   claudex dashboard stats [--project X]
+  10:  *   claudex dashboard topics [--project X]
+  11:  *
+  12:  * Non-throwing — exits with code 1 on error.
+  13:  */
+  14: 
+  15: import Database from 'better-sqlite3';
+  16: import { getDbPath } from '../shared/paths.js';
+  17: 
+  18: // ── Arg parsing ──────────────────────────────────────────────────────
+  19: 
+  20: export interface DashboardArgs {
+  21:   subcommand: 'learnings' | 'decisions' | 'stats' | 'topics' | 'help';
+  22:   project?: string;
+  23:   session?: string;
+  24: }
+  25: 
+  26: /**
+  27:  * Parses process.argv-style arguments into DashboardArgs.
+  28:  * Exported for testability.
+  29:  */
+  30: export function parseArgs(argv: string[]): DashboardArgs {
+  31:   // Strip node path and script path
+  32:   const args = argv.slice(2);
+  33: 
+  34:   // Find subcommand (first non-flag argument)
+  35:   let subcommand: DashboardArgs['subcommand'] = 'help';
+  36:   let project: string | undefined;
+  37:   let session: string | undefined;
+  38: 
+  39:   for (let i = 0; i < args.length; i++) {
+  40:     const arg = args[i];
+  41: 
+  42:     if (arg === '--project' && i + 1 < args.length) {
+  43:       project = args[++i];
+  44:     } else if (arg === '--session' && i + 1 < args.length) {
+  45:       session = args[++i];
+  46:     } else if (arg === 'dashboard') {
+  47:       // Skip the 'dashboard' keyword itself
+  48:       continue;
+  49:     } else if (!arg.startsWith('-')) {
+  50:       const sub = arg.toLowerCase();
+  51:       if (sub === 'learnings' || sub === 'decisions' || sub === 'stats' || sub === 'topics' || sub === 'help') {
+  52:         subcommand = sub;
+  53:       }
+  54:     }
+  55:   }
+  56: 
+  57:   return { subcommand, project, session };
+  58: }
+  59: 
+  60: // ── DB query helpers ─────────────────────────────────────────────────
+  61: 
+  62: export interface LearningResult {
+  63:   content: string;
+  64:   project: string;
+  65:   promotion_count: number;
+  66:   first_seen_epoch: number;
+  67:   last_promoted_epoch: number;
+  68: }
+  69: 
+  70: export interface DecisionResult {
+  71:   content: string;
+  72:   source: string;
+  73:   session_id: string;
+  74:   project: string;
+  75:   timestamp_epoch: number;
+  76: }
+  77: 
+  78: export interface StatsResult {
+  79:   total_observations: number;
+  80:   total_decisions: number;
+  81:   total_learnings: number;
+  82:   total_sessions: number;
+  83:   top_categories: Array<{ category: string; count: number }>;
+  84:   recent_sessions: Array<{ session_id: string; project: string | null; status: string; created_at_epoch: number; observation_count: number }>;
+  85: }
+  86: 
+  87: export interface TopicResult {
+  88:   session_id: string;
+  89:   topic: string | null;
+  90:   summary: string | null;
+  91:   updated_at_epoch: number;
+  92: }
+  93: 
+  94: /**
+  95:  * Queries promoted learnings across sessions.
+  96:  * Returns learnings ordered by promotion_count DESC.
+  97:  */
+  98: export function queryLearnings(db: Database.Database, project?: string): LearningResult[] {
+  99:   try {
+ 100:     if (project) {
+ 101:       return db
+ 102:         .prepare(
+ 103:           `SELECT content, project, promotion_count, first_seen_epoch, last_promoted_epoch
+ 104:            FROM learnings
+ 105:            WHERE project = ? OR project = '__global__'
+ 106:            ORDER BY promotion_count DESC
+ 107:            LIMIT 50`
+ 108:         )
+ 109:         .all(project) as LearningResult[];
+ 110:     }
+ 111:     return db
+ 112:       .prepare(
+ 113:         `SELECT content, project, promotion_count, first_seen_epoch, last_promoted_epoch
+ 114:          FROM learnings
+ 115:          ORDER BY promotion_count DESC
+ 116:          LIMIT 50`
+ 117:       )
+ 118:       .all() as LearningResult[];
+ 119:   } catch {
+ 120:     return [];
+ 121:   }
+ 122: }
+ 123: 
+ 124: /**
+ 125:  * Queries captured decisions.
+ 126:  * Optionally filtered by project and/or session.
+ 127:  */
+ 128: export function queryDecisions(db: Database.Database, project?: string, session?: string): DecisionResult[] {
+ 129:   try {
+ 130:     if (session) {
+ 131:       return db
+ 132:         .prepare(
+ 133:           `SELECT content, source, session_id, project, timestamp_epoch
+ 134:            FROM decisions
+ 135:            WHERE session_id = ?
+ 136:            ORDER BY timestamp_epoch DESC
+ 137:            LIMIT 100`
+ 138:         )
+ 139:         .all(session) as DecisionResult[];
+ 140:     }
+ 141:     if (project) {
+ 142:       return db
+ 143:         .prepare(
+ 144:           `SELECT content, source, session_id, project, timestamp_epoch
+ 145:            FROM decisions
+ 146:            WHERE project = ?
+ 147:            ORDER BY timestamp_epoch DESC
+ 148:            LIMIT 100`
+ 149:         )
+ 150:         .all(project) as DecisionResult[];
+ 151:     }
+ 152:     return db
+ 153:       .prepare(
+ 154:         `SELECT content, source, session_id, project, timestamp_epoch
+ 155:          FROM decisions
+ 156:          ORDER BY timestamp_epoch DESC
+ 157:          LIMIT 100`
+ 158:       )
+ 159:       .all() as DecisionResult[];
+ 160:   } catch {
+ 161:     return [];
+ 162:   }
+ 163: }
+ 164: 
+ 165: /**
+ 166:  * Queries aggregate stats: observation counts, session history, top categories.
+ 167:  */
+ 168: export function queryStats(db: Database.Database, project?: string): StatsResult {
+ 169:   const empty: StatsResult = {
+ 170:     total_observations: 0,
+ 171:     total_decisions: 0,
+ 172:     total_learnings: 0,
+ 173:     total_sessions: 0,
+ 174:     top_categories: [],
+ 175:     recent_sessions: [],
+ 176:   };
+ 177: 
+ 178:   try {
+ 179:     const projectFilter = project ? `WHERE project = ?` : '';
+ 180:     const projectFilterObs = project ? `WHERE project = ? AND deleted_at_epoch IS NULL` : `WHERE deleted_at_epoch IS NULL`;
+ 181:     const params = project ? [project] : [];
+ 182: 
+ 183:     const obsCount = db
+ 184:       .prepare(`SELECT COUNT(*) as cnt FROM observations ${projectFilterObs}`)
+ 185:       .get(...params) as { cnt: number } | undefined;
+ 186: 
+ 187:     const decCount = db
+ 188:       .prepare(`SELECT COUNT(*) as cnt FROM decisions ${projectFilter}`)
+ 189:       .get(...params) as { cnt: number } | undefined;
+ 190: 
+ 191:     const learnCount = db
+ 192:       .prepare(`SELECT COUNT(*) as cnt FROM learnings ${projectFilter}`)
+ 193:       .get(...params) as { cnt: number } | undefined;
+ 194: 
+ 195:     const sessCount = db
+ 196:       .prepare(`SELECT COUNT(*) as cnt FROM sessions ${projectFilter}`)
+ 197:       .get(...params) as { cnt: number } | undefined;
+ 198: 
+ 199:     const topCats = db
+ 200:       .prepare(
+ 201:         `SELECT category, COUNT(*) as count
+ 202:          FROM observations
+ 203:          ${projectFilterObs}
+ 204:          GROUP BY category
+ 205:          ORDER BY count DESC
+ 206:          LIMIT 10`
+ 207:       )
+ 208:       .all(...params) as Array<{ category: string; count: number }>;
+ 209: 
+ 210:     const recentSessions = db
+ 211:       .prepare(
+ 212:         `SELECT session_id, project, status, created_at_epoch, observation_count
+ 213:          FROM sessions
+ 214:          ${projectFilter}
+ 215:          ORDER BY created_at_epoch DESC
+ 216:          LIMIT 10`
+ 217:       )
+ 218:       .all(...params) as StatsResult['recent_sessions'];
+ 219: 
+ 220:     return {
+ 221:       total_observations: obsCount?.cnt ?? 0,
+ 222:       total_decisions: decCount?.cnt ?? 0,
+ 223:       total_learnings: learnCount?.cnt ?? 0,
+ 224:       total_sessions: sessCount?.cnt ?? 0,
+ 225:       top_categories: topCats,
+ 226:       recent_sessions: recentSessions,
+ 227:     };
+ 228:   } catch {
+ 229:     return empty;
+ 230:   }
+ 231: }
+ 232: 
+ 233: /**
+ 234:  * Queries topic/thread state across sessions.
+ 235:  */
+ 236: export function queryTopics(db: Database.Database, project?: string): TopicResult[] {
+ 237:   try {
+ 238:     if (project) {
+ 239:       return db
+ 240:         .prepare(
+ 241:           `SELECT ts.session_id, ts.topic, ts.summary, ts.updated_at_epoch
+ 242:            FROM thread_state ts
+ 243:            JOIN sessions s ON ts.session_id = s.session_id
+ 244:            WHERE s.project = ?
+ 245:            ORDER BY ts.updated_at_epoch DESC
+ 246:            LIMIT 50`
+ 247:         )
+ 248:         .all(project) as TopicResult[];
+ 249:     }
+ 250:     return db
+ 251:       .prepare(
+ 252:         `SELECT session_id, topic, summary, updated_at_epoch
+ 253:          FROM thread_state
+ 254:          ORDER BY updated_at_epoch DESC
+ 255:          LIMIT 50`
+ 256:       )
+ 257:       .all() as TopicResult[];
+ 258:   } catch {
+ 259:     return [];
+ 260:   }
+ 261: }
+ 262: 
+ 263: // ── Formatting ───────────────────────────────────────────────────────
+ 264: 
+ 265: function formatEpoch(epoch: number): string {
+ 266:   try {
+ 267:     return new Date(epoch * 1000).toISOString().replace('T', ' ').slice(0, 19);
+ 268:   } catch {
+ 269:     return 'unknown';
+ 270:   }
+ 271: }
+ 272: 
+ 273: export function formatLearnings(learnings: LearningResult[]): string {
+ 274:   if (learnings.length === 0) return 'No learnings found.';
+ 275: 
+ 276:   const lines: string[] = ['=== Learnings ===', ''];
+ 277:   for (const l of learnings) {
+ 278:     lines.push(`[${l.project}] (promoted ${l.promotion_count}x)`);
+ 279:     lines.push(`  ${l.content}`);
+ 280:     lines.push(`  First seen: ${formatEpoch(l.first_seen_epoch)} | Last promoted: ${formatEpoch(l.last_promoted_epoch)}`);
+ 281:     lines.push('');
+ 282:   }
+ 283:   return lines.join('\n');
+ 284: }
+ 285: 
+ 286: export function formatDecisions(decisions: DecisionResult[]): string {
+ 287:   if (decisions.length === 0) return 'No decisions found.';
+ 288: 
+ 289:   const lines: string[] = ['=== Decisions ===', ''];
+ 290:   for (const d of decisions) {
+ 291:     lines.push(`[${d.source}] ${formatEpoch(d.timestamp_epoch)} (session: ${d.session_id})`);
+ 292:     lines.push(`  ${d.content}`);
+ 293:     lines.push('');
+ 294:   }
+ 295:   return lines.join('\n');
+ 296: }
+ 297: 
+ 298: export function formatStats(stats: StatsResult): string {
+ 299:   const lines: string[] = [
+ 300:     '=== Stats ===',
+ 301:     '',
+ 302:     `Sessions:     ${stats.total_sessions}`,
+ 303:     `Observations: ${stats.total_observations}`,
+ 304:     `Decisions:    ${stats.total_decisions}`,
+ 305:     `Learnings:    ${stats.total_learnings}`,
+ 306:   ];
+ 307: 
+ 308:   if (stats.top_categories.length > 0) {
+ 309:     lines.push('', '--- Top Categories ---');
+ 310:     for (const c of stats.top_categories) {
+ 311:       lines.push(`  ${c.category}: ${c.count}`);
+ 312:     }
+ 313:   }
+ 314: 
+ 315:   if (stats.recent_sessions.length > 0) {
+ 316:     lines.push('', '--- Recent Sessions ---');
+ 317:     for (const s of stats.recent_sessions) {
+ 318:       const proj = s.project ?? '(none)';
+ 319:       lines.push(`  ${s.session_id} | ${proj} | ${s.status} | obs: ${s.observation_count} | ${formatEpoch(s.created_at_epoch)}`);
+ 320:     }
+ 321:   }
+ 322: 
+ 323:   return lines.join('\n');
+ 324: }
+ 325: 
+ 326: export function formatTopics(topics: TopicResult[]): string {
+ 327:   if (topics.length === 0) return 'No topic history found.';
+ 328: 
+ 329:   const lines: string[] = ['=== Topic History ===', ''];
+ 330:   for (const t of topics) {
+ 331:     const topic = t.topic ?? '(no topic)';
+ 332:     lines.push(`${formatEpoch(t.updated_at_epoch)} | session: ${t.session_id}`);
+ 333:     lines.push(`  Topic: ${topic}`);
+ 334:     if (t.summary) {
+ 335:       lines.push(`  Summary: ${t.summary}`);
+ 336:     }
+ 337:     lines.push('');
+ 338:   }
+ 339:   return lines.join('\n');
+ 340: }
+ 341: 
+ 342: function formatHelp(): string {
+ 343:   return [
+ 344:     'Usage: claudex dashboard <subcommand> [options]',
+ 345:     '',
+ 346:     'Subcommands:',
+ 347:     '  learnings  [--project X]              Show promoted learnings',
+ 348:     '  decisions  [--project X] [--session S] Show captured decisions',
+ 349:     '  stats      [--project X]              Show observation counts, session history, top categories',
+ 350:     '  topics     [--project X]              Show topic shift history',
+ 351:     '  help                                  Show this help message',
+ 352:   ].join('\n');
+ 353: }
+ 354: 
+ 355: // ── Main execution ───────────────────────────────────────────────────
+ 356: 
+ 357: /**
+ 358:  * Runs the dashboard with given args and a DB path.
+ 359:  * Returns formatted output string. Exported for testability.
+ 360:  */
+ 361: export function runDashboard(args: DashboardArgs, dbPath: string): string {
+ 362:   if (args.subcommand === 'help') {
+ 363:     return formatHelp();
+ 364:   }
+ 365: 
+ 366:   let db: Database.Database;
+ 367:   try {
+ 368:     db = new Database(dbPath, { readonly: true });
+ 369:     db.pragma('busy_timeout = 5000');
+ 370:   } catch (err) {
+ 371:     return `Error: Could not open database at ${dbPath}. ${err instanceof Error ? err.message : ''}`;
+ 372:   }
+ 373: 
+ 374:   try {
+ 375:     switch (args.subcommand) {
+ 376:       case 'learnings':
+ 377:         return formatLearnings(queryLearnings(db, args.project));
+ 378:       case 'decisions':
+ 379:         return formatDecisions(queryDecisions(db, args.project, args.session));
+ 380:       case 'stats':
+ 381:         return formatStats(queryStats(db, args.project));
+ 382:       case 'topics':
+ 383:         return formatTopics(queryTopics(db, args.project));
+ 384:       default:
+ 385:         return formatHelp();
+ 386:     }
+ 387:   } finally {
+ 388:     try {
+ 389:       db.close();
+ 390:     } catch {
+ 391:       // Non-throwing
+ 392:     }
+ 393:   }
+ 394: }
+ 395: 
+ 396: // ── Entry point ──────────────────────────────────────────────────────
+ 397: // Only runs when executed directly (not when imported as a module by tests).
+ 398: 
+ 399: const isDirectExecution =
+ 400:   typeof process !== 'undefined' &&
+ 401:   process.argv &&
+ 402:   typeof process.argv[1] === 'string' &&
+ 403:   (process.argv[1].includes('dashboard') || process.argv[1].endsWith('dashboard.cjs'));
+ 404: 
+ 405: if (isDirectExecution) {
+ 406:   try {
+ 407:     const args = parseArgs(process.argv);
+ 408:     const output = runDashboard(args, getDbPath());
+ 409:     process.stdout.write(output + '\n');
+ 410:   } catch (err) {
+ 411:     process.stderr.write(`Dashboard error: ${err instanceof Error ? err.message : 'Unknown error'}\n`);
+ 412:     process.exit(1);
+ 413:   }
+ 414: }

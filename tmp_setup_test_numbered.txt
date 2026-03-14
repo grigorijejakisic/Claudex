@@ -1,0 +1,247 @@
+   1: /**
+   2:  * Tests for claudex setup CLI logic.
+   3:  * Calls exported functions directly with temp directories.
+   4:  */
+   5: 
+   6: import * as fs from 'fs';
+   7: import * as path from 'path';
+   8: import * as os from 'os';
+   9: import Database from 'better-sqlite3';
+  10: import {
+  11:   getHookPaths,
+  12:   patchSettingsJson,
+  13:   getSettingsJsonPath,
+  14: } from '../../cli/setup.js';
+  15: import { detectV2Database } from '../../core/migrations.js';
+  16: 
+  17: function createTmpDir(): string {
+  18:   return fs.mkdtempSync(path.join(os.tmpdir(), 'claudex-setup-test-'));
+  19: }
+  20: 
+  21: // --- getHookPaths tests ---
+  22: 
+  23: describe('getHookPaths', () => {
+  24:   it('returns correct absolute paths for all 6 hooks', () => {
+  25:     const installDir = '/opt/claudex';
+  26:     const paths = getHookPaths(installDir);
+  27: 
+  28:     expect(Object.keys(paths)).toHaveLength(6);
+  29:     expect(paths.SessionStart).toContain('session-start.cjs');
+  30:     expect(paths.UserPromptSubmit).toContain('user-prompt-submit.cjs');
+  31:     expect(paths.PostToolUse).toContain('post-tool-use.cjs');
+  32:     expect(paths.Stop).toContain('stop.cjs');
+  33:     expect(paths.PreCompact).toContain('pre-compact.cjs');
+  34:     expect(paths.SessionEnd).toContain('session-end.cjs');
+  35: 
+  36:     // Verify hook paths include correct dist subdirectory
+  37:     for (const hookPath of Object.values(paths)) {
+  38:       expect(hookPath).toContain(path.join('dist', 'adapters', 'cc-hooks'));
+  39:     }
+  40:   });
+  41: 
+  42:   it('paths are absolute', () => {
+  43:     const installDir = '/opt/claudex';
+  44:     const paths = getHookPaths(installDir);
+  45: 
+  46:     for (const hookPath of Object.values(paths)) {
+  47:       expect(path.isAbsolute(hookPath)).toBe(true);
+  48:     }
+  49:   });
+  50: });
+  51: 
+  52: // --- patchSettingsJson tests ---
+  53: 
+  54: describe('patchSettingsJson', () => {
+  55:   let tmpDir: string;
+  56: 
+  57:   beforeEach(() => {
+  58:     tmpDir = createTmpDir();
+  59:   });
+  60: 
+  61:   afterEach(() => {
+  62:     fs.rmSync(tmpDir, { recursive: true, force: true });
+  63:   });
+  64: 
+  65:   const hookPaths: Record<string, string> = {
+  66:     SessionStart: '/opt/CLAUDEXv3/dist/session-start.js',
+  67:     UserPromptSubmit: '/opt/CLAUDEXv3/dist/user-prompt-submit.js',
+  68:     PostToolUse: '/opt/CLAUDEXv3/dist/post-tool-use.js',
+  69:     Stop: '/opt/CLAUDEXv3/dist/stop.js',
+  70:     PreCompact: '/opt/CLAUDEXv3/dist/pre-compact.js',
+  71:     SessionEnd: '/opt/CLAUDEXv3/dist/session-end.js',
+  72:   };
+  73: 
+  74:   it('creates new settings.json with hooks when file does not exist', () => {
+  75:     const settingsPath = path.join(tmpDir, 'settings.json');
+  76:     const result = patchSettingsJson(settingsPath, hookPaths);
+  77: 
+  78:     expect(result.patched).toBe(true);
+  79:     expect(result.created).toBe(true);
+  80: 
+  81:     const settings = JSON.parse(fs.readFileSync(settingsPath, 'utf-8'));
+  82:     expect(Object.keys(settings.hooks)).toHaveLength(6);
+  83:     expect(settings.hooks.SessionStart).toHaveLength(1);
+  84:   });
+  85: 
+  86:   it('merges hooks into existing settings.json preserving other keys', () => {
+  87:     const settingsPath = path.join(tmpDir, 'settings.json');
+  88:     fs.writeFileSync(settingsPath, JSON.stringify({ someOtherKey: true, hooks: {} }));
+  89: 
+  90:     patchSettingsJson(settingsPath, hookPaths);
+  91: 
+  92:     const settings = JSON.parse(fs.readFileSync(settingsPath, 'utf-8'));
+  93:     expect(settings.someOtherKey).toBe(true);
+  94:     expect(Object.keys(settings.hooks)).toHaveLength(6);
+  95:   });
+  96: 
+  97:   it('preserves existing non-Claudex hooks', () => {
+  98:     const settingsPath = path.join(tmpDir, 'settings.json');
+  99:     fs.writeFileSync(
+ 100:       settingsPath,
+ 101:       JSON.stringify({
+ 102:         hooks: {
+ 103:           PreToolUse: [
+ 104:             { matcher: '', hooks: [{ type: 'command', command: 'echo pre-tool' }] },
+ 105:           ],
+ 106:         },
+ 107:       })
+ 108:     );
+ 109: 
+ 110:     patchSettingsJson(settingsPath, hookPaths);
+ 111: 
+ 112:     const settings = JSON.parse(fs.readFileSync(settingsPath, 'utf-8'));
+ 113:     // PreToolUse preserved + 6 Claudex hooks
+ 114:     expect(settings.hooks.PreToolUse).toHaveLength(1);
+ 115:     expect(settings.hooks.SessionStart).toHaveLength(1);
+ 116:   });
+ 117: 
+ 118:   it('updates existing Claudex hooks in-place (no duplicates)', () => {
+ 119:     const settingsPath = path.join(tmpDir, 'settings.json');
+ 120: 
+ 121:     // First patch
+ 122:     patchSettingsJson(settingsPath, hookPaths);
+ 123: 
+ 124:     // Second patch with different install dir
+ 125:     const newPaths: Record<string, string> = {};
+ 126:     for (const [k, v] of Object.entries(hookPaths)) {
+ 127:       newPaths[k] = v.replace('CLAUDEXv3', 'CLAUDEXv3-new');
+ 128:     }
+ 129:     patchSettingsJson(settingsPath, newPaths);
+ 130: 
+ 131:     const settings = JSON.parse(fs.readFileSync(settingsPath, 'utf-8'));
+ 132:     // Should still be 1 entry per hook, not 2
+ 133:     expect(settings.hooks.SessionStart).toHaveLength(1);
+ 134:     expect(settings.hooks.SessionStart[0].hooks[0].command).toContain('CLAUDEXv3-new');
+ 135:   });
+ 136: 
+ 137:   it('creates hooks object if settings exists but has no hooks key', () => {
+ 138:     const settingsPath = path.join(tmpDir, 'settings.json');
+ 139:     fs.writeFileSync(settingsPath, JSON.stringify({ version: 1 }));
+ 140: 
+ 141:     patchSettingsJson(settingsPath, hookPaths);
+ 142: 
+ 143:     const settings = JSON.parse(fs.readFileSync(settingsPath, 'utf-8'));
+ 144:     expect(settings.version).toBe(1);
+ 145:     expect(Object.keys(settings.hooks)).toHaveLength(6);
+ 146:   });
+ 147: 
+ 148:   it('generated command uses node with quoted absolute path', () => {
+ 149:     const settingsPath = path.join(tmpDir, 'settings.json');
+ 150:     patchSettingsJson(settingsPath, hookPaths);
+ 151: 
+ 152:     const settings = JSON.parse(fs.readFileSync(settingsPath, 'utf-8'));
+ 153:     for (const hookEntries of Object.values(settings.hooks) as Array<Array<{ hooks: Array<{ command: string }> }>>) {
+ 154:       for (const entry of hookEntries) {
+ 155:         for (const hook of entry.hooks) {
+ 156:           expect(hook.command).toMatch(/^node "/);
+ 157:           // Path should be wrapped in double quotes
+ 158:           const match = hook.command.match(/^node "(.+)"$/);
+ 159:           expect(match).not.toBeNull();
+ 160:           expect(path.isAbsolute(match![1])).toBe(true);
+ 161:         }
+ 162:       }
+ 163:     }
+ 164:   });
+ 165: 
+ 166:   it('generated hook commands have quoted paths (handles spaces)', () => {
+ 167:     const settingsPath = path.join(tmpDir, 'settings.json');
+ 168:     const spacedPaths: Record<string, string> = {
+ 169:       SessionStart: '/opt/My Projects/CLAUDEXv3/dist/session-start.js',
+ 170:       Stop: '/opt/My Projects/CLAUDEXv3/dist/stop.js',
+ 171:     };
+ 172:     patchSettingsJson(settingsPath, spacedPaths);
+ 173: 
+ 174:     const settings = JSON.parse(fs.readFileSync(settingsPath, 'utf-8'));
+ 175:     const startCmd = settings.hooks.SessionStart[0].hooks[0].command;
+ 176:     expect(startCmd).toBe('node "/opt/My Projects/CLAUDEXv3/dist/session-start.js"');
+ 177:     const stopCmd = settings.hooks.Stop[0].hooks[0].command;
+ 178:     expect(stopCmd).toBe('node "/opt/My Projects/CLAUDEXv3/dist/stop.js"');
+ 179:   });
+ 180: });
+ 181: 
+ 182: // --- detectV2Database tests (imported from core/migrations) ---
+ 183: 
+ 184: describe('detectV2Database', () => {
+ 185:   it('returns string or null (non-throwing)', () => {
+ 186:     // detectV2Database() searches known claudex paths for a v2 DB.
+ 187:     // In a test environment, it should return null (no v2 DB at standard paths)
+ 188:     // or a string path. Either way, it must not throw.
+ 189:     const result = detectV2Database();
+ 190:     expect(result === null || typeof result === 'string').toBe(true);
+ 191:   });
+ 192: 
+ 193:   it('is non-throwing even if claudex home does not exist', () => {
+ 194:     // The function catches all errors internally
+ 195:     expect(() => detectV2Database()).not.toThrow();
+ 196:   });
+ 197: });
+ 198: 
+ 199: // --- Idempotency tests ---
+ 200: 
+ 201: describe('patchSettingsJson idempotency', () => {
+ 202:   let tmpDir: string;
+ 203: 
+ 204:   beforeEach(() => {
+ 205:     tmpDir = createTmpDir();
+ 206:   });
+ 207: 
+ 208:   afterEach(() => {
+ 209:     fs.rmSync(tmpDir, { recursive: true, force: true });
+ 210:   });
+ 211: 
+ 212:   const hookPaths: Record<string, string> = {
+ 213:     SessionStart: '/opt/CLAUDEXv3/dist/session-start.js',
+ 214:     UserPromptSubmit: '/opt/CLAUDEXv3/dist/user-prompt-submit.js',
+ 215:     PostToolUse: '/opt/CLAUDEXv3/dist/post-tool-use.js',
+ 216:     Stop: '/opt/CLAUDEXv3/dist/stop.js',
+ 217:     PreCompact: '/opt/CLAUDEXv3/dist/pre-compact.js',
+ 218:     SessionEnd: '/opt/CLAUDEXv3/dist/session-end.js',
+ 219:   };
+ 220: 
+ 221:   it('is idempotent', () => {
+ 222:     const settingsPath = path.join(tmpDir, 'settings.json');
+ 223:     patchSettingsJson(settingsPath, hookPaths);
+ 224:     patchSettingsJson(settingsPath, hookPaths);
+ 225: 
+ 226:     const settings = JSON.parse(fs.readFileSync(settingsPath, 'utf-8'));
+ 227:     // Exactly 6 hook entries, not 12
+ 228:     expect(Object.keys(settings.hooks)).toHaveLength(6);
+ 229:     for (const entries of Object.values(settings.hooks) as Array<unknown[]>) {
+ 230:       expect(entries).toHaveLength(1);
+ 231:     }
+ 232:   });
+ 233: 
+ 234:   it('settings.json hook format matches CC expected structure', () => {
+ 235:     const settingsPath = path.join(tmpDir, 'settings.json');
+ 236:     patchSettingsJson(settingsPath, hookPaths);
+ 237: 
+ 238:     const settings = JSON.parse(fs.readFileSync(settingsPath, 'utf-8'));
+ 239:     for (const [hookName, entries] of Object.entries(settings.hooks) as Array<[string, Array<{ matcher: string; hooks: Array<{ type: string; command: string }> }>]>) {
+ 240:       expect(entries).toHaveLength(1);
+ 241:       expect(entries[0]).toHaveProperty('matcher', '');
+ 242:       expect(entries[0].hooks).toHaveLength(1);
+ 243:       expect(entries[0].hooks[0]).toHaveProperty('type', 'command');
+ 244:       expect(entries[0].hooks[0].command).toMatch(/^node "/);
+ 245:     }
+ 246:   });
+ 247: });

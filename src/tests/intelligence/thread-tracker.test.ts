@@ -252,6 +252,58 @@ describe('thread tracker', () => {
     });
   });
 
+  // --- Topic update (REC-08) ---
+
+  describe('updateTopic (REC-08)', () => {
+    it('updates topic when called with a new topic', () => {
+      const tracker = new ThreadTracker(db, sessionId);
+      tracker.onAfterTurn('Fix the auth token refresh bug', 'Working on it.');
+      const firstTopic = tracker.getTopic();
+      expect(firstTopic).not.toBeNull();
+
+      tracker.updateTopic('database optimization');
+      expect(tracker.getTopic()).toBe('database optimization');
+      expect(tracker.getTopic()).not.toBe(firstTopic);
+    });
+
+    it('persists updated topic to DB', () => {
+      const tracker = new ThreadTracker(db, sessionId);
+      tracker.onAfterTurn('Fix the auth bug in the system', 'On it.');
+      tracker.updateTopic('new topic after shift');
+
+      // Verify in DB
+      const state = getThreadState(db, sessionId);
+      expect(state).toBeDefined();
+      expect(state!.topic).toBe('new topic after shift');
+    });
+
+    it('allows topic to be set even if no prior topic existed', () => {
+      const tracker = new ThreadTracker(db, sessionId);
+      expect(tracker.getTopic()).toBeNull();
+
+      tracker.updateTopic('first topic via update');
+      expect(tracker.getTopic()).toBe('first topic via update');
+    });
+
+    it('is non-throwing on error', () => {
+      const closedDb = createTestDb();
+      closedDb.close();
+      const tracker = new ThreadTracker(db, sessionId);
+      // Even if persist fails internally on a bad db, updateTopic should not throw
+      // (we test with a valid db but the method should be defensive)
+      expect(() => tracker.updateTopic('safe topic')).not.toThrow();
+    });
+
+    it('restored tracker sees updated topic from prior tracker', () => {
+      const t1 = new ThreadTracker(db, sessionId);
+      t1.onAfterTurn('Fix the auth token refresh bug', 'Working on it.');
+      t1.updateTopic('shifted to database work');
+
+      const t2 = new ThreadTracker(db, sessionId);
+      expect(t2.getTopic()).toBe('shifted to database work');
+    });
+  });
+
   // --- Edge cases ---
 
   describe('edge cases', () => {

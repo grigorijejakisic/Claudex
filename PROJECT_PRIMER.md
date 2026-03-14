@@ -78,6 +78,9 @@ Host (CC or OpenClaw)
 - **84% of auto-captured observations are never accessed**: Quality gates matter more than capture volume.
 - **Checkpoint recovery is two-layer**: DB-first (re-mirror committed rows at sessionInit), file fallback (latest.yaml → dir scan → hop chain).
 - **better-sqlite3 on OpenClaw's jiti loader**: Pre-compile to `.cjs` with `createRequire()`. Proven pattern from mem0 plugin.
+- **Fix regressions are common**: Bulk fix rounds (83 fixes, session 6) produced 5/7 new criticals as regressions. Always write fix-specific test cases BEFORE applying fixes (TDD for fixes). The cycle "fix → build → existing tests pass" is insufficient — existing tests don't cover the fix's own edge cases.
+- **POSIX quoting doesn't work on Windows**: Shell command construction must use platform-aware quoting. POSIX `'\''` escaping is invalid in PowerShell/cmd.exe — characters like `&`/`|` are interpreted.
+- **SQLite error messages vary**: `err.message.includes('already exists')` is brittle — SQLite uses different wording for rename conflicts (`there is already another table or index with this name`) and shadow table errors (`table may not be altered`). Centralize error classification.
 
 ## File Structure (Key Modules)
 

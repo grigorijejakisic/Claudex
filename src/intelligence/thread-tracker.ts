@@ -194,11 +194,10 @@ export class ThreadTracker {
         }
       }
 
-      // Update topic: set from user text if not yet set
+      // Update topic (set once)
       if (!this.topic && userText) {
         this.topic = extractTopic(userText);
       }
-      // Note: topic may also be updated externally via updateTopic() when a topic shift is detected
 
       // Update summary
       this.summary = this.buildSummary();
@@ -253,13 +252,14 @@ export class ThreadTracker {
   }
 
   /**
-   * Update topic when a topic shift is detected.
-   * Persists the new topic to thread_state in the database.
-   * Called externally when TopicShiftDetector returns shifted: true with newTopic.
+   * Update the current topic (e.g., after topic-shift detection).
+   * Persists immediately to DB. Non-throwing.
+   * REC-08: Provides the call site for topic-shift results to be persisted.
    */
   updateTopic(newTopic: string): void {
     try {
       this.topic = newTopic;
+      this.summary = this.buildSummary();
       this.persist();
     } catch {
       // Non-throwing

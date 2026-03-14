@@ -1,0 +1,499 @@
+   1: /**
+   2:  * Tests for the cross-session learning dashboard CLI.
+   3:  * Creates in-memory test DBs with sample data and verifies query/format output.
+   4:  */
+   5: 
+   6: import Database from 'better-sqlite3';
+   7: import { createTestDb, type TestDatabase } from '../helpers/test-db.js';
+   8: import { initializeSchema } from '../../core/migrations.js';
+   9: import { insertObservation } from '../../core/observations.js';
+  10: import { insertDecision } from '../../core/decisions.js';
+  11: import { createSession } from '../../core/sessions.js';
+  12: import { upsertLearning } from '../../core/learnings.js';
+  13: import { upsertThreadState } from '../../core/thread.js';
+  14: import {
+  15:   parseArgs,
+  16:   queryLearnings,
+  17:   queryDecisions,
+  18:   queryStats,
+  19:   queryTopics,
+  20:   formatLearnings,
+  21:   formatDecisions,
+  22:   formatStats,
+  23:   formatTopics,
+  24:   runDashboard,
+  25: } from '../../cli/dashboard.js';
+  26: 
+  27: // ── parseArgs ─────────────────────────────────────────────────────
+  28: 
+  29: describe('parseArgs', () => {
+  30:   it('parses "dashboard learnings" subcommand', () => {
+  31:     const args = parseArgs(['node', 'dashboard.js', 'dashboard', 'learnings']);
+  32:     expect(args.subcommand).toBe('learnings');
+  33:   });
+  34: 
+  35:   it('parses "decisions" subcommand without "dashboard" keyword', () => {
+  36:     const args = parseArgs(['node', 'dashboard.js', 'decisions']);
+  37:     expect(args.subcommand).toBe('decisions');
+  38:   });
+  39: 
+  40:   it('parses --project flag', () => {
+  41:     const args = parseArgs(['node', 'dashboard.js', 'learnings', '--project', 'myproj']);
+  42:     expect(args.subcommand).toBe('learnings');
+  43:     expect(args.project).toBe('myproj');
+  44:   });
+  45: 
+  46:   it('parses --session flag', () => {
+  47:     const args = parseArgs(['node', 'dashboard.js', 'decisions', '--session', 'sess-123']);
+  48:     expect(args.subcommand).toBe('decisions');
+  49:     expect(args.session).toBe('sess-123');
+  50:   });
+  51: 
+  52:   it('parses both --project and --session together', () => {
+  53:     const args = parseArgs(['node', 'dashboard.js', 'decisions', '--project', 'proj1', '--session', 'sess-1']);
+  54:     expect(args.subcommand).toBe('decisions');
+  55:     expect(args.project).toBe('proj1');
+  56:     expect(args.session).toBe('sess-1');
+  57:   });
+  58: 
+  59:   it('defaults to "help" when no subcommand provided', () => {
+  60:     const args = parseArgs(['node', 'dashboard.js']);
+  61:     expect(args.subcommand).toBe('help');
+  62:   });
+  63: 
+  64:   it('parses "stats" subcommand', () => {
+  65:     const args = parseArgs(['node', 'dashboard.js', 'stats']);
+  66:     expect(args.subcommand).toBe('stats');
+  67:   });
+  68: 
+  69:   it('parses "topics" subcommand', () => {
+  70:     const args = parseArgs(['node', 'dashboard.js', 'topics']);
+  71:     expect(args.subcommand).toBe('topics');
+  72:   });
+  73: 
+  74:   it('parses "help" subcommand explicitly', () => {
+  75:     const args = parseArgs(['node', 'dashboard.js', 'help']);
+  76:     expect(args.subcommand).toBe('help');
+  77:   });
+  78: 
+  79:   it('ignores unknown flags', () => {
+  80:     const args = parseArgs(['node', 'dashboard.js', 'learnings', '--verbose']);
+  81:     expect(args.subcommand).toBe('learnings');
+  82:   });
+  83: });
+  84: 
+  85: // ── Query functions ───────────────────────────────────────────────
+  86: 
+  87: describe('queryLearnings', () => {
+  88:   let db: TestDatabase;
+  89: 
+  90:   beforeEach(() => {
+  91:     db = createTestDb();
+  92:   });
+  93: 
+  94:   afterEach(() => {
+  95:     db.close();
+  96:   });
+  97: 
+  98:   it('returns empty array when no learnings exist', () => {
+  99:     const result = queryLearnings(db);
+ 100:     expect(result).toEqual([]);
+ 101:   });
+ 102: 
+ 103:   it('returns learnings ordered by promotion_count DESC', () => {
+ 104:     upsertLearning(db, { project: 'proj1', fingerprint: 'fp1', content: 'Learning A' });
+ 105:     upsertLearning(db, { project: 'proj1', fingerprint: 'fp2', content: 'Learning B' });
+ 106:     // Promote fp2 twice more
+ 107:     upsertLearning(db, { project: 'proj1', fingerprint: 'fp2', content: 'Learning B' });
+ 108:     upsertLearning(db, { project: 'proj1', fingerprint: 'fp2', content: 'Learning B' });
+ 109: 
+ 110:     const result = queryLearnings(db);
+ 111:     expect(result).toHaveLength(2);
+ 112:     expect(result[0].content).toBe('Learning B');
+ 113:     expect(result[0].promotion_count).toBe(3);
+ 114:     expect(result[1].content).toBe('Learning A');
+ 115:     expect(result[1].promotion_count).toBe(1);
+ 116:   });
+ 117: 
+ 118:   it('filters by project (including __global__)', () => {
+ 119:     upsertLearning(db, { project: 'proj1', fingerprint: 'fp1', content: 'Proj1 learning' });
+ 120:     upsertLearning(db, { project: 'proj2', fingerprint: 'fp2', content: 'Proj2 learning' });
+ 121:     upsertLearning(db, { project: '__global__', fingerprint: 'fp3', content: 'Global learning' });
+ 122: 
+ 123:     const result = queryLearnings(db, 'proj1');
+ 124:     expect(result).toHaveLength(2); // proj1 + __global__
+ 125:     const contents = result.map(r => r.content);
+ 126:     expect(contents).toContain('Proj1 learning');
+ 127:     expect(contents).toContain('Global learning');
+ 128:     expect(contents).not.toContain('Proj2 learning');
+ 129:   });
+ 130: 
+ 131:   it('returns all learnings when no project filter', () => {
+ 132:     upsertLearning(db, { project: 'proj1', fingerprint: 'fp1', content: 'A' });
+ 133:     upsertLearning(db, { project: 'proj2', fingerprint: 'fp2', content: 'B' });
+ 134: 
+ 135:     const result = queryLearnings(db);
+ 136:     expect(result).toHaveLength(2);
+ 137:   });
+ 138: });
+ 139: 
+ 140: describe('queryDecisions', () => {
+ 141:   let db: TestDatabase;
+ 142: 
+ 143:   beforeEach(() => {
+ 144:     db = createTestDb();
+ 145:   });
+ 146: 
+ 147:   afterEach(() => {
+ 148:     db.close();
+ 149:   });
+ 150: 
+ 151:   it('returns empty array when no decisions exist', () => {
+ 152:     const result = queryDecisions(db);
+ 153:     expect(result).toEqual([]);
+ 154:   });
+ 155: 
+ 156:   it('returns decisions ordered by timestamp DESC', () => {
+ 157:     insertDecision(db, { session_id: 's1', project: 'proj1', content: 'Decision A', source: 'confirmation', fingerprint: 'fp1' });
+ 158:     insertDecision(db, { session_id: 's1', project: 'proj1', content: 'Decision B', source: 'direction', fingerprint: 'fp2' });
+ 159: 
+ 160:     const result = queryDecisions(db);
+ 161:     expect(result).toHaveLength(2);
+ 162:     // Both are returned (order within same epoch may vary)
+ 163:     const contents = result.map(r => r.content);
+ 164:     expect(contents).toContain('Decision A');
+ 165:     expect(contents).toContain('Decision B');
+ 166:   });
+ 167: 
+ 168:   it('filters by project', () => {
+ 169:     insertDecision(db, { session_id: 's1', project: 'proj1', content: 'Proj1 decision', source: 'confirmation', fingerprint: 'fp1' });
+ 170:     insertDecision(db, { session_id: 's2', project: 'proj2', content: 'Proj2 decision', source: 'confirmation', fingerprint: 'fp2' });
+ 171: 
+ 172:     const result = queryDecisions(db, 'proj1');
+ 173:     expect(result).toHaveLength(1);
+ 174:     expect(result[0].content).toBe('Proj1 decision');
+ 175:   });
+ 176: 
+ 177:   it('filters by session', () => {
+ 178:     insertDecision(db, { session_id: 's1', project: 'proj1', content: 'Session 1', source: 'confirmation', fingerprint: 'fp1' });
+ 179:     insertDecision(db, { session_id: 's2', project: 'proj1', content: 'Session 2', source: 'confirmation', fingerprint: 'fp2' });
+ 180: 
+ 181:     const result = queryDecisions(db, undefined, 's1');
+ 182:     expect(result).toHaveLength(1);
+ 183:     expect(result[0].content).toBe('Session 1');
+ 184:   });
+ 185: });
+ 186: 
+ 187: describe('queryStats', () => {
+ 188:   let db: TestDatabase;
+ 189: 
+ 190:   beforeEach(() => {
+ 191:     db = createTestDb();
+ 192:   });
+ 193: 
+ 194:   afterEach(() => {
+ 195:     db.close();
+ 196:   });
+ 197: 
+ 198:   it('returns zero counts when DB is empty', () => {
+ 199:     const result = queryStats(db);
+ 200:     expect(result.total_observations).toBe(0);
+ 201:     expect(result.total_decisions).toBe(0);
+ 202:     expect(result.total_learnings).toBe(0);
+ 203:     expect(result.total_sessions).toBe(0);
+ 204:     expect(result.top_categories).toEqual([]);
+ 205:     expect(result.recent_sessions).toEqual([]);
+ 206:   });
+ 207: 
+ 208:   it('counts observations, decisions, learnings, sessions', () => {
+ 209:     createSession(db, { session_id: 's1', project: 'proj1' });
+ 210:     createSession(db, { session_id: 's2', project: 'proj1' });
+ 211:     insertObservation(db, {
+ 212:       session_id: 's1', project: 'proj1', tool_name: 'Read',
+ 213:       category: 'code', title: 'Read file', content: 'read src/a.ts',
+ 214:       importance: 3, files_modified: ['src/a.ts'],
+ 215:     });
+ 216:     insertObservation(db, {
+ 217:       session_id: 's1', project: 'proj1', tool_name: 'Edit',
+ 218:       category: 'architecture', title: 'Edit file', content: 'edited',
+ 219:       importance: 4, files_modified: ['src/b.ts'],
+ 220:     });
+ 221:     insertDecision(db, { session_id: 's1', project: 'proj1', content: 'dec1', source: 'confirmation', fingerprint: 'fp1' });
+ 222:     upsertLearning(db, { project: 'proj1', fingerprint: 'fp1', content: 'learn1' });
+ 223: 
+ 224:     const result = queryStats(db);
+ 225:     expect(result.total_observations).toBe(2);
+ 226:     expect(result.total_decisions).toBe(1);
+ 227:     expect(result.total_learnings).toBe(1);
+ 228:     expect(result.total_sessions).toBe(2);
+ 229:   });
+ 230: 
+ 231:   it('returns top categories ordered by count', () => {
+ 232:     createSession(db, { session_id: 's1', project: 'proj1' });
+ 233:     for (let i = 0; i < 5; i++) {
+ 234:       insertObservation(db, {
+ 235:         session_id: 's1', project: 'proj1', tool_name: 'Read',
+ 236:         category: 'code', title: `code ${i}`, content: `code content ${i}`,
+ 237:         importance: 3, files_modified: [],
+ 238:       });
+ 239:     }
+ 240:     for (let i = 0; i < 3; i++) {
+ 241:       insertObservation(db, {
+ 242:         session_id: 's1', project: 'proj1', tool_name: 'Bash',
+ 243:         category: 'error', title: `err ${i}`, content: `error content ${i}`,
+ 244:         importance: 4, files_modified: [],
+ 245:       });
+ 246:     }
+ 247: 
+ 248:     const result = queryStats(db);
+ 249:     expect(result.top_categories).toHaveLength(2);
+ 250:     expect(result.top_categories[0].category).toBe('code');
+ 251:     expect(result.top_categories[0].count).toBe(5);
+ 252:     expect(result.top_categories[1].category).toBe('error');
+ 253:     expect(result.top_categories[1].count).toBe(3);
+ 254:   });
+ 255: 
+ 256:   it('filters all counts by project', () => {
+ 257:     createSession(db, { session_id: 's1', project: 'proj1' });
+ 258:     createSession(db, { session_id: 's2', project: 'proj2' });
+ 259:     insertObservation(db, {
+ 260:       session_id: 's1', project: 'proj1', tool_name: 'Read',
+ 261:       category: 'code', title: 'p1 obs', content: 'content',
+ 262:       importance: 3, files_modified: [],
+ 263:     });
+ 264:     insertObservation(db, {
+ 265:       session_id: 's2', project: 'proj2', tool_name: 'Read',
+ 266:       category: 'code', title: 'p2 obs', content: 'content',
+ 267:       importance: 3, files_modified: [],
+ 268:     });
+ 269: 
+ 270:     const result = queryStats(db, 'proj1');
+ 271:     expect(result.total_observations).toBe(1);
+ 272:     expect(result.total_sessions).toBe(1);
+ 273:   });
+ 274: });
+ 275: 
+ 276: describe('queryTopics', () => {
+ 277:   let db: TestDatabase;
+ 278: 
+ 279:   beforeEach(() => {
+ 280:     db = createTestDb();
+ 281:   });
+ 282: 
+ 283:   afterEach(() => {
+ 284:     db.close();
+ 285:   });
+ 286: 
+ 287:   it('returns empty array when no thread state exists', () => {
+ 288:     const result = queryTopics(db);
+ 289:     expect(result).toEqual([]);
+ 290:   });
+ 291: 
+ 292:   it('returns topic history ordered by updated_at DESC', () => {
+ 293:     upsertThreadState(db, { session_id: 's1', topic: 'Auth refactor', summary: 'Working on JWT' });
+ 294:     upsertThreadState(db, { session_id: 's2', topic: 'Database migration', summary: 'Adding FTS5' });
+ 295: 
+ 296:     const result = queryTopics(db);
+ 297:     expect(result).toHaveLength(2);
+ 298:     // Both have topics
+ 299:     const topics = result.map(r => r.topic);
+ 300:     expect(topics).toContain('Auth refactor');
+ 301:     expect(topics).toContain('Database migration');
+ 302:   });
+ 303: 
+ 304:   it('filters by project via session join', () => {
+ 305:     createSession(db, { session_id: 's1', project: 'proj1' });
+ 306:     createSession(db, { session_id: 's2', project: 'proj2' });
+ 307:     upsertThreadState(db, { session_id: 's1', topic: 'Topic A' });
+ 308:     upsertThreadState(db, { session_id: 's2', topic: 'Topic B' });
+ 309: 
+ 310:     const result = queryTopics(db, 'proj1');
+ 311:     expect(result).toHaveLength(1);
+ 312:     expect(result[0].topic).toBe('Topic A');
+ 313:   });
+ 314: });
+ 315: 
+ 316: // ── Format functions ──────────────────────────────────────────────
+ 317: 
+ 318: describe('formatLearnings', () => {
+ 319:   it('returns "No learnings found." for empty array', () => {
+ 320:     expect(formatLearnings([])).toBe('No learnings found.');
+ 321:   });
+ 322: 
+ 323:   it('formats learnings with project and promotion count', () => {
+ 324:     const output = formatLearnings([
+ 325:       { content: 'Always read before edit', project: 'proj1', promotion_count: 3, first_seen_epoch: 1710000000, last_promoted_epoch: 1710100000 },
+ 326:     ]);
+ 327:     expect(output).toContain('=== Learnings ===');
+ 328:     expect(output).toContain('[proj1]');
+ 329:     expect(output).toContain('promoted 3x');
+ 330:     expect(output).toContain('Always read before edit');
+ 331:   });
+ 332: });
+ 333: 
+ 334: describe('formatDecisions', () => {
+ 335:   it('returns "No decisions found." for empty array', () => {
+ 336:     expect(formatDecisions([])).toBe('No decisions found.');
+ 337:   });
+ 338: 
+ 339:   it('formats decisions with source and session', () => {
+ 340:     const output = formatDecisions([
+ 341:       { content: 'Use SQLite WAL mode', source: 'confirmation', session_id: 's1', project: 'proj1', timestamp_epoch: 1710000000 },
+ 342:     ]);
+ 343:     expect(output).toContain('=== Decisions ===');
+ 344:     expect(output).toContain('[confirmation]');
+ 345:     expect(output).toContain('session: s1');
+ 346:     expect(output).toContain('Use SQLite WAL mode');
+ 347:   });
+ 348: });
+ 349: 
+ 350: describe('formatStats', () => {
+ 351:   it('formats zero stats correctly', () => {
+ 352:     const output = formatStats({
+ 353:       total_observations: 0,
+ 354:       total_decisions: 0,
+ 355:       total_learnings: 0,
+ 356:       total_sessions: 0,
+ 357:       top_categories: [],
+ 358:       recent_sessions: [],
+ 359:     });
+ 360:     expect(output).toContain('=== Stats ===');
+ 361:     expect(output).toContain('Sessions:     0');
+ 362:     expect(output).toContain('Observations: 0');
+ 363:   });
+ 364: 
+ 365:   it('formats stats with categories and sessions', () => {
+ 366:     const output = formatStats({
+ 367:       total_observations: 42,
+ 368:       total_decisions: 10,
+ 369:       total_learnings: 5,
+ 370:       total_sessions: 3,
+ 371:       top_categories: [{ category: 'code', count: 30 }, { category: 'error', count: 12 }],
+ 372:       recent_sessions: [{ session_id: 's1', project: 'proj1', status: 'completed', created_at_epoch: 1710000000, observation_count: 20 }],
+ 373:     });
+ 374:     expect(output).toContain('Observations: 42');
+ 375:     expect(output).toContain('code: 30');
+ 376:     expect(output).toContain('error: 12');
+ 377:     expect(output).toContain('s1');
+ 378:     expect(output).toContain('proj1');
+ 379:   });
+ 380: });
+ 381: 
+ 382: describe('formatTopics', () => {
+ 383:   it('returns "No topic history found." for empty array', () => {
+ 384:     expect(formatTopics([])).toBe('No topic history found.');
+ 385:   });
+ 386: 
+ 387:   it('formats topics with session and summary', () => {
+ 388:     const output = formatTopics([
+ 389:       { session_id: 's1', topic: 'Auth refactor', summary: 'Working on JWT', updated_at_epoch: 1710000000 },
+ 390:     ]);
+ 391:     expect(output).toContain('=== Topic History ===');
+ 392:     expect(output).toContain('session: s1');
+ 393:     expect(output).toContain('Topic: Auth refactor');
+ 394:     expect(output).toContain('Summary: Working on JWT');
+ 395:   });
+ 396: 
+ 397:   it('handles null topic gracefully', () => {
+ 398:     const output = formatTopics([
+ 399:       { session_id: 's1', topic: null, summary: null, updated_at_epoch: 1710000000 },
+ 400:     ]);
+ 401:     expect(output).toContain('(no topic)');
+ 402:   });
+ 403: });
+ 404: 
+ 405: // ── runDashboard integration ─────────────────────────────────────
+ 406: 
+ 407: describe('runDashboard', () => {
+ 408:   let db: InstanceType<typeof Database>;
+ 409:   let dbPath: string;
+ 410: 
+ 411:   beforeEach(() => {
+ 412:     // Create an on-disk temp DB for runDashboard (which opens by path)
+ 413:     const tmpDir = require('fs').mkdtempSync(require('path').join(require('os').tmpdir(), 'claudex-dashboard-'));
+ 414:     dbPath = require('path').join(tmpDir, 'test.db');
+ 415:     db = new Database(dbPath);
+ 416:     initializeSchema(db);
+ 417:   });
+ 418: 
+ 419:   afterEach(() => {
+ 420:     db.close();
+ 421:     try {
+ 422:       require('fs').rmSync(require('path').dirname(dbPath), { recursive: true, force: true });
+ 423:     } catch {
+ 424:       // best effort
+ 425:     }
+ 426:   });
+ 427: 
+ 428:   it('returns help text for "help" subcommand', () => {
+ 429:     const output = runDashboard({ subcommand: 'help' }, dbPath);
+ 430:     expect(output).toContain('Usage:');
+ 431:     expect(output).toContain('learnings');
+ 432:     expect(output).toContain('decisions');
+ 433:     expect(output).toContain('stats');
+ 434:     expect(output).toContain('topics');
+ 435:   });
+ 436: 
+ 437:   it('returns learnings output', () => {
+ 438:     upsertLearning(db, { project: 'proj1', fingerprint: 'fp1', content: 'Test learning' });
+ 439: 
+ 440:     const output = runDashboard({ subcommand: 'learnings' }, dbPath);
+ 441:     expect(output).toContain('Test learning');
+ 442:     expect(output).toContain('=== Learnings ===');
+ 443:   });
+ 444: 
+ 445:   it('returns decisions output with project filter', () => {
+ 446:     insertDecision(db, { session_id: 's1', project: 'proj1', content: 'Dec1', source: 'confirmation', fingerprint: 'fp1' });
+ 447:     insertDecision(db, { session_id: 's2', project: 'proj2', content: 'Dec2', source: 'direction', fingerprint: 'fp2' });
+ 448: 
+ 449:     const output = runDashboard({ subcommand: 'decisions', project: 'proj1' }, dbPath);
+ 450:     expect(output).toContain('Dec1');
+ 451:     expect(output).not.toContain('Dec2');
+ 452:   });
+ 453: 
+ 454:   it('returns stats output', () => {
+ 455:     createSession(db, { session_id: 's1', project: 'proj1' });
+ 456:     insertObservation(db, {
+ 457:       session_id: 's1', project: 'proj1', tool_name: 'Read',
+ 458:       category: 'code', title: 'obs1', content: 'content',
+ 459:       importance: 3, files_modified: [],
+ 460:     });
+ 461: 
+ 462:     const output = runDashboard({ subcommand: 'stats' }, dbPath);
+ 463:     expect(output).toContain('=== Stats ===');
+ 464:     expect(output).toContain('Sessions:     1');
+ 465:     expect(output).toContain('Observations: 1');
+ 466:   });
+ 467: 
+ 468:   it('returns topics output', () => {
+ 469:     upsertThreadState(db, { session_id: 's1', topic: 'My Topic', summary: 'My Summary' });
+ 470: 
+ 471:     const output = runDashboard({ subcommand: 'topics' }, dbPath);
+ 472:     expect(output).toContain('=== Topic History ===');
+ 473:     expect(output).toContain('My Topic');
+ 474:     expect(output).toContain('My Summary');
+ 475:   });
+ 476: 
+ 477:   it('returns error message for non-existent DB path', () => {
+ 478:     const output = runDashboard({ subcommand: 'learnings' }, '/nonexistent/path/db.sqlite');
+ 479:     expect(output).toContain('Error:');
+ 480:   });
+ 481: 
+ 482:   it('applies --project filter to learnings', () => {
+ 483:     upsertLearning(db, { project: 'proj1', fingerprint: 'fp1', content: 'Proj1 learning' });
+ 484:     upsertLearning(db, { project: 'proj2', fingerprint: 'fp2', content: 'Proj2 learning' });
+ 485: 
+ 486:     const output = runDashboard({ subcommand: 'learnings', project: 'proj1' }, dbPath);
+ 487:     expect(output).toContain('Proj1 learning');
+ 488:     expect(output).not.toContain('Proj2 learning');
+ 489:   });
+ 490: 
+ 491:   it('applies --session filter to decisions', () => {
+ 492:     insertDecision(db, { session_id: 's1', project: 'proj1', content: 'S1 decision', source: 'confirmation', fingerprint: 'fp1' });
+ 493:     insertDecision(db, { session_id: 's2', project: 'proj1', content: 'S2 decision', source: 'confirmation', fingerprint: 'fp2' });
+ 494: 
+ 495:     const output = runDashboard({ subcommand: 'decisions', session: 's1' }, dbPath);
+ 496:     expect(output).toContain('S1 decision');
+ 497:     expect(output).not.toContain('S2 decision');
+ 498:   });
+ 499: });
