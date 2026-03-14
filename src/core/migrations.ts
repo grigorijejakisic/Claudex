@@ -231,6 +231,31 @@ CREATE TABLE IF NOT EXISTS session_journal (
 );
 CREATE INDEX IF NOT EXISTS idx_journal_session ON session_journal(session_id);
 CREATE INDEX IF NOT EXISTS idx_journal_project_type ON session_journal(project, entry_type);
+
+-- artifacts: reference + materialization layer for context assembly
+CREATE TABLE IF NOT EXISTS artifacts (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  session_id TEXT NOT NULL,
+  project TEXT NOT NULL,
+  artifact_type TEXT NOT NULL CHECK (artifact_type IN (
+    'observation', 'learning', 'decision', 'hot_file', 'flow', 'milestone'
+  )),
+  artifact_ref TEXT,
+  summary TEXT NOT NULL,
+  content TEXT,
+  state TEXT NOT NULL DEFAULT 'fresh' CHECK (state IN ('fresh', 'packed', 'materialized')),
+  ttl INTEGER NOT NULL DEFAULT 3,
+  importance INTEGER NOT NULL DEFAULT 0 CHECK (importance BETWEEN 0 AND 5),
+  timestamp_epoch INTEGER NOT NULL DEFAULT (unixepoch()),
+  last_materialized_epoch INTEGER
+);
+
+CREATE INDEX IF NOT EXISTS idx_artifacts_project_state
+  ON artifacts(project, state);
+CREATE INDEX IF NOT EXISTS idx_artifacts_session
+  ON artifacts(session_id);
+CREATE INDEX IF NOT EXISTS idx_artifacts_type
+  ON artifacts(project, artifact_type, timestamp_epoch DESC);
 `;
 
 /**
