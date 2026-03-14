@@ -32,6 +32,7 @@ import { getDecisionsBySession } from '../../core/decisions.js';
 import { getObservationsByProject, getObservationById } from '../../core/observations.js';
 import { createArtifact, tickArtifactTTL } from '../../core/artifacts.js';
 import { getLearningsByProject } from '../../core/learnings.js';
+import { extractInsights } from '../../intelligence/insight-extractor.js';
 
 // ---------------------------------------------------------------------------
 // Shared parameter types
@@ -499,8 +500,40 @@ export async function captureDecisionsWithClassifier(params: DecisionCapturePara
 }
 
 /**
+ * Extract insights from assistant response text and promote as learnings.
+ * Called at every turn boundary (Stop hook) — captures analytical conclusions,
+ * root causes, and key findings that live in the conversation text.
+ * Non-throwing.
+ */
+export function captureInsightsAsLearnings(
+  db: Database.Database,
+  sessionId: string,
+  project: string,
+  assistantText: string,
+): void {
+  try {
+    const insights = extractInsights(assistantText, 5);
+    if (insights.length === 0) return;
+
+    const learningTexts = insights.map(i => i.content);
+    promoteLearnings({
+      db,
+      project,
+      sessionLearnings: learningTexts,
+    });
+
+    // Store insights as flow entries for narrative (prefixed to distinguish from structural flows)
+    for (const insight of insights.slice(0, 2)) {
+      addJournalEntry(db, sessionId, project, 'flow', `[${insight.marker}] ${insight.content.slice(0, 190)}`);
+    }
+  } catch {
+    // Non-throwing
+  }
+}
+
+/**
  * Build a flow entry from structured data available in the DB.
- * Concatenates thread topic, recent decisions, and high-importance observation titles.
+ * Includes thread topic, recent decisions, and recent insights (from assistant text).
  * Non-throwing — returns null if no meaningful content is available.
  */
 export function buildFlowEntry(
@@ -526,21 +559,23 @@ export function buildFlowEntry(
       parts.push(`Decisions: ${decisionSnippets}`);
     }
 
-    // Recent high-importance observation titles
-    const obs = getObservationsByProject(db, project, { limit: 10 });
-    const highImp = obs
-      .filter(o => o.importance >= 4)
-      .slice(0, 3)
-      .map(o => o.title);
-    if (highImp.length > 0) {
-      parts.push(`Key: ${highImp.join(', ')}`);
+    // Recent insights from assistant text (flow entries prefixed with [marker])
+    const flowEntries = getJournalBySession(db, sessionId, { entryType: 'flow' });
+    const insightEntries = flowEntries
+      .filter(j => /^\[(diagnosis|finding|conclusion|architecture|systemic)\]/.test(j.content))
+      .slice(0, 3);
+    if (insightEntries.length > 0) {
+      const insightSnippets = insightEntries
+        .map(i => i.content.slice(0, 60))
+        .join('; ');
+      parts.push(`Insights: ${insightSnippets}`);
     }
 
     if (parts.length === 0) return null;
 
-    // Join and truncate to 200 chars
+    // Join and truncate to 300 chars (increased from 200 — insights are worth the space)
     const flow = parts.join(' — ');
-    return flow.length > 200 ? flow.slice(0, 197) + '...' : flow;
+    return flow.length > 300 ? flow.slice(0, 297) + '...' : flow;
   } catch {
     return null;
   }

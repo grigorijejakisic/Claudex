@@ -1,6 +1,6 @@
 /**
  * Stop hook -> after_turn event.
- * Captures decisions, tracks thread, checks checkpoint threshold.
+ * Captures decisions, extracts insights, tracks thread, checks checkpoint threshold.
  */
 
 import { wrapHook, getTranscriptPath } from './infrastructure.js';
@@ -9,6 +9,7 @@ import { CC_CAPABILITIES } from '../../shared/constants.js';
 import { emitTelemetry, sanitizeErrorForTelemetry } from '../../observability/telemetry.js';
 import {
   captureDecisionsWithClassifier,
+  captureInsightsAsLearnings,
   trackAfterTurn,
   checkpointIfThresholdMet,
 } from '../shared/lifecycle.js';
@@ -34,6 +35,15 @@ const main = wrapHook('Stop', async (input, ctx) => {
     });
   } catch (e) {
     try { emitTelemetry(ctx.db, input.session_id, 'error', { subsystem: 'stop/decision_capture', error: sanitizeErrorForTelemetry(e) }); } catch {}
+  }
+
+  // Insight extraction — analytical conclusions from assistant response
+  try {
+    if (lastAssistantText) {
+      captureInsightsAsLearnings(ctx.db, input.session_id, ctx.project, lastAssistantText);
+    }
+  } catch (e) {
+    try { emitTelemetry(ctx.db, input.session_id, 'error', { subsystem: 'stop/insight_extraction', error: sanitizeErrorForTelemetry(e) }); } catch {}
   }
 
   // Thread tracking

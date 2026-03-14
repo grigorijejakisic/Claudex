@@ -450,24 +450,16 @@ describe('buildFlowEntry', () => {
     expect(flow).toContain('JWT tokens');
   });
 
-  it('includes high-importance observation titles', () => {
-    insertObservation(db, {
-      session_id: 'flow-s1',
-      project: 'flow-proj',
-      tool_name: 'Read',
-      category: 'architecture',
-      title: 'Critical auth flow',
-      content: 'Details about auth',
-      importance: 5,
-      files_modified: [],
-    });
+  it('includes insight flow entries when available', () => {
+    // Insights are stored as flow entries with [marker] prefix by captureInsightsAsLearnings
+    addJournalEntry(db, 'flow-s1', 'flow-proj', 'flow', '[diagnosis] Root cause: field name mismatch in CC hook payload');
 
     const flow = buildFlowEntry(db, 'flow-s1', 'flow-proj');
-    expect(flow).toContain('Key:');
-    expect(flow).toContain('Critical auth flow');
+    expect(flow).toContain('Insights:');
+    expect(flow).toContain('Root cause');
   });
 
-  it('truncates to 200 chars', () => {
+  it('truncates to 300 chars', () => {
     upsertThreadState(db, {
       session_id: 'flow-s1',
       topic: 'A'.repeat(100),
@@ -484,7 +476,7 @@ describe('buildFlowEntry', () => {
     }
 
     const flow = buildFlowEntry(db, 'flow-s1', 'flow-proj');
-    expect(flow!.length).toBeLessThanOrEqual(200);
+    expect(flow!.length).toBeLessThanOrEqual(300);
   });
 });
 
