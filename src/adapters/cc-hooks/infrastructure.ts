@@ -15,7 +15,6 @@ import { detectProjectScope, getProjectId } from '../../shared/scope-detector.js
 import { getDbPath } from '../../shared/paths.js';
 import { emitTelemetry } from '../../observability/telemetry.js';
 import { BRIDGE_KEY } from '../openclaw-bridge/bridge-types.js';
-import * as path from 'path';
 
 /** Parsed CC hook stdin payload. */
 export interface HookInput {
@@ -125,7 +124,7 @@ export function bootstrapHook(input: HookInput): BootstrapResult {
   const db = openDatabase(getDbPath());
   const config = loadConfig();
   const scope = detectProjectScope(input.cwd);
-  const project = getProjectId(input.cwd, scope);
+  const project = getProjectId(input.cwd);
 
   return { db, config, project, scope, adapter: 'cc-hooks' };
 }
