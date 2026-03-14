@@ -1,105 +1,264 @@
 ---
 schema: claudex/handoff
 version: 1
-id: v3-clean-state
+id: v3-grade-a-push
 session_id: session-8-2026-03-14
 scope: project:claudex-v3
 status: active
 created_at: 2026-03-14T10:00:00Z
-updated_at: 2026-03-14T14:45:00Z
+updated_at: 2026-03-14T17:00:00Z
 ---
 
-# Handoff: Claudex v3 — Clean State
+# Handoff: Grade A Push — Refinement, Not Architecture
 
-**Priority: LOW** (all known issues resolved, system is live)
+**Priority: HIGH**
+**Goal: 84/100 → 95/100 (Grade A)**
+**Approach: No new features. No architecture changes. Refine what exists.**
 
 ## Current State
 
-Session 8 delivered a complete architecture overhaul + full cleanup + Gemini architecture fixes. **1153 tests**, 68 test files, build clean. All 26 original review findings resolved. All Gemini architecture findings fixed. V2 terminated. Pushed to GitHub (`ba0b7d6`).
+Session 8 shipped the complete artifact-based assembly architecture + multi-model review infrastructure. 1158 tests, 68 files, build clean. Live DB schema fixed, hooks firing, zero errors. 45+ commits pushed.
 
-### Architecture
+**Current scores (Gemini re-review):**
 
-Three-layer assembly pipeline (artifact-based):
+| Dimension | Score | Target |
+|-----------|-------|--------|
+| Coherence | 65* | 90 |
+| Patterns | 92 | 95 |
+| Contracts | 82 | 90 |
+| Dependencies | 93 | 95 |
+| Dead Weight | 92 | 95 |
 
-| Layer | Purpose | Always? |
-|-------|---------|---------|
-| Structural | Identity, project, checkpoint, session flow | Yes |
-| Reference | Packed artifact summaries (metadata only) | When ≥5 artifacts |
-| Materialization | FTS5-selected full content with provenance | Query-driven |
-| Legacy fallback | Old cascade (learnings, hot files, GSD, FTS5) | When <5 artifacts |
+*Coherence scored before 3 fixes were applied (materialize moved, learning dedup, decision dedup removed). Should recover to 85-90 on re-review.
 
-### Live System Status
+**Codex quality scores (averaged):**
 
-- Schema version: 300 (v3 finalized)
-- V2: terminated (directory archived, projects.json updated)
-- Hooks: rebuilt with all artifact/journal/flow code
-- DB tables: artifacts, session_journal, verified_facts all created
-- Artifact population: active (observations, learnings, decisions → artifacts automatically)
-- Flow capture: at compaction + topic shift boundaries
-- Temporal gauge: session duration, UTC time, compaction timing
+| Dimension | Score | Target |
+|-----------|-------|--------|
+| naming_quality | 84.5 | 88 |
+| error_consistency | 66.5 | 82 |
+| abstraction_fitness | 75.2 | 82 |
+| logic_clarity | 71.8 | 80 |
+| ai_generated_debt | 59.5 | 78 |
+| type_safety | 66.7 | 78 |
+| contract_coherence | 65.1 | 82 |
 
-### Review Skills
+---
 
-| Skill | Tool | Focus |
-|-------|------|-------|
-| `/unified-review` | Codex CLI | Security, quality, acceptance (7 perspectives, diff-focused) |
-| `/architecture-review` | Gemini CLI | Architecture coherence, patterns, contracts (5 perspectives, full-codebase) |
-| `/full-review` | Both | Orchestrates both in parallel, merges findings |
+## PHASE 1: AI-Generated Debt Cleanup (59.5 → 78)
 
-## Remaining Work
+**The single highest-impact improvement.** Every chunk scored poorly here. The code works but reads like unrefined AI output.
 
-### Deferred (not blocking)
+### 1.1 Strip patch-history comments
 
-1. **Full Codex review** — 40/77 perspectives completed in session 8. Codex limit resets Mar 18. Run `/unified-review` then.
-2. **Gemini review** — `/architecture-review` skill created but not yet tested (Gemini CLI needs auth). Test when authenticated.
-3. **End-to-end integration test** — no test exercises the full artifact pipeline (capture → create artifact → tick TTL → search → materialize → render). Unit tests exist for each piece.
+Search for and remove all inline fix-reference comments. These belong in git history, not source code.
 
-### From Latest Codex+Gemini Review (Action Items)
-
-**Codex review was partial (28/77 perspectives).** To complete:
 ```bash
-# Regenerate diffs and run remaining perspectives
-# Missing: security (most chunks), general, reuse, efficiency, code-health (most chunks)
-# Intelligence chunk has full 7/7 coverage — use as reference
+# Find them all:
+grep -rn "// R[0-9]\|// C[0-9]\|// Upgrade [0-9]\|// Fix [0-9]\|// CRIT-\|// REC-\|// ARCH-\|// DWT-\|// CTR-\|// DEP-\|// PAT-\|// CDX-\|// GEM-\|@see Security fix\|@see Upgrade" src/ --include="*.ts" | grep -v test
 ```
 
-**New findings from this review round to address:**
+**Rules:**
+- Delete comment lines that are pure fix references (`// R34: size limit` → delete)
+- Keep comments that explain WHY (`// Escape sentinels to prevent boundary break` → keep)
+- If a fix reference is the ONLY documentation for non-obvious logic, rewrite it as a proper explanation
 
-1. **ACC-003 (bridge)**: Artifact TTL ticks per tool call instead of per turn — can over-pack in tool-heavy turns. Move tick to `trackAfterTurn` with turn-level idempotency guard.
-2. **ACC-001 (bridge)**: Mutable shared BridgeContext creates cross-session contamination risk. Use per-session Map keyed by sessionKey.
-3. **ACC-002 (bridge)**: plugin-entry.ts `finally` block closes DB after first session end, disabling the plugin for subsequent sessions.
-4. Quality scores from Codex review available in `FULL_REVIEW_REPORT.md`
+**Estimated: ~100-150 lines to clean across 30+ files**
 
-### Previously Resolved
+### 1.2 Consolidate repetitive try/catch boilerplate
 
-All 26 original recommended findings. All 7 original critical findings. All Gemini architecture findings (pure assembly, layer inversion, duplicate exchanges, cooldown persistence, milestone sharing, dead weight removal).
+The codebase has two catch patterns that repeat everywhere:
 
-## Key Files
+**Pattern A: Silent swallow (bad)**
+```typescript
+} catch {
+  // Non-throwing
+}
+```
+
+**Pattern B: Telemetry-aware (good)**
+```typescript
+} catch(e) {
+  try { emitTelemetry(db, sessionId, 'error', { subsystem: '...', error: sanitizeErrorForTelemetry(e) }); } catch {}
+}
+```
+
+**Action:** Create a shared helper in `src/shared/error-utils.ts`:
+```typescript
+export function nonThrowingWithTelemetry(
+  fn: () => void,
+  db: Database | null,
+  sessionId: string,
+  subsystem: string
+): void {
+  try { fn(); } catch(e) {
+    if (db) {
+      try { emitTelemetry(db, sessionId, 'error', { subsystem, error: sanitizeErrorForTelemetry(e) }); } catch {}
+    }
+  }
+}
+```
+
+Then replace bare `try/catch` blocks with this helper where `db` is available. Where `db` isn't available (shared utilities), the bare catch is acceptable but should have a comment explaining why.
+
+**Priority files** (most bare catches):
+- `src/assembly/assembler.ts` (~8 bare catches)
+- `src/adapters/shared/lifecycle.ts` (~10 bare catches)
+- `src/checkpoint/loader.ts` (~6 bare catches)
+- `src/checkpoint/writer.ts` (~5 bare catches)
+
+### 1.3 Remove "architecture section" references
+
+Comments like `@see Architecture Section 7.2` or `@see Architecture Section 3.1` reference an architecture document that isn't in the repo. They add noise without value for a developer reading the code.
+
+```bash
+grep -rn "@see Architecture\|Architecture Section" src/ --include="*.ts" | grep -v test
+```
+
+Replace with inline explanations where the reference was the only documentation, or delete if the code is self-evident.
+
+---
+
+## PHASE 2: Error Consistency (66.5 → 82)
+
+**The second highest-impact improvement.** Every module is "non-throwing" but achieves it by hiding all failures.
+
+### 2.1 Add telemetry to critical catch blocks
+
+Not every catch needs telemetry — but these do:
+
+| File | Function | Why |
+|------|----------|-----|
+| `assembler.ts` | Tier 1→2→3 fallthrough | Silent assembly degradation is invisible |
+| `lifecycle.ts` | processToolAndPressure | Observation capture failures are invisible |
+| `lifecycle.ts` | runCompactionSequence | Compaction failures are invisible |
+| `checkpoint/writer.ts` | writeCheckpoint | Checkpoint write failures are invisible |
+| `checkpoint/loader.ts` | loadCheckpoint | Recovery failures are invisible |
+| `decision-capture.ts` | captureDecisions | Decision loss is invisible |
+
+**For each:** Add `emitTelemetry(db, sessionId, 'error', { subsystem: '...', error: sanitizeErrorForTelemetry(e) })` in the catch block. The function stays non-throwing — it just becomes observable.
+
+### 2.2 Standardize error handling in shared utilities
+
+Files in `src/shared/` can't emit telemetry (no DB access). Their catch blocks should at minimum document WHY they swallow:
+
+```typescript
+} catch {
+  // Non-throwing: caller handles missing config gracefully
+  return DEFAULT_CONFIG;
+}
+```
+
+Not just `} catch { }` with nothing.
+
+---
+
+## PHASE 3: Contract Coherence (65.1 → 82)
+
+### 3.1 Consume or delete unused config values
+
+From Gemini DWT-001 — these config values are parsed, validated, merged, but NEVER READ by any runtime code:
+
+| Config Value | Action |
+|-------------|--------|
+| `learnings.max_per_project` | Either wire into learnings-promoter.ts or delete |
+| `learnings.surface_count` | Either wire into assembler topic pivots or delete |
+| `checkpoint.compression` | Pass to writeCheckpoint from lifecycle or delete |
+| `enrichment.timeout_ms` | Pass to enrichCheckpoint or delete |
+| `features.fts5_search` | Wire into assembler FTS5 search or delete |
+| `gsd.enabled` | Gate readGsdState call or delete |
+| `adapter` | Delete (adapters self-report) |
+
+**Recommendation:** Wire the 3 most useful (`compression`, `timeout_ms`, `fts5_search`), delete the rest. Less config = fewer contracts to honor.
+
+### 3.2 Fix upsertThreadState semantics
+
+`upsertThreadState` uses `INSERT OR REPLACE` which silently clears omitted optional fields. Callers don't expect this.
+
+**Fix:** Change to `INSERT ... ON CONFLICT DO UPDATE SET` with explicit field updates, only updating fields that are provided:
+```sql
+ON CONFLICT(session_id) DO UPDATE SET
+  topic = COALESCE(excluded.topic, topic),
+  summary = COALESCE(excluded.summary, summary),
+  ...
+```
+
+### 3.3 Pass missing parameters to hooks
+
+From Codex CDX-HK-003/004:
+- Pass `jaccardShiftThreshold` from config to topic shift detector in user-prompt-submit.ts
+- Verify `sessionId` is passed to assembly (already fixed in Grade A push)
+
+### 3.4 Fix bridge backward-compat re-exports
+
+From Gemini DWT-002 — these re-exports exist for "backward compatibility" but should be direct imports:
+- `infrastructure.ts` re-exports `sanitizeErrorForTelemetry` (bridge imports from here)
+- `writer.ts` re-exports `writeCompressedFile`
+- `token-gauge.ts` re-exports `isPathSafe`
+- `thread.ts` re-exports `CooldownState`
+
+Update the consumers to import from the canonical location, then delete the re-exports.
+
+---
+
+## PHASE 4: Type Safety (66.7 → 78)
+
+### 4.1 Replace `any[]` in assembler
+
+`assembler.ts:361` uses `any[]` for `relevantLearnings` and `relevantHotFiles` in the topic pivot path. Import the proper types.
+
+### 4.2 Add runtime validation for DB row casts
+
+The codebase uses many `as SomeRow[]` casts from `db.prepare().all()`. Add a validation helper:
+```typescript
+function validateRow<T>(row: unknown, requiredFields: string[]): row is T {
+  return typeof row === 'object' && row !== null && requiredFields.every(f => f in row);
+}
+```
+
+Priority: `checkpoint-tracking.ts` (JSON.parse without guard), `checkpoint/loader.ts` (version validation too loose).
+
+### 4.3 Strengthen ArtifactRow.artifact_type
+
+Change from `string` to the `ArtifactType` union in the interface definition.
+
+---
+
+## EXECUTION STRATEGY
+
+### Wave 1 (parallel, independent):
+- **Worker A:** Phase 1.1 + 1.3 — Strip comments across all files (touches many files, no logic changes)
+- **Worker B:** Phase 2.1 + 2.2 — Add telemetry to catch blocks + document shared catches
+- **Worker C:** Phase 3.1 + 3.4 — Config cleanup + re-export cleanup
+- **Worker D:** Phase 4.1 + 4.2 + 4.3 — Type safety fixes
+
+### Wave 2 (after Wave 1):
+- **Worker E:** Phase 1.2 — Create error-utils.ts and consolidate catch blocks (needs W-B's telemetry first)
+- **Worker F:** Phase 3.2 + 3.3 — upsert fix + hook parameter passing
+
+### Verification:
+- Run `/architecture-review` (Gemini) after all fixes
+- Run `/unified-review` (Codex) when credits available
+- Target: 0 critical, ≤2 recommended = Grade A
+
+---
+
+## KEY FILES
 
 | File | Purpose |
 |------|---------|
-| `src/assembly/assembler.ts` | Pure three-layer assembly (no side effects, no legacy fallback) |
-| `src/assembly/sections.ts` | Formatters: reference layer, materialization layer, flow, gauge |
-| `src/core/artifacts.ts` | Artifact CRUD + TTL lifecycle (9 functions) |
-| `src/core/journal.ts` | Session journal CRUD (6 functions) |
-| `src/cli/migrate.ts` | V2→V3 migration CLI |
-| `src/adapters/shared/lifecycle.ts` | Flow capture, milestone detection, artifact creation, TTL tick |
-| `src/adapters/cc-hooks/user-prompt-submit.ts` | Topic shift → flow capture + cooldown persistence |
+| `src/assembly/assembler.ts` | Pure three-layer assembly (read-render only) |
+| `src/assembly/sections.ts` | Formatters: reference, materialization, flow, gauge |
+| `src/core/artifacts.ts` | Artifact CRUD + TTL lifecycle |
+| `src/adapters/shared/lifecycle.ts` | Orchestrator: tool processing, compaction, session end |
+| `src/adapters/cc-hooks/user-prompt-submit.ts` | Materialize + assemble per turn |
+| `src/shared/config.ts` | Config loading + validation |
+| `src/shared/constants.ts` | DEFAULT_CONFIG definition |
 
-## Review Reports
+## REVIEW INFRASTRUCTURE
 
-| Report | File | Coverage |
-|--------|------|----------|
-| Gemini Architecture | `ARCHITECTURE_REVIEW_REPORT.md` | 5/5 perspectives, 87/100 |
-| Codex Unified (partial) | `FULL_REVIEW_REPORT.md` | 28/77 perspectives |
-| Combined | `FULL_REVIEW_REPORT.md` | Merged Codex + Gemini |
-
-## Session 8 Stats
-
-- 40+ agents spawned across 5 waves + cleanup teams + review
-- 1153 tests (up from 1073 at start, down from 1226 peak after dead code removal)
-- Legacy budget-cascade fully decommissioned — artifact-only assembly
-- All 26 original + all Gemini architecture findings resolved
-- V2 fully terminated, schema version 300
-- 40+ commits pushed to GitHub
-- Multi-model review infrastructure: `/unified-review` (Codex), `/architecture-review` (Gemini), `/full-review` (both)
+| Command | Tool | Focus |
+|---------|------|-------|
+| `/architecture-review` | Gemini CLI | 5 architectural perspectives (coherence, patterns, dead weight, contracts, dependencies) |
+| `/unified-review` | Codex CLI | 7 code perspectives (quality, acceptance, security, general, reuse, efficiency, code-health) |
+| `/full-review` | Both | Runs both in parallel, merges findings |
