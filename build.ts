@@ -10,6 +10,7 @@ const allEntryPoints = [
   'src/adapters/cc-hooks/session-end.ts',
   'src/cli/setup.ts',
   'src/cli/dashboard.ts',
+  'src/cli/migrate.ts',
   'src/adapters/openclaw-bridge/plugin-entry.ts',
 ];
 
