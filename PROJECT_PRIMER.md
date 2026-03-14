@@ -4,7 +4,7 @@
 
 Claudex v3 is a unified context management system that gives LLMs persistent memory across sessions and compaction events. It replaces two predecessors (Claudex v2 + OpenClaw's Context Manager) with a single codebase that runs on both Claude Code (as lifecycle hooks) and OpenClaw (as a bridge plugin). One core, two swappable runtime adapters, standalone install.
 
-**Status**: Architecture v1.2.1 complete (2330 lines, graded A). No implementation code yet. 12-phase implementation plan defined.
+**Status**: All phases implemented. Artifact-based assembly architecture shipped (Session 8). 1226 tests, 69 test files.
 
 ## Core Architecture (30-second version)
 
@@ -13,12 +13,28 @@ Host (CC or OpenClaw)
   → Runtime Adapter (translates host events to RuntimeEvent)
   → Claudex Core
     → Storage (SQLite + WAL + FTS5)
-    → Extraction (per-tool observation capture)
+    → Extraction (per-tool observation capture → artifact creation)
     → Intelligence (decisions, threads, dedup, enrichment, learnings)
-    → Assembly (priority-budgeted context injection)
+    → Assembly (three-layer: structural + reference + materialization)
+    → Artifacts (TTL lifecycle: fresh → packed → materialized)
+    → Session Journal (flow entries, milestones, summaries)
     → Checkpoint (ULID + DB-first state machine)
-    → Observability (structured telemetry)
+    → Observability (structured telemetry + injection metrics)
 ```
+
+## Assembly Model (Session 8)
+
+Three-layer model replaces the old budget-cascade:
+
+| Layer | Purpose | Always? |
+|-------|---------|---------|
+| Structural | Identity, project, checkpoint, session flow | Yes |
+| Reference | Packed artifact summaries (metadata only) | When ≥5 artifacts |
+| Materialization | FTS5-selected full content with provenance | Query-driven |
+| Legacy fallback | Old cascade (learnings, hot files, GSD, FTS5) | When <5 artifacts |
+
+Key: flow entries include "why" as retrieval hints. TTL-based lifecycle (fresh→packed→materialized). Compaction = packing (lossless).
+Informed by IAM project artifact patterns (Teneral Agent Platform).
 
 ## 12 Design Principles
 
