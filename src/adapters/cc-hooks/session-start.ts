@@ -1,6 +1,7 @@
 /**
  * SessionStart hook -> session_init event.
  * Creates session, recovers checkpoints, prunes telemetry, assembles full context.
+ * Appends DB-first session context summary for session continuity.
  * @see Architecture Section 3.2
  */
 
@@ -10,6 +11,10 @@ import { recoverFromDb } from '../../checkpoint/loader.js';
 import { emitInjectionTelemetry, pruneTelemetry } from '../../observability/telemetry.js';
 import { assembleFullContext } from '../../assembly/assembler.js';
 import { getIdentityDir } from '../../shared/paths.js';
+import {
+  getSessionContext,
+  renderSessionContextSummary,
+} from '../../core/session-query.js';
 
 const main = wrapHook('SessionStart', async (input, ctx) => {
   createSession(ctx.db, {
@@ -48,8 +53,21 @@ const main = wrapHook('SessionStart', async (input, ctx) => {
     });
   }
 
-  if (payload.content) {
-    return { additionalContext: payload.content };
+  // DB-first session context: append concise summary from DB queries
+  let dbContextSuffix = '';
+  try {
+    const sessionCtx = getSessionContext(ctx.db, ctx.project, input.session_id);
+    const rendered = renderSessionContextSummary(sessionCtx);
+    if (rendered) {
+      dbContextSuffix = '\n\n' + rendered;
+    }
+  } catch {
+    // Non-fatal — DB context is supplementary
+  }
+
+  const combined = (payload.content || '') + dbContextSuffix;
+  if (combined.trim()) {
+    return { additionalContext: combined };
   }
   return {};
 });

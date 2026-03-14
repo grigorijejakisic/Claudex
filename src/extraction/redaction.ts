@@ -44,6 +44,14 @@ const SECRET_PATTERNS: Array<[RegExp, string]> = [
   // Generic API keys (sk-, key-)
   [/sk-[a-zA-Z0-9]{20,}/g, '[REDACTED_SECRET]'],
   [/key-[a-zA-Z0-9]{20,}/g, '[REDACTED_SECRET]'],
+  // Password assignments (password=... up to whitespace, quote, or ampersand)
+  [/password\s*=\s*[^\s"'&]+/gi, '[REDACTED_SECRET]'],
+  // URI-embedded credentials (://user:pass@host)
+  [/:\/\/[^@/\s]+:[^@/\s]+@/g, '://[REDACTED_SECRET]@'],
+  // Authorization headers (Bearer/Basic)
+  [/Authorization:\s*(?:Bearer|Basic)\s+[^\s"']+/gi, 'Authorization: [REDACTED_SECRET]'],
+  // x-api-key header
+  [/x-api-key:\s*[^\s"']+/gi, 'x-api-key: [REDACTED_SECRET]'],
   // Base64 strings > 32 chars (exclude pure hex strings — those are hashes, not secrets)
   [/[A-Za-z0-9+/]{32,}={0,2}/g, '__BASE64_CANDIDATE__'],
 ];
@@ -191,7 +199,9 @@ export function sanitizePath(path: string, projectRoot?: string): string {
     if (!path) return path;
 
     // Project-relative replacement first (if provided)
-    if (projectRoot && path.startsWith(projectRoot)) {
+    // Boundary-aware: ensure match isn't a sibling prefix (e.g., /repo vs /repo2)
+    if (projectRoot && path.startsWith(projectRoot) &&
+        (path.length === projectRoot.length || path[projectRoot.length] === '/' || path[projectRoot.length] === '\\')) {
       const relative = path.slice(projectRoot.length).replace(/^[/\\]/, '');
       return `<project>/${relative}`;
     }

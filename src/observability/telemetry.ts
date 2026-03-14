@@ -6,7 +6,7 @@
 
 import type { Database } from 'better-sqlite3';
 import { DEFAULT_CONFIG } from '../shared/constants.js';
-import type { EventKind, TelemetryDetail } from './types.js';
+import type { EventKind, EventKindDetailMap, TelemetryDetail } from './types.js';
 
 /** Row shape returned from telemetry queries. */
 export interface TelemetryRow {
@@ -33,12 +33,14 @@ interface TelemetryRawRow {
 /**
  * Emits a telemetry event. Non-throwing — entire function wrapped in try/catch.
  * Fast INSERT in WAL mode.
+ * Generic constraint ensures the detail type matches the event kind
+ * via EventKindDetailMap.
  */
-export function emitTelemetry(
+export function emitTelemetry<K extends EventKind>(
   db: Database,
   sessionId: string,
-  eventKind: EventKind,
-  detail: TelemetryDetail,
+  eventKind: K,
+  detail: EventKindDetailMap[K],
   latencyMs?: number,
   adapter?: string
 ): void {
@@ -81,44 +83,58 @@ export function emitInjectionTelemetry(
  * Returns results ordered by timestamp_epoch DESC.
  * Parses detail JSON back to typed objects.
  * If adapter is provided, scopes to that adapter; if omitted, returns all.
+ * Non-throwing — returns empty array on error. Per-row JSON.parse failures
+ * are silently skipped.
  */
 export function queryTelemetry(
   db: Database,
   opts: { sessionId?: string; eventKind?: EventKind; adapter?: string; limit?: number }
 ): TelemetryRow[] {
-  const conditions: string[] = [];
-  const params: unknown[] = [];
+  try {
+    const conditions: string[] = [];
+    const params: unknown[] = [];
 
-  if (opts.sessionId) {
-    conditions.push('session_id = ?');
-    params.push(opts.sessionId);
+    if (opts.sessionId) {
+      conditions.push('session_id = ?');
+      params.push(opts.sessionId);
+    }
+    if (opts.eventKind) {
+      conditions.push('event_kind = ?');
+      params.push(opts.eventKind);
+    }
+    if (opts.adapter) {
+      conditions.push('adapter = ?');
+      params.push(opts.adapter);
+    }
+
+    const whereClause =
+      conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
+    const limit = opts.limit ?? 1000;
+
+    const rows = db
+      .prepare(
+        `SELECT * FROM telemetry ${whereClause}
+         ORDER BY timestamp_epoch DESC
+         LIMIT ?`
+      )
+      .all(...params, limit) as TelemetryRawRow[];
+
+    const results: TelemetryRow[] = [];
+    for (const row of rows) {
+      try {
+        results.push({
+          ...row,
+          event_kind: row.event_kind as EventKind,
+          detail: JSON.parse(row.detail) as TelemetryDetail,
+        });
+      } catch {
+        // Skip rows with unparseable detail JSON
+      }
+    }
+    return results;
+  } catch {
+    return [];
   }
-  if (opts.eventKind) {
-    conditions.push('event_kind = ?');
-    params.push(opts.eventKind);
-  }
-  if (opts.adapter) {
-    conditions.push('adapter = ?');
-    params.push(opts.adapter);
-  }
-
-  const whereClause =
-    conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
-  const limit = opts.limit ?? 1000;
-
-  const rows = db
-    .prepare(
-      `SELECT * FROM telemetry ${whereClause}
-       ORDER BY timestamp_epoch DESC
-       LIMIT ?`
-    )
-    .all(...params, limit) as TelemetryRawRow[];
-
-  return rows.map((row) => ({
-    ...row,
-    event_kind: row.event_kind as EventKind,
-    detail: JSON.parse(row.detail) as TelemetryDetail,
-  }));
 }
 
 /**
@@ -175,8 +191,9 @@ export interface ToolCostEstimate {
 }
 
 /**
- * Queries recent telemetry for average token cost per tool category.
- * Returns top-N tool categories sorted by average cost descending.
+ * Returns tool usage estimates sorted by call frequency, with heuristic
+ * token cost approximations. Queries observation_capture events from the
+ * last 24 hours, groups by tool name, and applies a static cost mapping.
  * Non-throwing — returns empty array on error.
  * @see Upgrade 11
  */

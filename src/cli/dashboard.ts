@@ -116,7 +116,8 @@ export function queryLearnings(db: Database.Database, project?: string): Learnin
          LIMIT 50`
       )
       .all() as LearningResult[];
-  } catch {
+  } catch (err) {
+    console.error(`[dashboard] queryLearnings failed: ${err instanceof Error ? err.message : String(err)}`);
     return [];
   }
 }
@@ -127,6 +128,11 @@ export function queryLearnings(db: Database.Database, project?: string): Learnin
  */
 export function queryDecisions(db: Database.Database, project?: string, session?: string): DecisionResult[] {
   try {
+    // R42: Warn when both --session and --project are provided (session takes precedence)
+    if (session && project) {
+      console.warn('Warning: both --session and --project provided. Filtering by session only (--project ignored).');
+    }
+
     if (session) {
       return db
         .prepare(
@@ -157,7 +163,8 @@ export function queryDecisions(db: Database.Database, project?: string, session?
          LIMIT 100`
       )
       .all() as DecisionResult[];
-  } catch {
+  } catch (err) {
+    console.error(`[dashboard] queryDecisions failed: ${err instanceof Error ? err.message : String(err)}`);
     return [];
   }
 }
@@ -225,7 +232,8 @@ export function queryStats(db: Database.Database, project?: string): StatsResult
       top_categories: topCats,
       recent_sessions: recentSessions,
     };
-  } catch {
+  } catch (err) {
+    console.error(`[dashboard] queryStats failed: ${err instanceof Error ? err.message : String(err)}`);
     return empty;
   }
 }
@@ -255,7 +263,8 @@ export function queryTopics(db: Database.Database, project?: string): TopicResul
          LIMIT 50`
       )
       .all() as TopicResult[];
-  } catch {
+  } catch (err) {
+    console.error(`[dashboard] queryTopics failed: ${err instanceof Error ? err.message : String(err)}`);
     return [];
   }
 }

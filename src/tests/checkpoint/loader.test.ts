@@ -51,7 +51,9 @@ describe('recoverFromDb', () => {
 
   it('re-mirrors committed rows to YAML files', async () => {
     const cp = makeCheckpoint();
-    const mirrorPath = path.join(tmpDir, 'test_cp.yaml');
+    const checkpointsDir = path.join(tmpDir, 'checkpoints');
+    fs.mkdirSync(checkpointsDir, { recursive: true });
+    const mirrorPath = path.join(checkpointsDir, 'test_cp.yaml');
 
     db.prepare(
       `INSERT INTO checkpoint_meta (checkpoint_id, session_id, trigger, status, data, mirror_path, created_at_epoch, updated_at_epoch)
@@ -443,7 +445,9 @@ describe('Fix 1: recoverFromDb writes compressed for .yaml.gz mirror paths', () 
 
   it('re-mirrors .yaml.gz path as valid gzip', async () => {
     const cp = makeCheckpoint();
-    const mirrorPath = path.join(tmpDir, 'test_cp.yaml.gz');
+    const checkpointsDir = path.join(tmpDir, 'checkpoints');
+    fs.mkdirSync(checkpointsDir, { recursive: true });
+    const mirrorPath = path.join(checkpointsDir, 'test_cp.yaml.gz');
 
     db.prepare(
       `INSERT INTO checkpoint_meta (checkpoint_id, session_id, trigger, status, data, mirror_path, created_at_epoch, updated_at_epoch)
@@ -470,8 +474,9 @@ describe('Fix 1: recoverFromDb writes compressed for .yaml.gz mirror paths', () 
 
   it('loadCheckpoint sync re-mirror writes gzip for .yaml.gz path', () => {
     const cp = makeCheckpoint();
-    const mirrorPath = path.join(tmpDir, 'sync_cp.yaml.gz');
-    fs.mkdirSync(path.dirname(mirrorPath), { recursive: true });
+    const cpDir = path.join(tmpDir, 'context', 'checkpoints');
+    fs.mkdirSync(cpDir, { recursive: true });
+    const mirrorPath = path.join(cpDir, 'sync_cp.yaml.gz');
 
     db.prepare(
       `INSERT INTO checkpoint_meta (checkpoint_id, session_id, trigger, status, data, mirror_path, created_at_epoch, updated_at_epoch)
@@ -583,8 +588,8 @@ describe('Fix 5: recoverFromDb per-directory latest.yaml', () => {
     const cp1 = makeCheckpoint({ meta: { ...makeCheckpoint().meta, checkpoint_id: 'CP1' } });
     const cp2 = makeCheckpoint({ meta: { ...makeCheckpoint().meta, checkpoint_id: 'CP2' } });
 
-    const dirA = path.join(tmpDir, 'dirA');
-    const dirB = path.join(tmpDir, 'dirB');
+    const dirA = path.join(tmpDir, 'checkpoints', 'dirA');
+    const dirB = path.join(tmpDir, 'checkpoints', 'dirB');
     fs.mkdirSync(dirA, { recursive: true });
     fs.mkdirSync(dirB, { recursive: true });
 

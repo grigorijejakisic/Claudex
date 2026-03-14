@@ -7,6 +7,7 @@
 import type { Database } from 'better-sqlite3';
 import { cachedPrepare } from './stmt-cache.js';
 import { redactContent } from '../extraction/redaction.js';
+import type { CooldownState } from '../intelligence/topic-shift.js';
 
 export interface ThreadStateRow {
   session_id: string;
@@ -84,10 +85,7 @@ export function resetThreadState(
 // Uses a reserved entry with role '__cooldown' to avoid schema changes.
 // ---------------------------------------------------------------------------
 
-export interface CooldownState {
-  lastShiftEpoch: number;
-  turnsSinceShift: number;
-}
+export type { CooldownState } from '../intelligence/topic-shift.js';
 
 const COOLDOWN_ROLE = '__cooldown';
 

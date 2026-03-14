@@ -87,12 +87,14 @@ function simpleHash(str: string): string {
   return (h >>> 0).toString(16).padStart(8, '0');
 }
 
-/** Normalizes a path for comparison. Case-insensitive on Windows. */
+/** Normalizes a path for comparison. Case-insensitive on Windows. R32: strips trailing separators. */
 function normalizePath(p: string): string {
   let normalized = path.normalize(p);
   // Case-insensitive on Windows (QUAL-05, 2nd allowed platform check)
   if (process.platform === 'win32') {
     normalized = normalized.toLowerCase();
   }
+  // R32: Strip trailing separators to prevent prefix-match edge cases
+  normalized = normalized.replace(/[/\\]+$/, '');
   return normalized;
 }

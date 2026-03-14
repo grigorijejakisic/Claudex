@@ -45,6 +45,11 @@ export function activate(api: OpenClawPluginApi): void {
     // Register session_end cleanup
     api.registerHook('session_end', async () => {
       try {
+        // R44: Guard against session_end running before onInit sets sessionId.
+        // Without a valid sessionId, cleanup writes would target empty-string keys.
+        // Skip cleanup but still fall through to finally for resource teardown.
+        if (!bctx.sessionId) return;
+
         const startMs = Date.now();
 
         await runSessionEndCleanup({

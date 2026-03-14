@@ -8,16 +8,18 @@ import { fetchJsonWithTimeout } from '../shared/fetch-utils.js';
 import { isPrivateIPv4 } from '../shared/network-safety.js';
 
 /**
- * Validates that a URL points to localhost, loopback, or a private network address.
- * Rejects any URL that could route sensitive data to an external endpoint.
- * Returns true if the URL is safe (local/private), false otherwise.
+ * Validates that a URL points to a loopback address.
+ * By default, only loopback addresses are allowed (localhost, 127.0.0.1, ::1).
+ * Set `allowPrivateLan` to true to also permit RFC 1918 private network addresses
+ * (10.x.x.x, 172.16-31.x.x, 192.168.x.x) for LAN-hosted embedding services.
+ * Returns true if the URL is safe, false otherwise.
  */
-export function isLocalOrPrivateUrl(urlStr: string): boolean {
+export function isLocalOrPrivateUrl(urlStr: string, opts?: { allowPrivateLan?: boolean }): boolean {
   try {
     const parsed = new URL(urlStr);
     const hostname = parsed.hostname;
 
-    // Localhost / loopback
+    // Loopback addresses — always allowed
     if (hostname === 'localhost') return true;
     if (hostname === '127.0.0.1') return true;
     if (hostname === '::1') return true;
@@ -25,11 +27,13 @@ export function isLocalOrPrivateUrl(urlStr: string): boolean {
     // Bracket-wrapped IPv6 loopback
     if (hostname === '[::1]') return true;
 
-    // Private IPv4 ranges (shared helper)
-    const ipv4Match = hostname.match(/^(\d+)\.(\d+)\.(\d+)\.(\d+)$/);
-    if (ipv4Match) {
-      const [, a, b] = ipv4Match.map(Number);
-      if (isPrivateIPv4(a, b)) return true;
+    // Private IPv4 ranges — only when explicitly opted in
+    if (opts?.allowPrivateLan) {
+      const ipv4Match = hostname.match(/^(\d+)\.(\d+)\.(\d+)\.(\d+)$/);
+      if (ipv4Match) {
+        const [, a, b] = ipv4Match.map(Number);
+        if (isPrivateIPv4(a, b)) return true;
+      }
     }
 
     return false;
@@ -113,9 +117,11 @@ export class EmbeddingProvider {
 
       if (!data) return null;
 
-      const embeddings: number[][] = data.embeddings as number[][];
+      const embeddings = data.embeddings;
       if (!Array.isArray(embeddings) || embeddings.length === 0) return null;
-      return embeddings[0];
+      const first = embeddings[0];
+      if (!Array.isArray(first) || !first.every((v: unknown) => typeof v === 'number')) return null;
+      return first;
     } catch {
       return null;
     }
@@ -154,13 +160,15 @@ export class EmbeddingProvider {
 
       if (!data) return texts.map(() => null);
 
-      const embeddings: number[][] = data.embeddings as number[][];
+      const embeddings = data.embeddings;
       if (!Array.isArray(embeddings)) return texts.map(() => null);
 
-      // Map results: return null for missing positions
+      // Map results: return null for missing or invalid positions
       return texts.map((_, i) => {
         const emb = embeddings[i];
-        return Array.isArray(emb) && emb.length > 0 ? emb : null;
+        if (!Array.isArray(emb) || emb.length === 0) return null;
+        if (!emb.every((v: unknown) => typeof v === 'number')) return null;
+        return emb;
       });
     } catch {
       return texts.map(() => null);

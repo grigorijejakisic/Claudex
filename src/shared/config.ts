@@ -148,13 +148,86 @@ function validateConfig(config: ClaudexConfig): ClaudexConfig {
     }
   }
 
+  // R30: Semantic range validation for numeric fields
+  validateNumericRanges(config, defaults);
+
   return config;
 }
 
-/** Simple recursive deep merge. Loaded values override defaults. */
+/**
+ * Validates numeric config fields have sensible ranges.
+ * Falls back to defaults for out-of-range values. Never throws.
+ * R30: Ensures finiteness, non-negativity, and domain-specific bounds.
+ */
+function validateNumericRanges(config: ClaudexConfig, defaults: ClaudexConfig): void {
+  // Helper: clamp to finite positive integer with optional max
+  const posInt = (val: number, def: number, max?: number): number => {
+    if (!Number.isFinite(val) || val <= 0) return def;
+    if (max !== undefined && val > max) return def;
+    return val;
+  };
+  // Helper: clamp to finite non-negative number
+  const nonNeg = (val: number, def: number): number => {
+    if (!Number.isFinite(val) || val < 0) return def;
+    return val;
+  };
+  // Helper: value must be in (0, 1] range (thresholds)
+  const threshold = (val: number, def: number): number => {
+    if (!Number.isFinite(val) || val <= 0 || val > 1) return def;
+    return val;
+  };
+
+  // injection
+  config.injection.budget_tokens = posInt(config.injection.budget_tokens, defaults.injection.budget_tokens);
+  config.injection.gauge_threshold = threshold(config.injection.gauge_threshold, defaults.injection.gauge_threshold);
+  config.injection.topic_shift_budget = posInt(config.injection.topic_shift_budget, defaults.injection.topic_shift_budget);
+
+  // observations
+  config.observations.retention_days = posInt(config.observations.retention_days, defaults.observations.retention_days, 365);
+  config.observations.prune_threshold = posInt(config.observations.prune_threshold, defaults.observations.prune_threshold);
+  config.observations.prune_count = posInt(config.observations.prune_count, defaults.observations.prune_count);
+
+  // checkpoint
+  config.checkpoint.debounce_seconds = nonNeg(config.checkpoint.debounce_seconds, defaults.checkpoint.debounce_seconds);
+
+  // learnings
+  config.learnings.max_per_project = posInt(config.learnings.max_per_project, defaults.learnings.max_per_project);
+  config.learnings.surface_count = posInt(config.learnings.surface_count, defaults.learnings.surface_count);
+
+  // enrichment
+  config.enrichment.timeout_ms = posInt(config.enrichment.timeout_ms, defaults.enrichment.timeout_ms);
+
+  // embeddings
+  config.embeddings.topic_shift_threshold = threshold(config.embeddings.topic_shift_threshold, defaults.embeddings.topic_shift_threshold);
+  config.embeddings.topic_shift_window = posInt(config.embeddings.topic_shift_window, defaults.embeddings.topic_shift_window);
+  config.embeddings.decision_confidence_threshold = threshold(config.embeddings.decision_confidence_threshold, defaults.embeddings.decision_confidence_threshold);
+  config.embeddings.jaccard_shift_threshold = threshold(config.embeddings.jaccard_shift_threshold, defaults.embeddings.jaccard_shift_threshold);
+
+  // observability
+  config.observability.retention_days = posInt(config.observability.retention_days, defaults.observability.retention_days, 365);
+  config.observability.retain_error_count = posInt(config.observability.retain_error_count, defaults.observability.retain_error_count);
+
+  // gsd
+  config.gsd.phase_boost = nonNeg(config.gsd.phase_boost, defaults.gsd.phase_boost);
+
+  // context thresholds — must be in (0, 1] and ordered: advisory < warning < critical
+  config.context.advisory_threshold = threshold(config.context.advisory_threshold, defaults.context.advisory_threshold);
+  config.context.warning_threshold = threshold(config.context.warning_threshold, defaults.context.warning_threshold);
+  config.context.critical_threshold = threshold(config.context.critical_threshold, defaults.context.critical_threshold);
+  if (!(config.context.advisory_threshold < config.context.warning_threshold &&
+        config.context.warning_threshold < config.context.critical_threshold)) {
+    config.context.advisory_threshold = defaults.context.advisory_threshold;
+    config.context.warning_threshold = defaults.context.warning_threshold;
+    config.context.critical_threshold = defaults.context.critical_threshold;
+  }
+  config.context.checkpoint_cooldown_seconds = nonNeg(config.context.checkpoint_cooldown_seconds, defaults.context.checkpoint_cooldown_seconds);
+}
+
+/** Simple recursive deep merge. Only copies keys present in defaults (R28). */
 function deepMerge(defaults: Record<string, unknown>, overrides: Record<string, unknown>): Record<string, unknown> {
   const result = { ...defaults };
   for (const key of Object.keys(overrides)) {
+    if (!Object.hasOwn(defaults, key)) continue; // R28: strip unknown keys
     const defaultVal = defaults[key];
     const overrideVal = overrides[key];
     if (

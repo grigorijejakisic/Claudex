@@ -26,7 +26,7 @@ export function extractBash(
     const stderr = String(output?.stderr ?? '');
     const exitCode = output?.exitCode;
 
-    let content = stdout || stderr;
+    let content = [stdout, stderr].filter(Boolean).join('\n');
     if (exitCode !== undefined && exitCode !== 0) {
       content = `Exit code: ${exitCode}\n${content}`;
     }

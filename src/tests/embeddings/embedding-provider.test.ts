@@ -336,19 +336,25 @@ describe('isLocalOrPrivateUrl', () => {
       expect(isLocalOrPrivateUrl('http://localhost')).toBe(true);
     });
 
-    it('accepts private 10.x.x.x range', () => {
-      expect(isLocalOrPrivateUrl('http://10.0.0.1:8080')).toBe(true);
-      expect(isLocalOrPrivateUrl('http://10.255.255.255')).toBe(true);
+    it('rejects private 10.x.x.x range by default (loopback-only)', () => {
+      expect(isLocalOrPrivateUrl('http://10.0.0.1:8080')).toBe(false);
+      expect(isLocalOrPrivateUrl('http://10.255.255.255')).toBe(false);
     });
 
-    it('accepts private 172.16-31.x.x range', () => {
-      expect(isLocalOrPrivateUrl('http://172.16.0.1:8080')).toBe(true);
-      expect(isLocalOrPrivateUrl('http://172.31.255.255')).toBe(true);
+    it('rejects private 172.16-31.x.x range by default (loopback-only)', () => {
+      expect(isLocalOrPrivateUrl('http://172.16.0.1:8080')).toBe(false);
+      expect(isLocalOrPrivateUrl('http://172.31.255.255')).toBe(false);
     });
 
-    it('accepts private 192.168.x.x range', () => {
-      expect(isLocalOrPrivateUrl('http://192.168.0.1:11434')).toBe(true);
-      expect(isLocalOrPrivateUrl('http://192.168.1.100')).toBe(true);
+    it('rejects private 192.168.x.x range by default (loopback-only)', () => {
+      expect(isLocalOrPrivateUrl('http://192.168.0.1:11434')).toBe(false);
+      expect(isLocalOrPrivateUrl('http://192.168.1.100')).toBe(false);
+    });
+
+    it('accepts private ranges when allowPrivateLan is true', () => {
+      expect(isLocalOrPrivateUrl('http://10.0.0.1:8080', { allowPrivateLan: true })).toBe(true);
+      expect(isLocalOrPrivateUrl('http://172.16.0.1:8080', { allowPrivateLan: true })).toBe(true);
+      expect(isLocalOrPrivateUrl('http://192.168.1.100', { allowPrivateLan: true })).toBe(true);
     });
   });
 
@@ -399,11 +405,10 @@ describe('EmbeddingProvider baseUrl validation', () => {
     expect(await provider.isAvailable()).toBe(true);
   });
 
-  it('allows private network baseUrl', async () => {
-    mockFetch(async () =>
-      new Response(JSON.stringify({ models: [{ name: 'nomic-embed-text:latest' }] }))
-    );
+  it('rejects private network baseUrl by default (loopback-only)', async () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
     const provider = new EmbeddingProvider({ baseUrl: 'http://192.168.1.50:11434' });
-    expect(await provider.isAvailable()).toBe(true);
+    expect(await provider.isAvailable()).toBe(false);
+    warnSpy.mockRestore();
   });
 });

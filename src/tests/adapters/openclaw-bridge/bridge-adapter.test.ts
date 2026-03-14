@@ -43,7 +43,7 @@ function createMockPiContext(overrides: Partial<PiContext> = {}): PiContext {
   };
 }
 
-function createBctx(db: Database.Database): BridgeContext {
+function createBctx(db: TestDatabase): BridgeContext {
   return {
     db,
     config: testConfig,
@@ -51,6 +51,7 @@ function createBctx(db: Database.Database): BridgeContext {
     scope: null,
     sessionId: 'test-s1',
     cwd: '/tmp/test',
+    adapter: 'openclaw' as const,
   };
 }
 
@@ -523,6 +524,7 @@ describe('Error handling', () => {
       scope: null,
       sessionId: 'test-s1',
       cwd: '/tmp/test',
+      adapter: 'openclaw' as const,
     };
 
     const bridge = createBridgeCallbacks(bctx);
@@ -562,6 +564,7 @@ describe('Error handling', () => {
       scope: null,
       sessionId: 'test-s1',
       cwd: '/tmp/test',
+      adapter: 'openclaw' as const,
     };
     const errorBridge = createBridgeCallbacks(errorBctx);
 

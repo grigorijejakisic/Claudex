@@ -61,28 +61,28 @@ export function getCoOccurrences(
     }
     if (!Array.isArray(files) || files.length === 0) return 0;
 
-    const start = Date.now();
-    let total = 0;
-
     const stmt = project != null
       ? db.prepare(
-          `SELECT COUNT(DISTINCT id) as cnt FROM observations
-           WHERE id != ? AND deleted_at_epoch IS NULL AND project = ? AND files_modified LIKE ?`
+          `SELECT COUNT(DISTINCT o.id) as cnt
+           FROM observations o, json_each(o.files_modified) je
+           WHERE o.id != ?
+             AND o.deleted_at_epoch IS NULL
+             AND o.project = ?
+             AND je.value IN (SELECT value FROM json_each(?))`
         )
       : db.prepare(
-          `SELECT COUNT(DISTINCT id) as cnt FROM observations
-           WHERE id != ? AND deleted_at_epoch IS NULL AND files_modified LIKE ?`
+          `SELECT COUNT(DISTINCT o.id) as cnt
+           FROM observations o, json_each(o.files_modified) je
+           WHERE o.id != ?
+             AND o.deleted_at_epoch IS NULL
+             AND je.value IN (SELECT value FROM json_each(?))`
         );
 
-    for (const file of files) {
-      if (Date.now() - start > 100) return Math.min(total, 5);
-      const row = project != null
-        ? stmt.get(observationId, project, `%"${file}"%`) as { cnt: number } | undefined
-        : stmt.get(observationId, `%"${file}"%`) as { cnt: number } | undefined;
-      if (row) total += row.cnt;
-    }
+    const row = project != null
+      ? stmt.get(observationId, project, JSON.stringify(files)) as { cnt: number } | undefined
+      : stmt.get(observationId, JSON.stringify(files)) as { cnt: number } | undefined;
 
-    return Math.min(total, 5);
+    return Math.min(row?.cnt ?? 0, 5);
   } catch {
     return 0;
   }

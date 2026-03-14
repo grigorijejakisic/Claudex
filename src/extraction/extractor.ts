@@ -81,10 +81,16 @@ export function processToolObservation(input: ProcessToolObservationInput): numb
     const result = extractor(toolInput, toolOutput);
     if (!result) return null;
 
+    // 3b. Validate — cap files_modified to prevent heavy DB operations
+    const MAX_FILES_MODIFIED = 50;
+    const validFiles = (Array.isArray(result.files_modified) ? result.files_modified : [])
+      .filter((f): f is string => typeof f === 'string')
+      .slice(0, MAX_FILES_MODIFIED);
+
     // 4. Redact — apply content redaction, title redaction, and path sanitization
     const redactedContent = redactContent(result.content);
     const redactedTitle = redactContent(result.title);
-    const sanitizedFiles = result.files_modified.map((f) => sanitizePath(f, projectRoot));
+    const sanitizedFiles = validFiles.map((f) => sanitizePath(f, projectRoot));
 
     // 5. Classify — determine observation category
     const category = classifyCategory(toolName, redactedTitle, redactedContent);
@@ -108,6 +114,7 @@ export function processToolObservation(input: ProcessToolObservationInput): numb
           `SELECT id FROM observations
            WHERE tool_name = ? AND category = ? AND project = ? AND session_id = ?
              AND timestamp_epoch > ? AND files_modified = ?
+             AND deleted_at_epoch IS NULL
            LIMIT 1`
         )
         .get(toolName, category, project, sessionId, fiveMinutesAgo, JSON.stringify(sanitizedFiles)) as { id: number } | undefined;
@@ -130,7 +137,11 @@ export function processToolObservation(input: ProcessToolObservationInput): numb
 
     if (existing) return null;
 
-    // 8. Store
+    // 8. Store — tag external tool observations with provenance prefix
+    const storedObsType = gate.provenance === 'external_tool'
+      ? `external:${obsType}`
+      : obsType;
+
     const id = insertObservation(db, {
       session_id: sessionId,
       project,
@@ -140,7 +151,7 @@ export function processToolObservation(input: ProcessToolObservationInput): numb
       content: redactedContent,
       importance: adjustedImportance,
       files_modified: sanitizedFiles,
-      obs_type: obsType,
+      obs_type: storedObsType,
     });
 
     return id;

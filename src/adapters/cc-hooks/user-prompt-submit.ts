@@ -5,7 +5,7 @@
  */
 
 import { wrapHook, getTranscriptPath } from './infrastructure.js';
-import { getCheckpointTracking, clearPostCompactPending } from '../../core/checkpoint-tracking.js';
+import { getCheckpointTracking, clearPostCompactPending, updateCheckpointTracking } from '../../core/checkpoint-tracking.js';
 import { getTokenGauge } from '../../gauge/token-gauge.js';
 import { CC_CAPABILITIES, getPressureZone } from '../../shared/constants.js';
 import { assembleRegularPrompt } from '../../assembly/assembler.js';
@@ -47,6 +47,10 @@ const main = wrapHook('UserPromptSubmit', async (input, ctx) => {
           tokenUsage: gauge,
           scope: ctx.scope ?? undefined,
         });
+        // Update checkpoint tracking so cooldown timer works
+        try {
+          updateCheckpointTracking(ctx.db, input.session_id, 0);
+        } catch { /* non-fatal */ }
       }
     } catch {
       // Non-fatal — checkpoint failure shouldn't block prompt

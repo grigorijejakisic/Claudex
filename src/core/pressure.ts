@@ -104,13 +104,13 @@ export function decayPressure(
        WHERE project = ?`
     ).run(rate, project);
 
-    cachedPrepare(db,
+    const demotionResult = cachedPrepare(db,
       `UPDATE pressure_scores
        SET temperature = 'COLD'
        WHERE project = ? AND raw_pressure < ${COLD_THRESHOLD}`
     ).run(project);
 
-    return decayResult.changes;
+    return decayResult.changes + demotionResult.changes;
   });
 
   return doBatchDecay();

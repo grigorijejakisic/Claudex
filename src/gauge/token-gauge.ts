@@ -6,9 +6,40 @@
  */
 
 import * as fs from 'fs';
+import * as os from 'os';
 import * as path from 'path';
 import type { TokenUsage, RuntimeCapabilities } from '../shared/types.js';
 import { detectWindowSize } from './window-detector.js';
+
+/**
+ * Validates that a transcript path is safe to read.
+ * Rejects UNC/device paths and paths outside the user's home directory.
+ * @internal
+ */
+function isPathSafe(transcriptPath: string): boolean {
+  const resolved = path.resolve(transcriptPath);
+  // Reject UNC paths (\\server\share or //server/share)
+  if (resolved.startsWith('\\\\') || resolved.startsWith('//')) return false;
+  // Reject Windows device paths (\\.\ or \\?\)
+  if (resolved.startsWith('\\\\.\\') || resolved.startsWith('\\\\?\\')) return false;
+  // Must end with .jsonl
+  if (!resolved.endsWith('.jsonl')) return false;
+  // Must be under user's home directory
+  // Use realpathSync.native on Windows to resolve 8.3 short names (e.g. GRIGOR~1)
+  let normalizedResolved = resolved;
+  let home = os.homedir();
+  try {
+    if (process.platform === 'win32') {
+      normalizedResolved = fs.realpathSync.native(resolved);
+      home = fs.realpathSync.native(home);
+    }
+  } catch {
+    // If file doesn't exist yet or realpath fails, use the resolved path as-is
+  }
+  const rel = path.relative(home, normalizedResolved);
+  if (rel.startsWith('..') || path.isAbsolute(rel)) return false;
+  return true;
+}
 
 export interface GetTokenGaugeParams {
   capabilities: RuntimeCapabilities;
@@ -49,10 +80,9 @@ export function getTokenGauge(params: GetTokenGaugeParams): TokenUsage | null {
  */
 function readTranscriptTail(transcriptPath: string, model?: string): TokenUsage | null {
   try {
-    // Validate transcript path
-    if (!transcriptPath.endsWith('.jsonl')) return null;
+    // C9: Validate transcript path — reject UNC, device, and out-of-home paths
+    if (!isPathSafe(transcriptPath)) return null;
     const resolved = path.resolve(transcriptPath);
-    if (resolved.includes('..')) return null;
 
     const fd = fs.openSync(resolved, 'r');
     try {

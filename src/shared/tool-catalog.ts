@@ -108,7 +108,8 @@ export function getToolDefinition(toolName: string): ToolDefinition | undefined 
 
 /**
  * Returns true if the tool name is in the catalog.
+ * R31: Uses Object.hasOwn to avoid matching inherited prototype keys.
  */
 export function isKnownTool(toolName: string): boolean {
-  return toolName in TOOL_CATALOG;
+  return Object.hasOwn(TOOL_CATALOG, toolName);
 }

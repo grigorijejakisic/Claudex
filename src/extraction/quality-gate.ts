@@ -8,6 +8,8 @@
 export interface QualityGateResult {
   pass: boolean;
   reason?: string;
+  /** Provenance flag — set to 'external_tool' for external/untrusted tool output. */
+  provenance?: 'external_tool';
 }
 
 /** Structural element patterns for Read quality gate. */
@@ -57,7 +59,7 @@ export function passesQualityGate(
 
       case 'Bash': {
         const command = String(input?.command ?? '');
-        const firstWord = command.split(/\s/)[0];
+        const firstWord = command.trim().split(/\s+/)[0];
         if (TRIVIAL_BASH_COMMANDS.has(firstWord)) {
           return { pass: false, reason: 'bash_trivial_command' };
         }
@@ -96,7 +98,7 @@ export function passesQualityGate(
       case 'WebSearch':
       case 'Task':
       case 'NotebookEdit':
-        return { pass: true };
+        return { pass: true, provenance: 'external_tool' };
 
       default:
         // Unknown tool: always passes (forward-compatible)

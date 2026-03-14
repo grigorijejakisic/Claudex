@@ -1,4 +1,6 @@
 import { Readable, Writable } from 'stream';
+import * as os from 'os';
+import * as path from 'path';
 import Database from 'better-sqlite3';
 import { initializeSchema } from '../../../core/migrations.js';
 import {
@@ -210,31 +212,55 @@ describe('detectAdapter', () => {
 // --- getTranscriptPath tests ---
 
 describe('getTranscriptPath', () => {
+  const home = os.homedir();
+
   it('extracts path from input (snake_case)', () => {
+    const safePath = path.join(home, '.claude', 'transcript.jsonl');
     const input: HookInput = {
       hook_event_name: 'Stop',
       session_id: 's1',
-      cwd: '/tmp',
-      transcript_path: '/foo/bar.jsonl',
+      cwd: home,
+      transcript_path: safePath,
     };
-    expect(getTranscriptPath(input)).toBe('/foo/bar.jsonl');
+    expect(getTranscriptPath(input)).toBe(safePath);
   });
 
   it('extracts path from input (camelCase)', () => {
+    const safePath = path.join(home, '.claude', 'other.jsonl');
     const input: HookInput = {
       hook_event_name: 'Stop',
       session_id: 's1',
-      cwd: '/tmp',
-      transcriptPath: '/baz/qux.jsonl',
+      cwd: home,
+      transcriptPath: safePath,
     };
-    expect(getTranscriptPath(input)).toBe('/baz/qux.jsonl');
+    expect(getTranscriptPath(input)).toBe(safePath);
   });
 
   it('returns undefined when not present', () => {
     const input: HookInput = {
       hook_event_name: 'Stop',
       session_id: 's1',
-      cwd: '/tmp',
+      cwd: home,
+    };
+    expect(getTranscriptPath(input)).toBeUndefined();
+  });
+
+  it('rejects UNC paths (R21)', () => {
+    const input: HookInput = {
+      hook_event_name: 'Stop',
+      session_id: 's1',
+      cwd: home,
+      transcript_path: '\\\\server\\share\\transcript.jsonl',
+    };
+    expect(getTranscriptPath(input)).toBeUndefined();
+  });
+
+  it('rejects paths outside home directory (R21)', () => {
+    const input: HookInput = {
+      hook_event_name: 'Stop',
+      session_id: 's1',
+      cwd: home,
+      transcript_path: '/tmp/evil.jsonl',
     };
     expect(getTranscriptPath(input)).toBeUndefined();
   });

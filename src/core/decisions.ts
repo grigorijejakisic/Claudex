@@ -6,6 +6,7 @@
 
 import type { Database } from 'better-sqlite3';
 import { cachedPrepare } from './stmt-cache.js';
+import { redactContent } from '../extraction/redaction.js';
 
 export interface DecisionRow {
   id: number;
@@ -40,7 +41,7 @@ export function insertDecision(
     .run(
       decision.session_id,
       decision.project ?? '__global__',
-      decision.content,
+      redactContent(decision.content),
       decision.source,
       decision.fingerprint
     );
@@ -58,7 +59,7 @@ export function getDecisionsBySession(
   opts?: { limit?: number }
 ): DecisionRow[] {
   const limit = opts?.limit;
-  if (limit) {
+  if (limit !== undefined) {
     return cachedPrepare(db,
         `SELECT * FROM decisions WHERE session_id = ?
          ORDER BY timestamp_epoch DESC

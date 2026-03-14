@@ -97,7 +97,7 @@ describe('loadConfig', () => {
     expect(config.embeddings.provider).toBe('ollama');         // invalid field reset to default
   });
 
-  it('handles unknown keys without crashing', () => {
+  it('handles unknown keys without crashing — strips them (R28)', () => {
     mockReadJsonFile.mockReturnValue({
       unknown_section: { foo: 'bar' },
       injection: { budget_tokens: 5000, unknown_field: true },
@@ -105,10 +105,10 @@ describe('loadConfig', () => {
     const config = loadConfig();
     // Valid override applied
     expect(config.injection.budget_tokens).toBe(5000);
-    // Unknown top-level key gets merged but doesn't break anything
-    expect((config as unknown as Record<string, unknown>)['unknown_section']).toEqual({ foo: 'bar' });
-    // Unknown field in known section preserved (deep merge carries it through)
-    expect((config.injection as Record<string, unknown>)['unknown_field']).toBe(true);
+    // R28: Unknown top-level key is stripped (not merged into config)
+    expect((config as unknown as Record<string, unknown>)['unknown_section']).toBeUndefined();
+    // R28: Unknown field in known section is stripped
+    expect((config.injection as Record<string, unknown>)['unknown_field']).toBeUndefined();
   });
 
   it('validates top-level fields: schema, version, adapter', () => {

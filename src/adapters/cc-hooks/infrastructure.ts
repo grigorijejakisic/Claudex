@@ -4,6 +4,9 @@
  * @see Architecture Section 3.2
  */
 
+import * as path from 'path';
+import * as os from 'os';
+import * as fs from 'fs';
 import { openDatabase, closeDatabase } from '../../core/storage.js';
 import type { Database } from 'better-sqlite3';
 import { loadConfig } from '../../shared/config.js';
@@ -142,15 +145,61 @@ export function detectAdapter(): 'cc-hooks' | 'openclaw-bridge' {
 }
 
 /**
- * Extracts transcript path from hook input. Non-throwing.
+ * Validates that a transcript path is safe to read.
+ * R21: Rejects UNC/device paths and paths outside the user's home directory.
+ * Mirrors the isPathSafe check from src/gauge/token-gauge.ts (C9).
+ * @internal
+ */
+function isTranscriptPathSafe(transcriptPath: string): boolean {
+  const resolved = path.resolve(transcriptPath);
+  // Reject UNC paths (\\server\share or //server/share)
+  if (resolved.startsWith('\\\\') || resolved.startsWith('//')) return false;
+  // Reject Windows device paths (\\.\ or \\?\)
+  if (resolved.startsWith('\\\\.\\') || resolved.startsWith('\\\\?\\')) return false;
+  // Must be under user's home directory
+  let normalizedResolved = resolved;
+  let home = os.homedir();
+  try {
+    if (process.platform === 'win32') {
+      normalizedResolved = fs.realpathSync.native(resolved);
+      home = fs.realpathSync.native(home);
+    }
+  } catch {
+    // If file doesn't exist yet or realpath fails, use the resolved path as-is
+  }
+  const rel = path.relative(home, normalizedResolved);
+  if (rel.startsWith('..') || path.isAbsolute(rel)) return false;
+  return true;
+}
+
+/**
+ * Extracts and validates transcript path from hook input. Non-throwing.
+ * R21: Applies trust-boundary validation — rejects UNC, device, and out-of-home paths.
  */
 export function getTranscriptPath(input: HookInput): string | undefined {
   try {
-    const path = (input.transcript_path as string) || (input.transcriptPath as string);
-    return path || undefined;
+    const raw = (input.transcript_path as string) || (input.transcriptPath as string);
+    if (!raw) return undefined;
+    if (!isTranscriptPathSafe(raw)) return undefined;
+    return raw;
   } catch {
     return undefined;
   }
+}
+
+/**
+ * R22: Sanitize error messages before persisting to telemetry.
+ * Truncates to 200 chars and redacts file paths to prevent sensitive content leakage.
+ * @internal
+ */
+function sanitizeErrorForTelemetry(err: unknown): string {
+  const raw = err instanceof Error ? err.message : String(err);
+  return raw
+    .slice(0, 200)
+    // Redact Windows absolute paths (C:\Users\..., D:\...)
+    .replace(/[A-Za-z]:\\[^\s"',;)}\]]+/g, '[path]')
+    // Redact Unix absolute paths (/home/..., /tmp/...)
+    .replace(/\/(?:home|tmp|usr|var|etc)\/[^\s"',;)}\]]+/g, '[path]');
 }
 
 /**
@@ -168,6 +217,14 @@ export function wrapHook(hookName: string, handler: HookHandler): () => Promise<
 
     try {
       input = await readStdin();
+
+      // C5: Fail-closed validation — reject missing/invalid required fields
+      if (!input.session_id || typeof input.session_id !== 'string' ||
+          !input.cwd || typeof input.cwd !== 'string' || !path.isAbsolute(input.cwd)) {
+        writeStdout({});
+        return;
+      }
+
       ctx = bootstrapHook(input);
       const output = await handler(input, ctx);
 
@@ -187,7 +244,7 @@ export function wrapHook(hookName: string, handler: HookHandler): () => Promise<
           const elapsed = Date.now() - startMs;
           emitTelemetry(ctx.db, input?.session_id ?? '', 'error', {
             subsystem: `cc-hooks/${hookName}`,
-            error: err instanceof Error ? err.message : String(err),
+            error: sanitizeErrorForTelemetry(err),
           }, elapsed, 'cc-hooks');
         } catch {
           // Best effort — if telemetry fails too, just continue

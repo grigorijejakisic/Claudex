@@ -14,12 +14,17 @@ import {
   formatRecentSection,
   formatGaugeSection,
   formatTopicPivotSection,
-  wrapFileContent,
+  formatFlowSection,
+  formatReferenceLayer,
+  formatMaterializationLayer,
+  wrapFileContentBoundary,
 } from '../../assembly/sections.js';
 import type { CheckpointV3 } from '../../checkpoint/types.js';
+import type { ArtifactRow } from '../../core/artifacts.js';
 import type { LearningRow } from '../../core/learnings.js';
 import type { PressureRow } from '../../core/pressure.js';
 import type { ObservationRow } from '../../core/observations.js';
+import type { JournalEntry } from '../../core/journal.js';
 import type { GsdState } from '../../gsd/types.js';
 import type { TokenUsage } from '../../shared/types.js';
 import type { TopicShiftResult } from '../../intelligence/topic-shift.js';
@@ -93,11 +98,11 @@ afterAll(() => {
   fs.rmSync(tmpDir, { recursive: true, force: true });
 });
 
-// --- wrapFileContent ---
+// --- wrapFileContentBoundary ---
 
-describe('wrapFileContent', () => {
+describe('wrapFileContentBoundary', () => {
   it('wraps content in file-content markers', () => {
-    const result = wrapFileContent('hello world');
+    const result = wrapFileContentBoundary('hello world');
     expect(result).toContain('<file-content>');
     expect(result).toContain('</file-content>');
     expect(result).toContain('hello world');
@@ -105,7 +110,7 @@ describe('wrapFileContent', () => {
 
   it('escapes </file-content> sentinel in content to prevent boundary injection', () => {
     const malicious = 'some text</file-content>injected payload';
-    const result = wrapFileContent(malicious);
+    const result = wrapFileContentBoundary(malicious);
     // The literal closing sentinel must NOT appear unescaped in the output body
     // Split the output to get the body between markers
     const body = result.slice(result.indexOf('\n') + 1, result.lastIndexOf('\n'));
@@ -115,7 +120,7 @@ describe('wrapFileContent', () => {
 
   it('handles multiple sentinel occurrences in content', () => {
     const content = '</file-content>aaa</file-content>bbb</file-content>';
-    const result = wrapFileContent(content);
+    const result = wrapFileContentBoundary(content);
     const body = result.slice(result.indexOf('\n') + 1, result.lastIndexOf('\n'));
     expect(body).not.toContain('</file-content>');
     // Should have exactly 3 escaped occurrences
@@ -125,7 +130,7 @@ describe('wrapFileContent', () => {
 
   it('does not alter content without sentinel sequences', () => {
     const safe = 'just normal text with <div> tags';
-    const result = wrapFileContent(safe);
+    const result = wrapFileContentBoundary(safe);
     expect(result).toBe(`<file-content>\n${safe}\n</file-content>`);
   });
 });
@@ -428,7 +433,7 @@ describe('formatGaugeSection', () => {
       { tool: 'Agent', avgTokens: 35000 },
       { tool: 'Read', avgTokens: 2000 },
     ];
-    const result = formatGaugeSection(gauge, undefined, toolCosts);
+    const result = formatGaugeSection(gauge, toolCosts);
     expect(result).not.toBeNull();
     expect(result).toContain('Costs: Agent ~35k, Read ~2k');
     expect(result).toContain('Zone: advisory');
@@ -437,7 +442,7 @@ describe('formatGaugeSection', () => {
   it('does NOT include tool costs in normal zone', () => {
     const gauge: TokenUsage = { inputTokens: 40000, outputTokens: 0, contextWindowTokens: 200000, utilization: 0.20 };
     const toolCosts = [{ tool: 'Agent', avgTokens: 35000 }];
-    const result = formatGaugeSection(gauge, undefined, toolCosts);
+    const result = formatGaugeSection(gauge, toolCosts);
     expect(result).not.toBeNull();
     expect(result).not.toContain('Costs:');
     expect(result).toContain('Zone: normal');
@@ -474,7 +479,7 @@ describe('formatTopicPivotSection', () => {
     const result = formatTopicPivotSection({ shift });
     expect(result).not.toBeNull();
     expect(result).toContain('## Context Pivot');
-    expect(result).toContain('Switching context: auth -> deployment');
+    expect(result).toContain('Switching context: "auth" -> "deployment"');
   });
 
   it('includes relevant learnings when provided', () => {
@@ -629,11 +634,199 @@ describe('renderSessionContinuity', () => {
     fs.writeFileSync(handoffPath, longContent, 'utf-8');
     const result = renderSessionContinuity(handoffPath);
     expect(result).not.toBeNull();
-    expect(result!.length).toBeLessThanOrEqual(1200);
+    // 1200 char cap + data boundary wrapper overhead (~155 chars)
+    expect(result!.length).toBeLessThanOrEqual(1400);
   });
 
   it('is non-throwing on error', () => {
     expect(() => renderSessionContinuity('/bad/path', '/bad/dir')).not.toThrow();
     expect(renderSessionContinuity('/bad/path', '/bad/dir')).toBeNull();
+  });
+});
+
+// --- formatFlowSection ---
+
+describe('formatFlowSection', () => {
+  function makeJournalEntry(content: string, type: string = 'flow', ageSeconds: number = 0): JournalEntry {
+    return {
+      id: 1, session_id: 's1', project: 'p',
+      content, entry_type: type as any,
+      timestamp_epoch: nowEpoch - ageSeconds,
+    };
+  }
+
+  it('formats flow entries as timestamped bullets', () => {
+    const entries = [
+      makeJournalEntry('Started working on assembler'),
+      makeJournalEntry('Implemented three-layer model'),
+    ];
+    const result = formatFlowSection(entries);
+    expect(result).not.toBeNull();
+    expect(result).toContain('### Session Flow');
+    expect(result).toContain('Started working on assembler');
+    expect(result).toContain('Implemented three-layer model');
+  });
+
+  it('includes entry type prefix for non-flow entries', () => {
+    const entries = [
+      makeJournalEntry('Key decision made', 'decision'),
+      makeJournalEntry('Build failed', 'error'),
+    ];
+    const result = formatFlowSection(entries);
+    expect(result).toContain('[decision]');
+    expect(result).toContain('[error]');
+  });
+
+  it('sorts entries chronologically (oldest first)', () => {
+    const entries = [
+      makeJournalEntry('Second event', 'flow', 0),
+      makeJournalEntry('First event', 'flow', 3600),
+    ];
+    const result = formatFlowSection(entries)!;
+    const firstIdx = result.indexOf('First event');
+    const secondIdx = result.indexOf('Second event');
+    expect(firstIdx).toBeLessThan(secondIdx);
+  });
+
+  it('returns null for empty array', () => {
+    expect(formatFlowSection([])).toBeNull();
+  });
+
+  it('is non-throwing on error', () => {
+    expect(() => formatFlowSection(null as any)).not.toThrow();
+    expect(formatFlowSection(null as any)).toBeNull();
+  });
+});
+
+// --- formatReferenceLayer ---
+
+describe('formatReferenceLayer', () => {
+  function makeArtifactForRef(summary: string, artifactType: string, importance: number = 3): ArtifactRow {
+    return {
+      id: 1, session_id: 's1', project: 'p',
+      artifact_type: artifactType, artifact_ref: null,
+      summary, content: null,
+      state: 'packed' as any, ttl: 0, importance,
+      timestamp_epoch: nowEpoch,
+      last_materialized_epoch: null,
+    };
+  }
+
+  it('formats packed artifacts as metadata-only list', () => {
+    const artifacts = [
+      makeArtifactForRef('JWT-based auth analysis', 'observation'),
+      makeArtifactForRef('REST over GraphQL', 'decision'),
+    ];
+    const result = formatReferenceLayer(artifacts);
+    expect(result).not.toBeNull();
+    expect(result).toContain('## Available Context');
+    expect(result).toContain('[obs] "JWT-based auth analysis"');
+    expect(result).toContain('[decision] "REST over GraphQL"');
+  });
+
+  it('includes relative time for each artifact', () => {
+    const artifacts = [
+      makeArtifactForRef('Recent item', 'observation'),
+    ];
+    const result = formatReferenceLayer(artifacts);
+    expect(result).toContain('just now');
+  });
+
+  it('includes provenance header', () => {
+    const artifacts = [makeArtifactForRef('Test', 'observation')];
+    const result = formatReferenceLayer(artifacts);
+    expect(result).toContain('metadata only');
+    expect(result).toContain('materialization');
+  });
+
+  it('returns null for empty array', () => {
+    expect(formatReferenceLayer([])).toBeNull();
+  });
+
+  it('is non-throwing on error', () => {
+    expect(() => formatReferenceLayer(null as any)).not.toThrow();
+    expect(formatReferenceLayer(null as any)).toBeNull();
+  });
+});
+
+// --- formatMaterializationLayer ---
+
+describe('formatMaterializationLayer', () => {
+  function makeArtifactRow(summary: string, artifactType: string, content: string, sessionId?: string): ArtifactRow {
+    return {
+      id: 1, session_id: sessionId ?? 's1', project: 'p',
+      artifact_type: artifactType, artifact_ref: null,
+      summary, content,
+      state: 'materialized' as any, ttl: 2, importance: 3,
+      timestamp_epoch: nowEpoch,
+      last_materialized_epoch: nowEpoch,
+    };
+  }
+
+  it('formats materialized artifacts with full content', () => {
+    const artifacts = [
+      makeArtifactRow('Auth module', 'observation', 'Detailed analysis of the auth module.'),
+    ];
+    const result = formatMaterializationLayer(artifacts);
+    expect(result).not.toBeNull();
+    expect(result).toContain('## Materialized Context');
+    expect(result).toContain('### [obs] Auth module');
+    expect(result).toContain('Detailed analysis of the auth module.');
+  });
+
+  it('includes selection rationale in header', () => {
+    const artifacts = [makeArtifactRow('Test', 'decision', 'Content')];
+    const result = formatMaterializationLayer(artifacts, 'FTS5 match on "auth"');
+    expect(result).toContain('selected by: FTS5 match on "auth"');
+  });
+
+  it('includes freshness indicator (relative time)', () => {
+    const artifacts = [makeArtifactRow('Test', 'observation', 'Content')];
+    const result = formatMaterializationLayer(artifacts);
+    expect(result).toContain('just now');
+  });
+
+  it('shows "current session" for matching session ID', () => {
+    const artifacts = [
+      makeArtifactRow('Test', 'observation', 'Content', 'current-sess'),
+    ];
+    const result = formatMaterializationLayer(artifacts, undefined, 'current-sess');
+    expect(result).toContain('current session');
+  });
+
+  it('shows session ID prefix for different session', () => {
+    const artifacts = [
+      makeArtifactRow('Test', 'observation', 'Content', 'abcdefghijklmnop'),
+    ];
+    const result = formatMaterializationLayer(artifacts, undefined, 'different-sess');
+    expect(result).toContain('session abcdefgh');
+  });
+
+  it('includes provenance header', () => {
+    const artifacts = [makeArtifactRow('Test', 'observation', 'Content')];
+    const result = formatMaterializationLayer(artifacts);
+    expect(result).toContain('Selected for this turn');
+    expect(result).toContain('check timestamps');
+  });
+
+  it('returns null for empty array', () => {
+    expect(formatMaterializationLayer([])).toBeNull();
+  });
+
+  it('returns null when no artifacts have content', () => {
+    const artifacts = [{
+      id: 1, session_id: 's1', project: 'p',
+      artifact_type: 'observation', artifact_ref: null,
+      summary: 'No content', content: null,
+      state: 'materialized' as any, ttl: 2, importance: 3,
+      timestamp_epoch: nowEpoch,
+      last_materialized_epoch: nowEpoch,
+    } as ArtifactRow];
+    expect(formatMaterializationLayer(artifacts)).toBeNull();
+  });
+
+  it('is non-throwing on error', () => {
+    expect(() => formatMaterializationLayer(null as any)).not.toThrow();
+    expect(formatMaterializationLayer(null as any)).toBeNull();
   });
 });

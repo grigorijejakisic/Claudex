@@ -94,10 +94,19 @@ export async function recoverFromDb(db: Database): Promise<void> {
       try {
         if (!row.data) continue;
 
-        const checkpoint = JSON.parse(row.data) as CheckpointV3;
+        const checkpoint = JSON.parse(row.data);
+        // C11 fix: Validate DB-loaded JSON has required schema fields
+        if (!checkpoint || checkpoint.schema !== 'claudex/checkpoint' || !checkpoint.version) continue;
         const mirrorPath = row.mirror_path;
 
         if (mirrorPath) {
+          // C1 fix: Validate mirror_path is within a checkpoints directory
+          const resolvedMirror = path.resolve(mirrorPath);
+          if (!isSafeBasename(path.basename(resolvedMirror))) continue;
+          // Ensure the resolved path is under a 'checkpoints' directory
+          const mirrorParent = path.dirname(resolvedMirror);
+          if (!mirrorParent.split(path.sep).includes('checkpoints')) continue;
+
           // Fix 6: Use JSON_SCHEMA for round-trip consistency
           const yamlContent = yaml.dump(checkpoint, { lineWidth: 120, noRefs: true, schema: yaml.JSON_SCHEMA });
           let writeOk: boolean;
@@ -181,7 +190,7 @@ export function loadFromFile(projectDir: string): CheckpointV3 | null {
       if (!fs.existsSync(checkpointsDir)) return null;
 
       const files = fs.readdirSync(checkpointsDir)
-        .filter((f) => (f.endsWith('.yaml') || f.endsWith('.yaml.gz')) && f !== 'latest.yaml');
+        .filter((f) => (f.endsWith('.yaml') || f.endsWith('.yaml.gz') || f.endsWith('.yml') || f.endsWith('.yml.gz')) && f !== 'latest.yaml');
 
       if (files.length === 0) return null;
 
@@ -198,8 +207,9 @@ export function loadFromFile(projectDir: string): CheckpointV3 | null {
           const content = readCheckpointFile(path.join(checkpointsDir, file));
           if (!content) continue;
           // Fix 6: Use JSON_SCHEMA to prevent type coercion
-          const parsed = yaml.load(content, { schema: yaml.JSON_SCHEMA }) as CheckpointV3;
-          if (parsed && parsed.schema === 'claudex/checkpoint') return parsed;
+          const parsed = yaml.load(content, { schema: yaml.JSON_SCHEMA });
+          // R8 fix: Runtime shape validation before cast
+          if (parsed && typeof parsed === 'object' && (parsed as Record<string, unknown>).schema === 'claudex/checkpoint' && (parsed as Record<string, unknown>).version) return parsed as CheckpointV3;
         } catch {
           // Invalid YAML — try next
         }
@@ -339,32 +349,42 @@ export function loadCheckpoint(
         }
 
         if (row?.data) {
-          const parsed = JSON.parse(row.data) as CheckpointV3;
+          const parsed = JSON.parse(row.data);
+          // C11 fix: Validate DB-loaded JSON has required schema fields
+          if (parsed && parsed.schema === 'claudex/checkpoint' && parsed.version) {
 
-          // If committed but not mirrored: re-mirror (sync path)
-          if (row.status === 'committed' && row.mirror_path) {
-            try {
-              const dir = path.dirname(row.mirror_path);
-              fs.mkdirSync(dir, { recursive: true });
-              // Fix 6: Use JSON_SCHEMA for round-trip consistency
-              const yamlContent = yaml.dump(parsed, { lineWidth: 120, noRefs: true, schema: yaml.JSON_SCHEMA });
-              // Fix 1: Use compression for .yaml.gz/.yml.gz paths
-              if (isCompressedPath(row.mirror_path)) {
-                const compressed = zlib.gzipSync(Buffer.from(yamlContent, 'utf-8'));
-                fs.writeFileSync(row.mirror_path, compressed);
-              } else {
-                fs.writeFileSync(row.mirror_path, yamlContent, 'utf-8');
+            // If committed but not mirrored: re-mirror (sync path)
+            if (row.status === 'committed' && row.mirror_path) {
+              try {
+                // C1 fix: Validate mirror_path is within checkpoints directory
+                const resolvedMirror = path.resolve(row.mirror_path);
+                const expectedDir = getCheckpointsDir(projectDir);
+                if (!isWithinDir(resolvedMirror, expectedDir)) {
+                  throw new Error('mirror_path outside checkpoints directory');
+                }
+                const dir = path.dirname(resolvedMirror);
+                fs.mkdirSync(dir, { recursive: true });
+                // Fix 6: Use JSON_SCHEMA for round-trip consistency
+                const yamlContent = yaml.dump(parsed, { lineWidth: 120, noRefs: true, schema: yaml.JSON_SCHEMA });
+                // Fix 1: Use compression for .yaml.gz/.yml.gz paths
+                if (isCompressedPath(row.mirror_path)) {
+                  const compressed = zlib.gzipSync(Buffer.from(yamlContent, 'utf-8'));
+                  fs.writeFileSync(row.mirror_path, compressed);
+                } else {
+                  fs.writeFileSync(row.mirror_path, yamlContent, 'utf-8');
+                }
+                db.prepare(
+                  `UPDATE checkpoint_meta SET status = 'mirrored', updated_at_epoch = unixepoch()
+                   WHERE checkpoint_id = ?`
+                ).run(row.checkpoint_id);
+              } catch {
+                // File write failed — leave status as committed
               }
-              db.prepare(
-                `UPDATE checkpoint_meta SET status = 'mirrored', updated_at_epoch = unixepoch()
-                 WHERE checkpoint_id = ?`
-              ).run(row.checkpoint_id);
-            } catch {
-              // File write failed — leave status as committed
             }
-          }
 
-          checkpoint = parsed;
+            checkpoint = parsed as CheckpointV3;
+          }
+          // If schema validation failed, checkpoint remains null → falls through to file
         }
       } catch {
         // DB layer failed — fall through to file

@@ -201,48 +201,51 @@ export function incrementAccessCount(db: Database, id: number): void {
 /**
  * Marks observations as consumed (already injected into context).
  * Used by PreCompact to flag old observations that don't need re-injection.
+ * Scoped by session_id to prevent cross-session blindness.
  * @param db Database instance
  * @param project Project scope
+ * @param sessionId Session scope — only marks observations from this session
  * @param olderThanEpoch Unix epoch — observations older than this are marked consumed
  * @param excludeRecent Number of most recent observations to always keep unconsumed
  */
 export function markObservationsConsumed(
   db: Database,
   project: string,
+  sessionId: string,
   olderThanEpoch: number,
   excludeRecent: number = 10
 ): number {
-  // Get IDs of the N most recent observations to exclude
+  // Get IDs of the N most recent observations to exclude (scoped to session)
   const recentIds = cachedPrepare(db,
     `SELECT id FROM observations
-     WHERE project = ? AND deleted_at_epoch IS NULL
+     WHERE project = ? AND session_id = ? AND deleted_at_epoch IS NULL
      ORDER BY timestamp_epoch DESC
      LIMIT ?`
-  ).all(project, excludeRecent) as Array<{ id: number }>;
+  ).all(project, sessionId, excludeRecent) as Array<{ id: number }>;
 
   const excludeSet = new Set(recentIds.map(r => r.id));
 
   if (excludeSet.size === 0) {
-    // Mark all older observations as consumed
+    // Mark all older observations as consumed (scoped to session)
     const result = cachedPrepare(db,
       `UPDATE observations SET consumed = 1
-       WHERE project = ? AND deleted_at_epoch IS NULL
+       WHERE project = ? AND session_id = ? AND deleted_at_epoch IS NULL
          AND consumed = 0 AND timestamp_epoch < ?`
-    ).run(project, olderThanEpoch);
+    ).run(project, sessionId, olderThanEpoch);
     return result.changes;
   }
 
-  // Use subquery to exclude the most recent N observations
+  // Use subquery to exclude the most recent N observations (scoped to session)
   const result = cachedPrepare(db,
     `UPDATE observations SET consumed = 1
-     WHERE project = ? AND deleted_at_epoch IS NULL
+     WHERE project = ? AND session_id = ? AND deleted_at_epoch IS NULL
        AND consumed = 0 AND timestamp_epoch < ?
        AND id NOT IN (
          SELECT id FROM observations
-         WHERE project = ? AND deleted_at_epoch IS NULL
+         WHERE project = ? AND session_id = ? AND deleted_at_epoch IS NULL
          ORDER BY timestamp_epoch DESC
          LIMIT ?
        )`
-  ).run(project, olderThanEpoch, project, excludeRecent);
+  ).run(project, sessionId, olderThanEpoch, project, sessionId, excludeRecent);
   return result.changes;
 }

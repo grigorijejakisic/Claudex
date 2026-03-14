@@ -53,8 +53,8 @@ export interface EmbeddingCache {
   templates: Awaited<ReturnType<typeof initTemplates>> | null;
   /** Whether template init has been attempted (avoids retrying on failure). */
   templatesInitialized: boolean;
-  /** Cached TopicShiftDetector using the shared provider. */
-  topicShiftDetector: TopicShiftDetector | null;
+  /** Cached TopicShiftDetector using the shared provider (Jaccard fallback when no embeddings). */
+  topicShiftDetector: TopicShiftDetector;
 }
 
 /** Persistent context shared across all bridge callbacks. */
@@ -122,7 +122,9 @@ async function getEmbeddingCache(bctx: BridgeContext): Promise<EmbeddingCache> {
       available,
       templates: null,
       templatesInitialized: false,
-      topicShiftDetector: available ? new TopicShiftDetector(provider) : null,
+      // R20: Always create TopicShiftDetector — when provider is unavailable,
+      // pass null so Layer 3 (keyword Jaccard) fallback still runs.
+      topicShiftDetector: new TopicShiftDetector(available ? provider : null),
     };
 
     bctx.embeddingCache = cache;
@@ -134,7 +136,8 @@ async function getEmbeddingCache(bctx: BridgeContext): Promise<EmbeddingCache> {
       available: false,
       templates: null,
       templatesInitialized: true,
-      topicShiftDetector: null,
+      // R20: Jaccard fallback still works with null provider
+      topicShiftDetector: new TopicShiftDetector(null),
     };
     bctx.embeddingCache = fallback;
     return fallback;

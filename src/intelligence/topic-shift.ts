@@ -95,13 +95,17 @@ export class TopicShiftDetector {
       // Layer 1: Explicit pivot signals (always checked first)
       if (EXPLICIT_PIVOT.test(prompt.trim())) {
         const thread = getThreadState(db, sessionId);
+        // R47: If there's no existing topic, this is a first topic, not a shift
+        if (!thread?.topic) {
+          return { shifted: false };
+        }
         const newTopic = inferTopic(prompt);
         this.lastShiftEpoch = nowEpoch;
         this.turnsSinceShift = 0;
         return {
           shifted: true,
           newTopic: newTopic ?? undefined,
-          previousTopic: thread?.topic ?? undefined,
+          previousTopic: thread.topic,
           confidence: 1.0,
           method: 'explicit',
         };
@@ -197,9 +201,9 @@ export class TopicShiftDetector {
   /** Compute average similarity of promptEmb against recent prompt embeddings. */
   private computeAvgRecent(promptEmb: number[]): number {
     if (this.recentPromptEmbeddings.length === 0) {
-      // When no prior prompts, use the prompt's own similarity as avgRecent
-      // This means only the topic threshold matters for the first prompt
-      return 0; // Conservative: treat as low similarity to allow shift detection
+      // No prior prompts: return 0.0 so avgRecent does not block shift detection.
+      // The topic similarity threshold alone should decide the first invocation.
+      return 0.0;
     }
     let sum = 0;
     for (const recent of this.recentPromptEmbeddings) {

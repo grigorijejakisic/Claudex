@@ -26,10 +26,12 @@ export function ensureDir(dirPath: string): boolean {
 
 /**
  * Atomic file write: writes to tmp file, then renames.
- * On Windows, if rename fails with EPERM, falls back to copy+unlink.
+ * On Windows, if rename fails with EPERM, cleans up tmp and fails.
  * Creates parent directories if needed. Returns true on success. Never throws.
+ * R29: Synchronous — all I/O is sync, so the function is explicitly sync.
+ * Callers that `await` the return value will still work (awaiting a non-Promise resolves immediately).
  */
-export async function atomicWriteFile(filePath: string, content: string): Promise<boolean> {
+export function atomicWriteFile(filePath: string, content: string): boolean {
   try {
     const dir = path.dirname(filePath);
     ensureDir(dir);
@@ -42,18 +44,13 @@ export async function atomicWriteFile(filePath: string, content: string): Promis
     try {
       fs.renameSync(tmpPath, filePath);
     } catch (renameErr: unknown) {
-      // Windows EPERM fallback: copy + unlink tmp
-      if (process.platform === 'win32' && renameErr instanceof Error && 'code' in renameErr && (renameErr as NodeJS.ErrnoException).code === 'EPERM') {
-        fs.copyFileSync(tmpPath, filePath);
-        try {
-          fs.unlinkSync(tmpPath);
-        } catch {
-          // Best-effort cleanup
-        }
-      } else {
-        // Re-throw non-Windows errors to be caught by outer try
-        throw renameErr;
+      // C8: Removed unsafe copyFileSync fallback — on EPERM, clean up tmp and fail
+      try {
+        fs.unlinkSync(tmpPath);
+      } catch {
+        // Best-effort cleanup of temp file
       }
+      throw renameErr;
     }
 
     return true;
@@ -77,11 +74,13 @@ export function readJsonFile<T>(filePath: string): T | null {
 /**
  * JSON.stringifies with 2-space indent and writes via atomicWriteFile.
  * Returns true on success. Never throws.
+ * R29: Synchronous — delegates to sync atomicWriteFile.
+ * Callers that `await` the return value will still work.
  */
-export async function writeJsonFile(filePath: string, data: unknown): Promise<boolean> {
+export function writeJsonFile(filePath: string, data: unknown): boolean {
   try {
     const content = JSON.stringify(data, null, 2) + '\n';
-    return await atomicWriteFile(filePath, content);
+    return atomicWriteFile(filePath, content);
   } catch {
     return false;
   }

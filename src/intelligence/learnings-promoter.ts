@@ -29,13 +29,13 @@ export function promoteLearnings(params: {
     let promoted = 0;
     let inserted = 0;
 
+    // R15: Load all learnings for the project once upfront (avoid N+1 queries)
+    let existing = getLearningsByProject(db, project, { limit: 100 });
+
     for (const learning of sessionLearnings) {
       if (!learning || !learning.trim()) continue;
 
-      // Get existing learnings for dedup
-      const existing = getLearningsByProject(db, project, { limit: 100 });
-
-      // Check for duplicate
+      // Check for duplicate against pre-fetched list
       const match = findDuplicate(learning, existing);
 
       if (match) {
@@ -49,33 +49,36 @@ export function promoteLearnings(params: {
         promoted++;
       } else {
         // Insert new
+        const fp = normalizeForDedup(learning);
         upsertLearning(db, {
           project,
           agent_id: agent,
-          fingerprint: normalizeForDedup(learning),
+          fingerprint: fp,
           content: learning,
         });
         inserted++;
+        // R15: Refresh in-memory list so subsequent iterations see the new entry
+        existing = [...existing, { content: learning, fingerprint: fp } as (typeof existing)[number]];
       }
     }
 
-    // Cap enforcement — count and prune from the same scope (project + agent_id)
+    // R14/R45: Cap enforcement scoped by project only (not per agent_id)
     let pruned = 0;
     const scopedCount = (db.prepare(
-      `SELECT COUNT(*) AS cnt FROM learnings WHERE project = ? AND agent_id = ?`
-    ).get(project, agent) as { cnt: number }).cnt;
+      `SELECT COUNT(*) AS cnt FROM learnings WHERE project = ?`
+    ).get(project) as { cnt: number }).cnt;
     const excess = scopedCount - MAX_LEARNINGS_PER_PROJECT;
 
     if (excess > 0) {
-      // Delete lowest promotion_count + oldest entries
+      // Delete lowest promotion_count + oldest entries across all agents for this project
       db.prepare(
         `DELETE FROM learnings WHERE id IN (
           SELECT id FROM learnings
-          WHERE project = ? AND agent_id = ?
+          WHERE project = ?
           ORDER BY promotion_count ASC, last_promoted_epoch ASC
           LIMIT ?
         )`
-      ).run(project, agent, excess);
+      ).run(project, excess);
       pruned = excess;
     }
 

@@ -5,6 +5,7 @@
  */
 
 import Database from 'better-sqlite3';
+import { runMigrations } from './migrations.js';
 
 export type { Database } from 'better-sqlite3';
 
@@ -21,6 +22,8 @@ export function openDatabase(path: string): Database.Database {
   db.pragma('cache_size = 10000');
   db.pragma('foreign_keys = ON');
   db.pragma('busy_timeout = 5000');
+
+  runMigrations(db);
 
   return db;
 }

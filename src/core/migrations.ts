@@ -280,24 +280,93 @@ CREATE INDEX IF NOT EXISTS idx_telemetry_kind ON telemetry(event_kind, timestamp
 `;
 
 /**
- * Adds `adapter` column to session-scoped tables (sessions, telemetry).
- * Uses ALTER TABLE ADD COLUMN with try/catch for idempotency — safe to call
- * when column already exists. DEFAULT 'unknown' preserves existing rows.
- * @see Multi-adapter isolation design
+ * Checks whether a column exists on a table.
+ * Uses PRAGMA table_info for reliable detection.
  */
-function addAdapterColumns(db: Database): void {
-  // sessions.adapter
-  try {
-    db.exec("ALTER TABLE sessions ADD COLUMN adapter TEXT DEFAULT 'unknown'");
-  } catch {
-    // Column already exists — idempotent
+function hasColumn(db: Database, table: string, column: string): boolean {
+  const cols = db.pragma(`table_info(${table})`) as Array<{ name: string }>;
+  return cols.some(c => c.name === column);
+}
+
+/**
+ * Migrates a V1 (legacy, pre-versioning) database to V2 schema.
+ * All operations are idempotent — checks column existence before ALTER.
+ *
+ * Steps:
+ * 1. pressure_scores: last_accessed_epoch → last_touched_epoch
+ * 2. observations.consumed (INTEGER NOT NULL DEFAULT 0)
+ * 3. observations.obs_type (TEXT)
+ * 4. sessions.adapter (TEXT DEFAULT 'unknown')
+ * 5. telemetry.adapter (TEXT DEFAULT 'unknown')
+ * 6. idx_obs_consumed index
+ */
+function migrateV1toV2(db: Database): void {
+  // 1. pressure_scores: rename last_accessed_epoch → last_touched_epoch
+  if (hasColumn(db, 'pressure_scores', 'last_accessed_epoch') && !hasColumn(db, 'pressure_scores', 'last_touched_epoch')) {
+    db.exec('ALTER TABLE pressure_scores ADD COLUMN last_touched_epoch INTEGER');
+    db.exec('UPDATE pressure_scores SET last_touched_epoch = last_accessed_epoch');
   }
 
-  // telemetry.adapter
-  try {
+  // 2. observations.consumed
+  if (!hasColumn(db, 'observations', 'consumed')) {
+    db.exec('ALTER TABLE observations ADD COLUMN consumed INTEGER NOT NULL DEFAULT 0');
+  }
+
+  // 3. observations.obs_type
+  if (!hasColumn(db, 'observations', 'obs_type')) {
+    db.exec('ALTER TABLE observations ADD COLUMN obs_type TEXT');
+  }
+
+  // 4. sessions.adapter
+  if (!hasColumn(db, 'sessions', 'adapter')) {
+    db.exec("ALTER TABLE sessions ADD COLUMN adapter TEXT DEFAULT 'unknown'");
+  }
+
+  // 5. telemetry.adapter (table may not exist in v2 databases — guard)
+  const telemetryCols = db.pragma('table_info(telemetry)') as Array<{ name: string }>;
+  if (telemetryCols.length > 0 && !telemetryCols.some(c => c.name === 'adapter')) {
     db.exec("ALTER TABLE telemetry ADD COLUMN adapter TEXT DEFAULT 'unknown'");
-  } catch {
-    // Column already exists — idempotent
+  }
+
+  // 6. idx_obs_consumed index
+  db.exec('CREATE INDEX IF NOT EXISTS idx_obs_consumed ON observations(project, consumed, timestamp_epoch DESC)');
+}
+
+/**
+ * PRAGMA user_version migration runner.
+ * Detects DB version and applies incremental migrations.
+ * Called by openDatabase() (hot path) and initializeSchema() (CLI/test path).
+ *
+ * Version map:
+ *   0 — fresh DB (no tables) or legacy DB (pre-versioning, has tables)
+ *   1 — reserved (unused currently)
+ *   2 — current (all migrations applied)
+ */
+export function runMigrations(db: Database): void {
+  const row = db.pragma('user_version') as Array<{ user_version: number }>;
+  const version = row[0]?.user_version ?? 0;
+
+  if (version >= 2) {
+    return; // Already current — no-op
+  }
+
+  if (version === 0) {
+    // Could be fresh DB or legacy DB created before versioning
+    const tables = (db.prepare("SELECT name FROM sqlite_master WHERE type='table'").all() as Array<{ name: string }>).map(t => t.name);
+
+    if (tables.includes('observations')) {
+      // Legacy DB — run all migrations from V1
+      migrateV1toV2(db);
+      db.pragma('user_version = 2');
+    }
+    // Fresh DB — no tables yet; initializeSchema() will create them and set version.
+    // Don't run CREATE TABLE here — that's initializeSchema()'s job.
+    return;
+  }
+
+  if (version === 1) {
+    migrateV1toV2(db);
+    db.pragma('user_version = 2');
   }
 }
 
@@ -325,7 +394,10 @@ function upgradeV2SchemaInPlace(db: Database): void {
   // pressure_scores: check for v2 WARM temperature values
   try {
     db.exec("UPDATE pressure_scores SET temperature = 'COLD' WHERE temperature NOT IN ('HOT', 'COLD')");
-  } catch { /* table may not exist */ }
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : '';
+    if (!msg.includes('no such table')) throw err;
+  }
 
   // observations: v3.1 adds consumed column for observation masking (Upgrade 6)
   // and obs_type column for Type Prior classification (Upgrade 8)
@@ -348,8 +420,11 @@ export function initializeSchema(db: Database): void {
   upgradeV2SchemaInPlace(db);
   db.exec(SCHEMA_V3);
   db.exec(TELEMETRY_SCHEMA);
-  addAdapterColumns(db);
-
+  // Run migrations for any legacy columns (absorbs addAdapterColumns)
+  runMigrations(db);
+  // Set version to latest
+  db.pragma('user_version = 2');
+  // Record in schema_versions table for backward compat
   db.prepare('INSERT OR IGNORE INTO schema_versions (version) VALUES (?)').run(
     SCHEMA_VERSION
   );
@@ -415,9 +490,23 @@ export function migrateFromV2(db: Database, v2DbPath: string): void {
         FROM v2.observations
       `);
 
+      // Introspect v2 session columns before building copy SQL
+      const v2SessionCols = db.prepare("PRAGMA v2.table_info('sessions')").all() as Array<{ name: string }>;
+      const v2SessionColNames = v2SessionCols.map((c: { name: string }) => c.name);
+      const v2HasSource = v2SessionColNames.includes('source');
+      const v2HasCreatedAt = v2SessionColNames.includes('created_at_epoch');
+      const v2HasStartedAt = v2SessionColNames.includes('started_at_epoch');
+
+      const sourceExpr = v2HasSource ? 'source' : "'unknown' AS source";
+      const createdAtExpr = v2HasCreatedAt
+        ? 'created_at_epoch'
+        : v2HasStartedAt
+          ? 'started_at_epoch AS created_at_epoch'
+          : `${Math.floor(Date.now() / 1000)} AS created_at_epoch`;
+
       db.exec(`
         INSERT OR IGNORE INTO sessions (session_id, scope, project, cwd, source, status, observation_count, created_at_epoch, ended_at_epoch)
-        SELECT session_id, scope, project, cwd, source, status, observation_count, created_at_epoch, ended_at_epoch
+        SELECT session_id, scope, project, cwd, ${sourceExpr}, status, observation_count, ${createdAtExpr}, ended_at_epoch
         FROM v2.sessions
       `);
 
@@ -445,8 +534,10 @@ export function migrateFromV2(db: Database, v2DbPath: string): void {
           const escapedName = name.replace(/"/g, '""');
           const escapedArchived = `_archived_${name}`.replace(/"/g, '""');
           db.exec(`ALTER TABLE v2."${escapedName}" RENAME TO "${escapedArchived}"`);
-        } catch {
-          // Table may already be archived or not renameable — skip
+        } catch (err: unknown) {
+          const msg = err instanceof Error ? err.message : '';
+          // Expected: table already renamed/archived or not renameable
+          if (!msg.includes('already exists') && !msg.includes('no such table')) throw err;
         }
       }
 
@@ -460,8 +551,10 @@ export function migrateFromV2(db: Database, v2DbPath: string): void {
           SELECT session_id, last_checkpoint_epoch, observation_count, updated_at_epoch
           FROM v2._archived_checkpoint_state
         `);
-      } catch {
-        // checkpoint_state may not exist in v2 — skip
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : '';
+        // Expected: checkpoint_state may not exist in v2
+        if (!msg.includes('no such table')) throw err;
       }
 
       // 7. Fix files_modified from comma-separated to JSON array
@@ -490,6 +583,16 @@ export function migrateFromV2(db: Database, v2DbPath: string): void {
     });
 
     migrate();
+
+    // Apply adapter-column migration (sessions.adapter, telemetry.adapter)
+    // which are not in SCHEMA_V3/TELEMETRY_SCHEMA DDL but required by write paths
+    if (!hasColumn(db, 'sessions', 'adapter')) {
+      db.exec("ALTER TABLE sessions ADD COLUMN adapter TEXT DEFAULT 'unknown'");
+    }
+    if (!hasColumn(db, 'telemetry', 'adapter')) {
+      db.exec("ALTER TABLE telemetry ADD COLUMN adapter TEXT DEFAULT 'unknown'");
+    }
+    db.pragma('user_version = 2');
   } finally {
     // 9. DETACH v2 database (must be outside transaction)
     db.exec('DETACH DATABASE v2');

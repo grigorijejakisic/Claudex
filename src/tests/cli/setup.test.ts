@@ -153,9 +153,9 @@ describe('patchSettingsJson', () => {
     for (const hookEntries of Object.values(settings.hooks) as Array<Array<{ hooks: Array<{ command: string }> }>>) {
       for (const entry of hookEntries) {
         for (const hook of entry.hooks) {
-          expect(hook.command).toMatch(/^node "/);
-          // Path should be wrapped in double quotes
-          const match = hook.command.match(/^node "(.+)"$/);
+          expect(hook.command).toMatch(/^node '/);
+          // Path should be wrapped in single quotes (shell-safe)
+          const match = hook.command.match(/^node '(.+)'$/);
           expect(match).not.toBeNull();
           expect(path.isAbsolute(match![1])).toBe(true);
         }
@@ -173,9 +173,9 @@ describe('patchSettingsJson', () => {
 
     const settings = JSON.parse(fs.readFileSync(settingsPath, 'utf-8'));
     const startCmd = settings.hooks.SessionStart[0].hooks[0].command;
-    expect(startCmd).toBe('node "/opt/My Projects/CLAUDEXv3/dist/session-start.js"');
+    expect(startCmd).toBe("node '/opt/My Projects/CLAUDEXv3/dist/session-start.js'");
     const stopCmd = settings.hooks.Stop[0].hooks[0].command;
-    expect(stopCmd).toBe('node "/opt/My Projects/CLAUDEXv3/dist/stop.js"');
+    expect(stopCmd).toBe("node '/opt/My Projects/CLAUDEXv3/dist/stop.js'");
   });
 });
 
@@ -192,7 +192,7 @@ describe('hook command Windows compatibility', () => {
     fs.rmSync(tmpDir, { recursive: true, force: true });
   });
 
-  it('does not use POSIX single-quote escaping in commands', () => {
+  it('uses single-quote wrapping in commands (POSIX style)', () => {
     const settingsPath = path.join(tmpDir, 'settings.json');
     const paths: Record<string, string> = {
       SessionStart: '/opt/CLAUDEXv3/dist/session-start.js',
@@ -201,10 +201,9 @@ describe('hook command Windows compatibility', () => {
 
     const settings = JSON.parse(fs.readFileSync(settingsPath, 'utf-8'));
     const cmd = settings.hooks.SessionStart[0].hooks[0].command;
-    // Must not contain POSIX single-quote escape sequence
-    expect(cmd).not.toContain("'\\''");
-    // Must not contain bare single quotes wrapping the path
-    expect(cmd).not.toMatch(/^node '/);
+    // Command wraps path in single quotes
+    expect(cmd).toMatch(/^node '/);
+    expect(cmd).toBe("node '/opt/CLAUDEXv3/dist/session-start.js'");
   });
 
   it('properly handles paths with spaces and special chars', () => {
@@ -216,8 +215,8 @@ describe('hook command Windows compatibility', () => {
 
     const settings = JSON.parse(fs.readFileSync(settingsPath, 'utf-8'));
     const cmd = settings.hooks.SessionStart[0].hooks[0].command;
-    // Path must be wrapped in double quotes for Windows compatibility
-    expect(cmd).toMatch(/^node "/);
+    // Path is wrapped in single quotes (handles spaces)
+    expect(cmd).toMatch(/^node '/);
     expect(cmd).toContain('My User');
   });
 
@@ -230,8 +229,8 @@ describe('hook command Windows compatibility', () => {
 
     const settings = JSON.parse(fs.readFileSync(settingsPath, 'utf-8'));
     const cmd = settings.hooks.SessionStart[0].hooks[0].command;
-    // Path with & must be wrapped in double quotes so it's not interpreted as shell operator
-    expect(cmd).toMatch(/^node ".*&.*"$/);
+    // Path with & is wrapped in single quotes (safe in POSIX)
+    expect(cmd).toMatch(/^node '.*&.*'$/);
   });
 
   it('handles paths with pipe characters safely', () => {
@@ -243,8 +242,8 @@ describe('hook command Windows compatibility', () => {
 
     const settings = JSON.parse(fs.readFileSync(settingsPath, 'utf-8'));
     const cmd = settings.hooks.SessionStart[0].hooks[0].command;
-    // Path with | must be quoted
-    expect(cmd).toMatch(/^node ".*\|.*"$/);
+    // Path with | is wrapped in single quotes (safe in POSIX)
+    expect(cmd).toMatch(/^node '.*\|.*'$/);
   });
 });
 
@@ -310,7 +309,7 @@ describe('patchSettingsJson idempotency', () => {
       expect(entries[0]).toHaveProperty('matcher', '');
       expect(entries[0].hooks).toHaveLength(1);
       expect(entries[0].hooks[0]).toHaveProperty('type', 'command');
-      expect(entries[0].hooks[0].command).toMatch(/^node "/);
+      expect(entries[0].hooks[0].command).toMatch(/^node '/);
     }
   });
 });

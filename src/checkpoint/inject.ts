@@ -48,9 +48,15 @@ export function renderCheckpointMarkdown(
       }
 
       if (includeResume && thread.key_exchanges && thread.key_exchanges.length > 0) {
-        lines.push('', '**Key Exchanges:**');
-        for (const ex of thread.key_exchanges) {
-          lines.push(`- **${ex.role}:** ${ex.gist}`);
+        // Filter out internal metadata (e.g. __cooldown) from rendered context
+        const userExchanges = thread.key_exchanges.filter(
+          (ex: { role: string }) => !ex.role.startsWith('__')
+        );
+        if (userExchanges.length > 0) {
+          lines.push('', '**Key Exchanges:**');
+          for (const ex of userExchanges) {
+            lines.push(`- **${ex.role}:** ${ex.gist}`);
+          }
         }
       }
 

@@ -42,6 +42,9 @@ export async function initTemplates(
     const allTexts = [...POSITIVE_TEMPLATES, ...NEGATIVE_TEMPLATES];
     const allEmbeddings = await provider.embedBatch(allTexts);
 
+    // Verify embedBatch returned the expected number of results
+    if (allEmbeddings.length !== allTexts.length) return null;
+
     // If any embedding is null, fail the whole init
     if (allEmbeddings.some(e => e === null)) return null;
 

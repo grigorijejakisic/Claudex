@@ -299,7 +299,9 @@ export async function writeCheckpoint(
       thread: {
         topic: threadState?.topic ?? null,
         summary: threadState?.summary ?? null,
-        key_exchanges: threadState?.key_exchanges ?? [],
+        key_exchanges: (threadState?.key_exchanges ?? []).filter(
+          (ex: { role: string }) => ex.role !== '__cooldown'
+        ),
       },
       open_items: openItems,
       learnings: topLearnings.map((l) => l.content),
@@ -336,7 +338,7 @@ export async function writeCheckpoint(
           if (merged.topic) checkpoint.thread.topic = merged.topic;
           if (merged.summary) checkpoint.thread.summary = merged.summary;
           if (merged.task) checkpoint.working.task = merged.task;
-          if (merged.decisions) checkpoint.decisions = merged.decisions.map((d) => ({ content: d, source: 'enriched', timestamp: Date.now() }));
+          if (merged.decisions) checkpoint.decisions = merged.decisions.map((d) => ({ content: d, source: 'enriched', timestamp: Math.floor(Date.now() / 1000) }));
           if (merged.open_items) checkpoint.open_items = merged.open_items;
           if (merged.learnings) checkpoint.learnings = merged.learnings;
           if (merged.key_exchanges) checkpoint.thread.key_exchanges = merged.key_exchanges;
@@ -377,13 +379,20 @@ export async function writeCheckpoint(
     }
 
     // Step 8: Update latest.yaml
-    await atomicWriteFile(`${checkpointsDir}/latest.yaml`, `ref: ${basename}\n`);
+    const latestOk = await atomicWriteFile(`${checkpointsDir}/latest.yaml`, `ref: ${basename}\n`);
 
-    // Step 9: UPDATE mirrored
-    db.prepare(
-      `UPDATE checkpoint_meta SET status = 'mirrored', mirror_path = ?, updated_at_epoch = unixepoch()
-       WHERE checkpoint_id = ?`
-    ).run(filePath, checkpointId);
+    // Step 9: UPDATE mirrored (only if latest.yaml also written successfully)
+    if (latestOk) {
+      db.prepare(
+        `UPDATE checkpoint_meta SET status = 'mirrored', mirror_path = ?, updated_at_epoch = unixepoch()
+         WHERE checkpoint_id = ?`
+      ).run(filePath, checkpointId);
+    } else {
+      db.prepare(
+        `UPDATE checkpoint_meta SET mirror_path = ?, updated_at_epoch = unixepoch()
+         WHERE checkpoint_id = ?`
+      ).run(filePath, checkpointId);
+    }
 
     // Step 10: Record threshold hit
     if (trigger === 'threshold' && tokenUsage) {
@@ -400,7 +409,7 @@ export async function writeCheckpoint(
 
     return {
       checkpointId,
-      status: 'mirrored',
+      status: latestOk ? 'mirrored' : 'committed',
       filePath,
       enriched,
     };

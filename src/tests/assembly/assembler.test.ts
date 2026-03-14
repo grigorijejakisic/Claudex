@@ -431,7 +431,7 @@ describe('assembleTopicPivot', () => {
       db, project: 'proj', config: makeConfig(),
     });
 
-    expect(result.content).toContain('Switching context: auth -> deployment');
+    expect(result.content).toContain('Switching context: "auth" -> "deployment"');
     expect(result.sources).toContain('topic_pivot');
     expect(result.tokenEstimate).toBeGreaterThan(0);
   });

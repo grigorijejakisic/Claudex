@@ -33,6 +33,10 @@ export interface CheckpointData {
  * Note: OpenClaw native enrichment was considered but removed — it was detected
  * but never implemented (returned null). If OpenClaw native enrichment becomes
  * feasible in the future, add it back with an actual API call implementation.
+ *
+ * R53: `provider` and `_capabilities` are reserved for future use.
+ * Currently only Ollama is supported. When additional providers are added,
+ * `provider` will select the backend and `_capabilities` will gate features.
  */
 export async function detectEnrichmentProvider(
   config: { baseUrl?: string; model?: string; provider?: string; enabled?: boolean },
@@ -54,6 +58,7 @@ export async function detectEnrichmentProvider(
     // Try Ollama
     const data = await fetchJsonWithTimeout(`${baseUrl}/api/tags`, {
       timeoutMs: 3000,
+      redirect: 'manual',  // Prevent redirect-based exfiltration
     }) as { models?: Array<{ name: string; size: number }> } | null;
 
     if (!data) return null;
@@ -133,6 +138,7 @@ export async function enrichCheckpoint(
         max_tokens: 800,
         temperature: 0,
       }),
+      redirect: 'manual',  // Prevent redirect-based exfiltration of checkpoint data
       timeoutMs,
     }) as { choices?: Array<{ message?: { content?: string } }> } | null;
 
@@ -142,7 +148,53 @@ export async function enrichCheckpoint(
     if (!content) return null;
 
     // Parse LLM response as JSON
-    const enriched = JSON.parse(content) as Partial<CheckpointData>;
+    const raw = JSON.parse(content);
+
+    // R16: Validate the result is a plain object with expected keys only
+    if (raw === null || typeof raw !== 'object' || Array.isArray(raw)) return null;
+    const ALLOWED_KEYS = new Set([
+      'topic', 'task', 'status', 'decisions', 'open_items',
+      'learnings', 'summary', 'key_exchanges',
+    ]);
+    const enriched: Partial<CheckpointData> = {};
+    for (const key of Object.keys(raw)) {
+      if (ALLOWED_KEYS.has(key)) {
+        (enriched as Record<string, unknown>)[key] = raw[key];
+      }
+      // Unknown keys are silently stripped
+    }
+
+    // R17: Enforce max string lengths to prevent prompt injection via persistent data
+    const MAX_STRING_LENGTH = 2000;
+    const MAX_ITEM_LENGTH = 500;
+    for (const field of ['topic', 'task', 'status', 'summary'] as const) {
+      if (typeof enriched[field] === 'string' && enriched[field]!.length > MAX_STRING_LENGTH) {
+        (enriched as Record<string, unknown>)[field] = enriched[field]!.slice(0, MAX_STRING_LENGTH);
+      }
+    }
+    for (const field of ['decisions', 'open_items', 'learnings'] as const) {
+      const arr = enriched[field];
+      if (Array.isArray(arr)) {
+        (enriched as Record<string, unknown>)[field] = arr.map((item: unknown) =>
+          typeof item === 'string' && item.length > MAX_ITEM_LENGTH
+            ? item.slice(0, MAX_ITEM_LENGTH)
+            : item
+        );
+      }
+    }
+    if (Array.isArray(enriched.key_exchanges)) {
+      enriched.key_exchanges = enriched.key_exchanges.map((ex: unknown) => {
+        if (ex && typeof ex === 'object' && !Array.isArray(ex)) {
+          const e = ex as Record<string, unknown>;
+          return {
+            role: typeof e.role === 'string' ? e.role.slice(0, MAX_ITEM_LENGTH) : '',
+            gist: typeof e.gist === 'string' ? e.gist.slice(0, MAX_ITEM_LENGTH) : '',
+          };
+        }
+        return { role: '', gist: '' };
+      });
+    }
+
     return enriched;
   } catch {
     return null;

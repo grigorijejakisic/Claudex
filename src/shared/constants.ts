@@ -30,24 +30,6 @@ export const OPENCLAW_CAPABILITIES: RuntimeCapabilities = {
 /** Database schema version. */
 export const SCHEMA_VERSION = 300;
 
-/** Context pressure zone thresholds for gauge injection. @see Upgrade 1 */
-export const PRESSURE_ZONES = {
-  normal: { max: 0.50 },
-  advisory: { min: 0.50, max: 0.65 },
-  warning: { min: 0.65, max: 0.80 },
-  critical: { min: 0.80 },
-} as const;
-
-export type PressureZone = 'normal' | 'advisory' | 'warning' | 'critical';
-
-/** Determine pressure zone from utilization ratio (0.0-1.0). */
-export function getPressureZone(utilization: number): PressureZone {
-  if (utilization >= PRESSURE_ZONES.critical.min) return 'critical';
-  if (utilization >= PRESSURE_ZONES.warning.min) return 'warning';
-  if (utilization >= PRESSURE_ZONES.advisory.min) return 'advisory';
-  return 'normal';
-}
-
 /** Default custom compaction instructions for CC. @see Upgrade 13 */
 export const DEFAULT_COMPACTION_INSTRUCTIONS = [
   'Preserve all file paths verbatim — do not abbreviate, shorten, or summarize paths.',
@@ -127,6 +109,27 @@ export const DEFAULT_CONFIG = {
   },
   adapter: 'auto' as const,
 } as const;
+
+/**
+ * Context pressure zone thresholds for gauge injection. @see Upgrade 1
+ * R50: Derived from DEFAULT_CONFIG.context — single source of truth.
+ */
+export const PRESSURE_ZONES = {
+  normal:   { max: DEFAULT_CONFIG.context.advisory_threshold },
+  advisory: { min: DEFAULT_CONFIG.context.advisory_threshold, max: DEFAULT_CONFIG.context.warning_threshold },
+  warning:  { min: DEFAULT_CONFIG.context.warning_threshold,  max: DEFAULT_CONFIG.context.critical_threshold },
+  critical: { min: DEFAULT_CONFIG.context.critical_threshold },
+} as const;
+
+export type PressureZone = 'normal' | 'advisory' | 'warning' | 'critical';
+
+/** Determine pressure zone from utilization ratio (0.0-1.0). */
+export function getPressureZone(utilization: number): PressureZone {
+  if (utilization >= PRESSURE_ZONES.critical.min) return 'critical';
+  if (utilization >= PRESSURE_ZONES.warning.min) return 'warning';
+  if (utilization >= PRESSURE_ZONES.advisory.min) return 'advisory';
+  return 'normal';
+}
 
 /** Maximum content length for observation extraction. @see Architecture Section 5.2 */
 export const CONTENT_MAX_CHARS = 500;

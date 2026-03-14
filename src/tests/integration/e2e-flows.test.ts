@@ -185,7 +185,7 @@ describe('OpenClaw Bridge E2E Flow', () => {
 
   it('full OpenClaw bridge lifecycle produces correct accumulated state', { timeout: 15000 }, async () => {
     const bctx: BridgeContext = {
-      db, config, project: 'test-project', scope: undefined, sessionId: '', cwd: '/test',
+      db, config, project: 'test-project', scope: null, sessionId: '', cwd: '/test', adapter: 'openclaw' as const,
     };
     const bridge = createBridgeCallbacks(bctx);
 

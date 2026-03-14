@@ -83,7 +83,12 @@ describe('quality gates', () => {
 
   // --- Grep ---
 
-  it('Grep: passes with >= 1 match', () => {
+  it('Grep: passes with >= 1 match and non-empty content', () => {
+    const result = passesQualityGate('Grep', {}, { matchCount: 3, content: 'src/foo.ts:10: match' });
+    expect(result.pass).toBe(true);
+  });
+
+  it('Grep: passes with matchCount even without content field (multi-signal)', () => {
     const result = passesQualityGate('Grep', {}, { matchCount: 3 });
     expect(result.pass).toBe(true);
   });

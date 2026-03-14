@@ -54,12 +54,7 @@ export function classifyObservationType(
       return 'error';
     }
 
-    // Very short content -> acknowledgment
-    if (content.length < 50) {
-      return 'acknowledgment';
-    }
-
-    // Error patterns (check before decision -- errors take priority)
+    // Error patterns (highest priority after explicit exit code)
     if (ERROR_PATTERNS.test(content) || EXIT_CODE_ERROR.test(content)) {
       return 'error';
     }
@@ -77,6 +72,12 @@ export function classifyObservationType(
     // Configuration patterns
     if (CONFIG_PATTERNS.test(content)) {
       return 'configuration';
+    }
+
+    // Very short content -> acknowledgment (after error/decision/discovery/config checks
+    // so concise error messages are not misclassified)
+    if (content.length < 50) {
+      return 'acknowledgment';
     }
 
     // Routine tools with standard output

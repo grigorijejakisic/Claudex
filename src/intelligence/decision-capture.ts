@@ -67,10 +67,16 @@ function extractSentenceAt(text: string, matchIndex: number): string {
 
 // --- Tier Extractors ---
 
+const MAX_CONFIRMATION_CONTENT_LENGTH = 500;
+
 function extractTier1(userText: string, assistantText: string | undefined): CapturedDecision[] {
   if (!TIER1_CONFIRM.test(userText.trim())) return [];
-  const content = assistantText?.trim() || userText.trim();
+  let content = assistantText?.trim() || userText.trim();
   if (isFiller(content)) return [];
+  // R18: Confirmation stores entire assistant text — truncate to cap
+  if (content.length > MAX_CONFIRMATION_CONTENT_LENGTH) {
+    content = content.slice(0, MAX_CONFIRMATION_CONTENT_LENGTH);
+  }
   return [{ content, source: 'confirmation', tier: 1 }];
 }
 
@@ -178,9 +184,15 @@ export async function captureDecisions(params: {
 
     if (candidates.length === 0) return [];
 
-    // Dedup against existing session decisions
-    const existing = getDecisionsBySession(db, sessionId);
+    // Dedup against existing session decisions (R13: bounded fetch)
+    const existing = getDecisionsBySession(db, sessionId, { limit: 100 });
     const stored: CapturedDecision[] = [];
+
+    // R13: Cap per-turn candidate comparisons to avoid CPU amplification
+    const MAX_CANDIDATES_PER_TURN = 20;
+    if (candidates.length > MAX_CANDIDATES_PER_TURN) {
+      candidates = candidates.slice(0, MAX_CANDIDATES_PER_TURN);
+    }
 
     for (const candidate of candidates) {
       // Check against existing DB decisions

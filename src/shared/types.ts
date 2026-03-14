@@ -97,17 +97,27 @@ export type EventPayload =
   | SessionEndPayload;
 
 /**
- * Host-neutral event envelope.
+ * Host-neutral event envelope — shared fields across all event kinds.
  * @see Architecture Section 3.1
  */
-export interface RuntimeEvent {
-  kind: 'session_init' | 'before_prompt' | 'after_tool' | 'after_turn' | 'before_compact' | 'session_end';
+interface RuntimeEventBase {
   sessionId: string;
   cwd: string;
   /** Unix epoch ms */
   timestamp: number;
-  payload: EventPayload;
 }
+
+/**
+ * R51: Discriminated union mapping each `kind` to its specific payload type.
+ * Prevents mismatched kind+payload combinations at the type level.
+ */
+export type RuntimeEvent =
+  | (RuntimeEventBase & { kind: 'session_init';    payload: SessionInitPayload })
+  | (RuntimeEventBase & { kind: 'before_prompt';   payload: BeforePromptPayload })
+  | (RuntimeEventBase & { kind: 'after_tool';      payload: AfterToolPayload })
+  | (RuntimeEventBase & { kind: 'after_turn';      payload: AfterTurnPayload })
+  | (RuntimeEventBase & { kind: 'before_compact';  payload: BeforeCompactPayload })
+  | (RuntimeEventBase & { kind: 'session_end';     payload: SessionEndPayload });
 
 /** Injection payload returned by handleEvent when context should be injected. */
 export interface InjectPayload {

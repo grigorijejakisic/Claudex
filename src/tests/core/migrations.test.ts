@@ -1,5 +1,6 @@
 import Database from 'better-sqlite3';
-import { initializeSchema, migrateFromV2, detectV2Database } from '../../core/migrations.js';
+import { initializeSchema, migrateFromV2, detectV2Database, runMigrations } from '../../core/migrations.js';
+import { openDatabase } from '../../core/storage.js';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
@@ -553,5 +554,236 @@ describe('detectV2Database', () => {
     const result = detectV2Database();
     // Since we can't guarantee ~/.claudex doesn't exist, we just verify it returns string or null
     expect(result === null || typeof result === 'string').toBe(true);
+  });
+});
+
+/**
+ * V1 schema DDL used to simulate legacy databases in migration tests.
+ * This matches pre-versioning Claudex databases: no user_version, no consumed/obs_type/adapter columns,
+ * pressure_scores has last_accessed_epoch instead of last_touched_epoch.
+ */
+const V1_SCHEMA = `
+  CREATE TABLE observations (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    session_id TEXT NOT NULL, project TEXT, tool_name TEXT NOT NULL,
+    category TEXT NOT NULL, title TEXT NOT NULL, content TEXT NOT NULL,
+    importance INTEGER NOT NULL, files_modified TEXT NOT NULL DEFAULT '[]',
+    timestamp_epoch INTEGER NOT NULL DEFAULT (unixepoch()),
+    access_count INTEGER NOT NULL DEFAULT 0, last_accessed_at_epoch INTEGER,
+    deleted_at_epoch INTEGER DEFAULT NULL
+  );
+  CREATE TABLE sessions (
+    session_id TEXT PRIMARY KEY, scope TEXT, project TEXT, cwd TEXT, source TEXT,
+    status TEXT NOT NULL DEFAULT 'active', observation_count INTEGER NOT NULL DEFAULT 0,
+    created_at_epoch INTEGER NOT NULL DEFAULT (unixepoch()), ended_at_epoch INTEGER
+  );
+  CREATE TABLE pressure_scores (
+    file_path TEXT NOT NULL, project TEXT NOT NULL,
+    raw_pressure REAL NOT NULL DEFAULT 0.0,
+    temperature TEXT NOT NULL DEFAULT 'COLD',
+    last_accessed_epoch INTEGER NOT NULL DEFAULT (unixepoch()),
+    decay_rate REAL NOT NULL DEFAULT 0.1,
+    PRIMARY KEY (file_path, project)
+  );
+  CREATE TABLE telemetry (
+    id INTEGER PRIMARY KEY AUTOINCREMENT, session_id TEXT NOT NULL,
+    event_kind TEXT NOT NULL, detail TEXT NOT NULL DEFAULT '{}',
+    latency_ms REAL, timestamp_epoch INTEGER NOT NULL DEFAULT (unixepoch())
+  );
+`;
+
+/** Helper: get column names for a table */
+function getColumnNames(db: InstanceType<typeof Database>, table: string): string[] {
+  const cols = db.pragma(`table_info(${table})`) as Array<{ name: string }>;
+  return cols.map(c => c.name);
+}
+
+describe('runMigrations', () => {
+  let db: InstanceType<typeof Database>;
+
+  beforeEach(() => {
+    db = new Database(':memory:');
+  });
+
+  afterEach(() => {
+    try { db.close(); } catch { /* already closed */ }
+  });
+
+  it('fresh DB (no tables) — no-op, user_version stays 0', () => {
+    runMigrations(db);
+
+    const row = db.pragma('user_version') as Array<{ user_version: number }>;
+    expect(row[0].user_version).toBe(0);
+
+    const tables = db
+      .prepare("SELECT name FROM sqlite_master WHERE type='table'")
+      .all() as Array<{ name: string }>;
+    expect(tables.length).toBe(0);
+  });
+
+  it('fresh DB via initializeSchema — sets user_version=2 with all columns', () => {
+    initializeSchema(db);
+
+    const row = db.pragma('user_version') as Array<{ user_version: number }>;
+    expect(row[0].user_version).toBe(2);
+
+    // All core tables should exist
+    const tables = db
+      .prepare("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name")
+      .all() as Array<{ name: string }>;
+    const tableNames = tables.map(t => t.name);
+    expect(tableNames).toContain('observations');
+    expect(tableNames).toContain('sessions');
+    expect(tableNames).toContain('pressure_scores');
+    expect(tableNames).toContain('telemetry');
+
+    // V2 columns should be present
+    expect(getColumnNames(db, 'observations')).toContain('consumed');
+    expect(getColumnNames(db, 'observations')).toContain('obs_type');
+    expect(getColumnNames(db, 'sessions')).toContain('adapter');
+    expect(getColumnNames(db, 'telemetry')).toContain('adapter');
+  });
+
+  it('legacy DB (V1 schema, user_version=0) — auto-upgrades to V2', () => {
+    db.exec(V1_SCHEMA);
+
+    runMigrations(db);
+
+    const row = db.pragma('user_version') as Array<{ user_version: number }>;
+    expect(row[0].user_version).toBe(2);
+
+    // V2 columns added by migration
+    expect(getColumnNames(db, 'pressure_scores')).toContain('last_touched_epoch');
+    expect(getColumnNames(db, 'observations')).toContain('consumed');
+    expect(getColumnNames(db, 'observations')).toContain('obs_type');
+    expect(getColumnNames(db, 'sessions')).toContain('adapter');
+    expect(getColumnNames(db, 'telemetry')).toContain('adapter');
+
+    // idx_obs_consumed index should exist
+    const indexes = db
+      .prepare("SELECT name FROM sqlite_master WHERE type='index' AND name = 'idx_obs_consumed'")
+      .all() as Array<{ name: string }>;
+    expect(indexes.length).toBe(1);
+  });
+
+  it('legacy DB — preserves existing pressure data during column migration', () => {
+    db.exec(V1_SCHEMA);
+
+    // Insert pressure rows with known last_accessed_epoch values
+    db.prepare(
+      "INSERT INTO pressure_scores (file_path, project, raw_pressure, last_accessed_epoch) VALUES (?, ?, ?, ?)"
+    ).run('src/a.ts', 'proj1', 0.5, 1700000000);
+    db.prepare(
+      "INSERT INTO pressure_scores (file_path, project, raw_pressure, last_accessed_epoch) VALUES (?, ?, ?, ?)"
+    ).run('src/b.ts', 'proj1', 0.8, 1700001000);
+
+    runMigrations(db);
+
+    // Verify last_touched_epoch was copied from last_accessed_epoch
+    const rows = db
+      .prepare("SELECT file_path, last_accessed_epoch, last_touched_epoch FROM pressure_scores ORDER BY file_path")
+      .all() as Array<{ file_path: string; last_accessed_epoch: number; last_touched_epoch: number }>;
+
+    expect(rows.length).toBe(2);
+    expect(rows[0].file_path).toBe('src/a.ts');
+    expect(rows[0].last_touched_epoch).toBe(1700000000);
+    expect(rows[1].file_path).toBe('src/b.ts');
+    expect(rows[1].last_touched_epoch).toBe(1700001000);
+  });
+
+  it('already-at-V2 — no-op, schema unchanged', () => {
+    initializeSchema(db);
+
+    // Snapshot column counts for all key tables
+    const before = {
+      observations: getColumnNames(db, 'observations').length,
+      sessions: getColumnNames(db, 'sessions').length,
+      pressure_scores: getColumnNames(db, 'pressure_scores').length,
+      telemetry: getColumnNames(db, 'telemetry').length,
+    };
+
+    const versionBefore = (db.pragma('user_version') as Array<{ user_version: number }>)[0].user_version;
+
+    // Run migrations again — should be a no-op
+    runMigrations(db);
+
+    const after = {
+      observations: getColumnNames(db, 'observations').length,
+      sessions: getColumnNames(db, 'sessions').length,
+      pressure_scores: getColumnNames(db, 'pressure_scores').length,
+      telemetry: getColumnNames(db, 'telemetry').length,
+    };
+
+    const versionAfter = (db.pragma('user_version') as Array<{ user_version: number }>)[0].user_version;
+
+    expect(versionAfter).toBe(versionBefore);
+    expect(versionAfter).toBe(2);
+    expect(after).toEqual(before);
+  });
+
+  it('V1 explicit (user_version=1) — upgrades to V2', () => {
+    db.exec(V1_SCHEMA);
+    db.pragma('user_version = 1');
+
+    runMigrations(db);
+
+    const row = db.pragma('user_version') as Array<{ user_version: number }>;
+    expect(row[0].user_version).toBe(2);
+
+    // All V2 columns present
+    expect(getColumnNames(db, 'observations')).toContain('consumed');
+    expect(getColumnNames(db, 'observations')).toContain('obs_type');
+    expect(getColumnNames(db, 'sessions')).toContain('adapter');
+    expect(getColumnNames(db, 'telemetry')).toContain('adapter');
+    expect(getColumnNames(db, 'pressure_scores')).toContain('last_touched_epoch');
+  });
+
+  it('idempotent — calling runMigrations twice does not error', () => {
+    db.exec(V1_SCHEMA);
+
+    // First call — performs the migration
+    runMigrations(db);
+    expect((db.pragma('user_version') as Array<{ user_version: number }>)[0].user_version).toBe(2);
+
+    // Second call — should be a no-op, not throw
+    expect(() => runMigrations(db)).not.toThrow();
+    expect((db.pragma('user_version') as Array<{ user_version: number }>)[0].user_version).toBe(2);
+  });
+
+  describe('openDatabase auto-migrates (integration)', () => {
+    let tmpDir: string;
+    let dbPath: string;
+    let fileDb: InstanceType<typeof Database> | null = null;
+
+    beforeEach(() => {
+      tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'claudex-runmig-'));
+      dbPath = path.join(tmpDir, 'test.db');
+    });
+
+    afterEach(() => {
+      try { if (fileDb) fileDb.close(); } catch { /* already closed */ }
+      fs.rmSync(tmpDir, { recursive: true, force: true });
+    });
+
+    it('openDatabase auto-migrates legacy V1 DB to user_version=2', () => {
+      // Step 1: Create a V1 legacy DB on disk, then close it
+      const legacyDb = new Database(dbPath);
+      legacyDb.exec(V1_SCHEMA);
+      legacyDb.close();
+
+      // Step 2: Re-open with openDatabase (the production function)
+      fileDb = openDatabase(dbPath);
+
+      // Verify: user_version is 2
+      const row = fileDb.pragma('user_version') as Array<{ user_version: number }>;
+      expect(row[0].user_version).toBe(2);
+
+      // Verify: all V2 columns present
+      expect(getColumnNames(fileDb, 'observations')).toContain('consumed');
+      expect(getColumnNames(fileDb, 'observations')).toContain('obs_type');
+      expect(getColumnNames(fileDb, 'sessions')).toContain('adapter');
+      expect(getColumnNames(fileDb, 'telemetry')).toContain('adapter');
+      expect(getColumnNames(fileDb, 'pressure_scores')).toContain('last_touched_epoch');
+    });
   });
 });

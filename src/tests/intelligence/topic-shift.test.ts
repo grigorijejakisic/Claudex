@@ -102,13 +102,22 @@ describe('topic-shift detection', () => {
     it('detects shift when similarity < 0.35 and avgRecent < 0.40', async () => {
       setTopic('database storage implementation');
 
-      // Mock: topic and prompt have very different embeddings
+      // Mock: topic and database-related prompts share embedding; others are very different
       const provider = createMockProvider((text: string) => {
         if (text.includes('database')) return [1, 0, 0, 0, 0];
         return [0, 0, 0, 0, 1]; // Very different direction
       });
 
       const detector = new TopicShiftDetector(provider);
+
+      // Seed the sliding window with a topic-aligned prompt so avgRecent
+      // is computed from real history (R46: first call returns 1.0 self-similarity)
+      await detector.detectTopicShift({
+        prompt: 'querying the database indexes',
+        db,
+        sessionId,
+      });
+
       const result = await detector.detectTopicShift({
         prompt: 'deploy the frontend to production now',
         db,
@@ -182,11 +191,19 @@ describe('topic-shift detection', () => {
       setTopic('database storage');
 
       const provider = createMockProvider((text: string) => {
-        if (text === 'database storage') return [1, 0, 0, 0, 0];
+        if (text === 'database storage' || text.includes('database')) return [1, 0, 0, 0, 0];
         return [0, 0, 0, 0, 1]; // Very different
       });
 
       const detector = new TopicShiftDetector(provider);
+
+      // Seed window with a topic-aligned prompt (R46: first call returns 1.0 self-similarity)
+      await detector.detectTopicShift({
+        prompt: 'reviewing database schema',
+        db,
+        sessionId,
+      });
+
       const result = await detector.detectTopicShift({
         prompt: 'deploy to production now',
         db,

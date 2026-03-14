@@ -14,6 +14,7 @@ import { initializeSchema, migrateFromV2, detectV2Database } from '../core/migra
 import { getDbPath, getClaudexHome, getConfigPath } from '../shared/paths.js';
 import { ensureDir, readJsonFile, writeJsonFile } from '../shared/fs-helpers.js';
 import { DEFAULT_CONFIG } from '../shared/constants.js';
+import { getDbStats } from '../shared/db-stats.js';
 import Database from 'better-sqlite3';
 
 /** Hook file paths matching build.ts output in dist/adapters/cc-hooks/. */
@@ -67,7 +68,7 @@ export function patchSettingsJson(
   const hooks = settings.hooks as Record<string, unknown[]>;
 
   for (const [hookName, hookPath] of Object.entries(hookPaths)) {
-    const command = `node "${hookPath}"`;
+    const command = `node '${hookPath.replace(/'/g, "'\\''")}'`;
     const newEntry = {
       matcher: '',
       hooks: [{ type: 'command', command }],
@@ -115,35 +116,6 @@ export function patchSettingsJson(
 }
 
 /**
- * Gathers row counts from a v2 database for display during setup.
- * Non-throwing — returns zeroed stats on any error.
- */
-function getV2Stats(dbPath: string): { observationCount: number; sessionCount: number; pressureCount: number } {
-  const stats = { observationCount: 0, sessionCount: 0, pressureCount: 0 };
-  try {
-    const db = new Database(dbPath, { readonly: true });
-    try {
-      try {
-        const obs = db.prepare('SELECT COUNT(*) as count FROM observations').get() as { count: number };
-        stats.observationCount = obs.count;
-      } catch { /* table may not exist */ }
-      try {
-        const sess = db.prepare('SELECT COUNT(*) as count FROM sessions').get() as { count: number };
-        stats.sessionCount = sess.count;
-      } catch { /* table may not exist */ }
-      try {
-        const press = db.prepare('SELECT COUNT(*) as count FROM pressure_scores').get() as { count: number };
-        stats.pressureCount = press.count;
-      } catch { /* table may not exist */ }
-      db.close();
-    } catch {
-      try { db.close(); } catch { /* ignore */ }
-    }
-  } catch { /* non-throwing */ }
-  return stats;
-}
-
-/**
  * Prompts user for y/N input. Returns true if answered yes.
  */
 async function askYesNo(question: string): Promise<boolean> {
@@ -182,7 +154,7 @@ export async function main(): Promise<void> {
   // Check for v2 before initializing (uses core detectV2Database which scans known paths)
   const v2Path = detectV2Database();
   if (v2Path) {
-    const v2Stats = getV2Stats(v2Path);
+    const v2Stats = getDbStats(v2Path);
     console.log(`\n[INFO] Existing v2 database detected:`);
     console.log(`  Observations: ${v2Stats.observationCount}`);
     console.log(`  Sessions: ${v2Stats.sessionCount}`);
@@ -190,16 +162,23 @@ export async function main(): Promise<void> {
 
     const shouldMigrate = await askYesNo('Migrate v2 data? [y/N] ');
     if (shouldMigrate) {
-      const backupPath = v2Path + '.v2-backup';
-      fs.copyFileSync(v2Path, backupPath);
-      console.log(`[OK] v2 backup created: ${backupPath}`);
+      const resolvedV2 = path.resolve(v2Path);
+      const resolvedV3 = path.resolve(dbPath);
+      if (resolvedV2 === resolvedV3) {
+        // Skip migration — DB is already at runtime path; in-place upgrade handled by initializeSchema
+        console.log('[INFO] v2 database is already at v3 runtime path — skipping migration (in-place upgrade will apply)');
+      } else {
+        const backupPath = v2Path + '.v2-backup';
+        fs.copyFileSync(v2Path, backupPath);
+        console.log(`[OK] v2 backup created: ${backupPath}`);
 
-      const db = openDatabase(dbPath);
-      try {
-        migrateFromV2(db, v2Path);
-        console.log('[OK] v2 data migrated');
-      } finally {
-        closeDatabase(db);
+        const db = openDatabase(dbPath);
+        try {
+          migrateFromV2(db, v2Path);
+          console.log('[OK] v2 data migrated');
+        } finally {
+          closeDatabase(db);
+        }
       }
     }
   }

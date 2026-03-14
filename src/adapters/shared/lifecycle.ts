@@ -137,6 +137,12 @@ export function processToolAndPressure(params: ToolObservationParams): void {
 /**
  * Create a thread tracker, record an after-tool event, and persist.
  * Used by PostToolUse (CC) and onToolResult (bridge).
+ *
+ * R19: ThreadTracker is intentionally re-instantiated per call. In CC hooks each
+ * invocation runs in a fresh process, so there is no cross-event state to share.
+ * The bridge adapter similarly calls this per-event; the tracker loads persisted
+ * state from the DB on construction, so cross-event continuity is maintained via
+ * the database rather than in-memory caching.
  */
 export function trackAfterTool(
   db: Database.Database,
@@ -153,6 +159,10 @@ export function trackAfterTool(
 /**
  * Create a thread tracker and record an after-turn event.
  * Used by Stop (CC) and onTurnEnd (bridge).
+ *
+ * R19: See trackAfterTool comment — intentional single-event semantics.
+ * ThreadTracker loads persisted state from DB on construction, ensuring
+ * cross-event continuity without in-memory caching.
  */
 export function trackAfterTurn(
   db: Database.Database,
@@ -320,14 +330,6 @@ export async function runCompactionSequence(params: CompactionParams): Promise<v
   // Capture flow entry BEFORE observations are marked consumed
   captureFlowEntry(params.db, params.sessionId, params.project);
 
-  // Upgrade 6: Mark old observations as consumed before compaction
-  // Observations older than 5 minutes ago that aren't in the most recent 10
-  try {
-    const fiveMinutesAgo = Math.floor(Date.now() / 1000) - 300;
-    markObservationsConsumed(params.db, params.project, fiveMinutesAgo, 10);
-  } catch {
-    // Non-fatal — continue with compaction even if masking fails
-  }
 
   const result = await writeCheckpoint({
     db: params.db,
@@ -342,6 +344,16 @@ export async function runCompactionSequence(params: CompactionParams): Promise<v
   });
 
   if (result) {
+    // Mark old observations as consumed AFTER checkpoint succeeds
+    // Observations older than 5 minutes ago that aren't in the most recent 10
+    // Scoped to current session to prevent cross-session blindness
+    try {
+      const fiveMinutesAgo = Math.floor(Date.now() / 1000) - 300;
+      markObservationsConsumed(params.db, params.project, params.sessionId, fiveMinutesAgo, 10);
+    } catch {
+      // Non-fatal — checkpoint already written, consumption is best-effort
+    }
+
     // sessionLearnings empty — no new learnings to promote during compaction.
     // Call is retained for cap enforcement (prunes excess learnings per project).
     promoteLearnings({

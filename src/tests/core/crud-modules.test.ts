@@ -174,7 +174,7 @@ describe('pressure scores CRUD', () => {
 
     // Decay heavily: 0.6 * (1 - 0.95) = 0.03 < 0.1 threshold
     const affected = decayPressure(db, 'myapp', 0.95);
-    expect(affected).toBe(1);
+    expect(affected).toBe(2); // decay + demotion rows
 
     const rows = getPressureByProject(db, 'myapp');
     expect(rows[0].raw_pressure).toBeCloseTo(0.03);

@@ -245,8 +245,8 @@ export function isDuplicate(candidate: string, existing: string): boolean {
     // Tier 2: keyword Jaccard >= 0.5
     if (keywordJaccard(candidate, existing) >= 0.5) return true;
 
-    // Tier 3: substring containment
-    if (normA.includes(normB) || normB.includes(normA)) return true;
+    // Tier 3: substring containment (guard empty strings — "".includes("") is always true)
+    if (normA && normB && (normA.includes(normB) || normB.includes(normA))) return true;
 
     return false;
   } catch {
