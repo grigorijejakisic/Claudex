@@ -12,6 +12,82 @@ import {
   trackAfterTool,
   checkpointIfThresholdMet,
 } from '../shared/lifecycle.js';
+import { addJournalEntry } from '../../core/journal.js';
+import type Database from 'better-sqlite3';
+
+/**
+ * Detect milestone events from tool execution results.
+ * Returns a concise milestone string, or null if no milestone detected.
+ * Pure function — no side effects.
+ */
+export function detectMilestone(toolName: string, toolOutput: string): string | null {
+  if (!toolOutput) return null;
+
+  // Test suite results
+  const testMatch = toolOutput.match(/(\d+)\s+(?:tests?\s+)?pass(?:ed|ing)?/i);
+  const testFail = toolOutput.match(/(\d+)\s+(?:tests?\s+)?fail(?:ed|ing|ure)?/i);
+  if (testMatch || testFail) {
+    const passed = testMatch ? testMatch[1] : '0';
+    const failed = testFail ? testFail[1] : '0';
+    if (testFail && parseInt(failed) > 0) {
+      return `Tests: ${passed} passed, ${failed} failed`;
+    }
+    if (testMatch) {
+      return `Tests: ${passed} passing`;
+    }
+  }
+
+  // Build results
+  if (/build/i.test(toolOutput) && /success|clean|complete/i.test(toolOutput)) {
+    return 'Build succeeded';
+  }
+
+  // Git commits (match [branch abc1234] pattern)
+  if (toolName === 'Bash') {
+    const commitMatch = toolOutput.match(/\[\S+\s+([a-f0-9]{7,})\]/);
+    if (commitMatch) {
+      return `Committed ${commitMatch[1].slice(0, 7)}`;
+    }
+  }
+
+  // Deployment/team events
+  if (/workers?\s+(?:deployed|spawned|started)/i.test(toolOutput) ||
+      /agents?\s+(?:deployed|spawned|started)/i.test(toolOutput)) {
+    return 'Team agents deployed';
+  }
+
+  return null;
+}
+
+/**
+ * Capture a milestone journal entry if a significant event is detected.
+ * Non-throwing.
+ */
+function captureMilestone(
+  db: Database.Database,
+  sessionId: string,
+  project: string,
+  toolName: string,
+  toolOutput: Record<string, unknown> | undefined,
+): void {
+  try {
+    // Extract text content from tool output
+    const outputText = toolOutput
+      ? (typeof toolOutput === 'string'
+        ? toolOutput
+        : (toolOutput.content as string) || (toolOutput.output as string) || (toolOutput.stdout as string) || JSON.stringify(toolOutput))
+      : '';
+
+    const milestone = detectMilestone(toolName, outputText);
+    if (milestone) {
+      // Truncate to 100 chars
+      const content = milestone.length > 100 ? milestone.slice(0, 97) + '...' : milestone;
+      addJournalEntry(db, sessionId, project, 'milestone', content);
+    }
+  } catch {
+    // Non-throwing — milestone capture must not break tool processing
+  }
+}
 
 const main = wrapHook('PostToolUse', async (input, ctx) => {
   const toolName = (input.tool_name as string) || '';
@@ -27,6 +103,9 @@ const main = wrapHook('PostToolUse', async (input, ctx) => {
     toolInput,
     toolOutput,
   });
+
+  // Milestone detection — capture significant tool outcomes
+  captureMilestone(ctx.db, input.session_id, ctx.project, toolName, toolOutput);
 
   // Thread tracking
   //

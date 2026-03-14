@@ -25,6 +25,10 @@ import { markObservationsConsumed } from '../../core/observations.js';
 import { decayPressureStratified } from '../../decay/pressure-decay.js';
 import { endSession } from '../../core/sessions.js';
 import { pruneTelemetry } from '../../observability/telemetry.js';
+import { addJournalEntry, getJournalBySession } from '../../core/journal.js';
+import { getThreadState } from '../../core/thread.js';
+import { getDecisionsBySession } from '../../core/decisions.js';
+import { getObservationsByProject } from '../../core/observations.js';
 
 // ---------------------------------------------------------------------------
 // Shared parameter types
@@ -242,10 +246,80 @@ export async function captureDecisionsWithClassifier(params: DecisionCapturePara
 }
 
 /**
+ * Build a flow entry from structured data available in the DB.
+ * Concatenates thread topic, recent decisions, and high-importance observation titles.
+ * Non-throwing — returns null if no meaningful content is available.
+ */
+export function buildFlowEntry(
+  db: Database.Database,
+  sessionId: string,
+  project: string,
+): string | null {
+  try {
+    const parts: string[] = [];
+
+    // Thread topic
+    const thread = getThreadState(db, sessionId);
+    if (thread?.topic) {
+      parts.push(thread.topic);
+    }
+
+    // Recent decisions (last 3)
+    const decisions = getDecisionsBySession(db, sessionId, { limit: 3 });
+    if (decisions.length > 0) {
+      const decisionSnippets = decisions
+        .map(d => d.content.slice(0, 60))
+        .join('; ');
+      parts.push(`Decisions: ${decisionSnippets}`);
+    }
+
+    // Recent high-importance observation titles
+    const obs = getObservationsByProject(db, project, { limit: 10 });
+    const highImp = obs
+      .filter(o => o.importance >= 4)
+      .slice(0, 3)
+      .map(o => o.title);
+    if (highImp.length > 0) {
+      parts.push(`Key: ${highImp.join(', ')}`);
+    }
+
+    if (parts.length === 0) return null;
+
+    // Join and truncate to 200 chars
+    const flow = parts.join(' — ');
+    return flow.length > 200 ? flow.slice(0, 197) + '...' : flow;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Capture a flow journal entry during compaction.
+ * Non-throwing — journal capture must not break compaction.
+ */
+export function captureFlowEntry(
+  db: Database.Database,
+  sessionId: string,
+  project: string,
+): void {
+  try {
+    const content = buildFlowEntry(db, sessionId, project);
+    if (content) {
+      addJournalEntry(db, sessionId, project, 'flow', content);
+    }
+  } catch {
+    // Non-throwing — journal capture must not break compaction
+  }
+}
+
+/**
  * Run the compaction sequence: write checkpoint, promote learnings, mark post-compact.
  * Used by PreCompact (CC) and onCompact (bridge).
  */
 export async function runCompactionSequence(params: CompactionParams): Promise<void> {
+  // Capture flow entry BEFORE observations are marked consumed
+  captureFlowEntry(params.db, params.sessionId, params.project);
+
   // Upgrade 6: Mark old observations as consumed before compaction
   // Observations older than 5 minutes ago that aren't in the most recent 10
   try {
@@ -281,6 +355,56 @@ export async function runCompactionSequence(params: CompactionParams): Promise<v
 }
 
 /**
+ * Build and store a structured session summary from journal entries + thread state.
+ * Non-throwing — summary capture must not break session-end cleanup.
+ */
+export function captureSessionSummary(
+  db: Database.Database,
+  sessionId: string,
+  project: string,
+): void {
+  try {
+    const parts: string[] = [];
+
+    // Thread topic/summary
+    const thread = getThreadState(db, sessionId);
+    if (thread?.topic) {
+      parts.push(`Session worked on ${thread.topic}.`);
+    } else {
+      parts.push('Session completed.');
+    }
+
+    // Milestones from journal
+    const milestones = getJournalBySession(db, sessionId, { entryType: 'milestone', limit: 10 });
+    if (milestones.length > 0) {
+      const milestoneList = milestones
+        .map(m => m.content)
+        .reverse() // chronological order
+        .join(', ');
+      parts.push(`Milestones: ${milestoneList}.`);
+    }
+
+    // Flow entries from journal
+    const flows = getJournalBySession(db, sessionId, { entryType: 'flow', limit: 5 });
+    if (flows.length > 0) {
+      // Use the most recent flow entry as the narrative
+      parts.push(`Flow: ${flows[0].content}.`);
+    }
+
+    // Decision count
+    const decisions = getDecisionsBySession(db, sessionId);
+    if (decisions.length > 0) {
+      parts.push(`Decisions: ${decisions.length} made.`);
+    }
+
+    const summary = parts.join(' ');
+    addJournalEntry(db, sessionId, project, 'summary', summary);
+  } catch {
+    // Non-throwing
+  }
+}
+
+/**
  * Run session-end cleanup: final checkpoint, decay, end session, prune telemetry.
  * Used by SessionEnd (CC) and plugin-entry session_end hook (bridge).
  */
@@ -306,6 +430,9 @@ export async function runSessionEndCleanup(params: SessionEndParams): Promise<vo
   applyRetentionPolicy(params.db, params.project, params.config.observations.retention_days);
 
   decayPressureStratified(params.db, params.project);
+
+  // Capture session summary before ending session
+  captureSessionSummary(params.db, params.sessionId, params.project);
 
   endSession(params.db, params.sessionId, 'completed');
 
