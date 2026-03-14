@@ -1,7 +1,6 @@
 import { createTestDb, type TestDatabase } from '../helpers/test-db.js';
 import {
   emitTelemetry,
-  queryTelemetry,
   pruneTelemetry,
 } from '../../observability/telemetry.js';
 import type { HookInvocationDetail, ErrorDetail } from '../../observability/types.js';
@@ -74,60 +73,6 @@ describe('telemetry subsystem', () => {
         result: 'inject',
       } as HookInvocationDetail);
     }).not.toThrow();
-  });
-
-  it('queryTelemetry filters by session_id', () => {
-    emitTelemetry(db, 'sess-A', 'hook_invocation', {
-      hook: 'PreToolUse',
-      duration_ms: 10,
-      result: 'inject',
-    } as HookInvocationDetail);
-    emitTelemetry(db, 'sess-B', 'hook_invocation', {
-      hook: 'PostToolUse',
-      duration_ms: 20,
-      result: 'skip',
-    } as HookInvocationDetail);
-
-    const results = queryTelemetry(db, { sessionId: 'sess-A' });
-    expect(results).toHaveLength(1);
-    expect(results[0].session_id).toBe('sess-A');
-  });
-
-  it('queryTelemetry filters by event_kind', () => {
-    emitTelemetry(db, 'sess-1', 'hook_invocation', {
-      hook: 'PreToolUse',
-      duration_ms: 10,
-      result: 'inject',
-    } as HookInvocationDetail);
-    emitTelemetry(db, 'sess-1', 'error', {
-      subsystem: 'injection',
-      error: 'timeout',
-    } as ErrorDetail);
-
-    const results = queryTelemetry(db, { eventKind: 'error' });
-    expect(results).toHaveLength(1);
-    expect(results[0].event_kind).toBe('error');
-  });
-
-  it('queryTelemetry returns results in descending timestamp order', () => {
-    // Insert 3 events with explicit timestamps
-    for (let i = 0; i < 3; i++) {
-      emitTelemetry(db, 'sess-1', 'hook_invocation', {
-        hook: `hook-${i}`,
-        duration_ms: i * 10,
-        result: 'inject',
-      } as HookInvocationDetail);
-    }
-
-    // Manually set timestamps so ordering is deterministic
-    db.prepare('UPDATE telemetry SET timestamp_epoch = 1000 WHERE id = 1').run();
-    db.prepare('UPDATE telemetry SET timestamp_epoch = 2000 WHERE id = 2').run();
-    db.prepare('UPDATE telemetry SET timestamp_epoch = 3000 WHERE id = 3').run();
-
-    const results = queryTelemetry(db, {});
-    expect(results).toHaveLength(3);
-    expect(results[0].timestamp_epoch).toBeGreaterThanOrEqual(results[1].timestamp_epoch);
-    expect(results[1].timestamp_epoch).toBeGreaterThanOrEqual(results[2].timestamp_epoch);
   });
 
   it('pruneTelemetry removes rows older than retention period', () => {

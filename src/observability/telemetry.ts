@@ -6,29 +6,7 @@
 
 import type { Database } from 'better-sqlite3';
 import { DEFAULT_CONFIG } from '../shared/constants.js';
-import type { EventKind, EventKindDetailMap, TelemetryDetail } from './types.js';
-
-/** Row shape returned from telemetry queries. */
-export interface TelemetryRow {
-  id: number;
-  session_id: string;
-  event_kind: EventKind;
-  detail: TelemetryDetail;
-  latency_ms: number | null;
-  adapter: string;
-  timestamp_epoch: number;
-}
-
-/** Raw row from SQLite (detail is still a JSON string). */
-interface TelemetryRawRow {
-  id: number;
-  session_id: string;
-  event_kind: string;
-  detail: string;
-  latency_ms: number | null;
-  adapter: string;
-  timestamp_epoch: number;
-}
+import type { EventKind, EventKindDetailMap } from './types.js';
 
 /**
  * Emits a telemetry event. Non-throwing — entire function wrapped in try/catch.
@@ -51,65 +29,6 @@ export function emitTelemetry<K extends EventKind>(
     ).run(sessionId, eventKind, JSON.stringify(detail), latencyMs ?? null, adapter ?? 'unknown');
   } catch {
     // Intentionally swallowed — non-throwing per spec
-  }
-}
-
-/**
- * Queries telemetry events with optional filters.
- * Returns results ordered by timestamp_epoch DESC.
- * Parses detail JSON back to typed objects.
- * If adapter is provided, scopes to that adapter; if omitted, returns all.
- * Non-throwing — returns empty array on error. Per-row JSON.parse failures
- * are silently skipped.
- */
-export function queryTelemetry(
-  db: Database,
-  opts: { sessionId?: string; eventKind?: EventKind; adapter?: string; limit?: number }
-): TelemetryRow[] {
-  try {
-    const conditions: string[] = [];
-    const params: unknown[] = [];
-
-    if (opts.sessionId) {
-      conditions.push('session_id = ?');
-      params.push(opts.sessionId);
-    }
-    if (opts.eventKind) {
-      conditions.push('event_kind = ?');
-      params.push(opts.eventKind);
-    }
-    if (opts.adapter) {
-      conditions.push('adapter = ?');
-      params.push(opts.adapter);
-    }
-
-    const whereClause =
-      conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
-    const limit = opts.limit ?? 1000;
-
-    const rows = db
-      .prepare(
-        `SELECT * FROM telemetry ${whereClause}
-         ORDER BY timestamp_epoch DESC
-         LIMIT ?`
-      )
-      .all(...params, limit) as TelemetryRawRow[];
-
-    const results: TelemetryRow[] = [];
-    for (const row of rows) {
-      try {
-        results.push({
-          ...row,
-          event_kind: row.event_kind as EventKind,
-          detail: JSON.parse(row.detail) as TelemetryDetail,
-        });
-      } catch {
-        // Skip rows with unparseable detail JSON
-      }
-    }
-    return results;
-  } catch {
-    return [];
   }
 }
 

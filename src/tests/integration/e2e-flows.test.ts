@@ -23,7 +23,7 @@ import { captureDecisions } from '../../intelligence/decision-capture.js';
 import { promoteLearnings } from '../../intelligence/learnings-promoter.js';
 import { pruneObservations, applyRetentionPolicy } from '../../decay/decay-engine.js';
 import { decayPressureStratified } from '../../decay/pressure-decay.js';
-import { emitTelemetry, pruneTelemetry, queryTelemetry } from '../../observability/telemetry.js';
+import { emitTelemetry, pruneTelemetry } from '../../observability/telemetry.js';
 import { insertDecision, getDecisionsBySession } from '../../core/decisions.js';
 import { DEFAULT_CONFIG } from '../../shared/constants.js';
 import { createBridgeCallbacks, type BridgeContext } from '../../adapters/openclaw-bridge/bridge-adapter.js';
@@ -365,7 +365,7 @@ describe('Fresh Install Flow', () => {
 
     // Emit and query telemetry
     emitTelemetry(db, 'crud-sess', 'hook_invocation', { hook: 'test', duration_ms: 10, result: 'skip' }, 10);
-    const telRows = queryTelemetry(db, { sessionId: 'crud-sess' });
+    const telRows = db.prepare('SELECT * FROM telemetry WHERE session_id = ?').all('crud-sess') as Array<Record<string, unknown>>;
     expect(telRows.length).toBe(1);
   });
 });

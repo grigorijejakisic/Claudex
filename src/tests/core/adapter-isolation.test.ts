@@ -8,7 +8,6 @@ import {
 } from '../../core/sessions.js';
 import {
   emitTelemetry,
-  queryTelemetry,
 } from '../../observability/telemetry.js';
 import { initializeSchema } from '../../core/migrations.js';
 import type { HookInvocationDetail } from '../../observability/types.js';
@@ -99,7 +98,7 @@ describe('adapter isolation — telemetry', () => {
     expect(row.adapter).toBe('unknown');
   });
 
-  it('queryTelemetry filters by adapter', () => {
+  it('telemetry filters by adapter via direct SQL', () => {
     emitTelemetry(db, 'sess-1', 'hook_invocation', {
       hook: 'SessionStart',
       duration_ms: 10,
@@ -112,19 +111,19 @@ describe('adapter isolation — telemetry', () => {
       result: 'inject',
     } as HookInvocationDetail, 20, 'openclaw');
 
-    const ccResults = queryTelemetry(db, { adapter: 'cc-hooks' });
+    const ccResults = db.prepare('SELECT * FROM telemetry WHERE adapter = ?').all('cc-hooks') as Array<Record<string, unknown>>;
     expect(ccResults).toHaveLength(1);
     expect(ccResults[0].adapter).toBe('cc-hooks');
 
-    const ocResults = queryTelemetry(db, { adapter: 'openclaw' });
+    const ocResults = db.prepare('SELECT * FROM telemetry WHERE adapter = ?').all('openclaw') as Array<Record<string, unknown>>;
     expect(ocResults).toHaveLength(1);
     expect(ocResults[0].adapter).toBe('openclaw');
 
-    const allResults = queryTelemetry(db, {});
+    const allResults = db.prepare('SELECT * FROM telemetry').all() as Array<Record<string, unknown>>;
     expect(allResults).toHaveLength(2);
   });
 
-  it('queryTelemetry combines adapter with other filters', () => {
+  it('telemetry combines adapter with other filters via direct SQL', () => {
     emitTelemetry(db, 'sess-1', 'hook_invocation', {
       hook: 'SessionStart',
       duration_ms: 10,
@@ -141,7 +140,7 @@ describe('adapter isolation — telemetry', () => {
       error: 'bridge error',
     }, undefined, 'openclaw');
 
-    const ccErrors = queryTelemetry(db, { adapter: 'cc-hooks', eventKind: 'error' });
+    const ccErrors = db.prepare('SELECT * FROM telemetry WHERE adapter = ? AND event_kind = ?').all('cc-hooks', 'error') as Array<Record<string, unknown>>;
     expect(ccErrors).toHaveLength(1);
     expect(ccErrors[0].session_id).toBe('sess-1');
   });
