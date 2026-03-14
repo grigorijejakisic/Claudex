@@ -9,6 +9,7 @@ import { CC_CAPABILITIES } from '../../shared/constants.js';
 import { emitTelemetry, sanitizeErrorForTelemetry } from '../../observability/telemetry.js';
 import { readGsdState } from '../../gsd/state-reader.js';
 import { runCompactionSequence } from '../shared/lifecycle.js';
+import { detectEnrichmentProvider } from '../../intelligence/enrichment.js';
 
 const main = wrapHook('PreCompact', async (input, ctx) => {
   const gauge = getTokenGauge({
@@ -16,6 +17,21 @@ const main = wrapHook('PreCompact', async (input, ctx) => {
     transcriptPath: getTranscriptPath(input),
   });
   const gsd = readGsdState(input.cwd);
+
+  // Detect enrichment provider (Ollama) — optional, non-blocking
+  let enrichmentProvider: Awaited<ReturnType<typeof detectEnrichmentProvider>> = null;
+  try {
+    enrichmentProvider = await detectEnrichmentProvider(
+      {
+        baseUrl: ctx.config.embeddings.ollama_base_url,
+        model: ctx.config.embeddings.model,
+        enabled: ctx.config.embeddings.enabled,
+      },
+      CC_CAPABILITIES,
+    );
+  } catch {
+    // Non-fatal — enrichment is optional
+  }
 
   // Isolated — compaction failure must not prevent returning custom instructions
   try {
@@ -27,6 +43,7 @@ const main = wrapHook('PreCompact', async (input, ctx) => {
       scope: ctx.scope ?? undefined,
       gauge: gauge ?? undefined,
       gsd: gsd ?? undefined,
+      enrichmentProvider: enrichmentProvider ?? undefined,
     });
   } catch (e) {
     try { emitTelemetry(ctx.db, input.session_id, 'error', { subsystem: 'pre_compact/sequence', error: sanitizeErrorForTelemetry(e) }); } catch {}

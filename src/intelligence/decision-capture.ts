@@ -13,6 +13,7 @@ import type { EmbeddingProvider } from '../embeddings/embedding-provider.js';
 import type { DecisionTemplates } from '../embeddings/templates.js';
 import { classifyDecision } from '../embeddings/templates.js';
 import { createArtifact } from '../core/artifacts.js';
+import { addVerifiedFact } from '../checkpoint/writer.js';
 
 export interface CapturedDecision {
   content: string;
@@ -223,6 +224,16 @@ export async function captureDecisions(params: {
           createArtifact(db, sessionId, project, 'decision', String(insertedId), redacted.slice(0, 100), redacted, candidate.tier >= 3 ? 4 : 3);
         } catch {
           // Non-throwing — artifact creation must not break decision capture
+        }
+
+        // Tier 1 (user confirmations) and Tier 4 (explicit markers) are verified facts —
+        // the user has explicitly confirmed or stated something as decided.
+        if (candidate.tier === 1 || candidate.tier === 4) {
+          try {
+            addVerifiedFact(db, sessionId, redacted);
+          } catch {
+            // Non-throwing
+          }
         }
       }
 

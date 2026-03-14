@@ -603,13 +603,38 @@ export async function runCompactionSequence(params: CompactionParams): Promise<v
       try { emitTelemetry(params.db, params.sessionId, 'error', { subsystem: 'compaction/mark_consumed', error: sanitizeErrorForTelemetry(e) }); } catch {}
     }
 
-    // sessionLearnings empty — no new learnings to promote during compaction.
-    // Call is retained for cap enforcement (prunes excess learnings per project).
+    // Extract session learnings from two high-signal sources:
+    // 1. Decisions (what was decided — already deduplicated, high intent signal)
+    // 2. Edit/Write titles (what was changed — concrete actions, not file reads)
+    // 3. Discovery-type observations (explicitly classified new findings)
     try {
+      const sessionLearnings: string[] = [];
+
+      // Source 1: Decisions from this session
+      const decisions = getDecisionsBySession(params.db, params.sessionId, { limit: 10 });
+      for (const d of decisions) {
+        if (d.content && d.content.length > 15) {
+          sessionLearnings.push(d.content);
+        }
+      }
+
+      // Source 2: Discovery observations (rare but high-value)
+      const discoveries = cachedPrepare(params.db,
+        `SELECT DISTINCT title FROM observations
+         WHERE session_id = ? AND project = ? AND deleted_at_epoch IS NULL
+           AND obs_type = 'discovery'
+           AND title IS NOT NULL AND LENGTH(title) > 10
+         ORDER BY importance DESC
+         LIMIT 5`
+      ).all(params.sessionId, params.project) as Array<{ title: string }>;
+      for (const d of discoveries) {
+        sessionLearnings.push(d.title);
+      }
+
       promoteLearnings({
         db: params.db,
         project: params.project,
-        sessionLearnings: [],
+        sessionLearnings,
       });
     } catch (e) {
       try { emitTelemetry(params.db, params.sessionId, 'error', { subsystem: 'compaction/promote_learnings', error: sanitizeErrorForTelemetry(e) }); } catch {}
