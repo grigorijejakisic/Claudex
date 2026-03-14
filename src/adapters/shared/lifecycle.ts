@@ -134,15 +134,22 @@ function ensureTickEpochColumn(db: Database.Database): void {
  * has elapsed since the last tick (cross-process safe via DB).
  * Falls back to allowing the tick if the DB query fails.
  */
-function shouldTickArtifactTTL(db: Database.Database, sessionId: string, nowEpoch: number): boolean {
+function shouldTickArtifactTTL(db: Database.Database, sessionId: string, nowEpoch: number, project?: string): boolean {
   try {
     ensureTickEpochColumn(db);
+
+    // Use project-scoped guard to prevent concurrent sessions from double-ticking.
+    // tickArtifactTTL operates on ALL artifacts for a project, so the guard must
+    // be project-scoped — not session-scoped — to prevent N sessions draining
+    // TTL N times faster than intended.
+    const guardKey = project ? `__ttl_guard__${project}` : sessionId;
+
     const row = cachedPrepare(db,
       'SELECT last_tick_epoch FROM checkpoint_tracking WHERE session_id = ?'
-    ).get(sessionId) as { last_tick_epoch: number } | undefined;
+    ).get(guardKey) as { last_tick_epoch: number } | undefined;
 
     if (row && (nowEpoch - row.last_tick_epoch) < 120) {
-      return false; // Ticked within last 2 minutes — skip
+      return false; // Ticked within last 2 minutes (any session) — skip
     }
 
     // Update the epoch (upsert to handle missing rows)
@@ -152,7 +159,7 @@ function shouldTickArtifactTTL(db: Database.Database, sessionId: string, nowEpoc
        ON CONFLICT(session_id) DO UPDATE SET
          last_tick_epoch = excluded.last_tick_epoch,
          updated_at_epoch = unixepoch()`
-    ).run(sessionId, nowEpoch);
+    ).run(guardKey, nowEpoch);
 
     return true;
   } catch {
@@ -226,7 +233,7 @@ export function processToolAndPressure(params: ToolObservationParams): void {
   // Guard: DB-persisted epoch check — works cross-process (CC hooks are separate Node processes).
   try {
     const now = Math.floor(Date.now() / 1000);
-    if (shouldTickArtifactTTL(params.db, params.sessionId, now)) {
+    if (shouldTickArtifactTTL(params.db, params.sessionId, now, params.project)) {
       tickArtifactTTL(params.db, params.project);
     }
   } catch (e) {
