@@ -6,7 +6,7 @@
 
 import * as path from 'path';
 import { getProjectsJsonPath } from './paths.js';
-import { readJsonFile, writeJsonFile } from './fs-helpers.js';
+import { readJsonFile } from './fs-helpers.js';
 
 interface ProjectsFile {
   projects: Record<string, string>;
@@ -51,21 +51,6 @@ export function detectProjectScope(cwd: string): string | null {
 }
 
 /**
- * Registers a project in projects.json. Adds/updates the cwd → projectId mapping.
- * Returns true on success. Never throws.
- */
-export async function registerProject(cwd: string, projectId: string): Promise<boolean> {
-  try {
-    const filePath = getProjectsJsonPath();
-    const existing = readJsonFile<ProjectsFile>(filePath) ?? { projects: {} };
-    existing.projects[cwd] = projectId;
-    return await writeJsonFile(filePath, existing);
-  } catch {
-    return false;
-  }
-}
-
-/**
  * Convenience: detects project scope, or derives a project ID from the directory name.
  * Always returns a string. Never throws.
  */
@@ -84,6 +69,8 @@ export function getProjectId(cwd: string): string {
   }
 }
 
+// TODO: FNV-1a 32-bit hash is collision-prone for scope boundaries.
+// Changing requires DB migration to re-hash existing project IDs.
 /** Deterministic simple string hash. Returns 8-char hex string. Not cryptographic — for uniqueness only. */
 function simpleHash(str: string): string {
   let h = 0x811c9dc5; // FNV-1a offset basis

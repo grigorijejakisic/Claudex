@@ -4,7 +4,7 @@
  */
 
 import { createTestDb, type TestDatabase } from '../../helpers/test-db.js';
-import { createSession, getSession } from '../../../core/sessions.js';
+import { createSession } from '../../../core/sessions.js';
 import { getCheckpointTracking, markPostCompactPending } from '../../../core/checkpoint-tracking.js';
 import { updatePressureScore } from '../../../core/pressure.js';
 import { DEFAULT_CONFIG } from '../../../shared/constants.js';
@@ -101,7 +101,7 @@ describe('onInit callback', () => {
     const result = await bridge.onInit(initCtx);
 
     // Session should be created
-    const session = getSession(db, 'test-s1');
+    const session = db.prepare('SELECT status FROM sessions WHERE session_id = ?').get('test-s1') as { status: string } | undefined;
     expect(session).toBeDefined();
     expect(session!.status).toBe('active');
 

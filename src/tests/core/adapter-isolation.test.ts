@@ -5,8 +5,6 @@
 import { createTestDb, type TestDatabase } from '../helpers/test-db.js';
 import {
   createSession,
-  getSession,
-  getRecentSessions,
 } from '../../core/sessions.js';
 import {
   emitTelemetry,
@@ -51,58 +49,16 @@ describe('adapter isolation — sessions', () => {
     expect(row.adapter).toBe('unknown');
   });
 
-  it('getSession includes adapter field', () => {
+  it('session row includes adapter field', () => {
     createSession(db, {
       session_id: 's3',
       project: 'proj',
       adapter: 'openclaw',
     });
 
-    const session = getSession(db, 's3');
+    const session = db.prepare('SELECT adapter FROM sessions WHERE session_id = ?').get('s3') as { adapter: string } | undefined;
     expect(session).toBeDefined();
     expect(session!.adapter).toBe('openclaw');
-  });
-
-  it('getRecentSessions returns all sessions when no adapter filter', () => {
-    createSession(db, { session_id: 'cc1', project: 'proj', adapter: 'cc-hooks' });
-    createSession(db, { session_id: 'oc1', project: 'proj', adapter: 'openclaw' });
-    createSession(db, { session_id: 'uk1', project: 'proj' }); // defaults to 'unknown'
-
-    const all = getRecentSessions(db);
-    expect(all).toHaveLength(3);
-  });
-
-  it('getRecentSessions filters by adapter', () => {
-    createSession(db, { session_id: 'cc1', project: 'proj', adapter: 'cc-hooks' });
-    createSession(db, { session_id: 'cc2', project: 'proj', adapter: 'cc-hooks' });
-    createSession(db, { session_id: 'oc1', project: 'proj', adapter: 'openclaw' });
-
-    const ccSessions = getRecentSessions(db, { adapter: 'cc-hooks' });
-    expect(ccSessions).toHaveLength(2);
-    expect(ccSessions.every(s => s.adapter === 'cc-hooks')).toBe(true);
-
-    const ocSessions = getRecentSessions(db, { adapter: 'openclaw' });
-    expect(ocSessions).toHaveLength(1);
-    expect(ocSessions[0].session_id).toBe('oc1');
-  });
-
-  it('getRecentSessions filters by adapter and project', () => {
-    createSession(db, { session_id: 'cc-a', project: 'alpha', adapter: 'cc-hooks' });
-    createSession(db, { session_id: 'cc-b', project: 'beta', adapter: 'cc-hooks' });
-    createSession(db, { session_id: 'oc-a', project: 'alpha', adapter: 'openclaw' });
-
-    const result = getRecentSessions(db, { adapter: 'cc-hooks', project: 'alpha' });
-    expect(result).toHaveLength(1);
-    expect(result[0].session_id).toBe('cc-a');
-  });
-
-  it('getRecentSessions respects limit', () => {
-    for (let i = 0; i < 10; i++) {
-      createSession(db, { session_id: `s-${i}`, project: 'proj', adapter: 'cc-hooks' });
-    }
-
-    const limited = getRecentSessions(db, { adapter: 'cc-hooks', limit: 3 });
-    expect(limited).toHaveLength(3);
   });
 });
 

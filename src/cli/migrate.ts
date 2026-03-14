@@ -273,6 +273,25 @@ export function runMigration(sourcePath: string, opts: { dryRun?: boolean; force
   }
   result.steps.push(`Validated source: ${sourcePath}`);
 
+  // ── Step 1b: Guard against migrating an already-v3 database ────
+  try {
+    const testDb = new Database(sourcePath, { readonly: true });
+    try {
+      const row = testDb.prepare('SELECT MAX(version) as version FROM schema_versions').get() as { version: number } | undefined;
+      if (row && row.version >= SCHEMA_VERSION) {
+        testDb.close();
+        result.errors.push(`Source database is already v3 (version=${row.version}). Migration not needed.`);
+        return result;
+      }
+    } catch {
+      // No schema_versions table or query error — assume it's a v2 database, proceed
+    } finally {
+      try { testDb.close(); } catch { /* ignore */ }
+    }
+  } catch {
+    // Can't open the DB to check — proceed and let later steps handle it
+  }
+
   // ── Step 2: Read source row counts ──────────────────────────────
   let sourceDb: Database.Database | null = null;
   try {
@@ -294,6 +313,18 @@ export function runMigration(sourcePath: string, opts: { dryRun?: boolean; force
   }
 
   // ── Step 3: Create backup ───────────────────────────────────────
+  // Checkpoint WAL before copying to ensure all committed data is in the main file.
+  // Without this, copyFileSync only copies the main .db and misses WAL-committed rows.
+  try {
+    const checkpointDb = new Database(sourcePath);
+    checkpointDb.pragma('wal_checkpoint(TRUNCATE)');
+    checkpointDb.close();
+    result.steps.push('WAL checkpointed before backup');
+  } catch {
+    // Non-critical: source may not be in WAL mode, or may not have a WAL file.
+    // Proceed with backup anyway — the main file is still valid.
+  }
+
   const backupPath = sourcePath + '.v2-backup';
   result.backupPath = backupPath;
 

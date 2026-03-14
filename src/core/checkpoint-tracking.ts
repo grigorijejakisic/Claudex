@@ -44,24 +44,6 @@ export function getCheckpointTracking(
 }
 
 /**
- * Creates or replaces checkpoint tracking state for a session.
- */
-export function updateCheckpointTracking(
-  db: Database,
-  sessionId: string,
-  observationCount: number
-): void {
-  cachedPrepare(db,
-    `INSERT INTO checkpoint_tracking (session_id, observation_count, last_checkpoint_epoch, updated_at_epoch)
-     VALUES (?, ?, unixepoch(), unixepoch())
-     ON CONFLICT(session_id) DO UPDATE SET
-       observation_count = ?,
-       last_checkpoint_epoch = unixepoch(),
-       updated_at_epoch = unixepoch()`
-  ).run(sessionId, observationCount, observationCount);
-}
-
-/**
  * Sets the post_compact_pending flag for a session.
  * Creates the row if it does not exist.
  */

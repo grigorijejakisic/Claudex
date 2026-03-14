@@ -7,13 +7,11 @@ import {
   readStdin,
   writeStdout,
   bootstrapHook,
-  detectAdapter,
   getTranscriptPath,
   wrapHook,
   validateCwd,
   type HookInput,
 } from '../../../adapters/cc-hooks/infrastructure.js';
-import { BRIDGE_KEY } from '../../../adapters/openclaw-bridge/bridge-types.js';
 
 // --- readStdin tests ---
 
@@ -182,30 +180,6 @@ describe('validateCwd', () => {
     expect(validateCwd('')).toBe(false);
     expect(validateCwd(null as any)).toBe(false);
     expect(validateCwd(undefined as any)).toBe(false);
-  });
-});
-
-// --- detectAdapter tests ---
-
-describe('detectAdapter', () => {
-  it('returns cc-hooks by default', () => {
-    expect(detectAdapter()).toBe('cc-hooks');
-  });
-
-  it('returns openclaw-bridge when bridge registered with correct symbol', () => {
-    (globalThis as Record<symbol, unknown>)[BRIDGE_KEY] = true;
-    expect(detectAdapter()).toBe('openclaw-bridge');
-    delete (globalThis as Record<symbol, unknown>)[BRIDGE_KEY];
-  });
-
-  it('uses the shared BRIDGE_KEY symbol (claudex.v3.bridge)', () => {
-    // Verify the symbol matches the canonical bridge key
-    expect(BRIDGE_KEY).toBe(Symbol.for('claudex.v3.bridge'));
-    // Old mismatched key should NOT trigger detection
-    const oldSym = Symbol.for('claudex-bridge');
-    (globalThis as Record<symbol, unknown>)[oldSym] = true;
-    expect(detectAdapter()).toBe('cc-hooks');
-    delete (globalThis as Record<symbol, unknown>)[oldSym];
   });
 });
 

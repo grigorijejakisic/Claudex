@@ -3,17 +3,13 @@ import { createSession } from '../../core/sessions.js';
 import {
   upsertThreadState,
   getThreadState,
-  resetThreadState,
 } from '../../core/thread.js';
 import {
   updatePressureScore,
-  getPressureByProject,
   getHotFiles,
-  decayPressure,
 } from '../../core/pressure.js';
 import {
   getCheckpointTracking,
-  updateCheckpointTracking,
   markPostCompactPending,
   clearPostCompactPending,
   recordThresholdHit,
@@ -106,16 +102,6 @@ describe('thread state CRUD', () => {
     expect(state!.key_exchanges[0].role).toBe('user');
   });
 
-  it('resetThreadState deletes thread state', () => {
-    upsertThreadState(db, {
-      session_id: 's1',
-      topic: 'to be deleted',
-    });
-    resetThreadState(db, 's1');
-
-    const state = getThreadState(db, 's1');
-    expect(state).toBeUndefined();
-  });
 });
 
 describe('pressure scores CRUD', () => {
@@ -132,7 +118,7 @@ describe('pressure scores CRUD', () => {
   it('updatePressureScore creates new entry', () => {
     updatePressureScore(db, 'src/auth.ts', 'myapp', 0.3);
 
-    const rows = getPressureByProject(db, 'myapp');
+    const rows = db.prepare('SELECT * FROM pressure_scores WHERE project = ? ORDER BY raw_pressure DESC').all('myapp') as any[];
     expect(rows).toHaveLength(1);
     expect(rows[0].file_path).toBe('src/auth.ts');
     expect(rows[0].raw_pressure).toBeCloseTo(0.3);
@@ -143,7 +129,7 @@ describe('pressure scores CRUD', () => {
     updatePressureScore(db, 'src/auth.ts', 'myapp', 0.2);
     updatePressureScore(db, 'src/auth.ts', 'myapp', 0.2);
 
-    const rows = getPressureByProject(db, 'myapp');
+    const rows = db.prepare('SELECT * FROM pressure_scores WHERE project = ? ORDER BY raw_pressure DESC').all('myapp') as any[];
     expect(rows).toHaveLength(1);
     expect(rows[0].raw_pressure).toBeCloseTo(0.4);
   });
@@ -152,7 +138,7 @@ describe('pressure scores CRUD', () => {
     updatePressureScore(db, 'src/auth.ts', 'myapp', 0.3);
     updatePressureScore(db, 'src/auth.ts', 'myapp', 0.3);
 
-    const rows = getPressureByProject(db, 'myapp');
+    const rows = db.prepare('SELECT * FROM pressure_scores WHERE project = ? ORDER BY raw_pressure DESC').all('myapp') as any[];
     expect(rows[0].raw_pressure).toBeCloseTo(0.6);
     expect(rows[0].temperature).toBe('HOT');
   });
@@ -166,19 +152,6 @@ describe('pressure scores CRUD', () => {
     expect(hot).toHaveLength(1);
     expect(hot[0].file_path).toBe('src/hot.ts');
     expect(hot[0].project).toBe('myapp');
-  });
-
-  it('decayPressure reduces pressure and demotes to COLD', () => {
-    updatePressureScore(db, 'src/file.ts', 'myapp', 0.6);
-    expect(getPressureByProject(db, 'myapp')[0].temperature).toBe('HOT');
-
-    // Decay heavily: 0.6 * (1 - 0.95) = 0.03 < 0.1 threshold
-    const affected = decayPressure(db, 'myapp', 0.95);
-    expect(affected).toBe(2); // decay + demotion rows
-
-    const rows = getPressureByProject(db, 'myapp');
-    expect(rows[0].raw_pressure).toBeCloseTo(0.03);
-    expect(rows[0].temperature).toBe('COLD');
   });
 });
 
@@ -194,23 +167,16 @@ describe('checkpoint tracking CRUD', () => {
   });
 
   it('getCheckpointTracking returns tracking state', () => {
-    updateCheckpointTracking(db, 's1', 25);
+    db.prepare(
+      `INSERT INTO checkpoint_tracking (session_id, observation_count, last_checkpoint_epoch, updated_at_epoch)
+       VALUES (?, ?, unixepoch(), unixepoch())`
+    ).run('s1', 25);
 
     const tracking = getCheckpointTracking(db, 's1');
     expect(tracking).toBeDefined();
     expect(tracking!.session_id).toBe('s1');
     expect(tracking!.observation_count).toBe(25);
     expect(tracking!.thresholds_hit).toEqual([]);
-  });
-
-  it('updateCheckpointTracking creates or updates tracking', () => {
-    updateCheckpointTracking(db, 's1', 10);
-    let tracking = getCheckpointTracking(db, 's1');
-    expect(tracking!.observation_count).toBe(10);
-
-    updateCheckpointTracking(db, 's1', 20);
-    tracking = getCheckpointTracking(db, 's1');
-    expect(tracking!.observation_count).toBe(20);
   });
 
   it('markPostCompactPending sets flag', () => {
@@ -229,7 +195,10 @@ describe('checkpoint tracking CRUD', () => {
   });
 
   it('recordThresholdHit appends to thresholds_hit array', () => {
-    updateCheckpointTracking(db, 's1', 0);
+    db.prepare(
+      `INSERT INTO checkpoint_tracking (session_id, observation_count, last_checkpoint_epoch, updated_at_epoch)
+       VALUES (?, ?, unixepoch(), unixepoch())`
+    ).run('s1', 0);
     recordThresholdHit(db, 's1', 25);
     recordThresholdHit(db, 's1', 50);
 

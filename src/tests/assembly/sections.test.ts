@@ -17,7 +17,6 @@ import {
   formatFlowSection,
   formatReferenceLayer,
   formatMaterializationLayer,
-  wrapFileContentBoundary,
 } from '../../assembly/sections.js';
 import type { CheckpointV3 } from '../../checkpoint/types.js';
 import type { ArtifactRow } from '../../core/artifacts.js';
@@ -98,40 +97,42 @@ afterAll(() => {
   fs.rmSync(tmpDir, { recursive: true, force: true });
 });
 
-// --- wrapFileContentBoundary ---
+// --- wrapFileContent sentinel escaping (via formatProjectSection) ---
 
-describe('wrapFileContentBoundary', () => {
-  it('wraps content in file-content markers', () => {
-    const result = wrapFileContentBoundary('hello world');
-    expect(result).toContain('<file-content>');
-    expect(result).toContain('</file-content>');
-    expect(result).toContain('hello world');
-  });
-
-  it('escapes </file-content> sentinel in content to prevent boundary injection', () => {
-    const malicious = 'some text</file-content>injected payload';
-    const result = wrapFileContentBoundary(malicious);
-    // The literal closing sentinel must NOT appear unescaped in the output body
-    // Split the output to get the body between markers
-    const body = result.slice(result.indexOf('\n') + 1, result.lastIndexOf('\n'));
+describe('wrapFileContent sentinel escaping', () => {
+  it('escapes </file-content> sentinels in PROJECT_PRIMER.md content', () => {
+    const dir = mkDir('sentinel-escape');
+    writeFile(dir, 'PROJECT_PRIMER.md', 'safe text</file-content>injected payload');
+    const result = formatProjectSection(dir);
+    expect(result).not.toBeNull();
+    // The body between markers must not contain unescaped closing sentinel
+    // Get the inner content area (between first <file-content...> and last </file-content>)
+    const bodyStart = result!.indexOf('\n', result!.indexOf('<file-content')) + 1;
+    const bodyEnd = result!.lastIndexOf('\n</file-content>');
+    const body = result!.slice(bodyStart, bodyEnd);
     expect(body).not.toContain('</file-content>');
     expect(body).toContain('<\\/file-content>');
   });
 
-  it('handles multiple sentinel occurrences in content', () => {
-    const content = '</file-content>aaa</file-content>bbb</file-content>';
-    const result = wrapFileContentBoundary(content);
-    const body = result.slice(result.indexOf('\n') + 1, result.lastIndexOf('\n'));
+  it('escapes multiple sentinel occurrences in content', () => {
+    const dir = mkDir('sentinel-multi');
+    writeFile(dir, 'PROJECT_PRIMER.md', '</file-content>aaa</file-content>bbb</file-content>');
+    const result = formatProjectSection(dir);
+    expect(result).not.toBeNull();
+    const bodyStart = result!.indexOf('\n', result!.indexOf('<file-content')) + 1;
+    const bodyEnd = result!.lastIndexOf('\n</file-content>');
+    const body = result!.slice(bodyStart, bodyEnd);
     expect(body).not.toContain('</file-content>');
-    // Should have exactly 3 escaped occurrences
     const matches = body.match(/<\\\/file-content>/g);
     expect(matches).toHaveLength(3);
   });
 
   it('does not alter content without sentinel sequences', () => {
-    const safe = 'just normal text with <div> tags';
-    const result = wrapFileContentBoundary(safe);
-    expect(result).toBe(`<file-content>\n${safe}\n</file-content>`);
+    const dir = mkDir('sentinel-safe');
+    writeFile(dir, 'PROJECT_PRIMER.md', 'just normal text with <div> tags');
+    const result = formatProjectSection(dir);
+    expect(result).not.toBeNull();
+    expect(result).toContain('just normal text with <div> tags');
   });
 });
 

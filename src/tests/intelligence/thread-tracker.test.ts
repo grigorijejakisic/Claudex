@@ -100,7 +100,7 @@ describe('thread tracker', () => {
 
   describe('gist extraction', () => {
     it('short text (< 120 chars) returned as-is', () => {
-      expect(extractGist('user', 'Fix the auth token refresh bug')).toBe(
+      expect(extractGist('Fix the auth token refresh bug')).toBe(
         'Fix the auth token refresh bug'
       );
     });
@@ -108,14 +108,14 @@ describe('thread tracker', () => {
     it('long text truncated at sentence boundary', () => {
       const long =
         'Found the root cause in the auth module. The snapshot was stale because it cached at startup and never refreshed during the OAuth token lifecycle which caused intermittent failures.';
-      const gist = extractGist('agent', long);
+      const gist = extractGist(long);
       expect(gist.length).toBeLessThanOrEqual(120);
       expect(gist).toMatch(/\.$/); // Should end at a sentence boundary
     });
 
     it('long text without sentence boundary truncated at 120 with ellipsis', () => {
       const long = 'A'.repeat(200);
-      const gist = extractGist('user', long);
+      const gist = extractGist(long);
       expect(gist.length).toBe(123); // 120 + "..."
       expect(gist).toMatch(/\.\.\.$/);
     });
@@ -123,7 +123,7 @@ describe('thread tracker', () => {
     it('never exceeds 120 chars (excluding ellipsis)', () => {
       const long =
         'This is a very long message that goes on and on without any clear sentence boundaries so we need to truncate it at the character limit';
-      const gist = extractGist('user', long);
+      const gist = extractGist(long);
       // Allow up to 123 (120 + "...")
       expect(gist.length).toBeLessThanOrEqual(123);
     });

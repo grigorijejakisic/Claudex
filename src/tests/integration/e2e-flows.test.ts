@@ -8,7 +8,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { createTestDb, type TestDatabase } from '../helpers/test-db.js';
 import { openDatabase } from '../../core/storage.js';
 import { initializeSchema } from '../../core/migrations.js';
-import { createSession, getSession, endSession } from '../../core/sessions.js';
+import { createSession, endSession } from '../../core/sessions.js';
 import { getObservationsByProject, insertObservation, searchObservations } from '../../core/observations.js';
 import { getCheckpointTracking, markPostCompactPending, clearPostCompactPending } from '../../core/checkpoint-tracking.js';
 import { getThreadState, upsertThreadState } from '../../core/thread.js';
@@ -68,7 +68,7 @@ describe('CC Hook E2E Flow', () => {
     recoverFromDb(db);
     const payload = assembleFullContext({ db, project, projectDir: '/test', config });
 
-    const session = getSession(db, sessionId);
+    const session = db.prepare('SELECT status FROM sessions WHERE session_id = ?').get(sessionId) as { status: string } | undefined;
     expect(session).toBeDefined();
     expect(session!.status).toBe('active');
     expect(payload).toBeDefined();
@@ -164,7 +164,7 @@ describe('CC Hook E2E Flow', () => {
       retainErrorCount: config.observability.retain_error_count,
     });
 
-    const finalSession = getSession(db, sessionId);
+    const finalSession = db.prepare('SELECT status FROM sessions WHERE session_id = ?').get(sessionId) as { status: string } | undefined;
     expect(finalSession!.status).toBe('completed');
   });
 });
@@ -192,7 +192,7 @@ describe('OpenClaw Bridge E2E Flow', () => {
     // Step 1: onInit
     const initResult = await bridge.onInit({ sessionKey: 'oc-session-1', cwd: '/test' });
     expect(bctx.sessionId).toBe('oc-session-1');
-    const session = getSession(db, 'oc-session-1');
+    const session = db.prepare('SELECT status FROM sessions WHERE session_id = ?').get('oc-session-1') as { status: string } | undefined;
     expect(session).toBeDefined();
     expect(session!.status).toBe('active');
 
@@ -346,7 +346,7 @@ describe('Fresh Install Flow', () => {
 
     // Insert and query session
     createSession(db, { session_id: 'crud-sess', project: 'crud-proj', cwd: '/test' });
-    const sess = getSession(db, 'crud-sess');
+    const sess = db.prepare('SELECT status FROM sessions WHERE session_id = ?').get('crud-sess') as { status: string } | undefined;
     expect(sess).toBeDefined();
     expect(sess!.status).toBe('active');
 

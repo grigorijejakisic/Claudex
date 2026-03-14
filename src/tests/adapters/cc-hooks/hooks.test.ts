@@ -5,8 +5,8 @@
  */
 
 import { createTestDb, type TestDatabase } from '../../helpers/test-db.js';
-import { createSession, getSession } from '../../../core/sessions.js';
-import { getCheckpointTracking, markPostCompactPending, clearPostCompactPending, updateCheckpointTracking } from '../../../core/checkpoint-tracking.js';
+import { createSession } from '../../../core/sessions.js';
+import { getCheckpointTracking, markPostCompactPending, clearPostCompactPending } from '../../../core/checkpoint-tracking.js';
 import { recoverFromDb } from '../../../checkpoint/loader.js';
 import { assembleFullContext, assembleRegularPrompt } from '../../../assembly/assembler.js';
 import { processToolObservation } from '../../../extraction/extractor.js';
@@ -50,7 +50,7 @@ describe('SessionStart hook logic', () => {
       source: 'cc-hooks',
     });
 
-    const session = getSession(db, 'test-s1');
+    const session = db.prepare('SELECT status FROM sessions WHERE session_id = ?').get('test-s1') as { status: string } | undefined;
     expect(session).toBeDefined();
     expect(session!.status).toBe('active');
 
@@ -149,27 +149,6 @@ describe('UserPromptSubmit hook logic', () => {
     expect(tracking?.post_compact_pending).toBe(0);
   });
 
-  it('updateCheckpointTracking sets last_checkpoint_epoch so cooldown works', () => {
-    // Before any checkpoint, last_checkpoint_epoch should be null/undefined
-    const before = getCheckpointTracking(db, 'test-s1');
-    expect(before?.last_checkpoint_epoch ?? 0).toBe(0);
-
-    // Simulate what the fix does: call updateCheckpointTracking after writeCheckpoint
-    updateCheckpointTracking(db, 'test-s1', 0);
-
-    const after = getCheckpointTracking(db, 'test-s1');
-    expect(after).toBeDefined();
-    expect(after!.last_checkpoint_epoch).toBeGreaterThan(0);
-
-    // Cooldown check: nowEpoch - last_checkpoint_epoch should be < cooldown (300s default)
-    const nowEpoch = Math.floor(Date.now() / 1000);
-    const cooldown = 300;
-    const elapsed = nowEpoch - after!.last_checkpoint_epoch!;
-    // The epoch was just set, so elapsed should be tiny (< 5s)
-    expect(elapsed).toBeLessThan(5);
-    // Therefore the cooldown check should BLOCK a new checkpoint
-    expect(elapsed < cooldown).toBe(true);
-  });
 });
 
 describe('PostToolUse hook logic', () => {
@@ -368,7 +347,7 @@ describe('SessionEnd hook logic', () => {
 
   it('ends session record', () => {
     endSession(db, 'test-s1', 'completed');
-    const session = getSession(db, 'test-s1');
+    const session = db.prepare('SELECT status FROM sessions WHERE session_id = ?').get('test-s1') as { status: string } | undefined;
     expect(session?.status).toBe('completed');
   });
 

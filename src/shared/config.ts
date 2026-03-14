@@ -14,7 +14,6 @@ export interface ClaudexConfig {
   version: number;
   injection: {
     budget_tokens: number;
-    gauge_threshold: number;
     topic_shift_budget: number;
   };
   observations: {
@@ -31,7 +30,6 @@ export interface ClaudexConfig {
   learnings: {
     max_per_project: number;
     surface_count: number;
-    publish_to_memory_md: boolean;
   };
   enrichment: {
     enabled: boolean;
@@ -57,7 +55,6 @@ export interface ClaudexConfig {
   };
   gsd: {
     enabled: boolean;
-    phase_boost: number;
   };
   context: {
     advisory_threshold: number;
@@ -66,13 +63,7 @@ export interface ClaudexConfig {
     checkpoint_cooldown_seconds: number;
   };
   features: {
-    observation_capture: boolean;
-    checkpoint_system: boolean;
-    token_gauge: boolean;
     fts5_search: boolean;
-    decision_capture: boolean;
-    learnings_promotion: boolean;
-    telemetry: boolean;
   };
   adapter: string;
 }
@@ -120,16 +111,16 @@ function validateConfig(config: ClaudexConfig): ClaudexConfig {
     key: keyof ClaudexConfig;
     fields: Record<string, 'boolean' | 'number' | 'string'>;
   }> = [
-    { key: 'injection', fields: { budget_tokens: 'number', gauge_threshold: 'number', topic_shift_budget: 'number' } },
+    { key: 'injection', fields: { budget_tokens: 'number', topic_shift_budget: 'number' } },
     { key: 'observations', fields: { enabled: 'boolean', retention_days: 'number', prune_threshold: 'number', prune_count: 'number' } },
     { key: 'checkpoint', fields: { debounce_seconds: 'number', compression: 'boolean', compaction_instructions: 'string' } },
-    { key: 'learnings', fields: { max_per_project: 'number', surface_count: 'number', publish_to_memory_md: 'boolean' } },
+    { key: 'learnings', fields: { max_per_project: 'number', surface_count: 'number' } },
     { key: 'enrichment', fields: { enabled: 'boolean', provider: 'string', ollama_base_url: 'string', ollama_model: 'string', timeout_ms: 'number' } },
     { key: 'embeddings', fields: { enabled: 'boolean', provider: 'string', model: 'string', ollama_base_url: 'string', topic_shift_threshold: 'number', topic_shift_window: 'number', decision_confidence_threshold: 'number', jaccard_shift_threshold: 'number' } },
     { key: 'observability', fields: { enabled: 'boolean', retention_days: 'number', retain_error_count: 'number' } },
-    { key: 'gsd', fields: { enabled: 'boolean', phase_boost: 'number' } },
+    { key: 'gsd', fields: { enabled: 'boolean' } },
     { key: 'context', fields: { advisory_threshold: 'number', warning_threshold: 'number', critical_threshold: 'number', checkpoint_cooldown_seconds: 'number' } },
-    { key: 'features', fields: { observation_capture: 'boolean', checkpoint_system: 'boolean', token_gauge: 'boolean', fts5_search: 'boolean', decision_capture: 'boolean', learnings_promotion: 'boolean', telemetry: 'boolean' } },
+    { key: 'features', fields: { fts5_search: 'boolean' } },
   ];
 
   for (const { key, fields } of sectionChecks) {
@@ -179,7 +170,6 @@ function validateNumericRanges(config: ClaudexConfig, defaults: ClaudexConfig): 
 
   // injection
   config.injection.budget_tokens = posInt(config.injection.budget_tokens, defaults.injection.budget_tokens);
-  config.injection.gauge_threshold = threshold(config.injection.gauge_threshold, defaults.injection.gauge_threshold);
   config.injection.topic_shift_budget = posInt(config.injection.topic_shift_budget, defaults.injection.topic_shift_budget);
 
   // observations
@@ -206,9 +196,6 @@ function validateNumericRanges(config: ClaudexConfig, defaults: ClaudexConfig): 
   // observability
   config.observability.retention_days = posInt(config.observability.retention_days, defaults.observability.retention_days, 365);
   config.observability.retain_error_count = posInt(config.observability.retain_error_count, defaults.observability.retain_error_count);
-
-  // gsd
-  config.gsd.phase_boost = nonNeg(config.gsd.phase_boost, defaults.gsd.phase_boost);
 
   // context thresholds — must be in (0, 1] and ordered: advisory < warning < critical
   config.context.advisory_threshold = threshold(config.context.advisory_threshold, defaults.context.advisory_threshold);

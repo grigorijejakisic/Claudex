@@ -218,9 +218,3 @@ function inferTopic(text: string): string | null {
   return extractTopic(text);
 }
 
-/** Convenience factory for creating detector. */
-export function createTopicShiftDetector(
-  provider: EmbeddingProvider | null
-): TopicShiftDetector {
-  return new TopicShiftDetector(provider);
-}

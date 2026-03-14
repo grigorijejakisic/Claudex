@@ -47,7 +47,6 @@ export const DEFAULT_CONFIG = {
   version: 3,
   injection: {
     budget_tokens: 4000,
-    gauge_threshold: 0.70,
     topic_shift_budget: 800,
   },
   observations: {
@@ -64,7 +63,6 @@ export const DEFAULT_CONFIG = {
   learnings: {
     max_per_project: 50,
     surface_count: 10,
-    publish_to_memory_md: false,
   },
   enrichment: {
     enabled: true,
@@ -90,7 +88,6 @@ export const DEFAULT_CONFIG = {
   },
   gsd: {
     enabled: true,
-    phase_boost: 0.10,
   },
   context: {
     advisory_threshold: 0.50,
@@ -99,13 +96,7 @@ export const DEFAULT_CONFIG = {
     checkpoint_cooldown_seconds: 300,
   },
   features: {
-    observation_capture: true,
-    checkpoint_system: true,
-    token_gauge: true,
     fts5_search: true,
-    decision_capture: true,
-    learnings_promotion: true,
-    telemetry: true,
   },
   adapter: 'auto' as const,
 } as const;

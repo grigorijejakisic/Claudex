@@ -60,34 +60,6 @@ export function readGsdState(projectDir: string): GsdState | null {
 }
 
 /**
- * Extracts file paths from plan YAML frontmatter (files_modified sections).
- * These files get +0.10 pressure boost when GSD is active.
- * Non-throwing (returns empty array on error).
- */
-export function getPhaseFiles(projectDir: string, phase: number): string[] {
-  try {
-    const phasesDir = path.join(projectDir, '.planning', 'phases');
-    if (!fs.existsSync(phasesDir)) return [];
-
-    const phaseDir = findPhaseDir(phasesDir, phase);
-    if (!phaseDir) return [];
-
-    const planFiles = fs.readdirSync(phaseDir).filter((f) => f.endsWith('-PLAN.md'));
-    const allFiles = new Set<string>();
-
-    for (const planFile of planFiles) {
-      const content = fs.readFileSync(path.join(phaseDir, planFile), 'utf8');
-      const files = extractFilesModified(content);
-      for (const f of files) allFiles.add(f);
-    }
-
-    return Array.from(allFiles);
-  } catch {
-    return [];
-  }
-}
-
-/**
  * Parses phase, plan, and status from STATE.md content.
  * Handles "Phase: N of M" and "Phase: N" formats.
  * @internal
@@ -179,32 +151,3 @@ function countCheckboxes(dir: string): { checked: number; total: number } {
   return { checked, total: checked + unchecked };
 }
 
-/**
- * Extracts file paths from files_modified YAML frontmatter.
- * @internal
- */
-function extractFilesModified(content: string): string[] {
-  const files: string[] = [];
-
-  // Find files_modified section in YAML frontmatter (between --- markers)
-  const frontmatterMatch = content.match(/^---\s*\n([\s\S]*?)\n---/);
-  if (!frontmatterMatch) return files;
-
-  const frontmatter = frontmatterMatch[1];
-  const fmStart = frontmatter.indexOf('files_modified:');
-  if (fmStart < 0) return files;
-
-  const lines = frontmatter.slice(fmStart).split('\n');
-  // Skip the "files_modified:" line itself
-  for (let i = 1; i < lines.length; i++) {
-    const line = lines[i];
-    const itemMatch = line.match(/^\s+-\s+(.+)/);
-    if (itemMatch) {
-      files.push(itemMatch[1].trim());
-    } else if (line.trim().length > 0 && !line.startsWith(' ')) {
-      break; // Next YAML key
-    }
-  }
-
-  return files;
-}

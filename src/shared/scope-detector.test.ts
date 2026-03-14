@@ -2,7 +2,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
 import { vi } from 'vitest';
-import { detectProjectScope, registerProject, getProjectId } from './scope-detector.js';
+import { detectProjectScope, getProjectId } from './scope-detector.js';
 import * as paths from './paths.js';
 
 describe('scope-detector', () => {
@@ -108,17 +108,6 @@ describe('scope-detector', () => {
     });
   });
 
-  describe('registerProject', () => {
-    it('registers and detects a project', async () => {
-      const projectPath = path.join(tmpDir, 'new-project');
-      const registered = await registerProject(projectPath, 'new-id');
-      expect(registered).toBe(true);
-
-      const detected = detectProjectScope(projectPath);
-      expect(detected).toBe('new-id');
-    });
-  });
-
   describe('paths with spaces', () => {
     it('detectProjectScope matches path with spaces', () => {
       const projectPath = path.join(tmpDir, 'My Project');
@@ -145,12 +134,6 @@ describe('scope-detector', () => {
       expect(result).toMatch(/^my-cool-project-[0-9a-f]{8}$/);
     });
 
-    it('registerProject works with path containing spaces', async () => {
-      const projectPath = path.join(tmpDir, 'path with spaces', 'sub dir');
-      const registered = await registerProject(projectPath, 'spaced-reg');
-      expect(registered).toBe(true);
-      expect(detectProjectScope(projectPath)).toBe('spaced-reg');
-    });
   });
 
   describe('paths with unicode characters', () => {
@@ -188,11 +171,5 @@ describe('scope-detector', () => {
       expect(id1).toBe(id2);
     });
 
-    it('registerProject works with unicode path', async () => {
-      const projectPath = path.join(tmpDir, 'проект');
-      const registered = await registerProject(projectPath, 'russian-id');
-      expect(registered).toBe(true);
-      expect(detectProjectScope(projectPath)).toBe('russian-id');
-    });
   });
 });

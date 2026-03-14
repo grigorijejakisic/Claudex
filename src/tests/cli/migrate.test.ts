@@ -16,6 +16,8 @@ import {
   formatResult,
 } from '../../cli/migrate.js';
 import { SCHEMA_VERSION } from '../../shared/constants.js';
+import { openDatabase, closeDatabase } from '../../core/storage.js';
+import { initializeSchema } from '../../core/migrations.js';
 
 // ── Helpers ──────────────────────────────────────────────────────────
 
@@ -424,6 +426,71 @@ describe('runMigration', () => {
     const result = runMigration(dbPath);
     expect(result.success).toBe(true);
     expect(result.steps.some(s => s.includes('Cleaned up stale temp DB'))).toBe(true);
+  });
+});
+
+describe('runMigration — WAL-safe backup', () => {
+  let tmpDir: string;
+
+  beforeEach(() => { tmpDir = createTmpDir(); });
+  afterEach(() => { fs.rmSync(tmpDir, { recursive: true, force: true }); });
+
+  it('backup includes WAL-committed data (WAL checkpoint before copy)', () => {
+    const dbPath = path.join(tmpDir, 'wal-test.db');
+    // Create a v2 database in WAL mode
+    createV2Database(dbPath, { observations: 3, sessions: 1, pressureScores: 1 });
+
+    // Reopen and insert a row, leaving WAL un-checkpointed.
+    // We keep the DB open so close() doesn't auto-checkpoint.
+    const db = new Database(dbPath);
+    db.pragma('journal_mode = WAL');
+    db.prepare(
+      `INSERT INTO observations (session_id, project, tool_name, category, title, content, importance, files_modified)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+    ).run('sess-wal', 'test-project', 'Read', 'code', 'WAL-only obs', 'WAL content', 3, '[]');
+
+    // Verify WAL file exists with data
+    const walPath = dbPath + '-wal';
+    expect(fs.existsSync(walPath)).toBe(true);
+
+    // Close the connection — this is the scenario where another process
+    // might have left data in WAL. We verify that runMigration explicitly
+    // checkpoints before copying.
+    db.close();
+
+    // Run migration (which should checkpoint WAL before backup)
+    const result = runMigration(dbPath, { dryRun: true });
+    expect(result.success).toBe(true);
+
+    // Verify the backup contains all rows (including WAL-committed ones)
+    const backupDb = new Database(dbPath + '.v2-backup', { readonly: true });
+    try {
+      const counts = getRowCounts(backupDb);
+      // Should have 3 original + 1 WAL-committed = 4
+      expect(counts.observations).toBe(4);
+    } finally {
+      backupDb.close();
+    }
+  });
+});
+
+describe('runMigration — v3 guard', () => {
+  let tmpDir: string;
+
+  beforeEach(() => { tmpDir = createTmpDir(); });
+  afterEach(() => { fs.rmSync(tmpDir, { recursive: true, force: true }); });
+
+  it('aborts migration when source database is already v3', () => {
+    const dbPath = path.join(tmpDir, 'already-v3.db');
+    // Create a v3 database
+    const db = openDatabase(dbPath);
+    initializeSchema(db);
+    closeDatabase(db);
+
+    const result = runMigration(dbPath);
+    // Should abort without errors — migration not needed
+    expect(result.success).toBe(false);
+    expect(result.errors.some((e: string) => e.includes('already v3'))).toBe(true);
   });
 });
 

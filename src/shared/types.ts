@@ -87,15 +87,6 @@ export interface SessionEndPayload {
   reason: 'clear' | 'logout' | 'prompt_input_exit' | 'bridge_end';
 }
 
-/** Discriminated union of all event payloads. */
-export type EventPayload =
-  | SessionInitPayload
-  | BeforePromptPayload
-  | AfterToolPayload
-  | AfterTurnPayload
-  | BeforeCompactPayload
-  | SessionEndPayload;
-
 /**
  * Host-neutral event envelope — shared fields across all event kinds.
  * @see Architecture Section 3.1
@@ -129,16 +120,3 @@ export interface InjectPayload {
   sources: string[];
 }
 
-/**
- * Core engine interface — processes events, checks capabilities.
- * @see Architecture Section 3.1
- */
-export interface ClaudexCore {
-  readonly capabilities: RuntimeCapabilities;
-
-  /** Process any runtime event — single dispatch point. */
-  handleEvent(event: RuntimeEvent): Promise<InjectPayload | void>;
-
-  /** Lifecycle cleanup. */
-  close(): void;
-}

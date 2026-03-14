@@ -7,7 +7,6 @@ import { createTestDb, type TestDatabase } from '../helpers/test-db.js';
 import {
   recoverFromDb,
   loadFromFile,
-  followHopChain,
   loadCheckpoint,
 } from '../../checkpoint/loader.js';
 import type { CheckpointV3, CheckpointMeta } from '../../checkpoint/types.js';
@@ -174,64 +173,6 @@ describe('loadFromFile', () => {
 
     const result = loadFromFile(tmpDir);
     expect(result).toBeNull();
-  });
-});
-
-describe('followHopChain', () => {
-  let tmpDir: string;
-
-  beforeEach(() => {
-    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'claudex-hop-'));
-  });
-
-  afterEach(() => {
-    fs.rmSync(tmpDir, { recursive: true, force: true });
-  });
-
-  it('follows previous_checkpoint chain up to 3 hops', () => {
-    // Write 4 linked checkpoints: A -> B -> C -> D
-    const cpD = makeCheckpoint({ meta: { ...makeCheckpoint().meta, checkpoint_id: 'D', previous_checkpoint: null } });
-    const cpC = makeCheckpoint({ meta: { ...makeCheckpoint().meta, checkpoint_id: 'C', previous_checkpoint: 'D.yaml' } });
-    const cpB = makeCheckpoint({ meta: { ...makeCheckpoint().meta, checkpoint_id: 'B', previous_checkpoint: 'C.yaml' } });
-    const cpA = makeCheckpoint({ meta: { ...makeCheckpoint().meta, checkpoint_id: 'A', previous_checkpoint: 'B.yaml' } });
-
-    fs.writeFileSync(path.join(tmpDir, 'A.yaml'), yaml.dump(cpA));
-    fs.writeFileSync(path.join(tmpDir, 'B.yaml'), yaml.dump(cpB));
-    fs.writeFileSync(path.join(tmpDir, 'C.yaml'), yaml.dump(cpC));
-    fs.writeFileSync(path.join(tmpDir, 'D.yaml'), yaml.dump(cpD));
-
-    const chain = followHopChain(tmpDir, 'A.yaml', 3);
-    expect(chain).toHaveLength(3); // A, B, C (stops at max 3 hops)
-    expect(chain[0].meta.checkpoint_id).toBe('A');
-    expect(chain[1].meta.checkpoint_id).toBe('B');
-    expect(chain[2].meta.checkpoint_id).toBe('C');
-  });
-
-  it('stops at null previous_checkpoint', () => {
-    const cpB = makeCheckpoint({ meta: { ...makeCheckpoint().meta, checkpoint_id: 'B', previous_checkpoint: null } });
-    const cpA = makeCheckpoint({ meta: { ...makeCheckpoint().meta, checkpoint_id: 'A', previous_checkpoint: 'B.yaml' } });
-
-    fs.writeFileSync(path.join(tmpDir, 'A.yaml'), yaml.dump(cpA));
-    fs.writeFileSync(path.join(tmpDir, 'B.yaml'), yaml.dump(cpB));
-
-    const chain = followHopChain(tmpDir, 'A.yaml', 3);
-    expect(chain).toHaveLength(2); // A, B — stops at null previous
-  });
-
-  it('detects cycles via seen set', () => {
-    const cpB = makeCheckpoint({ meta: { ...makeCheckpoint().meta, checkpoint_id: 'B', previous_checkpoint: 'A.yaml' } });
-    const cpA = makeCheckpoint({ meta: { ...makeCheckpoint().meta, checkpoint_id: 'A', previous_checkpoint: 'B.yaml' } });
-
-    fs.writeFileSync(path.join(tmpDir, 'A.yaml'), yaml.dump(cpA));
-    fs.writeFileSync(path.join(tmpDir, 'B.yaml'), yaml.dump(cpB));
-
-    const chain = followHopChain(tmpDir, 'A.yaml', 10);
-    expect(chain).toHaveLength(2); // A, B — stops at cycle (A seen again)
-  });
-
-  it('returns empty array for non-existent start file', () => {
-    const chain = followHopChain(tmpDir, 'nonexistent.yaml');
-    expect(chain).toEqual([]);
   });
 });
 
@@ -521,24 +462,6 @@ describe('Fix 2: path traversal prevention', () => {
     expect(result).toBeNull();
   });
 
-  it('followHopChain rejects ../ traversal in previous_checkpoint', () => {
-    // Write a checkpoint with a malicious previous_checkpoint
-    const cpA = makeCheckpoint({
-      meta: { ...makeCheckpoint().meta, checkpoint_id: 'A', previous_checkpoint: '../escape.yaml' },
-    });
-    fs.writeFileSync(path.join(checkpointsDir, 'A.yaml'), yaml.dump(cpA));
-
-    // Write the escape target outside checkpointsDir
-    const cpEscape = makeCheckpoint({
-      meta: { ...makeCheckpoint().meta, checkpoint_id: 'ESCAPE', previous_checkpoint: null },
-    });
-    fs.writeFileSync(path.join(tmpDir, 'context', 'escape.yaml'), yaml.dump(cpEscape));
-
-    const chain = followHopChain(checkpointsDir, 'A.yaml', 3);
-    // Should only get A, not follow the traversal
-    expect(chain).toHaveLength(1);
-    expect(chain[0].meta.checkpoint_id).toBe('A');
-  });
 });
 
 describe('Fix 3: gzip bomb prevention', () => {

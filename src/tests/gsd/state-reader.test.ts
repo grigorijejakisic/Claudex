@@ -2,7 +2,7 @@ import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
-import { readGsdState, getPhaseFiles } from '../../gsd/state-reader.js';
+import { readGsdState } from '../../gsd/state-reader.js';
 
 let tmpDir: string;
 
@@ -134,69 +134,6 @@ describe('readGsdState', () => {
     const proj = createProject('test-malformed');
     writeFile(proj, '.planning/STATE.md', '\0\0\0binary garbage\0\0');
     expect(() => readGsdState(proj)).not.toThrow();
-  });
-});
-
-describe('getPhaseFiles', () => {
-  it('extracts files_modified from plan YAML frontmatter', () => {
-    const proj = createProject('test-phase-files');
-    writeFile(proj, '.planning/phases/07-subsystems/07-01-PLAN.md', `---
-phase: 07
-files_modified:
-  - src/gauge/token-gauge.ts
-  - src/gauge/window-detector.ts
-autonomous: true
----
-Content here
-`);
-
-    const files = getPhaseFiles(proj, 7);
-    expect(files).toContain('src/gauge/token-gauge.ts');
-    expect(files).toContain('src/gauge/window-detector.ts');
-  });
-
-  it('returns unique file paths across multiple plans', () => {
-    const proj = createProject('test-dedup-files');
-    writeFile(proj, '.planning/phases/03-intelligence/03-01-PLAN.md', `---
-files_modified:
-  - src/a.ts
-  - src/b.ts
----
-`);
-    writeFile(proj, '.planning/phases/03-intelligence/03-02-PLAN.md', `---
-files_modified:
-  - src/b.ts
-  - src/c.ts
----
-`);
-
-    const files = getPhaseFiles(proj, 3);
-    expect(files).toHaveLength(3);
-    expect(files).toContain('src/a.ts');
-    expect(files).toContain('src/b.ts');
-    expect(files).toContain('src/c.ts');
-  });
-
-  it('returns empty array when no phase directory matches', () => {
-    const proj = createProject('test-no-phase-dir');
-    fs.mkdirSync(path.join(proj, '.planning', 'phases'), { recursive: true });
-    expect(getPhaseFiles(proj, 99)).toEqual([]);
-  });
-
-  it('returns empty array when plans have no files_modified', () => {
-    const proj = createProject('test-no-fm');
-    writeFile(proj, '.planning/phases/05-assembly/05-01-PLAN.md', `---
-phase: 05
-autonomous: true
----
-No files_modified here
-`);
-
-    expect(getPhaseFiles(proj, 5)).toEqual([]);
-  });
-
-  it('is non-throwing on read errors', () => {
-    expect(getPhaseFiles('/nonexistent/path', 1)).toEqual([]);
   });
 });
 

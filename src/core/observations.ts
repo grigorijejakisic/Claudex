@@ -180,25 +180,6 @@ export function searchObservations(
 }
 
 /**
- * Soft-deletes an observation by setting deleted_at_epoch.
- */
-export function softDeleteObservation(db: Database, id: number): void {
-  cachedPrepare(db,
-    'UPDATE observations SET deleted_at_epoch = unixepoch() WHERE id = ?'
-  ).run(id);
-}
-
-/**
- * Increments access_count and updates last_accessed_at_epoch for an observation.
- */
-export function incrementAccessCount(db: Database, id: number): void {
-  cachedPrepare(db,
-    `UPDATE observations SET access_count = access_count + 1, last_accessed_at_epoch = unixepoch()
-     WHERE id = ?`
-  ).run(id);
-}
-
-/**
  * Marks observations as consumed (already injected into context).
  * Used by PreCompact to flag old observations that don't need re-injection.
  * Scoped by session_id to prevent cross-session blindness.

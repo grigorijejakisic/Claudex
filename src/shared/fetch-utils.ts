@@ -60,7 +60,7 @@ export async function fetchJsonWithTimeout(
     const text = await resp.text();
     clearTimeout(timeout);
 
-    if (text.length > maxResponseBytes) {
+    if (Buffer.byteLength(text, 'utf8') > maxResponseBytes) {
       return null;
     }
 

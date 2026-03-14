@@ -207,7 +207,7 @@ export async function captureDecisions(params: {
 
       if (insertedId !== null) {
         try {
-          createArtifact(db, sessionId, project, 'decision', String(insertedId), candidate.content.slice(0, 100), candidate.content, candidate.tier >= 3 ? 4 : 3);
+          createArtifact(db, sessionId, project, 'decision', String(insertedId), redacted.slice(0, 100), redacted, candidate.tier >= 3 ? 4 : 3);
         } catch {
           // Non-throwing — artifact creation must not break decision capture
         }

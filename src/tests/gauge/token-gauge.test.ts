@@ -179,6 +179,46 @@ describe('getTokenGauge — transcript path', () => {
   });
 });
 
+describe('getTokenGauge — symlink resolution (all platforms)', () => {
+  it('resolves symlinks on all platforms, not just Windows', () => {
+    // Write a valid transcript file
+    const realPath = writeTranscript('real-symlink-target.jsonl', [
+      JSON.stringify({ message: { usage: { input_tokens: 12345, output_tokens: 500 } } }),
+    ]);
+
+    // Create a symlink to it (if platform supports it)
+    const symlinkPath = path.join(tmpDir, 'symlink.jsonl');
+    try {
+      fs.symlinkSync(realPath, symlinkPath);
+    } catch {
+      // Skip on platforms/permissions that don't support symlinks
+      return;
+    }
+
+    // Resolve paths the same way isPathSafe does to determine expected behavior
+    let resolvedReal: string;
+    let resolvedHome: string;
+    if (process.platform === 'win32') {
+      resolvedReal = fs.realpathSync.native(realPath);
+      resolvedHome = fs.realpathSync.native(os.homedir());
+    } else {
+      resolvedReal = fs.realpathSync(realPath);
+      resolvedHome = fs.realpathSync(os.homedir());
+    }
+    const isUnderHome = !path.relative(resolvedHome, resolvedReal).startsWith('..');
+
+    const result = getTokenGauge({ capabilities: CC_CAPS, transcriptPath: symlinkPath });
+    if (isUnderHome) {
+      // Symlink target is under home — should succeed
+      expect(result).not.toBeNull();
+      expect(result!.inputTokens).toBe(12345);
+    } else {
+      // Symlink target is outside home — should be rejected
+      expect(result).toBeNull();
+    }
+  });
+});
+
 describe('getTokenGauge — transcript path validation', () => {
   it('rejects transcript path not ending with .jsonl', () => {
     // Write a file with valid content but wrong extension

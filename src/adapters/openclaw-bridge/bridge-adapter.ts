@@ -39,7 +39,9 @@ import {
   checkpointIfThresholdMet,
   captureDecisionsWithClassifier,
   runCompactionSequence,
+  persistTopicIfShifted,
 } from '../shared/lifecycle.js';
+import { sanitizeErrorForTelemetry } from '../cc-hooks/infrastructure.js';
 
 /** Cached embedding resources reused across bridge callbacks. */
 export interface EmbeddingCache {
@@ -240,7 +242,7 @@ export function createBridgeCallbacks(bctx: BridgeContext): ClaudexBridge {
       } catch (e) {
         emitTelemetry(bctx.db, bctx.sessionId, 'error', {
           subsystem: 'bridge:onInit',
-          error: String(e),
+          error: sanitizeErrorForTelemetry(e),
         }, undefined, 'openclaw');
         return undefined;
       }
@@ -285,6 +287,9 @@ export function createBridgeCallbacks(bctx: BridgeContext): ClaudexBridge {
           }
         }
 
+        // Persist topic update to thread_state when shift detected
+        persistTopicIfShifted(bctx.db, bctx.sessionId, topicShift);
+
         const payload = assembleRegularPrompt({
           isPostCompaction,
           prompt,
@@ -313,7 +318,7 @@ export function createBridgeCallbacks(bctx: BridgeContext): ClaudexBridge {
       } catch (e) {
         emitTelemetry(bctx.db, bctx.sessionId, 'error', {
           subsystem: 'bridge:onContext',
-          error: String(e),
+          error: sanitizeErrorForTelemetry(e),
         }, undefined, 'openclaw');
         return undefined;
       }
@@ -364,7 +369,7 @@ export function createBridgeCallbacks(bctx: BridgeContext): ClaudexBridge {
       } catch (e) {
         emitTelemetry(bctx.db, bctx.sessionId, 'error', {
           subsystem: 'bridge:onToolResult',
-          error: String(e),
+          error: sanitizeErrorForTelemetry(e),
         }, undefined, 'openclaw');
       }
     },
@@ -417,7 +422,7 @@ export function createBridgeCallbacks(bctx: BridgeContext): ClaudexBridge {
       } catch (e) {
         emitTelemetry(bctx.db, bctx.sessionId, 'error', {
           subsystem: 'bridge:onTurnEnd',
-          error: String(e),
+          error: sanitizeErrorForTelemetry(e),
         }, undefined, 'openclaw');
       }
     },
@@ -460,7 +465,7 @@ export function createBridgeCallbacks(bctx: BridgeContext): ClaudexBridge {
       } catch (e) {
         emitTelemetry(bctx.db, bctx.sessionId, 'error', {
           subsystem: 'bridge:onCompact',
-          error: String(e),
+          error: sanitizeErrorForTelemetry(e),
         }, undefined, 'openclaw');
       }
     },

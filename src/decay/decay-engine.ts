@@ -65,38 +65,37 @@ export function getCoOccurrences(
     files = files.slice(0, 10);
 
     const start = Date.now();
-    let total = 0;
+    const cap = 5;
 
-    // REC-15: Add LIMIT to bound per-file query execution.
-    // Since result is capped at 5, we only need to count up to 6 per file
-    // (6 to know if there are "at least 6" to properly cap the running total).
+    // Use a Set to track distinct observation IDs across all files,
+    // preventing double-counting when an observation shares multiple files with the target.
+    const seen = new Set<number>();
+
     const stmt = project != null
       ? db.prepare(
-          `SELECT COUNT(*) as cnt FROM (
-             SELECT id FROM observations
-             WHERE id != ? AND deleted_at_epoch IS NULL AND project = ? AND files_modified LIKE ?
-             LIMIT 6
-           )`
+          `SELECT id FROM observations
+           WHERE id != ? AND deleted_at_epoch IS NULL AND project = ? AND files_modified LIKE ?
+           LIMIT 6`
         )
       : db.prepare(
-          `SELECT COUNT(*) as cnt FROM (
-             SELECT id FROM observations
-             WHERE id != ? AND deleted_at_epoch IS NULL AND files_modified LIKE ?
-             LIMIT 6
-           )`
+          `SELECT id FROM observations
+           WHERE id != ? AND deleted_at_epoch IS NULL AND files_modified LIKE ?
+           LIMIT 6`
         );
 
     for (const file of files) {
-      if (Date.now() - start > 100) return Math.min(total, 5);
-      const row = project != null
-        ? stmt.get(observationId, project, `%"${file}"%`) as { cnt: number } | undefined
-        : stmt.get(observationId, `%"${file}"%`) as { cnt: number } | undefined;
-      if (row) total += row.cnt;
+      if (Date.now() - start > 100) return Math.min(seen.size, cap);
+      const rows = project != null
+        ? stmt.all(observationId, project, `%"${file}"%`) as Array<{ id: number }>
+        : stmt.all(observationId, `%"${file}"%`) as Array<{ id: number }>;
+      for (const row of rows) {
+        seen.add(row.id);
+      }
       // Early exit: if already at cap, no need to check more files
-      if (total >= 5) return 5;
+      if (seen.size >= cap) return cap;
     }
 
-    return Math.min(total, 5);
+    return Math.min(seen.size, cap);
   } catch {
     return 0;
   }

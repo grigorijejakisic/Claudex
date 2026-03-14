@@ -38,7 +38,7 @@ const TOOL_KEY_FIELDS: Record<string, string[]> = {
  * - <= 120 chars: return as-is
  * - > 120 chars: truncate at sentence boundary or 120 with "..."
  */
-export function extractGist(role: string, raw: string): string {
+export function extractGist(raw: string): string {
   try {
     if (!raw) return '';
     const trimmed = raw.trim();
@@ -184,7 +184,7 @@ export class ThreadTracker {
       // Flush: extract gists and append to keyExchanges
       for (const exchange of this.pendingExchanges) {
         if (exchange.role === 'tool') continue; // Collapse tool entries; they're context for agent gist
-        const gist = extractGist(exchange.role, exchange.raw);
+        const gist = extractGist(exchange.raw);
         if (gist) {
           // Enforce rolling window
           if (this.keyExchanges.length >= MAX_KEY_EXCHANGES) {

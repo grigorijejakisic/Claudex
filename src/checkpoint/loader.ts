@@ -1,5 +1,5 @@
 /**
- * Two-layer checkpoint recovery: DB-first + file fallback + 3-hop chain.
+ * Two-layer checkpoint recovery: DB-first + file fallback.
  * Selective loading presets filter fields per Architecture Section 8.5.
  * All public functions are non-throwing.
  * @see Architecture Section 8.4
@@ -103,9 +103,10 @@ export async function recoverFromDb(db: Database): Promise<void> {
           // C1 fix: Validate mirror_path is within a checkpoints directory
           const resolvedMirror = path.resolve(mirrorPath);
           if (!isSafeBasename(path.basename(resolvedMirror))) continue;
-          // Ensure the resolved path is under a 'checkpoints' directory
+          // Ensure the resolved path is within its parent checkpoints directory
           const mirrorParent = path.dirname(resolvedMirror);
           if (!mirrorParent.split(path.sep).includes('checkpoints')) continue;
+          if (!isWithinDir(resolvedMirror, mirrorParent)) continue;
 
           // Fix 6: Use JSON_SCHEMA for round-trip consistency
           const yamlContent = yaml.dump(checkpoint, { lineWidth: 120, noRefs: true, schema: yaml.JSON_SCHEMA });
@@ -222,54 +223,6 @@ export function loadFromFile(projectDir: string): CheckpointV3 | null {
   } catch {
     return null;
   }
-}
-
-/**
- * Follow previous_checkpoint chain up to maxHops.
- * Uses Set for cycle detection.
- * Non-throwing — returns collected so far on error.
- */
-export function followHopChain(
-  checkpointsDir: string,
-  startBasename: string,
-  maxHops: number = 3
-): CheckpointV3[] {
-  const result: CheckpointV3[] = [];
-  const seen = new Set<string>();
-
-  try {
-    let current = startBasename;
-
-    for (let i = 0; i < maxHops; i++) {
-      if (seen.has(current)) break;
-      seen.add(current);
-
-      // Fix 2: Path traversal guard on hop chain basenames
-      if (!isSafeBasename(current)) break;
-      const resolvedPath = path.resolve(checkpointsDir, current);
-      if (!isWithinDir(resolvedPath, checkpointsDir)) break;
-
-      try {
-        const content = readCheckpointFile(resolvedPath);
-        if (!content) break;
-        // Fix 6: Use JSON_SCHEMA to prevent type coercion
-        const parsed = yaml.load(content, { schema: yaml.JSON_SCHEMA }) as CheckpointV3;
-        if (!parsed || parsed.schema !== 'claudex/checkpoint') break;
-
-        result.push(parsed);
-
-        const prev = parsed.meta?.previous_checkpoint;
-        if (!prev) break;
-        current = prev;
-      } catch {
-        break;
-      }
-    }
-  } catch {
-    // Return collected so far
-  }
-
-  return result;
 }
 
 /**

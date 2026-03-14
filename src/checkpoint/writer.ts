@@ -81,20 +81,6 @@ export async function writeCompressedFile(filePath: string, content: string): Pr
 }
 
 /**
- * Reads a gzip-compressed file and returns its decompressed UTF-8 content.
- * Returns null on error. Never throws.
- */
-export function readCompressedFile(filePath: string): string | null {
-  try {
-    const compressed = fs.readFileSync(filePath);
-    const decompressed = zlib.gunzipSync(compressed);
-    return decompressed.toString('utf-8');
-  } catch {
-    return null;
-  }
-}
-
-/**
  * Determines whether a checkpoint should be triggered based on trigger type,
  * token usage, tracking state, and debounce.
  * Non-throwing — returns false on error.

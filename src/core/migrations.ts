@@ -249,6 +249,16 @@ CREATE INDEX IF NOT EXISTS idx_artifacts_project_state
   ON artifacts(project, state, importance DESC, timestamp_epoch DESC);
 CREATE INDEX IF NOT EXISTS idx_artifacts_session
   ON artifacts(session_id, timestamp_epoch DESC);
+
+-- verified_facts: session-scoped facts for checkpoint inclusion
+CREATE TABLE IF NOT EXISTS verified_facts (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  session_id TEXT NOT NULL,
+  fact TEXT NOT NULL,
+  created_at_epoch INTEGER NOT NULL DEFAULT (unixepoch())
+);
+CREATE INDEX IF NOT EXISTS idx_verified_facts_session
+  ON verified_facts(session_id, created_at_epoch DESC);
 `;
 
 /**

@@ -14,6 +14,7 @@ import type { TopicShiftResult } from '../../intelligence/topic-shift.js';
 import { EmbeddingProvider } from '../../embeddings/embedding-provider.js';
 import { getIdentityDir } from '../../shared/paths.js';
 import { emitTelemetry } from '../../observability/telemetry.js';
+import { persistTopicIfShifted } from '../shared/lifecycle.js';
 
 const main = wrapHook('UserPromptSubmit', async (input, ctx) => {
   const prompt = (input.user_prompt as string) || '';
@@ -49,6 +50,9 @@ const main = wrapHook('UserPromptSubmit', async (input, ctx) => {
       topicShift = null;
     }
   }
+
+  // Persist topic update to thread_state when a shift is detected
+  persistTopicIfShifted(ctx.db, input.session_id, topicShift);
 
   const payload = assembleRegularPrompt({
     isPostCompaction,

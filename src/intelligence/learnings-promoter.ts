@@ -6,6 +6,7 @@
 import type { Database } from 'better-sqlite3';
 import { upsertLearning, getLearningsByProject } from '../core/learnings.js';
 import { normalizeForDedup, findDuplicate } from './semantic-dedup.js';
+import { redactContent } from '../extraction/redaction.js';
 
 const MAX_LEARNINGS_PER_PROJECT = 50;
 
@@ -48,17 +49,18 @@ export function promoteLearnings(params: {
         });
         promoted++;
       } else {
-        // Insert new
-        const fp = normalizeForDedup(learning);
+        // Insert new — redact content before storage to prevent secret leakage
+        const redacted = redactContent(learning);
+        const fp = normalizeForDedup(redacted);
         upsertLearning(db, {
           project,
           agent_id: agent,
           fingerprint: fp,
-          content: learning,
+          content: redacted,
         });
         inserted++;
         // R15: Refresh in-memory list so subsequent iterations see the new entry
-        existing = [...existing, { content: learning, fingerprint: fp } as (typeof existing)[number]];
+        existing = [...existing, { content: redacted, fingerprint: fp } as (typeof existing)[number]];
       }
     }
 

@@ -37,11 +37,3 @@ export function cachedPrepare(db: Database, sql: string): Statement {
 
   return stmt;
 }
-
-/**
- * Clears the statement cache for a specific DB instance.
- * Useful in tests or when schema changes invalidate cached statements.
- */
-export function clearStmtCache(db: Database): void {
-  stmtCache.delete(db);
-}

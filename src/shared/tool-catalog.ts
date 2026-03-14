@@ -86,9 +86,6 @@ export const TOOL_CATALOG: Record<string, ToolDefinition> = {
   },
 } as const;
 
-/** All known tool names as a readonly array. */
-export const KNOWN_TOOL_NAMES: readonly string[] = Object.keys(TOOL_CATALOG);
-
 /**
  * Set of tool names whose default category is 'code'.
  * Used by scoring.ts classifyCategory for the file-related default.
@@ -99,17 +96,3 @@ export const FILE_TOOL_NAMES: ReadonlySet<string> = new Set(
     .map((def) => def.name)
 );
 
-/**
- * Returns the ToolDefinition for a given name, or undefined if unknown.
- */
-export function getToolDefinition(toolName: string): ToolDefinition | undefined {
-  return TOOL_CATALOG[toolName];
-}
-
-/**
- * Returns true if the tool name is in the catalog.
- * R31: Uses Object.hasOwn to avoid matching inherited prototype keys.
- */
-export function isKnownTool(toolName: string): boolean {
-  return Object.hasOwn(TOOL_CATALOG, toolName);
-}

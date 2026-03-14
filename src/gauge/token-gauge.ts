@@ -25,13 +25,17 @@ function isPathSafe(transcriptPath: string): boolean {
   // Must end with .jsonl
   if (!resolved.endsWith('.jsonl')) return false;
   // Must be under user's home directory
-  // Use realpathSync.native on Windows to resolve 8.3 short names (e.g. GRIGOR~1)
+  // Use realpathSync on ALL platforms to resolve symlinks that could point outside home.
+  // On Windows, use realpathSync.native to also resolve 8.3 short names (e.g. GRIGOR~1).
   let normalizedResolved = resolved;
   let home = os.homedir();
   try {
     if (process.platform === 'win32') {
       normalizedResolved = fs.realpathSync.native(resolved);
       home = fs.realpathSync.native(home);
+    } else {
+      normalizedResolved = fs.realpathSync(resolved);
+      home = fs.realpathSync(home);
     }
   } catch {
     // If file doesn't exist yet or realpath fails, use the resolved path as-is

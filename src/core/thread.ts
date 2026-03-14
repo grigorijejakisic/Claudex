@@ -70,16 +70,6 @@ export function getThreadState(
   };
 }
 
-/**
- * Deletes thread state for a session. Used in beforeCompact transaction.
- */
-export function resetThreadState(
-  db: Database,
-  sessionId: string
-): void {
-  cachedPrepare(db, 'DELETE FROM thread_state WHERE session_id = ?').run(sessionId);
-}
-
 // ---------------------------------------------------------------------------
 // Topic shift cooldown state — piggybacked on key_exchanges JSON
 // Uses a reserved entry with role '__cooldown' to avoid schema changes.
@@ -114,32 +104,3 @@ export function getCooldownState(
   }
 }
 
-/**
- * Writes cooldown state into thread_state key_exchanges.
- * Preserves existing key_exchanges, adds/replaces the __cooldown entry.
- * Non-throwing.
- */
-export function setCooldownState(
-  db: Database,
-  sessionId: string,
-  state: CooldownState
-): void {
-  try {
-    const existing = getThreadState(db, sessionId);
-    const exchanges = existing?.key_exchanges?.filter(
-      (e: { role: string }) => e.role !== COOLDOWN_ROLE
-    ) ?? [];
-    exchanges.push({
-      role: COOLDOWN_ROLE,
-      gist: JSON.stringify(state),
-    });
-    upsertThreadState(db, {
-      session_id: sessionId,
-      topic: existing?.topic ?? undefined,
-      summary: existing?.summary ?? undefined,
-      key_exchanges: exchanges,
-    });
-  } catch {
-    // Non-throwing
-  }
-}

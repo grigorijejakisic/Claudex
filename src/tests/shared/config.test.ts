@@ -31,8 +31,6 @@ describe('loadConfig', () => {
     });
     const config = loadConfig();
     expect(config.injection.budget_tokens).toBe(8000);
-    // Other injection defaults preserved
-    expect(config.injection.gauge_threshold).toBe(0.70);
     // Other sections untouched
     expect(config.embeddings.enabled).toBe(true);
   });

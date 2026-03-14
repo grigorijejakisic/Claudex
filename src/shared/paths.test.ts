@@ -6,8 +6,6 @@ import {
   getConfigPath,
   getProjectsJsonPath,
   getIdentityDir,
-  getMemoryDir,
-  getProjectContextDir,
   getCheckpointsDir,
   getSessionsDir,
   getHandoffsDir,
@@ -41,16 +39,6 @@ describe('paths', () => {
     expect(result).toContain('identity');
   });
 
-  it('getMemoryDir returns path containing memory', () => {
-    const result = getMemoryDir();
-    expect(result).toContain('memory');
-  });
-
-  it('getProjectContextDir returns path containing context', () => {
-    const result = getProjectContextDir('/some/project');
-    expect(result).toContain('context');
-  });
-
   it('getCheckpointsDir returns path containing checkpoints', () => {
     const result = getCheckpointsDir('/some/project');
     expect(result).toContain('checkpoints');
@@ -74,8 +62,6 @@ describe('paths', () => {
       () => getConfigPath(),
       () => getProjectsJsonPath(),
       () => getIdentityDir(),
-      () => getMemoryDir(),
-      () => getProjectContextDir('/test'),
       () => getCheckpointsDir('/test'),
       () => getSessionsDir('/test'),
       () => getHandoffsDir('/test'),
@@ -89,12 +75,6 @@ describe('paths', () => {
   });
 
   describe('paths with spaces', () => {
-    it('getProjectContextDir handles spaces in path', () => {
-      const result = getProjectContextDir('C:\\Users\\My User\\Desktop\\project');
-      expect(result).toContain('context');
-      expect(result).toContain('My User');
-    });
-
     it('getCheckpointsDir handles spaces in path', () => {
       const result = getCheckpointsDir('/home/my user/projects/app');
       expect(result).toContain('checkpoints');
@@ -115,12 +95,6 @@ describe('paths', () => {
   });
 
   describe('paths with unicode characters', () => {
-    it('getProjectContextDir handles unicode in path', () => {
-      const result = getProjectContextDir('C:\\Users\\Ünîcödé\\project');
-      expect(result).toContain('context');
-      expect(result).toContain('Ünîcödé');
-    });
-
     it('getCheckpointsDir handles CJK characters', () => {
       const result = getCheckpointsDir('/home/用户/项目');
       expect(result).toContain('checkpoints');
@@ -141,14 +115,6 @@ describe('paths', () => {
   });
 
   describe('paths with long names (>260 chars)', () => {
-    it('getProjectContextDir handles long paths', () => {
-      const longSegment = 'a'.repeat(200);
-      const longPath = path.join('C:\\', 'Users', 'test', longSegment, 'project');
-      const result = getProjectContextDir(longPath);
-      expect(result).toContain('context');
-      expect(result).toContain(longSegment);
-    });
-
     it('getCheckpointsDir handles deeply nested long paths', () => {
       // Build a path that exceeds 260 chars through nesting
       const segments = Array.from({ length: 30 }, (_, i) => `segment${i}`);

@@ -4,8 +4,6 @@ import {
   getObservationsByProject,
   getObservationById,
   searchObservations,
-  softDeleteObservation,
-  incrementAccessCount,
 } from '../../core/observations.js';
 
 describe('observation CRUD', () => {
@@ -140,7 +138,7 @@ describe('observation CRUD', () => {
       importance: 2,
       files_modified: [],
     });
-    softDeleteObservation(db, id);
+    db.prepare('UPDATE observations SET deleted_at_epoch = unixepoch() WHERE id = ?').run(id);
 
     const rows = getObservationsByProject(db, 'myapp');
     expect(rows).toHaveLength(0);
@@ -274,57 +272,4 @@ describe('observation CRUD', () => {
     expect(results[0].project).toBe('projectA');
   });
 
-  it('softDeleteObservation sets deleted_at_epoch', () => {
-    const id = insertObservation(db, {
-      session_id: 's1',
-      project: 'myapp',
-      tool_name: 'Read',
-      category: 'code',
-      title: 'To delete',
-      content: 'Will be soft-deleted',
-      importance: 2,
-      files_modified: [],
-    });
-
-    softDeleteObservation(db, id);
-
-    const row = db
-      .prepare('SELECT deleted_at_epoch FROM observations WHERE id = ?')
-      .get(id) as { deleted_at_epoch: number | null };
-    expect(row.deleted_at_epoch).not.toBeNull();
-    expect(row.deleted_at_epoch).toBeGreaterThan(0);
-  });
-
-  it('incrementAccessCount increases count and updates last_accessed_at_epoch', () => {
-    const id = insertObservation(db, {
-      session_id: 's1',
-      project: 'myapp',
-      tool_name: 'Read',
-      category: 'code',
-      title: 'Accessed obs',
-      content: 'Track access',
-      importance: 3,
-      files_modified: [],
-    });
-
-    // Initially access_count should be 0
-    let row = db
-      .prepare(
-        'SELECT access_count, last_accessed_at_epoch FROM observations WHERE id = ?'
-      )
-      .get(id) as { access_count: number; last_accessed_at_epoch: number | null };
-    expect(row.access_count).toBe(0);
-    expect(row.last_accessed_at_epoch).toBeNull();
-
-    incrementAccessCount(db, id);
-
-    row = db
-      .prepare(
-        'SELECT access_count, last_accessed_at_epoch FROM observations WHERE id = ?'
-      )
-      .get(id) as { access_count: number; last_accessed_at_epoch: number | null };
-    expect(row.access_count).toBe(1);
-    expect(row.last_accessed_at_epoch).not.toBeNull();
-    expect(row.last_accessed_at_epoch).toBeGreaterThan(0);
-  });
 });

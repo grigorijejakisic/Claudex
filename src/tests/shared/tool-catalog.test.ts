@@ -1,9 +1,6 @@
 import {
   TOOL_CATALOG,
-  KNOWN_TOOL_NAMES,
   FILE_TOOL_NAMES,
-  getToolDefinition,
-  isKnownTool,
   type ToolDefinition,
 } from '../../shared/tool-catalog.js';
 
@@ -59,15 +56,6 @@ describe('TOOL_CATALOG', () => {
   });
 });
 
-describe('KNOWN_TOOL_NAMES', () => {
-  it('is an array of all 10 tool names', () => {
-    expect(KNOWN_TOOL_NAMES).toHaveLength(10);
-    for (const name of EXPECTED_TOOLS) {
-      expect(KNOWN_TOOL_NAMES).toContain(name);
-    }
-  });
-});
-
 describe('FILE_TOOL_NAMES', () => {
   it('contains file-related tools (defaultCategory = code)', () => {
     for (const name of ['Read', 'Edit', 'Write', 'Grep', 'Glob', 'NotebookEdit']) {
@@ -82,28 +70,3 @@ describe('FILE_TOOL_NAMES', () => {
   });
 });
 
-describe('getToolDefinition', () => {
-  it('returns definition for known tool', () => {
-    const def = getToolDefinition('Read');
-    expect(def).toBeDefined();
-    expect(def!.name).toBe('Read');
-    expect(def!.keyFields).toContain('file_path');
-  });
-
-  it('returns undefined for unknown tool', () => {
-    expect(getToolDefinition('UnknownTool')).toBeUndefined();
-  });
-});
-
-describe('isKnownTool', () => {
-  it('returns true for known tools', () => {
-    for (const name of EXPECTED_TOOLS) {
-      expect(isKnownTool(name)).toBe(true);
-    }
-  });
-
-  it('returns false for unknown tools', () => {
-    expect(isKnownTool('FooBar')).toBe(false);
-    expect(isKnownTool('')).toBe(false);
-  });
-});

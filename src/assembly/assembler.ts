@@ -27,6 +27,7 @@ import {
   formatFts5Section,
   formatRecentSection,
   formatGaugeSection,
+  formatPressureResponse,
   formatTopicPivotSection,
   formatFlowSection,
   formatReferenceLayer,
@@ -447,16 +448,21 @@ export function assembleRegularPrompt(params: RegularPromptParams): InjectPayloa
       }
     }
 
-    // 3. Gauge injection at advisory+ pressure zone (with temporal awareness)
+    // 3. Gauge + graduated pressure response at advisory+ zone (Upgrade 7)
     const zone = params.gauge ? getPressureZone(params.gauge.utilization) : 'normal';
-    const timing = buildGaugeTiming(params.db, params.sessionId);
-    const gaugeSection = zone !== 'normal' ? formatGaugeSection(params.gauge, undefined, timing) : null;
-    if (gaugeSection) {
-      return {
-        content: gaugeSection,
-        tokenEstimate: estimateTokens(gaugeSection),
-        sources: ['gauge'],
-      };
+    if (zone !== 'normal') {
+      const timing = buildGaugeTiming(params.db, params.sessionId);
+      const gaugeSection = formatGaugeSection(params.gauge, undefined, timing);
+      const pressureSection = formatPressureResponse(params.gauge, zone);
+      const parts = [gaugeSection, pressureSection].filter(Boolean) as string[];
+      if (parts.length > 0) {
+        const content = parts.join('\n');
+        return {
+          content,
+          tokenEstimate: estimateTokens(content),
+          sources: ['gauge', 'pressure_response'],
+        };
+      }
     }
 
     // 4. Zero injection (most turns)

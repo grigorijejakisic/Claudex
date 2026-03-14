@@ -52,15 +52,6 @@ export interface PiCompactContext extends PiContext {}
 /** Pi SDK runtime (passed to session_before_compact). */
 export interface PiRuntime {}
 
-/** Standard Pi SDK extension interface. */
-export interface PiExtension {
-  name: string;
-  context?(ctx: PiContext): Promise<void>;
-  tool_result?(ctx: PiToolResultContext): Promise<void>;
-  message_end?(ctx: PiMessageEndContext): Promise<void>;
-  session_before_compact?(ctx: PiCompactContext, prep: PiCompactPrep, runtime: PiRuntime): Promise<void>;
-}
-
 /** OpenClaw plugin API for registration. */
 export interface OpenClawPluginApi {
   registerHook(event: string, handler: () => Promise<void> | void): void;

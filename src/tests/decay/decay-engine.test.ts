@@ -268,6 +268,19 @@ describe('getCoOccurrences — execution bounds (REC-15)', () => {
     // Should still be capped at 5
     expect(count).toBeLessThanOrEqual(5);
   });
+
+  it('does not double-count observations sharing multiple files with target', () => {
+    // Observation shares BOTH files with target — should count as 1, not 2
+    const id1 = seedObservation({ files_modified: '["src/a.ts", "src/b.ts"]' });
+    // This observation shares both src/a.ts AND src/b.ts with target
+    seedObservation({ files_modified: '["src/a.ts", "src/b.ts"]' });
+    // This one shares only src/a.ts
+    seedObservation({ files_modified: '["src/a.ts"]' });
+
+    const count = getCoOccurrences(db, id1, '["src/a.ts", "src/b.ts"]');
+    // Should be 2 (two distinct observations), not 3 (double-counting the shared one)
+    expect(count).toBe(2);
+  });
 });
 
 describe('applyRetentionPolicy', () => {

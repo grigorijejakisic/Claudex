@@ -14,6 +14,7 @@ import {
   getDecisionsByProject,
   type DecisionRow,
 } from './decisions.js';
+import { truncateText } from '../shared/text-utils.js';
 
 /** Concise session context derived from DB — replaces file loading. */
 export interface SessionContext {
@@ -144,21 +145,21 @@ export function renderSessionContextSummary(ctx: SessionContext): string {
 
   // Last session
   if (ctx.lastSummary) {
-    lines.push(`**Last session**: ${truncate(ctx.lastSummary, 120)}`);
+    lines.push(`**Last session**: ${truncateText(ctx.lastSummary, 120)}`);
   } else {
     lines.push('**Last session**: no prior sessions');
   }
 
   // Thread summary
   if (ctx.threadSummary) {
-    lines.push(`**Thread**: ${truncate(ctx.threadSummary, 120)}`);
+    lines.push(`**Thread**: ${truncateText(ctx.threadSummary, 120)}`);
   }
 
   // Decisions
   if (ctx.recentDecisions.length > 0) {
     lines.push(`**Key decisions** (last ${ctx.recentDecisions.length}):`);
     for (const d of ctx.recentDecisions) {
-      lines.push(`- [${d.source}] ${truncate(d.content, 100)}`);
+      lines.push(`- [${d.source}] ${truncateText(d.content, 100)}`);
     }
   }
 
@@ -209,8 +210,3 @@ export function getLatestSession(
   }
 }
 
-/** Truncates a string to maxLen, appending ellipsis if needed. */
-function truncate(s: string, maxLen: number): string {
-  if (s.length <= maxLen) return s;
-  return s.slice(0, maxLen - 3) + '...';
-}

@@ -11,7 +11,8 @@ import type { TokenUsage } from '../../shared/types.js';
 import { processToolObservation } from '../../extraction/extractor.js';
 import { updatePressureScore } from '../../core/pressure.js';
 import { sanitizePath } from '../../extraction/redaction.js';
-import { ThreadTracker } from '../../intelligence/thread-tracker.js';
+import { ThreadTracker, persistTopicUpdate } from '../../intelligence/thread-tracker.js';
+import type { TopicShiftResult } from '../../intelligence/topic-shift.js';
 import { shouldTriggerCheckpoint, writeCheckpoint } from '../../checkpoint/writer.js';
 import { getCheckpointTracking } from '../../core/checkpoint-tracking.js';
 import { readGsdState } from '../../gsd/state-reader.js';
@@ -25,7 +26,7 @@ import { markObservationsConsumed } from '../../core/observations.js';
 import { decayPressureStratified } from '../../decay/pressure-decay.js';
 import { endSession } from '../../core/sessions.js';
 import { pruneTelemetry } from '../../observability/telemetry.js';
-import { addJournalEntry, getJournalBySession } from '../../core/journal.js';
+import { addJournalEntry, getJournalBySession, getSessionMilestones } from '../../core/journal.js';
 import { getThreadState } from '../../core/thread.js';
 import { getDecisionsBySession } from '../../core/decisions.js';
 import { getObservationsByProject, getObservationById } from '../../core/observations.js';
@@ -196,6 +197,21 @@ export function trackAfterTurn(
   const tracker = new ThreadTracker(db, sessionId);
   tracker.onAfterTurn(userText, assistantText);
   // persist() removed — onAfterTurn() already persists internally (thread-tracker.ts:206)
+}
+
+/**
+ * Persist a topic update to thread_state when a topic shift is detected.
+ * Called by both CC hooks (UserPromptSubmit) and bridge (onContext) after
+ * topic shift detection. Non-throwing.
+ */
+export function persistTopicIfShifted(
+  db: Database.Database,
+  sessionId: string,
+  topicShift: TopicShiftResult | null,
+): void {
+  if (topicShift?.shifted && topicShift.newTopic) {
+    persistTopicUpdate(db, sessionId, topicShift.newTopic);
+  }
 }
 
 /**
@@ -428,8 +444,8 @@ export function captureSessionSummary(
       parts.push('Session completed.');
     }
 
-    // Milestones from journal
-    const milestones = getJournalBySession(db, sessionId, { entryType: 'milestone', limit: 10 });
+    // Milestones from journal (using convenience function)
+    const milestones = getSessionMilestones(db, sessionId, 10);
     if (milestones.length > 0) {
       const milestoneList = milestones
         .map(m => m.content)

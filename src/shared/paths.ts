@@ -53,24 +53,6 @@ export function getIdentityDir(): string {
   }
 }
 
-/** Returns ~/.claudex/memory/ directory path. Never throws. */
-export function getMemoryDir(): string {
-  try {
-    return path.normalize(path.join(getClaudexHome(), 'memory'));
-  } catch {
-    return path.normalize(path.join('.', CLAUDEX_DIR, 'memory'));
-  }
-}
-
-/** Returns {projectDir}/context/ directory path. Never throws. */
-export function getProjectContextDir(projectDir: string): string {
-  try {
-    return path.normalize(path.join(projectDir, 'context'));
-  } catch {
-    return path.normalize(path.join('.', 'context'));
-  }
-}
-
 /** Returns {projectDir}/context/checkpoints/ directory path. Never throws. */
 export function getCheckpointsDir(projectDir: string): string {
   try {

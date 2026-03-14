@@ -88,16 +88,3 @@ export function getDecisionsByProject(
     )
     .all(project) as DecisionRow[];
 }
-
-/**
- * Deletes all decisions for a session. Returns count deleted.
- * Used in beforeCompact transaction.
- */
-export function resetSessionDecisions(
-  db: Database,
-  sessionId: string
-): number {
-  const result = cachedPrepare(db, 'DELETE FROM decisions WHERE session_id = ?')
-    .run(sessionId);
-  return result.changes;
-}

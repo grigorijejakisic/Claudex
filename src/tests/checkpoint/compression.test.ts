@@ -10,8 +10,8 @@ import * as os from 'os';
 import * as zlib from 'zlib';
 import * as yaml from 'js-yaml';
 import { createTestDb, type TestDatabase } from '../helpers/test-db.js';
-import { writeCheckpoint, writeCompressedFile, readCompressedFile } from '../../checkpoint/writer.js';
-import { loadFromFile, followHopChain, loadCheckpoint } from '../../checkpoint/loader.js';
+import { writeCheckpoint, writeCompressedFile } from '../../checkpoint/writer.js';
+import { loadFromFile, loadCheckpoint } from '../../checkpoint/loader.js';
 import type { CheckpointV3 } from '../../checkpoint/types.js';
 
 function makeCheckpoint(overrides?: Partial<CheckpointV3>): CheckpointV3 {
@@ -37,7 +37,7 @@ function makeCheckpoint(overrides?: Partial<CheckpointV3>): CheckpointV3 {
   };
 }
 
-describe('writeCompressedFile / readCompressedFile', () => {
+describe('writeCompressedFile', () => {
   let tmpDir: string;
 
   beforeEach(() => {
@@ -48,7 +48,7 @@ describe('writeCompressedFile / readCompressedFile', () => {
     fs.rmSync(tmpDir, { recursive: true, force: true });
   });
 
-  it('round-trips content through compress/decompress', async () => {
+  it('writes valid gzip content', async () => {
     const content = 'Hello, compressed world!';
     const filePath = path.join(tmpDir, 'test.yaml.gz');
 
@@ -56,20 +56,14 @@ describe('writeCompressedFile / readCompressedFile', () => {
     expect(ok).toBe(true);
     expect(fs.existsSync(filePath)).toBe(true);
 
-    const result = readCompressedFile(filePath);
-    expect(result).toBe(content);
-  });
-
-  it('compressed file is valid gzip', async () => {
-    const content = yaml.dump(makeCheckpoint());
-    const filePath = path.join(tmpDir, 'cp.yaml.gz');
-
-    await writeCompressedFile(filePath, content);
-
+    // Verify it's valid gzip
     const raw = fs.readFileSync(filePath);
-    // Gzip magic bytes: 0x1f 0x8b
     expect(raw[0]).toBe(0x1f);
     expect(raw[1]).toBe(0x8b);
+
+    // Verify content round-trips via zlib directly
+    const decompressed = zlib.gunzipSync(raw).toString('utf-8');
+    expect(decompressed).toBe(content);
   });
 
   it('compressed file is smaller than uncompressed for YAML content', async () => {
@@ -84,18 +78,6 @@ describe('writeCompressedFile / readCompressedFile', () => {
     const compressedSize = fs.statSync(compressedPath).size;
     const uncompressedSize = fs.statSync(uncompressedPath).size;
     expect(compressedSize).toBeLessThan(uncompressedSize);
-  });
-
-  it('readCompressedFile returns null for non-existent file', () => {
-    const result = readCompressedFile(path.join(tmpDir, 'nonexistent.yaml.gz'));
-    expect(result).toBeNull();
-  });
-
-  it('readCompressedFile returns null for invalid gzip data', () => {
-    const filePath = path.join(tmpDir, 'bad.yaml.gz');
-    fs.writeFileSync(filePath, 'not gzip data');
-    const result = readCompressedFile(filePath);
-    expect(result).toBeNull();
   });
 
   it('writeCompressedFile returns false for invalid path', async () => {
@@ -257,20 +239,6 @@ describe('loader backward compatibility', () => {
     expect(result!.meta.checkpoint_id).toBe('NEW');
   });
 
-  it('followHopChain works with compressed files', () => {
-    const cpB = makeCheckpoint({ meta: { ...makeCheckpoint().meta, checkpoint_id: 'B', previous_checkpoint: null } });
-    const cpA = makeCheckpoint({ meta: { ...makeCheckpoint().meta, checkpoint_id: 'A', previous_checkpoint: 'B.yaml.gz' } });
-
-    // A is uncompressed, B is compressed
-    fs.writeFileSync(path.join(checkpointsDir, 'A.yaml'), yaml.dump(cpA));
-    const compressed = zlib.gzipSync(Buffer.from(yaml.dump(cpB), 'utf-8'));
-    fs.writeFileSync(path.join(checkpointsDir, 'B.yaml.gz'), compressed);
-
-    const chain = followHopChain(checkpointsDir, 'A.yaml', 3);
-    expect(chain).toHaveLength(2);
-    expect(chain[0].meta.checkpoint_id).toBe('A');
-    expect(chain[1].meta.checkpoint_id).toBe('B');
-  });
 });
 
 describe('loadCheckpoint with compression', () => {

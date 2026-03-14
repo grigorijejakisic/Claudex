@@ -1,16 +1,13 @@
 import { createTestDb, type TestDatabase } from '../helpers/test-db.js';
 import {
   createSession,
-  getSession,
   endSession,
   getActiveSession,
-  incrementObservationCount,
 } from '../../core/sessions.js';
 import {
   insertDecision,
   getDecisionsBySession,
   getDecisionsByProject,
-  resetSessionDecisions,
 } from '../../core/decisions.js';
 import {
   upsertLearning,
@@ -49,20 +46,12 @@ describe('sessions CRUD', () => {
     expect(row.observation_count).toBe(0);
   });
 
-  it('getSession returns session by id', () => {
-    createSession(db, { session_id: 's2', project: 'proj' });
-    const session = getSession(db, 's2');
-    expect(session).toBeDefined();
-    expect(session!.session_id).toBe('s2');
-    expect(session!.status).toBe('active');
-  });
-
   it('endSession updates status and ended_at_epoch', () => {
     createSession(db, { session_id: 's3' });
     endSession(db, 's3', 'completed');
-    const session = getSession(db, 's3');
-    expect(session!.status).toBe('completed');
-    expect(session!.ended_at_epoch).not.toBeNull();
+    const session = db.prepare('SELECT * FROM sessions WHERE session_id = ?').get('s3') as any;
+    expect(session.status).toBe('completed');
+    expect(session.ended_at_epoch).not.toBeNull();
   });
 
   it('getActiveSession returns most recent active session', () => {
@@ -83,15 +72,6 @@ describe('sessions CRUD', () => {
     expect(active).toBeDefined();
     expect(active!.session_id).toBe('s6');
     expect(active!.project).toBe('alpha');
-  });
-
-  it('incrementObservationCount increases count', () => {
-    createSession(db, { session_id: 's8' });
-    incrementObservationCount(db, 's8');
-    incrementObservationCount(db, 's8');
-
-    const session = getSession(db, 's8');
-    expect(session!.observation_count).toBe(2);
   });
 });
 
@@ -196,26 +176,6 @@ describe('decisions CRUD', () => {
     expect(unlimited).toHaveLength(10);
   });
 
-  it('resetSessionDecisions deletes all session decisions', () => {
-    insertDecision(db, {
-      session_id: 's1',
-      content: 'to delete 1',
-      source: 'explicit',
-      fingerprint: 'fp-del-1',
-    });
-    insertDecision(db, {
-      session_id: 's1',
-      content: 'to delete 2',
-      source: 'explicit',
-      fingerprint: 'fp-del-2',
-    });
-
-    const count = resetSessionDecisions(db, 's1');
-    expect(count).toBe(2);
-
-    const rows = getDecisionsBySession(db, 's1');
-    expect(rows).toHaveLength(0);
-  });
 });
 
 describe('learnings CRUD', () => {

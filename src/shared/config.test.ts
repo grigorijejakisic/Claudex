@@ -36,7 +36,6 @@ describe('config', () => {
 
       // Verify nested sections
       expect(config.injection.budget_tokens).toBe(4000);
-      expect(config.injection.gauge_threshold).toBe(0.70);
       expect(config.injection.topic_shift_budget).toBe(800);
 
       expect(config.observations.enabled).toBe(true);
@@ -46,7 +45,6 @@ describe('config', () => {
 
       expect(config.learnings.max_per_project).toBe(50);
       expect(config.learnings.surface_count).toBe(10);
-      expect(config.learnings.publish_to_memory_md).toBe(false);
 
       expect(config.enrichment.enabled).toBe(true);
       expect(config.enrichment.provider).toBe('auto');
@@ -61,10 +59,8 @@ describe('config', () => {
       expect(config.observability.retention_days).toBe(7);
 
       expect(config.gsd.enabled).toBe(true);
-      expect(config.gsd.phase_boost).toBe(0.10);
 
-      expect(config.features.observation_capture).toBe(true);
-      expect(config.features.telemetry).toBe(true);
+      expect(config.features.fts5_search).toBe(true);
     });
 
     it('returns a new object each time (not shared reference)', () => {
@@ -94,7 +90,6 @@ describe('config', () => {
       // Overridden value
       expect(config.injection.budget_tokens).toBe(8000);
       // Default values preserved
-      expect(config.injection.gauge_threshold).toBe(0.70);
       expect(config.observations.enabled).toBe(true);
       expect(config.adapter).toBe('auto');
     });
@@ -111,9 +106,6 @@ describe('config', () => {
         embeddings: {
           topic_shift_threshold: 0.50,
         },
-        features: {
-          telemetry: false,
-        },
       };
       fs.writeFileSync(configPath, JSON.stringify(partial), 'utf-8');
 
@@ -121,8 +113,6 @@ describe('config', () => {
       expect(config.embeddings.topic_shift_threshold).toBe(0.50);
       expect(config.embeddings.enabled).toBe(true); // default preserved
       expect(config.embeddings.provider).toBe('ollama'); // default preserved
-      expect(config.features.telemetry).toBe(false);
-      expect(config.features.observation_capture).toBe(true); // default preserved
     });
   });
 
@@ -137,7 +127,6 @@ describe('config', () => {
 
       const config = loadConfig();
       expect(config.injection.budget_tokens).toBe(6000);
-      expect(config.injection.gauge_threshold).toBe(0.70); // default preserved
 
       try { fs.rmSync(spacedDir, { recursive: true, force: true }); } catch { /* cleanup */ }
     });

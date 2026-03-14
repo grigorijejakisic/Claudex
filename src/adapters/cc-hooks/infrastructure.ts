@@ -14,7 +14,6 @@ import type { ClaudexConfig } from '../../shared/config.js';
 import { detectProjectScope, getProjectId } from '../../shared/scope-detector.js';
 import { getDbPath } from '../../shared/paths.js';
 import { emitTelemetry } from '../../observability/telemetry.js';
-import { BRIDGE_KEY } from '../openclaw-bridge/bridge-types.js';
 
 /** Parsed CC hook stdin payload. */
 export interface HookInput {
@@ -39,6 +38,9 @@ export type HookHandler = (input: HookInput, ctx: BootstrapResult) => Promise<Re
 /** Safe default for failed stdin reads. */
 const SAFE_INPUT: HookInput = { hook_event_name: '', session_id: '', cwd: '' };
 
+/** Hard limit on stdin payload size (1 MB). Prevents unbounded memory growth. */
+const MAX_STDIN_BYTES = 1_000_000;
+
 /** Hook name to RuntimeEvent kind mapping. */
 const hookToEventKind: Record<string, string> = {
   SessionStart: 'session_init',
@@ -56,8 +58,21 @@ export function readStdin(): Promise<HookInput> {
   return new Promise((resolve) => {
     try {
       const chunks: Buffer[] = [];
-      process.stdin.on('data', (chunk: Buffer) => chunks.push(chunk));
+      let totalBytes = 0;
+      let resolved = false;
+      process.stdin.on('data', (chunk: Buffer) => {
+        if (resolved) return;
+        totalBytes += chunk.length;
+        if (totalBytes > MAX_STDIN_BYTES) {
+          resolved = true;
+          resolve(SAFE_INPUT);
+          return;
+        }
+        chunks.push(chunk);
+      });
       process.stdin.on('end', () => {
+        if (resolved) return;
+        resolved = true;
         try {
           const raw = Buffer.concat(chunks).toString('utf-8');
           const parsed = JSON.parse(raw);
@@ -76,7 +91,11 @@ export function readStdin(): Promise<HookInput> {
           resolve(SAFE_INPUT);
         }
       });
-      process.stdin.on('error', () => resolve(SAFE_INPUT));
+      process.stdin.on('error', () => {
+        if (resolved) return;
+        resolved = true;
+        resolve(SAFE_INPUT);
+      });
       process.stdin.resume();
     } catch {
       resolve(SAFE_INPUT);
@@ -130,20 +149,6 @@ export function bootstrapHook(input: HookInput): BootstrapResult {
 }
 
 /**
- * Detects adapter type from environment. Non-throwing.
- */
-export function detectAdapter(): 'cc-hooks' | 'openclaw-bridge' {
-  try {
-    if (typeof globalThis !== 'undefined' && (globalThis as Record<symbol, unknown>)[BRIDGE_KEY]) {
-      return 'openclaw-bridge';
-    }
-  } catch {
-    // Non-throwing
-  }
-  return 'cc-hooks';
-}
-
-/**
  * Validates that a transcript path is safe to read.
  * R21: Rejects UNC/device paths and paths outside the user's home directory.
  * Mirrors the isPathSafe check from src/gauge/token-gauge.ts (C9).
@@ -189,9 +194,8 @@ export function getTranscriptPath(input: HookInput): string | undefined {
 /**
  * R22: Sanitize error messages before persisting to telemetry.
  * Truncates to 200 chars and redacts file paths to prevent sensitive content leakage.
- * @internal
  */
-function sanitizeErrorForTelemetry(err: unknown): string {
+export function sanitizeErrorForTelemetry(err: unknown): string {
   const raw = err instanceof Error ? err.message : String(err);
   return raw
     .slice(0, 200)

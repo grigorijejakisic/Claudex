@@ -1,5 +1,5 @@
 import { createTestDb, type TestDatabase } from '../helpers/test-db.js';
-import { cachedPrepare, clearStmtCache } from '../../core/stmt-cache.js';
+import { cachedPrepare } from '../../core/stmt-cache.js';
 
 describe('cachedPrepare', () => {
   let db: TestDatabase;
@@ -68,16 +68,4 @@ describe('cachedPrepare', () => {
     expect(row2.title).toBe('title2');
   });
 
-  it('clearStmtCache forces re-preparation on next call', () => {
-    const sql = 'SELECT COUNT(*) as cnt FROM observations';
-    const stmt1 = cachedPrepare(db, sql);
-
-    clearStmtCache(db);
-
-    const stmt2 = cachedPrepare(db, sql);
-    // After clearing, a new Statement should be created
-    expect(stmt2).not.toBe(stmt1);
-    // But it still works
-    expect((stmt2.get() as { cnt: number }).cnt).toBe(0);
-  });
 });
