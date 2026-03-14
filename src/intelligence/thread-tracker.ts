@@ -22,6 +22,28 @@ const STOP_WORDS = new Set([
 const GREETING_PATTERN = /^(hi|hello|hey|thanks|thank you|good morning|good afternoon)\b/i;
 
 /**
+ * Cleans a gist for use in thread summary.
+ * Strips markdown formatting, collapses whitespace, ensures proper termination.
+ */
+function cleanGistForSummary(gist: string): string {
+  let cleaned = gist
+    .replace(/```[\s\S]*?```/g, '')      // Remove code blocks
+    .replace(/\*\*([^*]+)\*\*/g, '$1')   // Bold -> plain
+    .replace(/\*([^*]+)\*/g, '$1')       // Italic -> plain
+    .replace(/^#+\s+/gm, '')             // Heading markers
+    .replace(/^[-*]\s+/gm, '')           // List markers
+    .replace(/`([^`]+)`/g, '$1')         // Inline code -> plain
+    .replace(/\n+/g, ' ')                // Newlines -> space
+    .replace(/\s{2,}/g, ' ')             // Collapse whitespace
+    .trim();
+  // Ensure ends with sentence terminator
+  if (cleaned && !/[.!?]$/.test(cleaned)) {
+    cleaned += '.';
+  }
+  return cleaned;
+}
+
+/**
  * Extract a short gist from raw text.
  * - <= 120 chars: return as-is
  * - > 120 chars: truncate at sentence boundary or 120 with "..."
@@ -215,19 +237,21 @@ export class ThreadTracker {
 
   /**
    * Build summary from topic + last 2-3 agent gists.
+   * Strips markdown formatting and collapses whitespace for readable output.
    */
   buildSummary(): string {
     try {
       const agentGists = this.keyExchanges
         .filter((e) => e.role === 'agent')
         .slice(-3)
-        .map((e) => e.gist);
+        .map((e) => cleanGistForSummary(e.gist));
 
       const parts: string[] = [];
       if (this.topic) parts.push(this.topic);
-      if (agentGists.length > 0) parts.push(agentGists.join('. '));
+      if (agentGists.length > 0) parts.push(agentGists.join(' '));
 
-      return parts.join('. ') || '';
+      const raw = parts.join('. ');
+      return raw.length > 300 ? raw.slice(0, 297) + '...' : raw;
     } catch {
       return '';
     }

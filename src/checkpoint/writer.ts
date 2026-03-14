@@ -30,6 +30,23 @@ import {
 } from './types.js';
 
 /**
+ * Filters decisions for checkpoint inclusion. Rejects:
+ * - Too short (< 30 chars after stripping markdown)
+ * - Tool title prefixes (Edit:, Bash:, Read:, etc.)
+ * - Conversational filler (yes, ok, send, etc.)
+ * - Pure markdown formatting (bold/italic wrappers with little content)
+ */
+function isCheckpointWorthy(content: string): boolean {
+  const trimmed = content.trim();
+  if (trimmed.length < 30) return false;
+  if (/^(Edit|Read|Write|Bash|Grep|Glob|NotebookEdit|WebFetch|WebSearch|Run):/i.test(trimmed)) return false;
+  if (/^(yes|no|yeah|ok|sure|send|go|done|please|let me|I see|do it)\b/i.test(trimmed)) return false;
+  const stripped = trimmed.replace(/[*_#`~>-]/g, '').trim();
+  if (stripped.length < 20) return false;
+  return true;
+}
+
+/**
  * Extract open items from assistant text via regex.
  * Patterns: TODO, FIXME, HACK, remaining/still need/need to.
  * Non-throwing — returns [] on error.
@@ -148,7 +165,9 @@ export async function writeCheckpoint(
     ).run(checkpointId, sessionId, trigger);
 
     // Step 2: Read current state from DB
-    const decisions = getDecisionsBySession(db, sessionId).slice(0, 15);
+    const rawDecisions = getDecisionsBySession(db, sessionId).slice(0, 15);
+    // Quality filter: exclude junk decisions (too short, tool titles, markdown-only, filler)
+    const decisions = rawDecisions.filter(d => isCheckpointWorthy(d.content));
     const threadState = getThreadState(db, sessionId);
     const hotFiles = getHotFiles(db, project, 15);
     const topLearnings = getTopLearnings(db, project, 10);

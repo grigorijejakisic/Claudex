@@ -30,7 +30,7 @@ import { cachedPrepare } from '../../core/stmt-cache.js';
 import { getThreadState } from '../../core/thread.js';
 import { getDecisionsBySession } from '../../core/decisions.js';
 import { getObservationsByProject, getObservationById } from '../../core/observations.js';
-import { createArtifact, tickArtifactTTL } from '../../core/artifacts.js';
+import { createArtifact, tickArtifactTTL, packAllArtifacts } from '../../core/artifacts.js';
 import { getLearningsByProject } from '../../core/learnings.js';
 import { extractInsights } from '../../intelligence/insight-extractor.js';
 
@@ -103,6 +103,35 @@ export interface SessionEndParams {
   scope?: string;
   config: ClaudexConfig;
   gauge?: TokenUsage;
+}
+
+// ---------------------------------------------------------------------------
+// Learning content quality filter
+// ---------------------------------------------------------------------------
+
+/** Tool name prefixes that indicate raw observation titles, not knowledge. */
+const TOOL_TITLE_PREFIX = /^(Edit|Read|Write|Bash|Grep|Glob|NotebookEdit|WebFetch|WebSearch|Run):/;
+
+/** Conversational filler that leaks from decision capture. */
+const FILLER_PATTERNS = /^(yes|no|yeah|ok|sure|send|go|done|please|let me|I see|I think)\b/i;
+
+/**
+ * Returns true if content is worth promoting to cross-session learnings.
+ * Filters out raw tool titles, short user quotes, markdown-only content,
+ * and conversational filler that leak from decisions/discoveries.
+ */
+function isPromotableContent(content: string): boolean {
+  const trimmed = content.trim();
+  // Too short to be knowledge
+  if (trimmed.length < 30) return false;
+  // Raw tool output titles
+  if (TOOL_TITLE_PREFIX.test(trimmed)) return false;
+  // Conversational filler
+  if (FILLER_PATTERNS.test(trimmed)) return false;
+  // Pure markdown formatting (e.g. "**What artifacts SHOULD be:**")
+  const stripped = trimmed.replace(/[*_#`~>-]/g, '').trim();
+  if (stripped.length < 20) return false;
+  return true;
 }
 
 // ---------------------------------------------------------------------------
@@ -531,7 +560,9 @@ export function captureInsightsAsLearnings(
 
     // Store insights as flow entries for narrative (prefixed to distinguish from structural flows)
     for (const insight of insights.slice(0, 2)) {
-      addJournalEntry(db, sessionId, project, 'flow', `[${insight.marker}] ${insight.content.slice(0, 190)}`);
+      // Strip any existing [marker] prefix to prevent doubling (e.g. [diagnosis] [diagnosis])
+      const cleaned = insight.content.replace(/^\[(diagnosis|finding|conclusion|architecture|systemic)\]\s*/i, '');
+      addJournalEntry(db, sessionId, project, 'flow', `[${insight.marker}] ${cleaned.slice(0, 190)}`);
     }
   } catch {
     // Non-throwing
@@ -645,17 +676,24 @@ export async function runCompactionSequence(params: CompactionParams): Promise<v
       try { emitTelemetry(params.db, params.sessionId, 'error', { subsystem: 'compaction/mark_consumed', error: sanitizeErrorForTelemetry(e) }); } catch {}
     }
 
+    // Pack all existing artifacts into the reference layer before creating new ones.
+    // Without this, pre-compaction artifacts stay fresh/materialized indefinitely.
+    try {
+      packAllArtifacts(params.db, params.project);
+    } catch (e) {
+      try { emitTelemetry(params.db, params.sessionId, 'error', { subsystem: 'compaction/pack_artifacts', error: sanitizeErrorForTelemetry(e) }); } catch {}
+    }
+
     // Extract session learnings from two high-signal sources:
     // 1. Decisions (what was decided — already deduplicated, high intent signal)
-    // 2. Edit/Write titles (what was changed — concrete actions, not file reads)
-    // 3. Discovery-type observations (explicitly classified new findings)
+    // 2. Discovery-type observations (explicitly classified new findings)
     try {
       const sessionLearnings: string[] = [];
 
       // Source 1: Decisions from this session
       const decisions = getDecisionsBySession(params.db, params.sessionId, { limit: 10 });
       for (const d of decisions) {
-        if (d.content && d.content.length > 15) {
+        if (d.content && isPromotableContent(d.content)) {
           sessionLearnings.push(d.content);
         }
       }
@@ -670,7 +708,9 @@ export async function runCompactionSequence(params: CompactionParams): Promise<v
          LIMIT 5`
       ).all(params.sessionId, params.project) as Array<{ title: string }>;
       for (const d of discoveries) {
-        sessionLearnings.push(d.title);
+        if (isPromotableContent(d.title)) {
+          sessionLearnings.push(d.title);
+        }
       }
 
       promoteLearnings({
@@ -819,7 +859,7 @@ export async function runSessionEndCleanup(params: SessionEndParams): Promise<vo
       const sessionLearnings: string[] = [];
       const decisions = getDecisionsBySession(params.db, params.sessionId, { limit: 10 });
       for (const d of decisions) {
-        if (d.content && d.content.length > 15) sessionLearnings.push(d.content);
+        if (d.content && isPromotableContent(d.content)) sessionLearnings.push(d.content);
       }
       const discoveries = cachedPrepare(params.db,
         `SELECT DISTINCT title FROM observations
@@ -827,7 +867,9 @@ export async function runSessionEndCleanup(params: SessionEndParams): Promise<vo
            AND obs_type = 'discovery' AND title IS NOT NULL AND LENGTH(title) > 10
          ORDER BY importance DESC LIMIT 5`
       ).all(params.sessionId, params.project) as Array<{ title: string }>;
-      for (const d of discoveries) sessionLearnings.push(d.title);
+      for (const d of discoveries) {
+        if (isPromotableContent(d.title)) sessionLearnings.push(d.title);
+      }
       if (sessionLearnings.length > 0) {
         promoteLearnings({ db: params.db, project: params.project, sessionLearnings });
       }

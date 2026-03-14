@@ -233,9 +233,13 @@ export async function captureDecisions(params: {
 
         // Tier 1 (user confirmations) and Tier 4 (explicit markers) are verified facts —
         // the user has explicitly confirmed or stated something as decided.
+        // Quality gate: skip short content, tool titles, and conversational filler.
         if (candidate.tier === 1 || candidate.tier === 4) {
           try {
-            addVerifiedFact(db, sessionId, redacted);
+            if (redacted.length >= 30 && !/^(yes|no|ok|sure|send|go|done)\b/i.test(redacted.trim())
+                && !/^(Edit|Read|Write|Bash|Grep|Glob):/i.test(redacted.trim())) {
+              addVerifiedFact(db, sessionId, redacted);
+            }
           } catch {
             // Non-throwing
           }

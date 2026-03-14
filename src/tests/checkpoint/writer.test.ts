@@ -255,11 +255,11 @@ describe('writeCheckpoint', () => {
   });
 
   it('gathers decisions (LIMIT 15) from DB', async () => {
-    // Seed 20 decisions
+    // Seed 20 decisions — content must be long enough to pass quality filter (>= 30 chars)
     for (let i = 0; i < 20; i++) {
       insertDecision(db, {
         session_id: 's1',
-        content: `decision ${i}`,
+        content: `The architecture decision number ${i} uses three-layer assembly model`,
         source: 'confirmation',
         fingerprint: `fp-${i}`,
       });

@@ -20,8 +20,9 @@ import {
   runCompactionSequence,
   runSessionEndCleanup,
 } from '../../../adapters/shared/lifecycle.js';
-import { getArtifactsByProject } from '../../../core/artifacts.js';
-import { upsertLearning } from '../../../core/learnings.js';
+import { getArtifactsByProject, createArtifact } from '../../../core/artifacts.js';
+import { upsertLearning, getLearningsByProject } from '../../../core/learnings.js';
+import { insertDecision } from '../../../core/decisions.js';
 
 const testConfig = { ...DEFAULT_CONFIG } as unknown as ClaudexConfig;
 
@@ -539,6 +540,81 @@ describe('runCompactionSequence', () => {
     expect(artifacts.every(a => a.artifact_type === 'learning')).toBe(true);
     expect(artifacts.every(a => a.importance === 4)).toBe(true);
     expect(artifacts.every(a => a.state === 'fresh')).toBe(true);
+  });
+
+  it('packs all existing artifacts before creating learning artifacts', async () => {
+    // Create some artifacts in various states
+    createArtifact(db, 'test-s1', 'test-proj', 'observation', null, 'Fresh obs', 'content', 3);
+    createArtifact(db, 'test-s1', 'test-proj', 'decision', null, 'A decision', 'content', 5);
+
+    // Add a learning that will produce a fresh learning artifact
+    upsertLearning(db, {
+      project: 'test-proj',
+      agent_id: 'default',
+      fingerprint: 'fp-pack-test',
+      content: 'WAL mode is important for concurrency',
+    });
+
+    await runCompactionSequence({
+      db,
+      sessionId: 'test-s1',
+      project: 'test-proj',
+      cwd: '/tmp/test',
+    });
+
+    const all = getArtifactsByProject(db, 'test-proj');
+    // Old artifacts should be packed
+    const packedObs = all.filter(a => a.artifact_type === 'observation' && a.state === 'packed');
+    const packedDec = all.filter(a => a.artifact_type === 'decision' && a.state === 'packed');
+    expect(packedObs.length).toBe(1);
+    expect(packedDec.length).toBe(1);
+    // New learning artifacts should be fresh (created after packing)
+    const freshLearnings = all.filter(a => a.artifact_type === 'learning' && a.state === 'fresh');
+    expect(freshLearnings.length).toBe(1);
+  });
+
+  it('filters out low-quality content from learning promotion', async () => {
+    // Insert decisions with varying quality
+    insertDecision(db, {
+      session_id: 'test-s1',
+      project: 'test-proj',
+      content: 'The architecture uses a three-layer assembly model for context injection',
+      source: 'direction',
+      fingerprint: 'fp-good-1',
+    });
+    insertDecision(db, {
+      session_id: 'test-s1',
+      project: 'test-proj',
+      content: 'Edit: insight-extractor.test.ts',
+      source: 'direction',
+      fingerprint: 'fp-bad-tool',
+    });
+    insertDecision(db, {
+      session_id: 'test-s1',
+      project: 'test-proj',
+      content: 'yes please',
+      source: 'confirmation',
+      fingerprint: 'fp-bad-short',
+    });
+    insertDecision(db, {
+      session_id: 'test-s1',
+      project: 'test-proj',
+      content: '**What artifacts SHOULD be:**',
+      source: 'direction',
+      fingerprint: 'fp-bad-md',
+    });
+
+    await runCompactionSequence({
+      db,
+      sessionId: 'test-s1',
+      project: 'test-proj',
+      cwd: '/tmp/test',
+    });
+
+    const learnings = getLearningsByProject(db, 'test-proj');
+    // Only the high-quality decision should be promoted
+    expect(learnings.length).toBe(1);
+    expect(learnings[0].content).toContain('three-layer assembly');
   });
 
   it('still marks post-compact-pending even when checkpoint fails', async () => {
