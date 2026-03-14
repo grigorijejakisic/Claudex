@@ -155,21 +155,39 @@ Not just `} catch { }` with nothing.
 
 ## PHASE 3: Contract Coherence (65.1 → 82)
 
-### 3.1 Consume or delete unused config values
+### 3.1 Config cleanup — wire 3, delete 7
 
-From Gemini DWT-001 — these config values are parsed, validated, merged, but NEVER READ by any runtime code:
+Full audit completed. 32 config values total: 22 working, 3 need wiring, 7 are false promises.
 
-| Config Value | Action |
-|-------------|--------|
-| `learnings.max_per_project` | Either wire into learnings-promoter.ts or delete |
-| `learnings.surface_count` | Either wire into assembler topic pivots or delete |
-| `checkpoint.compression` | Pass to writeCheckpoint from lifecycle or delete |
-| `enrichment.timeout_ms` | Pass to enrichCheckpoint or delete |
-| `features.fts5_search` | Wire into assembler FTS5 search or delete |
-| `gsd.enabled` | Gate readGsdState call or delete |
-| `adapter` | Delete (adapters self-report) |
+**DELETE these 7 (from DEFAULT_CONFIG in constants.ts + ClaudexConfig type in config.ts + validation):**
 
-**Recommendation:** Wire the 3 most useful (`compression`, `timeout_ms`, `fts5_search`), delete the rest. Less config = fewer contracts to honor.
+| Config Value | Default | Why Delete |
+|-------------|---------|------------|
+| `observations.enabled` | true | Never checked — observations always captured unconditionally |
+| `checkpoint.compression` | false | Parsed but never passed to writeCheckpoint — compression never happens |
+| `learnings.surface_count` | 10 | Assembler uses artifacts now, not direct learnings. Legacy reference |
+| `gsd.enabled` | true | Never checked — GSD state always read unconditionally |
+| `features.fts5_search` | true | Refers to deleted legacy FTS5 formatters. Artifact search is unconditional |
+| `observability.enabled` | true | Most modules ignore it — telemetry fires unconditionally |
+| `adapter` | 'auto' | Adapters self-identify via their own constants. Config value is meaningless |
+
+**WIRE these 3 (config exists but code ignores it):**
+
+| Config Value | Default | Where to Wire | How |
+|-------------|---------|---------------|-----|
+| `enrichment.timeout_ms` | 10000 | `lifecycle.ts` → `enrichCheckpoint()` | Pass `config.enrichment.timeout_ms` as timeout param instead of hardcoded 10000 |
+| `learnings.max_per_project` | 50 | `learnings-promoter.ts` | Replace hardcoded `MAX_LEARNINGS_PER_PROJECT = 50` with `config.learnings.max_per_project` |
+| `embeddings.jaccard_shift_threshold` | 0.15 | `user-prompt-submit.ts` | Pass to `detectTopicShift` config (bridge already does, CC hooks don't) |
+
+**KEEP these 22 (already working correctly):**
+- `injection.*` (2): budget_tokens, topic_shift_budget
+- `observations.*` (3): retention_days, prune_threshold, prune_count
+- `checkpoint.*` (2): debounce_seconds, compaction_instructions
+- `learnings.max_per_project` (1, after wiring)
+- `enrichment.*` (4): enabled, provider, ollama_base_url, ollama_model
+- `embeddings.*` (7): enabled, provider, model, ollama_base_url, topic_shift_threshold, topic_shift_window, decision_confidence_threshold
+- `observability.*` (2): retention_days, retain_error_count
+- `context.*` (4): advisory_threshold, warning_threshold, critical_threshold, checkpoint_cooldown_seconds
 
 ### 3.2 Fix upsertThreadState semantics
 
