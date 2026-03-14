@@ -7,7 +7,7 @@
 import { wrapHook } from './infrastructure.js';
 import { createSession } from '../../core/sessions.js';
 import { recoverFromDb } from '../../checkpoint/loader.js';
-import { pruneTelemetry } from '../../observability/telemetry.js';
+import { pruneTelemetry, emitTelemetry } from '../../observability/telemetry.js';
 import { assembleFullContext } from '../../assembly/assembler.js';
 import { getIdentityDir } from '../../shared/paths.js';
 
@@ -36,6 +36,18 @@ const main = wrapHook('SessionStart', async (input, ctx) => {
     config: ctx.config,
     identityDir: getIdentityDir(),
   });
+
+  if (payload.tokenEstimate > 0) {
+    try {
+      emitTelemetry(ctx.db, input.session_id, 'injection', {
+        trigger: 'session_start' as const,
+        sections_included: payload.sources,
+        sections_skipped: [],
+        total_tokens: payload.tokenEstimate,
+        budget_remaining: ctx.config.injection.budget_tokens - payload.tokenEstimate,
+      });
+    } catch { /* non-fatal */ }
+  }
 
   if (payload.content) {
     return { additionalContext: payload.content };

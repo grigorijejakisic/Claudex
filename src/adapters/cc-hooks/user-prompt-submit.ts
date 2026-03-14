@@ -13,6 +13,7 @@ import { TopicShiftDetector } from '../../intelligence/topic-shift.js';
 import type { TopicShiftResult } from '../../intelligence/topic-shift.js';
 import { EmbeddingProvider } from '../../embeddings/embedding-provider.js';
 import { getIdentityDir } from '../../shared/paths.js';
+import { emitTelemetry } from '../../observability/telemetry.js';
 
 const main = wrapHook('UserPromptSubmit', async (input, ctx) => {
   const prompt = (input.user_prompt as string) || '';
@@ -63,6 +64,23 @@ const main = wrapHook('UserPromptSubmit', async (input, ctx) => {
 
   if (isPostCompaction) {
     clearPostCompactPending(ctx.db, input.session_id);
+  }
+
+  if (payload.tokenEstimate > 0) {
+    try {
+      const trigger = isPostCompaction
+        ? 'post_compaction' as const
+        : payload.sources.includes('topic_pivot')
+          ? 'topic_shift' as const
+          : 'gauge' as const;
+      emitTelemetry(ctx.db, input.session_id, 'injection', {
+        trigger,
+        sections_included: payload.sources,
+        sections_skipped: [],
+        total_tokens: payload.tokenEstimate,
+        budget_remaining: ctx.config.injection.budget_tokens - payload.tokenEstimate,
+      });
+    } catch { /* non-fatal */ }
   }
 
   if (payload.content) {

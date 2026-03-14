@@ -38,6 +38,7 @@ export interface FullAssemblyParams {
   config: ClaudexConfig;
   searchQuery?: string;
   identityDir?: string;
+  isPostCompaction?: boolean;
 }
 
 export interface RegularPromptParams {
@@ -74,25 +75,29 @@ export function assembleFullContext(params: FullAssemblyParams): InjectPayload {
     const skipped: Array<{ priority: number; section: string; name: string }> = [];
     let referenceMode = false;
 
-    // Priority 1: Identity
-    const identity = formatIdentitySection(params.identityDir);
-    if (identity) {
-      const cost = estimateTokens(identity);
-      if (cost <= budget) {
-        sections.push(identity);
-        budget -= cost;
-        sources.push('identity');
+    // Priority 1: Identity (skip post-compaction — already in system prompt)
+    if (!params.isPostCompaction) {
+      const identity = formatIdentitySection(params.identityDir);
+      if (identity) {
+        const cost = estimateTokens(identity);
+        if (cost <= budget) {
+          sections.push(identity);
+          budget -= cost;
+          sources.push('identity');
+        }
       }
     }
 
-    // Priority 2: Project context
-    const project = formatProjectSection(params.projectDir);
-    if (project) {
-      const cost = estimateTokens(project);
-      if (cost <= budget) {
-        sections.push(project);
-        budget -= cost;
-        sources.push('project');
+    // Priority 2: Project context (skip post-compaction — already in system prompt)
+    if (!params.isPostCompaction) {
+      const project = formatProjectSection(params.projectDir);
+      if (project) {
+        const cost = estimateTokens(project);
+        if (cost <= budget) {
+          sections.push(project);
+          budget -= cost;
+          sources.push('project');
+        }
       }
     }
 
@@ -258,7 +263,7 @@ export function assembleFullContext(params: FullAssemblyParams): InjectPayload {
  */
 export function assembleRegularPrompt(params: RegularPromptParams): InjectPayload {
   try {
-    // 1. Post-compaction -> full assembly
+    // 1. Post-compaction -> full assembly (sans identity/project — already in system prompt)
     if (params.isPostCompaction) {
       return assembleFullContext({
         db: params.db,
@@ -267,6 +272,7 @@ export function assembleRegularPrompt(params: RegularPromptParams): InjectPayloa
         config: params.config,
         searchQuery: params.prompt,
         identityDir: params.identityDir,
+        isPostCompaction: true,
       });
     }
 

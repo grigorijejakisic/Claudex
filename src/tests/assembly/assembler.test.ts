@@ -246,6 +246,46 @@ describe('assembleFullContext', () => {
     expect(result.tokenEstimate).toBeGreaterThan(0);
   });
 
+  it('skips identity and project when isPostCompaction is true', () => {
+    const projDir = mkDir('full-postcompact');
+    const idDir = mkDir('full-postcompact-id');
+    writeFile(idDir, 'USER.md', 'Test user identity');
+    writeFile(projDir, 'PROJECT_PRIMER.md', 'Test project primer');
+
+    // Seed learnings to verify non-skipped sections still included
+    upsertLearning(db, { project: 'proj', fingerprint: 'lpc2', content: 'Learning for postcompact' });
+
+    const result = assembleFullContext({
+      db, project: 'proj', projectDir: projDir, config: makeConfig(),
+      identityDir: idDir, isPostCompaction: true,
+    });
+
+    // Identity and project should be skipped
+    expect(result.sources).not.toContain('identity');
+    expect(result.sources).not.toContain('project');
+    expect(result.content).not.toContain('## Identity');
+    expect(result.content).not.toContain('## Project');
+
+    // Learnings should still be present
+    expect(result.sources).toContain('learnings');
+    expect(result.tokenEstimate).toBeGreaterThan(0);
+  });
+
+  it('includes identity and project when isPostCompaction is false/undefined', () => {
+    const projDir = mkDir('full-normal');
+    const idDir = mkDir('full-normal-id');
+    writeFile(idDir, 'USER.md', 'Test user identity');
+    writeFile(projDir, 'PROJECT_PRIMER.md', 'Test project primer');
+
+    const result = assembleFullContext({
+      db, project: 'proj', projectDir: projDir, config: makeConfig(),
+      identityDir: idDir,
+    });
+
+    expect(result.sources).toContain('identity');
+    expect(result.sources).toContain('project');
+  });
+
   it('sources array correctly tracks contributing sections', () => {
     const projDir = mkDir('sources');
     const idDir = mkDir('sources-id');
@@ -279,10 +319,14 @@ describe('assembleRegularPrompt', () => {
     db.close();
   });
 
-  it('returns full assembly on post-compaction', () => {
+  it('returns full assembly on post-compaction (skipping identity and project)', () => {
     const projDir = mkDir('reg-compact');
     const idDir = mkDir('reg-compact-id');
     writeFile(idDir, 'USER.md', 'User identity');
+    writeFile(projDir, 'PROJECT_PRIMER.md', 'Project primer');
+
+    // Seed a learning so the payload is non-empty
+    upsertLearning(db, { project: 'proj', fingerprint: 'lpc1', content: 'Post-compaction learning' });
 
     const result = assembleRegularPrompt({
       isPostCompaction: true, prompt: 'Hello',
@@ -291,7 +335,10 @@ describe('assembleRegularPrompt', () => {
       config: makeConfig(), identityDir: idDir,
     });
 
-    expect(result.sources).toContain('identity');
+    // Post-compaction skips identity and project (already in system prompt)
+    expect(result.sources).not.toContain('identity');
+    expect(result.sources).not.toContain('project');
+    expect(result.sources).toContain('learnings');
     expect(result.tokenEstimate).toBeGreaterThan(0);
   });
 
@@ -350,6 +397,9 @@ describe('assembleRegularPrompt', () => {
     const idDir = mkDir('reg-priority-compact-id');
     writeFile(idDir, 'USER.md', 'User identity');
 
+    // Seed a learning so post-compaction payload is non-empty
+    upsertLearning(db, { project: 'proj', fingerprint: 'lpri1', content: 'Priority learning' });
+
     const result = assembleRegularPrompt({
       isPostCompaction: true, prompt: 'switch to deployment',
       gauge: null,
@@ -358,8 +408,10 @@ describe('assembleRegularPrompt', () => {
       config: makeConfig(), identityDir: idDir,
     });
 
-    // Full assembly (has identity), not just pivot
-    expect(result.sources).toContain('identity');
+    // Post-compaction full assembly (not just pivot), but identity/project skipped
+    expect(result.sources).not.toContain('topic_pivot');
+    expect(result.sources).not.toContain('identity');
+    expect(result.sources).toContain('learnings');
   });
 
   it('prioritizes topic-shift over gauge', () => {
