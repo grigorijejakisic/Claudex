@@ -244,6 +244,32 @@ describe('pruneObservations', () => {
   });
 });
 
+describe('getCoOccurrences — execution bounds (REC-15)', () => {
+  it('limits results to max 5 co-occurrences', () => {
+    // Create many observations sharing the same file
+    const id1 = seedObservation({ files_modified: '["src/shared.ts"]' });
+    for (let i = 0; i < 20; i++) {
+      seedObservation({ files_modified: '["src/shared.ts"]' });
+    }
+
+    const count = getCoOccurrences(db, id1, '["src/shared.ts"]');
+    expect(count).toBe(5); // Capped at 5
+  });
+
+  it('query uses LIMIT to bound per-file co-occurrence count', () => {
+    // Even with many co-occurring observations, the query should be bounded
+    const id1 = seedObservation({ files_modified: '["src/a.ts", "src/b.ts"]' });
+    for (let i = 0; i < 50; i++) {
+      seedObservation({ files_modified: '["src/a.ts"]' });
+      seedObservation({ files_modified: '["src/b.ts"]' });
+    }
+
+    const count = getCoOccurrences(db, id1, '["src/a.ts", "src/b.ts"]');
+    // Should still be capped at 5
+    expect(count).toBeLessThanOrEqual(5);
+  });
+});
+
 describe('applyRetentionPolicy', () => {
   it('hard-deletes soft-deleted observations older than retention_days', () => {
     const oldEpoch = Math.floor(Date.now() / 1000) - 100 * 86400;

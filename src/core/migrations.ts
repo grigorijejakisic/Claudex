@@ -296,31 +296,47 @@ export function migrateFromV2(db: Database, v2DbPath: string): void {
       db.exec(SCHEMA_V3);
       db.exec(TELEMETRY_SCHEMA);
 
+      // Helper: check if a table exists in the v2 database (REC-10)
+      const v2HasTable = (tableName: string): boolean => {
+        const row = db.prepare(
+          "SELECT 1 FROM v2.sqlite_master WHERE type='table' AND name = ?"
+        ).get(tableName) as { 1: number } | undefined;
+        return row != null;
+      };
+
       // 3. Copy observations, sessions, pressure_scores from v2
+      // Guard each table copy with existence check for partial legacy DBs (REC-10)
+
       // Note: files_modified may be comma-separated in v2, which fails json_valid CHECK.
       // We copy with files_modified defaulting to '[]' and fix in step 7.
-      db.exec(`
-        INSERT OR IGNORE INTO observations (id, session_id, project, tool_name, category, title, content, importance, files_modified, timestamp_epoch, access_count, last_accessed_at_epoch, deleted_at_epoch)
-        SELECT id, session_id, project, tool_name, category, title, content, importance,
-          CASE WHEN json_valid(files_modified) THEN files_modified ELSE '[]' END,
-          timestamp_epoch, access_count, last_accessed_at_epoch, deleted_at_epoch
-        FROM v2.observations
-      `);
+      if (v2HasTable('observations')) {
+        db.exec(`
+          INSERT OR IGNORE INTO observations (id, session_id, project, tool_name, category, title, content, importance, files_modified, timestamp_epoch, access_count, last_accessed_at_epoch, deleted_at_epoch)
+          SELECT id, session_id, project, tool_name, category, title, content, importance,
+            CASE WHEN json_valid(files_modified) THEN files_modified ELSE '[]' END,
+            timestamp_epoch, access_count, last_accessed_at_epoch, deleted_at_epoch
+          FROM v2.observations
+        `);
+      }
 
-      db.exec(`
-        INSERT OR IGNORE INTO sessions (session_id, scope, project, cwd, source, status, observation_count, created_at_epoch, ended_at_epoch)
-        SELECT session_id, scope, project, cwd, source, status, observation_count, created_at_epoch, ended_at_epoch
-        FROM v2.sessions
-      `);
+      if (v2HasTable('sessions')) {
+        db.exec(`
+          INSERT OR IGNORE INTO sessions (session_id, scope, project, cwd, source, status, observation_count, created_at_epoch, ended_at_epoch)
+          SELECT session_id, scope, project, cwd, source, status, observation_count, created_at_epoch, ended_at_epoch
+          FROM v2.sessions
+        `);
+      }
 
       // Convert WARM -> COLD during copy (v3 only allows HOT/COLD)
-      db.exec(`
-        INSERT OR IGNORE INTO pressure_scores (file_path, project, raw_pressure, temperature, last_touched_epoch, decay_rate)
-        SELECT file_path, project, raw_pressure,
-          CASE WHEN temperature IN ('HOT', 'COLD') THEN temperature ELSE 'COLD' END,
-          last_touched_epoch, decay_rate
-        FROM v2.pressure_scores
-      `);
+      if (v2HasTable('pressure_scores')) {
+        db.exec(`
+          INSERT OR IGNORE INTO pressure_scores (file_path, project, raw_pressure, temperature, last_touched_epoch, decay_rate)
+          SELECT file_path, project, raw_pressure,
+            CASE WHEN temperature IN ('HOT', 'COLD') THEN temperature ELSE 'COLD' END,
+            last_touched_epoch, decay_rate
+          FROM v2.pressure_scores
+        `);
+      }
 
       // 4. Archive unused v2 tables
       const v2Tables = db
@@ -358,21 +374,24 @@ export function migrateFromV2(db: Database, v2DbPath: string): void {
 
       // 7. Fix files_modified from comma-separated to JSON array
       // Read original non-JSON values from v2 and convert to JSON arrays in v3
-      const rows = db
-        .prepare(
-          "SELECT id, files_modified FROM v2.observations WHERE NOT json_valid(files_modified)"
-        )
-        .all() as Array<{ id: number; files_modified: string }>;
+      // Guard: v2.observations may not exist in partial legacy DBs (REC-10)
+      if (v2HasTable('observations')) {
+        const rows = db
+          .prepare(
+            "SELECT id, files_modified FROM v2.observations WHERE NOT json_valid(files_modified)"
+          )
+          .all() as Array<{ id: number; files_modified: string }>;
 
-      const updateStmt = db.prepare(
-        'UPDATE observations SET files_modified = ? WHERE id = ?'
-      );
-      for (const row of rows) {
-        const files = row.files_modified
-          .split(',')
-          .map((f) => f.trim())
-          .filter((f) => f.length > 0);
-        updateStmt.run(JSON.stringify(files), row.id);
+        const updateStmt = db.prepare(
+          'UPDATE observations SET files_modified = ? WHERE id = ?'
+        );
+        for (const row of rows) {
+          const files = row.files_modified
+            .split(',')
+            .map((f) => f.trim())
+            .filter((f) => f.length > 0);
+          updateStmt.run(JSON.stringify(files), row.id);
+        }
       }
 
       // 8. Record schema version 300

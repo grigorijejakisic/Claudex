@@ -455,6 +455,106 @@ describe('migrateFromV2', () => {
     }
   });
 
+  it('handles partial v2 DB with observations but no sessions or pressure_scores (REC-10)', () => {
+    const partialDir = fs.mkdtempSync(path.join(os.tmpdir(), 'claudex-partial-'));
+    const partialDbPath = path.join(partialDir, 'v2-partial.db');
+
+    try {
+      const v2Db = new Database(partialDbPath);
+      // Partial v2: only observations table exists
+      v2Db.exec(`
+        CREATE TABLE observations (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          session_id TEXT NOT NULL,
+          project TEXT,
+          tool_name TEXT NOT NULL,
+          category TEXT NOT NULL,
+          title TEXT NOT NULL,
+          content TEXT NOT NULL,
+          importance INTEGER NOT NULL,
+          files_modified TEXT NOT NULL DEFAULT '[]',
+          timestamp_epoch INTEGER NOT NULL DEFAULT (unixepoch()),
+          access_count INTEGER NOT NULL DEFAULT 0,
+          last_accessed_at_epoch INTEGER,
+          deleted_at_epoch INTEGER DEFAULT NULL
+        );
+        INSERT INTO observations (session_id, tool_name, category, title, content, importance)
+        VALUES ('partial-sess', 'bash', 'code', 'partial obs', 'partial content', 3);
+      `);
+      v2Db.close();
+
+      const targetDb = new Database(':memory:');
+      // Should not throw — should skip missing tables gracefully
+      expect(() => migrateFromV2(targetDb, partialDbPath)).not.toThrow();
+
+      // Observations should be copied
+      const obs = targetDb
+        .prepare("SELECT * FROM observations WHERE session_id = 'partial-sess'")
+        .get() as Record<string, unknown> | undefined;
+      expect(obs).toBeDefined();
+      expect(obs!.title).toBe('partial obs');
+
+      targetDb.close();
+    } finally {
+      fs.rmSync(partialDir, { recursive: true, force: true });
+    }
+  });
+
+  it('handles partial v2 DB with observations and sessions but no pressure_scores (REC-10)', () => {
+    const partialDir = fs.mkdtempSync(path.join(os.tmpdir(), 'claudex-partial2-'));
+    const partialDbPath = path.join(partialDir, 'v2-partial2.db');
+
+    try {
+      const v2Db = new Database(partialDbPath);
+      v2Db.exec(`
+        CREATE TABLE observations (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          session_id TEXT NOT NULL,
+          project TEXT,
+          tool_name TEXT NOT NULL,
+          category TEXT NOT NULL,
+          title TEXT NOT NULL,
+          content TEXT NOT NULL,
+          importance INTEGER NOT NULL,
+          files_modified TEXT NOT NULL DEFAULT '[]',
+          timestamp_epoch INTEGER NOT NULL DEFAULT (unixepoch()),
+          access_count INTEGER NOT NULL DEFAULT 0,
+          last_accessed_at_epoch INTEGER,
+          deleted_at_epoch INTEGER DEFAULT NULL
+        );
+        CREATE TABLE sessions (
+          session_id TEXT PRIMARY KEY,
+          scope TEXT, project TEXT, cwd TEXT, source TEXT,
+          status TEXT NOT NULL DEFAULT 'active',
+          observation_count INTEGER NOT NULL DEFAULT 0,
+          created_at_epoch INTEGER NOT NULL DEFAULT (unixepoch()),
+          ended_at_epoch INTEGER
+        );
+        INSERT INTO observations (session_id, tool_name, category, title, content, importance)
+        VALUES ('ps-sess', 'bash', 'code', 'ps obs', 'ps content', 3);
+        INSERT INTO sessions (session_id, status) VALUES ('ps-sess', 'active');
+      `);
+      v2Db.close();
+
+      const targetDb = new Database(':memory:');
+      expect(() => migrateFromV2(targetDb, partialDbPath)).not.toThrow();
+
+      const obs = targetDb
+        .prepare("SELECT * FROM observations WHERE session_id = 'ps-sess'")
+        .get() as Record<string, unknown> | undefined;
+      expect(obs).toBeDefined();
+
+      const sess = targetDb
+        .prepare("SELECT * FROM sessions WHERE session_id = 'ps-sess'")
+        .get() as Record<string, unknown> | undefined;
+      expect(sess).toBeDefined();
+
+      targetDb.close();
+    } finally {
+      fs.rmSync(partialDir, { recursive: true, force: true });
+    }
+  });
+
   it('throws when source and target are the same database path', () => {
     const sameDir = fs.mkdtempSync(path.join(os.tmpdir(), 'claudex-same-'));
     const sameDbPath = path.join(sameDir, 'same.db');
@@ -475,6 +575,92 @@ describe('migrateFromV2', () => {
     } finally {
       fs.rmSync(sameDir, { recursive: true, force: true });
     }
+  });
+});
+
+describe('upgradeV2SchemaInPlace — partial legacy DBs (REC-10)', () => {
+  it('handles DB with observations but no sessions table', () => {
+    const db = new Database(':memory:');
+    // Partial v2 DB: only observations, no sessions or telemetry
+    db.exec(`
+      CREATE TABLE observations (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        session_id TEXT NOT NULL,
+        project TEXT,
+        tool_name TEXT NOT NULL,
+        category TEXT NOT NULL,
+        title TEXT NOT NULL,
+        content TEXT NOT NULL,
+        importance INTEGER NOT NULL,
+        files_modified TEXT NOT NULL DEFAULT '[]',
+        timestamp_epoch INTEGER NOT NULL DEFAULT (unixepoch()),
+        access_count INTEGER NOT NULL DEFAULT 0,
+        last_accessed_at_epoch INTEGER,
+        deleted_at_epoch INTEGER DEFAULT NULL
+      );
+    `);
+
+    // initializeSchema should handle partial DB without crashing
+    expect(() => initializeSchema(db)).not.toThrow();
+
+    // All expected tables should exist after initialization
+    const tables = db
+      .prepare("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name")
+      .all() as Array<{ name: string }>;
+    const tableNames = tables.map((t) => t.name);
+    expect(tableNames).toContain('sessions');
+    expect(tableNames).toContain('telemetry');
+    expect(tableNames).toContain('observations');
+    db.close();
+  });
+
+  it('handles DB with sessions using old column names but no pressure_scores', () => {
+    const db = new Database(':memory:');
+    // Partial v2 DB: sessions with old started_at_epoch column, no pressure_scores
+    db.exec(`
+      CREATE TABLE sessions (
+        session_id TEXT PRIMARY KEY,
+        scope TEXT,
+        project TEXT,
+        cwd TEXT,
+        status TEXT NOT NULL DEFAULT 'active',
+        observation_count INTEGER NOT NULL DEFAULT 0,
+        started_at_epoch INTEGER NOT NULL DEFAULT (unixepoch()),
+        ended_at_epoch INTEGER
+      );
+    `);
+
+    expect(() => initializeSchema(db)).not.toThrow();
+
+    // Verify column was renamed
+    const cols = db.pragma('table_info(sessions)') as Array<{ name: string }>;
+    const colNames = cols.map(c => c.name);
+    expect(colNames).toContain('created_at_epoch');
+    expect(colNames).not.toContain('started_at_epoch');
+    db.close();
+  });
+
+  it('handles DB with sessions but missing source column and no pressure_scores', () => {
+    const db = new Database(':memory:');
+    db.exec(`
+      CREATE TABLE sessions (
+        session_id TEXT PRIMARY KEY,
+        scope TEXT,
+        project TEXT,
+        cwd TEXT,
+        status TEXT NOT NULL DEFAULT 'active',
+        observation_count INTEGER NOT NULL DEFAULT 0,
+        created_at_epoch INTEGER NOT NULL DEFAULT (unixepoch()),
+        ended_at_epoch INTEGER
+      );
+    `);
+
+    expect(() => initializeSchema(db)).not.toThrow();
+
+    // Verify source column was added
+    const cols = db.pragma('table_info(sessions)') as Array<{ name: string }>;
+    expect(cols.map(c => c.name)).toContain('source');
+    db.close();
   });
 });
 

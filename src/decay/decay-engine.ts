@@ -64,14 +64,23 @@ export function getCoOccurrences(
     const start = Date.now();
     let total = 0;
 
+    // REC-15: Add LIMIT to bound per-file query execution.
+    // Since result is capped at 5, we only need to count up to 6 per file
+    // (6 to know if there are "at least 6" to properly cap the running total).
     const stmt = project != null
       ? db.prepare(
-          `SELECT COUNT(DISTINCT id) as cnt FROM observations
-           WHERE id != ? AND deleted_at_epoch IS NULL AND project = ? AND files_modified LIKE ?`
+          `SELECT COUNT(*) as cnt FROM (
+             SELECT id FROM observations
+             WHERE id != ? AND deleted_at_epoch IS NULL AND project = ? AND files_modified LIKE ?
+             LIMIT 6
+           )`
         )
       : db.prepare(
-          `SELECT COUNT(DISTINCT id) as cnt FROM observations
-           WHERE id != ? AND deleted_at_epoch IS NULL AND files_modified LIKE ?`
+          `SELECT COUNT(*) as cnt FROM (
+             SELECT id FROM observations
+             WHERE id != ? AND deleted_at_epoch IS NULL AND files_modified LIKE ?
+             LIMIT 6
+           )`
         );
 
     for (const file of files) {
@@ -80,6 +89,8 @@ export function getCoOccurrences(
         ? stmt.get(observationId, project, `%"${file}"%`) as { cnt: number } | undefined
         : stmt.get(observationId, `%"${file}"%`) as { cnt: number } | undefined;
       if (row) total += row.cnt;
+      // Early exit: if already at cap, no need to check more files
+      if (total >= 5) return 5;
     }
 
     return Math.min(total, 5);

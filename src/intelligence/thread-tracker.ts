@@ -251,6 +251,21 @@ export class ThreadTracker {
     }
   }
 
+  /**
+   * Update the current topic (e.g., after topic-shift detection).
+   * Persists immediately to DB. Non-throwing.
+   * REC-08: Provides the call site for topic-shift results to be persisted.
+   */
+  updateTopic(newTopic: string): void {
+    try {
+      this.topic = newTopic;
+      this.summary = this.buildSummary();
+      this.persist();
+    } catch {
+      // Non-throwing
+    }
+  }
+
   /** Get current topic (for testing/inspection) */
   getTopic(): string | null {
     return this.topic;

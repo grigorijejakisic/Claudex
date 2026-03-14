@@ -466,6 +466,60 @@ describe('decision capture', () => {
     });
   });
 
+  // --- REC-14: Fingerprint from redacted content ---
+
+  describe('REC-14 — fingerprint generated from redacted content', () => {
+    it('fingerprint does not contain sensitive tokens from unredacted text', async () => {
+      // Text containing a secret that should be redacted
+      const secretText = 'Use API key sk-abcdefghijklmnopqrstuvwxyz1234 for auth';
+      const result = await capture({
+        assistantText: secretText,
+      });
+
+      // The decision should be captured (has imperative "Use")
+      expect(result.length).toBeGreaterThanOrEqual(1);
+
+      // Check stored fingerprint does not contain the secret
+      const stored = getDecisionsBySession(db, sessionId);
+      for (const decision of stored) {
+        expect(decision.fingerprint).not.toContain('sk-abcdefghijklmnopqrstuvwxyz1234');
+        expect(decision.content).not.toContain('sk-abcdefghijklmnopqrstuvwxyz1234');
+      }
+    });
+
+    it('fingerprint is based on redacted content, not original', async () => {
+      // Two texts that differ only in the secret value should produce same fingerprint
+      const text1 = 'Use token ghp_AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA for GitHub auth';
+      const text2 = 'Use token ghp_BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB for GitHub auth';
+
+      const result1 = await captureDecisions({
+        db,
+        sessionId: 'fp-sess-1',
+        project,
+        assistantText: text1,
+        mode: 'after_turn',
+      });
+
+      const result2 = await captureDecisions({
+        db,
+        sessionId: 'fp-sess-2',
+        project,
+        assistantText: text2,
+        mode: 'after_turn',
+      });
+
+      expect(result1.length).toBeGreaterThanOrEqual(1);
+      expect(result2.length).toBeGreaterThanOrEqual(1);
+
+      const stored1 = getDecisionsBySession(db, 'fp-sess-1');
+      const stored2 = getDecisionsBySession(db, 'fp-sess-2');
+
+      // After redaction, both texts should produce the same fingerprint
+      // because the secret part is replaced with [REDACTED_SECRET]
+      expect(stored1[0].fingerprint).toBe(stored2[0].fingerprint);
+    });
+  });
+
   // --- Edge cases ---
 
   describe('edge cases', () => {

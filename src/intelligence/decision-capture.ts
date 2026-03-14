@@ -11,6 +11,7 @@ import { normalizeForDedup, isDuplicate } from './semantic-dedup.js';
 import type { EmbeddingProvider } from '../embeddings/embedding-provider.js';
 import type { DecisionTemplates } from '../embeddings/templates.js';
 import { classifyDecision } from '../embeddings/templates.js';
+import { redactContent } from '../extraction/redaction.js';
 
 export interface CapturedDecision {
   content: string;
@@ -191,12 +192,14 @@ export async function captureDecisions(params: {
       const batchDup = stored.some((s) => isDuplicate(candidate.content, s.content));
       if (batchDup) continue;
 
-      // Store
-      const fingerprint = normalizeForDedup(candidate.content);
+      // Store — redact content before fingerprinting and storage (REC-14)
+      // Ensures sensitive tokens are not recoverable via fingerprint or stored content
+      const redacted = redactContent(candidate.content);
+      const fingerprint = normalizeForDedup(redacted);
       insertDecision(db, {
         session_id: sessionId,
         project,
-        content: candidate.content,
+        content: redacted,
         source: candidate.source,
         fingerprint,
       });
