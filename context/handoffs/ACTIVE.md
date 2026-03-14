@@ -1,93 +1,136 @@
 ---
 schema: claudex/handoff
 version: 1
-id: v3-context-efficiency-and-migration
-session_id: manual-2026-03-13-2
+id: v3-artifact-architecture
+session_id: session-8-2026-03-14
 scope: project:claudex-v3
 status: active
-created_at: 2026-03-13T02:30:00Z
-updated_at: 2026-03-13T02:30:00Z
+created_at: 2026-03-14T10:00:00Z
+updated_at: 2026-03-14T11:00:00Z
 ---
 
-# Handoff: V3 Context Efficiency + V2 Migration & Termination
+# Handoff: Artifact-Based Context Assembly
 
-**Priority: HIGH**
+**Priority: MEDIUM** (core architecture shipped, remaining work is optimization)
 
 ## Current State
-All phases implemented, 26 unified review fixes applied, 994 tests passing, build clean, pushed to GitHub (`4fdaaaa`). V3 hooks active in `~/.claude/settings.json`. V2 hooks manually stripped. Three setup bugs fixed (case-insensitive detection, v2 schema upgrade, active files cap).
 
-**Problem discovered this session:** V3 burns through context far too fast. Root causes identified:
-1. V2 + V3 hooks were BOTH firing (fixed — v2 stripped)
-2. Checkpoint "Active Files" dumped 50+ stale entries (fixed — capped at 15+20)
-3. Full identity + GSD state injected on every post-compaction (not yet optimized)
-4. V2 data not properly migrated — v2 and v3 share same DB path with incompatible schemas
+Session 8 delivered a complete architecture overhaul: budget-cascade assembly replaced with reference + materialization model. **1210 tests passing**, 69 test files, build clean. Commit `cdb0594` on master.
 
-## HIGH PRIORITY: V2 Migration & Termination
+### Architecture (NEW — Session 8)
 
-### Migration
-- V2 DB at `~/.claudex/db/claudex.db` (15,593 observations, 138 sessions, 2,005 pressure scores)
-- V3 uses the SAME path — currently a hybrid (v2 schema + v3 data accumulating)
-- `migrateFromV2()` in `migrations.ts` exists but has a same-DB guard that prevents it from running when source=target
-- Need to: backup v2 DB, create fresh v3 DB, migrate data properly, verify integrity
-- Schema differences: v2 `started_at_epoch` vs v3 `created_at_epoch`, v2 has extra columns (`id`, `started_at`, `ended_at` on sessions), v2 missing `source` column
-- `upgradeV2SchemaInPlace()` handles column rename — may be sufficient, but verify all tables
+Three-layer assembly pipeline replacing the old P1-P8 budget cascade:
 
-### V2 Termination
-- Delete v2 project directory (`C:/Users/Grigorije/Desktop/Projects/Claudex v2/`) or archive it
-- Confirm no references to v2 paths remain in settings.json (already verified clean)
-- Remove v2 from `~/.claudex/projects.json` if listed
-- v2 dist files at `C:/Users/Grigorije/Desktop/Projects/Claudex v2/Claudex/dist/*.mjs` — no longer needed
+| Layer | Purpose | Budget | Always? |
+|-------|---------|--------|---------|
+| **Structural** | Identity, project, checkpoint, session flow | ~500-800 tok | Yes |
+| **Reference** | Packed artifact summaries (metadata only) | ~200-400 tok | When ≥10 artifacts |
+| **Materialization** | FTS5-selected full content with provenance | ~2000-3000 tok | Query-driven |
+| **Legacy fallback** | Old cascade (learnings, hot files, GSD, FTS5, recent) | ~2000 tok | When <10 artifacts |
 
-## HIGH PRIORITY: Context Efficiency Audit
+Key design decisions:
+- **Flow entries are always visible** — narrative spine with "why" for retrieval hints
+- **TTL-based lifecycle** — fresh(3) → packed(0) → materialized(2) → packed. Lossless.
+- **Compaction = packing, not loss** — data never deleted, just visibility-managed
+- **Provenance + freshness** on all materialized content (source, age, session attribution)
+- **Temporal awareness** in gauge (session duration, UTC time, compaction timing)
+- Informed by IAM project artifact patterns (Teneral Agent Platform)
 
-V3 must not waste a single unnecessary token. Every injection path needs audit:
+### New Modules (Session 8)
 
-### Injection Points to Audit
-1. **SessionStart hook** — `assembleFullContext()` fires with full budget. Check what's included, trim what's redundant
-2. **UserPromptSubmit hook** — `assembleRegularPrompt()`. Post-compaction fires full assembly. Normal turns should inject ZERO unless topic shift or gauge threshold
-3. **PreCompact hook** — sets `post_compact_pending=1`. Verify this flag gets cleared properly
-4. **PostToolUse hook** — observation capture. Check if it adds system-reminder bloat
+| Module | Purpose |
+|--------|---------|
+| `src/core/journal.ts` | Session journal CRUD (flow/milestone/summary entries) |
+| `src/core/artifacts.ts` | Artifact CRUD + TTL lifecycle (8 functions) |
+| `src/core/session-query.ts` | DB-first session context queries |
+| `src/cli/migrate.ts` | `claudex migrate` CLI (v2→v3 automated migration) |
 
-### Known Bloat Sources
-- **Identity section**: Full USER.md (~40 lines) injected on every post-compaction. Consider: inject only on session-start, skip on post-compaction (Claude already has it in context)
-- **GSD State**: Large block with phase details. Already available via `.planning/STATE.md`. May be redundant in injection
-- **Checkpoint Active Files**: Now capped (15+20) but still renders stale files from previous sessions. Consider: only include files touched in CURRENT session
-- **Read files list**: Accumulates across entire session including agent reads. Grows unbounded in long sessions with many agents
+### Hook Integrations (Session 8)
 
-### Token Budget Targets
-- Session-start injection: ≤2000 tokens (identity + checkpoint + essentials)
-- Post-compaction injection: ≤1500 tokens (checkpoint + gauge, NO identity re-injection)
-- Regular turn: 0 tokens (unless topic shift or gauge threshold)
-- Topic shift: ≤800 tokens (already configured)
+| Hook | New Behavior |
+|------|-------------|
+| `lifecycle.ts` | `captureFlowEntry()` at compaction, `captureSessionSummary()` at session end |
+| `post-tool-use.ts` | `detectMilestone()` + `captureMilestone()` for test/build/commit events |
+| `assembler.ts` | Three-layer model + TTL tick every turn + provenance trust directives |
+| `sections.ts` | `formatFlowSection`, `formatReferenceLayer`, `formatMaterializationLayer` + temporal gauge |
 
-### Metrics to Track
-- Tokens injected per message (log in telemetry)
-- Context utilization curve across session (how fast do we hit 50%, 75%, 90%)
-- Number of compactions per session (fewer = better context efficiency)
+---
 
-## DEFERRED: Production Data Items (after 1 week real usage)
-1. V2 migration real test with full data integrity verification
-2. Error telemetry review — query for recurring errors, slow hooks
-3. Assembly output tuning — section priorities, token budgets, degradation thresholds
-4. Topic drift detection tuning — embedding cosine thresholds, Jaccard sensitivity
+## 1. REMAINING WORK (Priority Order)
 
-## Completed This Session
-- [x] 26 unified review fixes (6 workers, all verified, 994/994 tests)
-- [x] Committed and pushed phases 3-11 + fixes (`426724e`)
-- [x] V2 hooks stripped from settings.json (6 entries removed)
-- [x] `setup.ts` case-insensitive hook detection fix
-- [x] `migrations.ts` upgradeV2SchemaInPlace (started_at_epoch → created_at_epoch)
-- [x] `inject.ts` Active Files cap (15 hot + 20 read)
-- [x] `claudex setup` runs cleanly
-- [x] Data flow audit team results: `context/reasoning/data-flow-audit.md` + 5 worker reports
+### 1.1 Post-Compaction Mode Split (MEDIUM)
 
-## Key Files
-- `src/cli/setup.ts` — setup entry point, hook patching
-- `src/core/migrations.ts` — schema DDL, v2 migration, upgrade-in-place
-- `src/assembly/assembler.ts` — injection orchestrator (full, regular, topic pivot)
-- `src/assembly/sections.ts` — section formatters
-- `src/checkpoint/inject.ts` — checkpoint-to-markdown renderer
-- `src/adapters/cc-hooks/user-prompt-submit.ts` — regular prompt hook
-- `src/adapters/cc-hooks/session-start.ts` — session start hook
-- `~/.claudex/db/claudex.db` — the shared v2/v3 database
-- `~/.claude/settings.json` — hook registration (v3 only now)
+The assembler still re-injects identity + primer on post-compaction. Since these are already in the system prompt (CLAUDE.md, /starthere), they waste ~780 tokens per compaction recovery. The handoff from session 7 had a detailed spec for this (split `assembleFullContext` into session-start vs post-compaction modes).
+
+**Files:** `src/assembly/assembler.ts`
+**Estimated savings:** ~780 tokens per compaction
+
+### 1.2 Token Telemetry Wiring (LOW)
+
+Injection token estimates aren't logged to the telemetry table. Wire `tokenEstimate` and `sources` from `assembleFullContext`/`assembleRegularPrompt` return values into `emitTelemetry()`.
+
+**Files:** `src/adapters/cc-hooks/user-prompt-submit.ts`, `src/adapters/cc-hooks/session-start.ts`
+
+### 1.3 Re-Grade Recommended Findings (26 items) (LOW)
+
+The re-grade review found 26 recommended improvements. None are critical. Top concerns:
+- REC-08: `updateTopic()` dead code
+- REC-10: `migrateV1toV2` fails on partial legacy DBs
+- REC-14: Decision fingerprint from unredacted text
+- REC-15: Co-occurrence timeout guard removed
+- REC-22: Root path corruption in scope detector
+Full list in `UNIFIED_REVIEW_REPORT.md`.
+
+### 1.4 V2 Termination (LOW)
+
+The `claudex migrate` CLI exists but hasn't been run. Steps:
+1. Run `node dist/cli/migrate.cjs` against `~/.claudex/db/claudex.db`
+2. Verify integrity
+3. Delete/archive v2 project directory
+4. Clean `~/.claudex/projects.json`
+
+### 1.5 Artifact Population (DEFERRED)
+
+The artifact system is built but no code currently CREATES artifacts from observations/learnings/decisions. The system works via legacy fallback (when artifacts < 10). Need to add artifact creation in:
+- `post-tool-use.ts` — create artifacts from captured observations
+- `lifecycle.ts` — create artifacts from promoted learnings
+- `decision-capture.ts` — create artifacts from captured decisions
+
+This is the bridge from "legacy data in existing tables" to "managed artifacts with TTL."
+
+---
+
+## 2. COMPLETED (Session 8)
+
+- [x] Session journal table + CRUD (`journal.ts`, 20 tests)
+- [x] Artifact model + TTL lifecycle (`artifacts.ts`, 33 tests)
+- [x] Three-layer assembly pipeline (`assembler.ts` rewrite)
+- [x] Reference + materialization section renderers with provenance
+- [x] Flow capture at compaction, milestone detection at tool-use, summary at session-end
+- [x] DB-first session protocol (`session-query.ts`, 17 tests)
+- [x] `claudex migrate` CLI with --source/--dry-run/--force (22 tests)
+- [x] 7 critical regression fixes with TDD (28 tests)
+- [x] Temporal awareness in gauge (session duration, UTC time, compaction timing)
+- [x] 83 unified review fixes from sessions 5-6
+- [x] Embedding provider flaky test fixed
+
+## 3. KEY FILES
+
+| File | Purpose |
+|------|---------|
+| `src/assembly/assembler.ts` | Three-layer assembly orchestrator |
+| `src/assembly/sections.ts` | 12+ section formatters including reference/materialization layers |
+| `src/core/artifacts.ts` | Artifact CRUD + TTL lifecycle |
+| `src/core/journal.ts` | Session journal CRUD |
+| `src/core/session-query.ts` | DB-first session context queries |
+| `src/cli/migrate.ts` | V2→V3 migration CLI |
+| `src/adapters/shared/lifecycle.ts` | Flow capture + session summary |
+| `src/adapters/cc-hooks/post-tool-use.ts` | Milestone detection + artifact capture |
+
+## 4. ARCHITECTURE REFERENCE
+
+Study `C:\Users\Grigorije\Desktop\Projects\Definitive IAM AI Tool` for artifact patterns:
+- `base/agent_processor.py` — ToolProcessor with 3-tier categorization
+- `utility_tools/artifacts_toolkit.py` — unpack_artifact state tool
+- `base/utils.py` — format_packed_artifacts / format_unpacked_artifacts
+- `docs - Documentation/architecture/DESIGN_PHILOSOPHY.md` — "Make the right thing easy"
