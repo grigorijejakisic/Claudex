@@ -11,7 +11,7 @@ updated_at: 2026-03-14T11:00:00Z
 
 # Handoff: Artifact-Based Context Assembly
 
-**Priority: MEDIUM** (core architecture shipped, remaining work is optimization)
+**Priority: HIGH** (7 critical security/correctness findings from Codex review need fixing)
 
 ## Current State
 
@@ -58,14 +58,27 @@ Key design decisions:
 
 ## 1. REMAINING WORK (Priority Order)
 
-### 1.1 Post-Compaction Mode Split (MEDIUM)
+### 1.0 Codex Review Critical Findings (HIGH — 7 items)
 
-The assembler still re-injects identity + primer on post-compaction. Since these are already in the system prompt (CLAUDE.md, /starthere), they waste ~780 tokens per compaction recovery. The handoff from session 7 had a detailed spec for this (split `assembleFullContext` into session-start vs post-compaction modes).
+From partial unified review (40/77 perspectives completed before Codex usage limit):
 
-**Files:** `src/assembly/assembler.ts`
-**Estimated savings:** ~780 tokens per compaction
+| # | Issue | File | Category |
+|---|-------|------|----------|
+| 1 | `wrapFileContent` doesn't escape sentinels — `wrapFileContentBoundary` exists but unused by project/session wrappers | sections.ts:34 | Security: prompt injection |
+| 2 | WAL-unsafe backup — `copyFileSync` misses WAL data | migrate.ts:314 | Correctness: data loss |
+| 3 | `verified_facts` table not in DDL — writer reads/writes but schema doesn't create it | writer.ts:440 | Contract: silently broken |
+| 4 | Symlink bypass on non-Windows — `realpathSync` only on Windows | token-gauge.ts:32 | Security: path traversal |
+| 5 | Co-occurrence double-counting — same observation counted multiple times | decay-engine.ts:89 | Correctness: inflated scores |
+| 6 | Artifact content not redacted at write time — decision artifacts bypass redaction | decision-capture.ts:210 | Security: data exposure |
+| 7 | Migrate CLI runs on v3 DBs and silently drops tables | migrate.ts:496 | Correctness: data loss |
 
-### 1.2 Token Telemetry Wiring (LOW)
+**Also fixed this session:** duplicate path import, getProjectId arity, duplicate artifact creation.
+
+### 1.1 Post-Compaction Mode Split (DONE)
+
+Implemented in Wave 4 W4. Skips identity + primer on post-compaction (~780 token savings).
+
+### 1.2 Token Telemetry Wiring (DONE)
 
 Injection token estimates aren't logged to the telemetry table. Wire `tokenEstimate` and `sources` from `assembleFullContext`/`assembleRegularPrompt` return values into `emitTelemetry()`.
 
