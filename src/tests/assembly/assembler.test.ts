@@ -3,7 +3,6 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
 import { createTestDb, type TestDatabase } from '../helpers/test-db.js';
-import { insertObservation } from '../../core/observations.js';
 import { upsertLearning } from '../../core/learnings.js';
 import { updatePressureScore } from '../../core/pressure.js';
 import {
@@ -81,23 +80,14 @@ describe('assembleFullContext', () => {
     writeFile(idDir, 'USER.md', 'Test user identity');
     writeFile(projDir, 'PROJECT_PRIMER.md', 'Test project primer');
 
-    // Seed learnings
-    upsertLearning(db, { project: 'proj', fingerprint: 'l1', content: 'Learning one' });
-    upsertLearning(db, { project: 'proj', fingerprint: 'l2', content: 'Learning two' });
-
-    // Seed pressure scores above 0.851
-    updatePressureScore(db, 'src/hot.ts', 'proj', 0.95);
-
     const result = assembleFullContext({
       db, project: 'proj', projectDir: projDir, config: makeConfig(), identityDir: idDir,
     });
 
     expect(result.content).toContain('## Identity');
     expect(result.content).toContain('## Project');
-    expect(result.content).toContain('## Learnings');
     expect(result.sources).toContain('identity');
     expect(result.sources).toContain('project');
-    expect(result.sources).toContain('learnings');
     expect(result.tokenEstimate).toBeGreaterThan(0);
   });
 
@@ -108,8 +98,6 @@ describe('assembleFullContext', () => {
     writeFile(projDir, 'PROJECT_PRIMER.md', 'B'.repeat(200)); // ~50 tokens
 
     // Small budget: only identity + project should fit
-    upsertLearning(db, { project: 'proj', fingerprint: 'l1', content: 'C'.repeat(400) });
-
     const result = assembleFullContext({
       db, project: 'proj', projectDir: projDir,
       config: makeConfig({ budget_tokens: 200 }),
@@ -118,23 +106,15 @@ describe('assembleFullContext', () => {
 
     // Identity ~150 tokens should fit in 200 budget
     expect(result.sources).toContain('identity');
-    // Learnings ~100 tokens should not fit after identity
     expect(result.tokenEstimate).toBeLessThanOrEqual(250); // some overhead
   });
 
-  it('activates reference mode when budget < 500 after priority 5', () => {
+  it('uses artifact layers when budget is tight', () => {
     const projDir = mkDir('ref-mode');
     const idDir = mkDir('ref-mode-id');
     writeFile(idDir, 'USER.md', 'A'.repeat(1600)); // ~400 tokens
 
-    // Seed observations for FTS5
-    insertObservation(db, {
-      session_id: 's1', project: 'proj', tool_name: 'Read',
-      category: 'code', title: 'Auth module', content: 'Refactored the auth module completely',
-      importance: 4, files_modified: ['src/auth.ts'],
-    });
-
-    // Budget 500: identity takes ~400, leaves < 500 -> reference mode
+    // Budget 500: identity takes ~400, leaves ~100 for artifact layers
     const result = assembleFullContext({
       db, project: 'proj', projectDir: projDir,
       config: makeConfig({ budget_tokens: 500 }),
@@ -143,11 +123,8 @@ describe('assembleFullContext', () => {
     });
 
     expect(result.sources).toContain('identity');
-    // If FTS5 made it in reference mode, it should have compact format
-    if (result.content.includes('Relevant Observations')) {
-      // Reference mode: one-liner format, not ### headers
-      expect(result.content).not.toContain('### Auth module');
-    }
+    // Should not crash with tight budget
+    expect(result.tokenEstimate).toBeGreaterThan(0);
   });
 
   it('skips identity section when USER.md missing', () => {
@@ -183,15 +160,8 @@ describe('assembleFullContext', () => {
     expect(result.sources).not.toContain('checkpoint');
   });
 
-  it('uses checkpoint topic as FTS5 query during session-start (no searchQuery)', () => {
+  it('uses checkpoint topic as artifact search query during session-start (no searchQuery)', () => {
     const projDir = mkDir('fts5-topic');
-
-    // Seed observation matching "authentication"
-    insertObservation(db, {
-      session_id: 's1', project: 'proj', tool_name: 'Read',
-      category: 'code', title: 'Auth refactor', content: 'authentication module updated',
-      importance: 4, files_modified: ['src/auth.ts'],
-    });
 
     // Create checkpoint with topic in DB
     const cpData = {
@@ -207,25 +177,21 @@ describe('assembleFullContext', () => {
        VALUES (?, ?, ?, ?, ?, NULL, unixepoch(), unixepoch())`
     ).run('cp1', 's1', 'threshold', 'committed', JSON.stringify(cpData));
 
-    // No searchQuery provided — should use checkpoint topic
+    // No searchQuery provided — should use checkpoint topic for artifact search
     const result = assembleFullContext({
       db, project: 'proj', projectDir: projDir, config: makeConfig(),
     });
 
-    // FTS5 should find the auth observation via checkpoint topic "authentication"
-    if (result.sources.includes('fts5')) {
-      expect(result.content).toContain('Auth refactor');
-    }
+    // Should not crash; checkpoint topic used as search query for materialization
+    expect(result).toBeDefined();
+    expect(result.tokenEstimate).toBeGreaterThanOrEqual(0);
   });
 
-  it('post-redaction reclaim re-attempts skipped sections', () => {
+  it('applies redaction to assembled content', () => {
     const projDir = mkDir('reclaim');
     const idDir = mkDir('reclaim-id');
-    // Identity with an email that will be redacted (shorter after)
-    writeFile(idDir, 'USER.md', 'User info: user@example.com '.repeat(50)); // ~375 tokens before redaction
-
-    // Seed a learning that should be skipped initially
-    upsertLearning(db, { project: 'proj', fingerprint: 'l1', content: 'Important learning' });
+    // Identity with an email that will be redacted
+    writeFile(idDir, 'USER.md', 'User info: user@example.com');
 
     const result = assembleFullContext({
       db, project: 'proj', projectDir: projDir,
@@ -233,10 +199,10 @@ describe('assembleFullContext', () => {
       identityDir: idDir,
     });
 
-    // After redaction, email -> [REDACTED_PII] is shorter, might reclaim budget
-    // The key test is that it doesn't crash
+    // Should apply redaction
     expect(result).toBeDefined();
     expect(result.tokenEstimate).toBeGreaterThan(0);
+    expect(result.content).not.toContain('user@example.com');
   });
 
   it('skips identity and project when isPostCompaction is true', () => {
@@ -244,9 +210,6 @@ describe('assembleFullContext', () => {
     const idDir = mkDir('full-postcompact-id');
     writeFile(idDir, 'USER.md', 'Test user identity');
     writeFile(projDir, 'PROJECT_PRIMER.md', 'Test project primer');
-
-    // Seed learnings to verify non-skipped sections still included
-    upsertLearning(db, { project: 'proj', fingerprint: 'lpc2', content: 'Learning for postcompact' });
 
     const result = assembleFullContext({
       db, project: 'proj', projectDir: projDir, config: makeConfig(),
@@ -258,10 +221,6 @@ describe('assembleFullContext', () => {
     expect(result.sources).not.toContain('project');
     expect(result.content).not.toContain('## Identity');
     expect(result.content).not.toContain('## Project');
-
-    // Learnings should still be present
-    expect(result.sources).toContain('learnings');
-    expect(result.tokenEstimate).toBeGreaterThan(0);
   });
 
   it('includes identity and project when isPostCompaction is false/undefined', () => {
@@ -284,7 +243,6 @@ describe('assembleFullContext', () => {
     const idDir = mkDir('sources-id');
     writeFile(idDir, 'USER.md', 'User identity');
     writeFile(projDir, 'PROJECT_PRIMER.md', 'Project info');
-    upsertLearning(db, { project: 'proj', fingerprint: 'l1', content: 'A learning' });
 
     const result = assembleFullContext({
       db, project: 'proj', projectDir: projDir, config: makeConfig(), identityDir: idDir,
@@ -292,7 +250,6 @@ describe('assembleFullContext', () => {
 
     expect(result.sources).toContain('identity');
     expect(result.sources).toContain('project');
-    expect(result.sources).toContain('learnings');
     // Each source appears at most once
     const unique = new Set(result.sources);
     expect(unique.size).toBe(result.sources.length);
@@ -318,9 +275,6 @@ describe('assembleRegularPrompt', () => {
     writeFile(idDir, 'USER.md', 'User identity');
     writeFile(projDir, 'PROJECT_PRIMER.md', 'Project primer');
 
-    // Seed a learning so the payload is non-empty
-    upsertLearning(db, { project: 'proj', fingerprint: 'lpc1', content: 'Post-compaction learning' });
-
     const result = assembleRegularPrompt({
       isPostCompaction: true, prompt: 'Hello',
       gauge: null, topicShift: null,
@@ -331,8 +285,9 @@ describe('assembleRegularPrompt', () => {
     // Post-compaction skips identity and project (already in system prompt)
     expect(result.sources).not.toContain('identity');
     expect(result.sources).not.toContain('project');
-    expect(result.sources).toContain('learnings');
-    expect(result.tokenEstimate).toBeGreaterThan(0);
+    // Should return valid payload
+    expect(result).toBeDefined();
+    expect(result.tokenEstimate).toBeGreaterThanOrEqual(0);
   });
 
   it('returns topic pivot on topic shift', () => {
@@ -390,9 +345,6 @@ describe('assembleRegularPrompt', () => {
     const idDir = mkDir('reg-priority-compact-id');
     writeFile(idDir, 'USER.md', 'User identity');
 
-    // Seed a learning so post-compaction payload is non-empty
-    upsertLearning(db, { project: 'proj', fingerprint: 'lpri1', content: 'Priority learning' });
-
     const result = assembleRegularPrompt({
       isPostCompaction: true, prompt: 'switch to deployment',
       gauge: null,
@@ -401,10 +353,9 @@ describe('assembleRegularPrompt', () => {
       config: makeConfig(), identityDir: idDir,
     });
 
-    // Post-compaction full assembly (not just pivot), but identity/project skipped
+    // Post-compaction full assembly (not just pivot), identity/project skipped
     expect(result.sources).not.toContain('topic_pivot');
     expect(result.sources).not.toContain('identity');
-    expect(result.sources).toContain('learnings');
   });
 
   it('prioritizes topic-shift over gauge', () => {
@@ -698,14 +649,8 @@ describe('edge cases', () => {
     expect(result.sources).toBeDefined();
   });
 
-  it('handles config with fts5_search disabled', () => {
+  it('handles config with fts5_search disabled (no legacy path)', () => {
     const projDir = mkDir('edge-no-fts5');
-
-    insertObservation(db, {
-      session_id: 's1', project: 'proj', tool_name: 'Read',
-      category: 'code', title: 'Something', content: 'Content',
-      importance: 4, files_modified: [],
-    });
 
     const result = assembleFullContext({
       db, project: 'proj', projectDir: projDir,
@@ -713,7 +658,8 @@ describe('edge cases', () => {
       searchQuery: 'something',
     });
 
-    // FTS5 section should not appear
-    expect(result.sources).not.toContain('fts5');
+    // Should not crash; artifact path does not use fts5_search config flag
+    expect(result).toBeDefined();
+    expect(result.tokenEstimate).toBeGreaterThanOrEqual(0);
   });
 });

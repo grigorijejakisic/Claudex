@@ -6,7 +6,6 @@
 
 import type { Database } from 'better-sqlite3';
 import { cachedPrepare } from './stmt-cache.js';
-import { redactContent } from '../extraction/redaction.js';
 
 export interface DecisionRow {
   id: number;
@@ -41,7 +40,7 @@ export function insertDecision(
     .run(
       decision.session_id,
       decision.project ?? '__global__',
-      redactContent(decision.content),
+      decision.content,
       decision.source,
       decision.fingerprint
     );

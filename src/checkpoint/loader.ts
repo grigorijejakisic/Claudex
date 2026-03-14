@@ -10,8 +10,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as zlib from 'zlib';
 import * as yaml from 'js-yaml';
-import { atomicWriteFile } from '../shared/fs-helpers.js';
-import { writeCompressedFile } from './writer.js';
+import { atomicWriteFile, writeCompressedFile } from '../shared/fs-helpers.js';
 import { getCheckpointsDir } from '../shared/paths.js';
 import type {
   CheckpointV3,

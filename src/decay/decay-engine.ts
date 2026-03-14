@@ -5,6 +5,7 @@
  */
 
 import type { Database } from 'better-sqlite3';
+import { cachedPrepare } from '../core/stmt-cache.js';
 
 /** Base weights by importance level. */
 export const BASE_WEIGHTS: Record<number, number> = { 1: 0.2, 2: 0.4, 3: 0.6, 4: 0.8, 5: 1.0 };
@@ -72,12 +73,12 @@ export function getCoOccurrences(
     const seen = new Set<number>();
 
     const stmt = project != null
-      ? db.prepare(
+      ? cachedPrepare(db,
           `SELECT id FROM observations
            WHERE id != ? AND deleted_at_epoch IS NULL AND project = ? AND files_modified LIKE ?
            LIMIT 6`
         )
-      : db.prepare(
+      : cachedPrepare(db,
           `SELECT id FROM observations
            WHERE id != ? AND deleted_at_epoch IS NULL AND files_modified LIKE ?
            LIMIT 6`
@@ -115,16 +116,14 @@ export function pruneObservations(
     const pruneThreshold = opts?.pruneThreshold ?? 1000;
     const pruneCount = opts?.pruneCount ?? 50;
 
-    const countRow = db
-      .prepare('SELECT COUNT(*) as cnt FROM observations WHERE project = ? AND deleted_at_epoch IS NULL')
+    const countRow = cachedPrepare(db, 'SELECT COUNT(*) as cnt FROM observations WHERE project = ? AND deleted_at_epoch IS NULL')
       .get(project) as { cnt: number };
 
     if (countRow.cnt <= pruneThreshold) return 0;
 
     const immunityEpoch = Math.floor(Date.now() / 1000) - IMMUNITY_ACCESS_DAYS * 86400;
 
-    const candidates = db
-      .prepare(
+    const candidates = cachedPrepare(db,
         `SELECT id, importance, access_count, last_accessed_at_epoch, timestamp_epoch, files_modified
          FROM observations
          WHERE project = ? AND deleted_at_epoch IS NULL
@@ -157,7 +156,7 @@ export function pruneObservations(
 
     // Soft-delete the lowest pruneCount
     const toPrune = scored.slice(0, pruneCount);
-    const softDelete = db.prepare(
+    const softDelete = cachedPrepare(db,
       'UPDATE observations SET deleted_at_epoch = unixepoch() WHERE id = ?'
     );
 
@@ -189,16 +188,14 @@ export function applyRetentionPolicy(
     const days = retentionDays ?? 90;
     const threshold = days * 86400;
 
-    const r1 = db
-      .prepare(
+    const r1 = cachedPrepare(db,
         `DELETE FROM observations
          WHERE project = ? AND deleted_at_epoch IS NOT NULL
            AND deleted_at_epoch < unixepoch() - ?`
       )
       .run(project, threshold);
 
-    const r2 = db
-      .prepare(
+    const r2 = cachedPrepare(db,
         `DELETE FROM observations
          WHERE project = ? AND deleted_at_epoch IS NULL
            AND timestamp_epoch < unixepoch() - ?

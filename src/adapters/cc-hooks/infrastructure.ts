@@ -11,8 +11,8 @@ import { loadConfig } from '../../shared/config.js';
 import type { ClaudexConfig } from '../../shared/config.js';
 import { detectProjectScope, getProjectId } from '../../shared/scope-detector.js';
 import { getDbPath } from '../../shared/paths.js';
-import { emitTelemetry } from '../../observability/telemetry.js';
-import { isPathSafe } from '../../gauge/token-gauge.js';
+import { emitTelemetry, sanitizeErrorForTelemetry } from '../../observability/telemetry.js';
+import { isPathSafe } from '../../shared/fs-helpers.js';
 
 /** Parsed CC hook stdin payload. */
 export interface HookInput {
@@ -39,16 +39,6 @@ const SAFE_INPUT: HookInput = { hook_event_name: '', session_id: '', cwd: '' };
 
 /** Hard limit on stdin payload size (1 MB). Prevents unbounded memory growth. */
 const MAX_STDIN_BYTES = 1_000_000;
-
-/** Hook name to RuntimeEvent kind mapping. */
-const hookToEventKind: Record<string, string> = {
-  SessionStart: 'session_init',
-  UserPromptSubmit: 'before_prompt',
-  PostToolUse: 'after_tool',
-  Stop: 'after_turn',
-  PreCompact: 'before_compact',
-  SessionEnd: 'session_end',
-};
 
 /**
  * Reads all stdin and JSON.parses. Non-throwing — returns safe default on error.
@@ -150,7 +140,7 @@ export function bootstrapHook(input: HookInput): BootstrapResult {
 /**
  * Extracts and validates transcript path from hook input. Non-throwing.
  * R21: Applies trust-boundary validation — rejects UNC, device, and out-of-home paths.
- * REC-06: Uses shared isPathSafe from token-gauge.ts instead of duplicating validation.
+ * REC-06: Uses shared isPathSafe from fs-helpers.ts instead of duplicating validation.
  */
 export function getTranscriptPath(input: HookInput): string | undefined {
   try {
@@ -163,19 +153,9 @@ export function getTranscriptPath(input: HookInput): string | undefined {
   }
 }
 
-/**
- * R22: Sanitize error messages before persisting to telemetry.
- * Truncates to 200 chars and redacts file paths to prevent sensitive content leakage.
- */
-export function sanitizeErrorForTelemetry(err: unknown): string {
-  const raw = err instanceof Error ? err.message : String(err);
-  return raw
-    .slice(0, 200)
-    // Redact Windows absolute paths (C:\Users\..., D:\...)
-    .replace(/[A-Za-z]:\\[^\s"',;)}\]]+/g, '[path]')
-    // Redact Unix absolute paths (/home/..., /tmp/...)
-    .replace(/\/(?:home|tmp|usr|var|etc)\/[^\s"',;)}\]]+/g, '[path]');
-}
+// ARCH-004: sanitizeErrorForTelemetry moved to ../../observability/telemetry.ts.
+// Re-exported here for backward compatibility (bridge-adapter.ts imports from here).
+export { sanitizeErrorForTelemetry };
 
 /**
  * Higher-order function wrapping a hook handler with:

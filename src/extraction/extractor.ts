@@ -83,8 +83,9 @@ export function processToolObservation(input: ProcessToolObservationInput): numb
 
     // 3b. Validate — cap files_modified to prevent heavy DB operations
     const MAX_FILES_MODIFIED = 50;
+    const MAX_PATH_LENGTH = 500;
     const validFiles = (Array.isArray(result.files_modified) ? result.files_modified : [])
-      .filter((f): f is string => typeof f === 'string')
+      .filter((f): f is string => typeof f === 'string' && f.length <= MAX_PATH_LENGTH)
       .slice(0, MAX_FILES_MODIFIED);
 
     // 4. Redact — apply content redaction, title redaction, and path sanitization

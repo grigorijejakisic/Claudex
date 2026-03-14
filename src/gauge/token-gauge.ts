@@ -6,56 +6,12 @@
  */
 
 import * as fs from 'fs';
-import * as os from 'os';
 import * as path from 'path';
 import type { TokenUsage, RuntimeCapabilities } from '../shared/types.js';
 import { detectWindowSize } from './window-detector.js';
-
-// REC-26: Cache homedir at module level — avoids repeated os.homedir() + realpathSync per hook call.
-const CACHED_HOME = (() => {
-  let home = os.homedir();
-  try {
-    if (process.platform === 'win32') {
-      home = fs.realpathSync.native(home);
-    } else {
-      home = fs.realpathSync(home);
-    }
-  } catch {
-    // If realpath fails, use the raw homedir
-  }
-  return home;
-})();
-
-/**
- * Validates that a transcript path is safe to read.
- * Rejects UNC/device paths and paths outside the user's home directory.
- * Exported for reuse by infrastructure.ts (REC-06).
- */
-export function isPathSafe(transcriptPath: string): boolean {
-  const resolved = path.resolve(transcriptPath);
-  // Reject UNC paths (\\server\share or //server/share)
-  if (resolved.startsWith('\\\\') || resolved.startsWith('//')) return false;
-  // Reject Windows device paths (\\.\ or \\?\)
-  if (resolved.startsWith('\\\\.\\') || resolved.startsWith('\\\\?\\')) return false;
-  // Must end with .jsonl
-  if (!resolved.endsWith('.jsonl')) return false;
-  // Must be under user's home directory
-  // Use realpathSync on ALL platforms to resolve symlinks that could point outside home.
-  // On Windows, use realpathSync.native to also resolve 8.3 short names (e.g. GRIGOR~1).
-  let normalizedResolved = resolved;
-  try {
-    if (process.platform === 'win32') {
-      normalizedResolved = fs.realpathSync.native(resolved);
-    } else {
-      normalizedResolved = fs.realpathSync(resolved);
-    }
-  } catch {
-    // If file doesn't exist yet or realpath fails, use the resolved path as-is
-  }
-  const rel = path.relative(CACHED_HOME, normalizedResolved);
-  if (rel.startsWith('..') || path.isAbsolute(rel)) return false;
-  return true;
-}
+// ARCH-001: isPathSafe moved to shared/fs-helpers.ts — re-export for backward compatibility.
+import { isPathSafe } from '../shared/fs-helpers.js';
+export { isPathSafe };
 
 export interface GetTokenGaugeParams {
   capabilities: RuntimeCapabilities;

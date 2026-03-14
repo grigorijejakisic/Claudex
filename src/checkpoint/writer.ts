@@ -8,9 +8,6 @@
 import type { Database } from 'better-sqlite3';
 import { ulid } from 'ulid';
 import * as yaml from 'js-yaml';
-import * as zlib from 'zlib';
-import * as fs from 'fs';
-import * as path from 'path';
 import type { TokenUsage } from '../shared/types.js';
 import type { CheckpointTrackingRow } from '../core/checkpoint-tracking.js';
 import { recordThresholdHit } from '../core/checkpoint-tracking.js';
@@ -20,7 +17,7 @@ import { getHotFiles } from '../core/pressure.js';
 import { getTopLearnings } from '../core/learnings.js';
 import { enrichCheckpoint, mergeEnrichment } from '../intelligence/enrichment.js';
 import type { EnrichmentProvider, CheckpointData } from '../intelligence/enrichment.js';
-import { atomicWriteFile, ensureDir } from '../shared/fs-helpers.js';
+import { atomicWriteFile, ensureDir, writeCompressedFile } from '../shared/fs-helpers.js';
 import { getCheckpointsDir } from '../shared/paths.js';
 import {
   THRESHOLDS_200K,
@@ -63,22 +60,9 @@ export function extractOpenItems(text: string | null | undefined): string[] {
   }
 }
 
-/**
- * Writes a file with zlib gzip compression.
- * Creates parent directories if needed. Returns true on success. Never throws.
- */
-export async function writeCompressedFile(filePath: string, content: string): Promise<boolean> {
-  try {
-    const dir = path.dirname(filePath);
-    ensureDir(dir);
-
-    const compressed = zlib.gzipSync(Buffer.from(content, 'utf-8'));
-    fs.writeFileSync(filePath, compressed);
-    return true;
-  } catch {
-    return false;
-  }
-}
+// writeCompressedFile moved to shared/fs-helpers.ts (DEP-003)
+// Re-exported for backward compatibility
+export { writeCompressedFile };
 
 /**
  * Determines whether a checkpoint should be triggered based on trigger type,

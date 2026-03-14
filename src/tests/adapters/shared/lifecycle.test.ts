@@ -184,7 +184,8 @@ describe('processToolAndPressure', () => {
     expect(artifacts.length).toBeGreaterThanOrEqual(1);
     expect(artifacts[0].artifact_type).toBe('observation');
     expect(artifacts[0].state).toBe('fresh');
-    expect(artifacts[0].ttl).toBe(3);
+    // TTL starts at 3 but tickArtifactTTL (ARCH-003) runs in the same call, decrementing to 2
+    expect(artifacts[0].ttl).toBe(2);
     // artifact_ref should be the observation row ID
     expect(artifacts[0].artifact_ref).toBeTruthy();
   });

@@ -6,7 +6,6 @@
 
 import type { Database } from 'better-sqlite3';
 import { cachedPrepare } from './stmt-cache.js';
-import { redactContent } from '../extraction/redaction.js';
 import type { CooldownState } from '../intelligence/topic-shift.js';
 
 export interface ThreadStateRow {
@@ -43,12 +42,9 @@ export function upsertThreadState(
      VALUES (?, ?, ?, ?, unixepoch())`
   ).run(
     state.session_id,
-    state.topic ? redactContent(state.topic) : null,
-    state.summary ? redactContent(state.summary) : null,
-    JSON.stringify((state.key_exchanges ?? []).map(ex => ({
-      ...ex,
-      gist: redactContent(ex.gist),
-    })))
+    state.topic ?? null,
+    state.summary ?? null,
+    JSON.stringify(state.key_exchanges ?? [])
   );
 }
 
@@ -101,6 +97,38 @@ export function getCooldownState(
     };
   } catch {
     return null;
+  }
+}
+
+/**
+ * Persists cooldown state into thread_state key_exchanges.
+ * Upserts the __cooldown meta-entry without disturbing real exchanges.
+ * Non-throwing.
+ */
+export function setCooldownState(
+  db: Database,
+  sessionId: string,
+  cooldown: CooldownState
+): void {
+  try {
+    const row = getThreadState(db, sessionId);
+    if (!row) return; // No thread state to attach cooldown to
+    // Filter out any existing __cooldown entry, then append new one
+    const exchanges = row.key_exchanges.filter(
+      (e: { role: string }) => e.role !== COOLDOWN_ROLE
+    );
+    exchanges.push({
+      role: COOLDOWN_ROLE,
+      gist: JSON.stringify(cooldown),
+    });
+    upsertThreadState(db, {
+      session_id: sessionId,
+      topic: row.topic ?? undefined,
+      summary: row.summary ?? undefined,
+      key_exchanges: exchanges,
+    });
+  } catch {
+    // Non-throwing
   }
 }
 

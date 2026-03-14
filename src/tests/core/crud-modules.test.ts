@@ -71,34 +71,22 @@ describe('thread state CRUD', () => {
     expect(state!.key_exchanges).toEqual(exchanges);
   });
 
-  it('upsertThreadState redacts secrets in topic and summary', () => {
+  it('upsertThreadState stores content as-is (redaction is caller responsibility)', () => {
     upsertThreadState(db, {
       session_id: 's1',
       topic: 'Working with key sk-abcdefghijklmnopqrstuvwxyz',
       summary: 'Used token ghp_ABCDEFghijklmnopqrstuvwxyz0123456789',
-    });
-
-    const state = getThreadState(db, 's1');
-    expect(state).toBeDefined();
-    expect(state!.topic).not.toContain('sk-abcdefghijklmnopqrstuvwxyz');
-    expect(state!.topic).toContain('[REDACTED_SECRET]');
-    expect(state!.summary).not.toContain('ghp_ABCDEFghijklmnopqrstuvwxyz0123456789');
-    expect(state!.summary).toContain('[REDACTED_SECRET]');
-  });
-
-  it('upsertThreadState redacts secrets in key_exchanges gists', () => {
-    upsertThreadState(db, {
-      session_id: 's1',
       key_exchanges: [
         { role: 'user', gist: 'sent Bearer abcdefghijklmnopqrstuvwxyz1234 to API' },
       ],
     });
 
     const state = getThreadState(db, 's1');
-    expect(state!.key_exchanges).toHaveLength(1);
-    expect(state!.key_exchanges[0].gist).not.toContain('Bearer abcdefghijklmnopqrstuvwxyz1234');
-    expect(state!.key_exchanges[0].gist).toContain('[REDACTED_SECRET]');
-    // Role should be preserved
+    expect(state).toBeDefined();
+    // Core layer stores verbatim — callers must redact before calling
+    expect(state!.topic).toBe('Working with key sk-abcdefghijklmnopqrstuvwxyz');
+    expect(state!.summary).toBe('Used token ghp_ABCDEFghijklmnopqrstuvwxyz0123456789');
+    expect(state!.key_exchanges[0].gist).toBe('sent Bearer abcdefghijklmnopqrstuvwxyz1234 to API');
     expect(state!.key_exchanges[0].role).toBe('user');
   });
 

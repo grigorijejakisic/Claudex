@@ -26,7 +26,7 @@ import { addJournalEntry, getJournalBySession } from '../../../core/journal.js';
 import { upsertThreadState } from '../../../core/thread.js';
 import { insertDecision } from '../../../core/decisions.js';
 import { insertObservation } from '../../../core/observations.js';
-import { detectMilestone } from '../../../adapters/cc-hooks/post-tool-use.js';
+import { detectMilestone } from '../../../adapters/shared/lifecycle.js';
 import { buildFlowEntry, captureFlowEntry, captureSessionSummary } from '../../../adapters/shared/lifecycle.js';
 
 const testConfig = { ...DEFAULT_CONFIG } as unknown as ClaudexConfig;

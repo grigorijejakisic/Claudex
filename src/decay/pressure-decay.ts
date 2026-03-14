@@ -6,6 +6,7 @@
  */
 
 import type { Database } from 'better-sqlite3';
+import { cachedPrepare } from '../core/stmt-cache.js';
 
 /**
  * Decays all pressure scores using stratified half-lives:
@@ -21,8 +22,7 @@ export function decayPressureStratified(db: Database, project?: string): number 
   try {
     // SQLite evaluates SET expressions using OLD row values, so we re-compute the decayed value inline
     const updateResult = project != null
-      ? db
-          .prepare(
+      ? cachedPrepare(db,
             `UPDATE pressure_scores
              SET raw_pressure = raw_pressure * POWER(2, -1.0 / (CASE
                WHEN temperature = 'HOT' THEN 7
@@ -35,8 +35,7 @@ export function decayPressureStratified(db: Database, project?: string): number 
              WHERE project = ?`
           )
           .run(project)
-      : db
-          .prepare(
+      : cachedPrepare(db,
             `UPDATE pressure_scores
              SET raw_pressure = raw_pressure * POWER(2, -1.0 / (CASE
                WHEN temperature = 'HOT' THEN 7
@@ -50,11 +49,9 @@ export function decayPressureStratified(db: Database, project?: string): number 
           .run();
 
     const deleteResult = project != null
-      ? db
-          .prepare('DELETE FROM pressure_scores WHERE raw_pressure < 0.01 AND project = ?')
+      ? cachedPrepare(db, 'DELETE FROM pressure_scores WHERE raw_pressure < 0.01 AND project = ?')
           .run(project)
-      : db
-          .prepare('DELETE FROM pressure_scores WHERE raw_pressure < 0.01')
+      : cachedPrepare(db, 'DELETE FROM pressure_scores WHERE raw_pressure < 0.01')
           .run();
 
     return updateResult.changes + deleteResult.changes;

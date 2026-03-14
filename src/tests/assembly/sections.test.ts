@@ -7,11 +7,7 @@ import {
   formatProjectSection,
   formatCheckpointSection,
   renderSessionContinuity,
-  formatLearningsSection,
-  formatHotFilesSection,
   formatGsdSection,
-  formatFts5Section,
-  formatRecentSection,
   formatGaugeSection,
   formatTopicPivotSection,
   formatFlowSection,
@@ -22,7 +18,6 @@ import type { CheckpointV3 } from '../../checkpoint/types.js';
 import type { ArtifactRow } from '../../core/artifacts.js';
 import type { LearningRow } from '../../core/learnings.js';
 import type { PressureRow } from '../../core/pressure.js';
-import type { ObservationRow } from '../../core/observations.js';
 import type { JournalEntry } from '../../core/journal.js';
 import type { GsdState } from '../../gsd/types.js';
 import type { TokenUsage } from '../../shared/types.js';
@@ -57,16 +52,6 @@ function makePressure(filePath: string, pressure: number): PressureRow {
     file_path: filePath, project: 'p', raw_pressure: pressure,
     temperature: pressure >= 0.5 ? 'HOT' : 'COLD',
     last_touched_epoch: nowEpoch, decay_rate: 0.1,
-  };
-}
-
-function makeObservation(title: string, category: string, content: string, ageSeconds: number = 0): ObservationRow {
-  return {
-    id: 1, session_id: 's1', project: 'p', tool_name: 'Read',
-    category, title, content, importance: 4,
-    files_modified: '[]', timestamp_epoch: nowEpoch - ageSeconds,
-    access_count: 0, last_accessed_at_epoch: null, deleted_at_epoch: null,
-    consumed: 0, obs_type: null,
   };
 }
 
@@ -241,65 +226,6 @@ describe('formatCheckpointSection', () => {
   });
 });
 
-// --- formatLearningsSection ---
-
-describe('formatLearningsSection', () => {
-  it('formats learnings as bullet list with promotion count', () => {
-    const learnings = [
-      makeLearning('Always test first', 5),
-      makeLearning('Use strict types', 3),
-      makeLearning('Keep functions small', 1),
-    ];
-    const result = formatLearningsSection(learnings);
-    expect(result).not.toBeNull();
-    expect(result).toContain('## Learnings');
-    expect(result).toContain('- Always test first (x5)');
-    expect(result).toContain('- Use strict types (x3)');
-    expect(result).toContain('- Keep functions small (x1)');
-  });
-
-  it('returns null for empty array', () => {
-    expect(formatLearningsSection([])).toBeNull();
-  });
-
-  it('is non-throwing on error', () => {
-    expect(() => formatLearningsSection(null as any)).not.toThrow();
-    expect(formatLearningsSection(null as any)).toBeNull();
-  });
-});
-
-// --- formatHotFilesSection ---
-
-describe('formatHotFilesSection', () => {
-  it('formats hot files above 0.851 threshold', () => {
-    const files = [
-      makePressure('src/a.ts', 0.95),
-      makePressure('src/b.ts', 0.86),
-      makePressure('src/c.ts', 0.50), // below 0.851 — excluded
-    ];
-    const result = formatHotFilesSection(files);
-    expect(result).not.toBeNull();
-    expect(result).toContain('## Hot Files');
-    expect(result).toContain('src/a.ts');
-    expect(result).toContain('src/b.ts');
-    expect(result).not.toContain('src/c.ts');
-  });
-
-  it('returns null when no files above threshold', () => {
-    const files = [makePressure('src/x.ts', 0.50)];
-    expect(formatHotFilesSection(files)).toBeNull();
-  });
-
-  it('returns null for empty array', () => {
-    expect(formatHotFilesSection([])).toBeNull();
-  });
-
-  it('is non-throwing on error', () => {
-    expect(() => formatHotFilesSection(null as any)).not.toThrow();
-    expect(formatHotFilesSection(null as any)).toBeNull();
-  });
-});
-
 // --- formatGsdSection ---
 
 describe('formatGsdSection', () => {
@@ -335,66 +261,6 @@ describe('formatGsdSection', () => {
 
   it('is non-throwing on error', () => {
     expect(() => formatGsdSection({} as any)).not.toThrow();
-  });
-});
-
-// --- formatFts5Section ---
-
-describe('formatFts5Section', () => {
-  it('formats observations in full mode (default)', () => {
-    const obs = [makeObservation('Auth refactor', 'code', 'Refactored OAuth module')];
-    const result = formatFts5Section(obs);
-    expect(result).not.toBeNull();
-    expect(result).toContain('## Relevant Observations');
-    expect(result).toContain('### Auth refactor');
-    expect(result).toContain('*code |');
-    expect(result).toContain('Refactored OAuth module');
-  });
-
-  it('formats observations in reference mode', () => {
-    const obs = [makeObservation('Auth refactor', 'code', 'Refactored OAuth module')];
-    const result = formatFts5Section(obs, true);
-    expect(result).not.toBeNull();
-    expect(result).toContain('## Relevant Observations');
-    expect(result).toContain('- [code] Auth refactor');
-    expect(result).not.toContain('### Auth refactor');
-    expect(result).not.toContain('Refactored OAuth module');
-  });
-
-  it('returns null for empty array', () => {
-    expect(formatFts5Section([])).toBeNull();
-  });
-
-  it('is non-throwing on error', () => {
-    expect(() => formatFts5Section(null as any)).not.toThrow();
-    expect(formatFts5Section(null as any)).toBeNull();
-  });
-});
-
-// --- formatRecentSection ---
-
-describe('formatRecentSection', () => {
-  it('formats recent observations as compact references', () => {
-    const obs = [
-      makeObservation('Build fix', 'error', 'Fixed build error'),
-      makeObservation('DB migration', 'architecture', 'Added new table'),
-      makeObservation('Config change', 'config', 'Updated threshold'),
-    ];
-    const result = formatRecentSection(obs);
-    expect(result).not.toBeNull();
-    expect(result).toContain('## Recent Observations');
-    expect(result).toContain('- [error] Build fix');
-    expect(result).toContain('- [architecture] DB migration');
-    expect(result).toContain('- [config] Config change');
-  });
-
-  it('returns null for empty array', () => {
-    expect(formatRecentSection([])).toBeNull();
-  });
-
-  it('is non-throwing on error', () => {
-    expect(() => formatRecentSection(null as any)).not.toThrow();
-    expect(formatRecentSection(null as any)).toBeNull();
   });
 });
 

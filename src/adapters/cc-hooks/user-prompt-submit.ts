@@ -15,6 +15,7 @@ import { EmbeddingProvider } from '../../embeddings/embedding-provider.js';
 import { getIdentityDir } from '../../shared/paths.js';
 import { emitTelemetry } from '../../observability/telemetry.js';
 import { persistTopicIfShifted, captureFlowEntry } from '../shared/lifecycle.js';
+import { getCooldownState, setCooldownState } from '../../core/thread.js';
 
 const main = wrapHook('UserPromptSubmit', async (input, ctx) => {
   const prompt = (input.user_prompt as string) || '';
@@ -36,7 +37,13 @@ const main = wrapHook('UserPromptSubmit', async (input, ctx) => {
         model: ctx.config.embeddings.model,
       });
       const available = await embedProvider.isAvailable();
-      const detector = new TopicShiftDetector(available ? embedProvider : null);
+      // CTR-002: Load cooldown state from DB so fresh detector instances
+      // (created each hook invocation) respect existing cooldown windows.
+      const cooldown = getCooldownState(ctx.db, input.session_id);
+      const detector = new TopicShiftDetector(
+        available ? embedProvider : null,
+        cooldown ?? undefined,
+      );
       topicShift = await detector.detectTopicShift({
         prompt,
         db: ctx.db,
@@ -46,6 +53,11 @@ const main = wrapHook('UserPromptSubmit', async (input, ctx) => {
           topicShiftWindow: ctx.config.embeddings.topic_shift_window,
         },
       });
+      // CTR-002: Persist updated cooldown state so next hook invocation
+      // (fresh process / fresh detector) picks up where we left off.
+      try {
+        setCooldownState(ctx.db, input.session_id, detector.getCooldownState());
+      } catch { /* non-fatal */ }
     } catch {
       topicShift = null;
     }

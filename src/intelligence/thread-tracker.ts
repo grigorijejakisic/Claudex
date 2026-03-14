@@ -6,6 +6,7 @@
 
 import type { Database } from 'better-sqlite3';
 import { upsertThreadState, getThreadState } from '../core/thread.js';
+import { TOOL_CATALOG } from '../shared/tool-catalog.js';
 
 const MAX_KEY_EXCHANGES = 8;
 const MAX_GIST_LEN = 120;
@@ -20,18 +21,6 @@ const STOP_WORDS = new Set([
 ]);
 
 const GREETING_PATTERN = /^(hi|hello|hey|thanks|thank you|good morning|good afternoon)\b/i;
-
-/** Key field lookup for tool input summarization */
-const TOOL_KEY_FIELDS: Record<string, string[]> = {
-  Read: ['file_path', 'filePath'],
-  Edit: ['file_path', 'filePath'],
-  Write: ['file_path', 'filePath'],
-  Bash: ['command'],
-  Grep: ['pattern'],
-  Glob: ['pattern'],
-  WebFetch: ['url'],
-  WebSearch: ['query'],
-};
 
 /**
  * Extract a short gist from raw text.
@@ -99,7 +88,8 @@ export function extractTopic(text: string): string | null {
 /** Summarize tool input to a short string */
 function summarizeToolInput(toolName: string, input: Record<string, unknown>): string {
   try {
-    const keyFields = TOOL_KEY_FIELDS[toolName] ?? Object.keys(input).slice(0, 1);
+    const catalogEntry = TOOL_CATALOG[toolName];
+    const keyFields = catalogEntry?.keyFields ?? Object.keys(input).slice(0, 1);
     for (const key of keyFields) {
       if (input[key] != null) {
         const val = String(input[key]);
@@ -175,7 +165,16 @@ export class ThreadTracker {
     try {
       // Add remaining exchanges
       if (userText && !this.hasUserThisTurn) {
-        this.pendingExchanges.push({ role: 'user', raw: userText });
+        // CTR-003: Guard against cross-process duplicate. PostToolUse (process A) may
+        // have already recorded this user prompt via onAfterTool→trackAfterTool, persisted
+        // to DB, then Stop (process B) re-creates the tracker and calls onAfterTurn with the
+        // same userText. Check if last DB-loaded exchange is already a 'user' with matching gist.
+        const userGist = extractGist(userText);
+        const lastExchange = this.keyExchanges[this.keyExchanges.length - 1];
+        const isDuplicate = lastExchange?.role === 'user' && lastExchange.gist === userGist;
+        if (!isDuplicate) {
+          this.pendingExchanges.push({ role: 'user', raw: userText });
+        }
       }
       if (assistantText) {
         this.pendingExchanges.push({ role: 'agent', raw: assistantText });

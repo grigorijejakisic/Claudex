@@ -79,6 +79,21 @@ export function pruneTelemetry(
   return totalPruned;
 }
 
+/**
+ * ARCH-004: Sanitize error messages before persisting to telemetry.
+ * Truncates to 200 chars and redacts file paths to prevent sensitive content leakage.
+ * Moved from infrastructure.ts for adapter-agnostic access.
+ */
+export function sanitizeErrorForTelemetry(err: unknown): string {
+  const raw = err instanceof Error ? err.message : String(err);
+  return raw
+    .slice(0, 200)
+    // Redact Windows absolute paths (C:\Users\..., D:\...)
+    .replace(/[A-Za-z]:\\[^\s"',;)}\]]+/g, '[path]')
+    // Redact Unix absolute paths (/home/..., /tmp/...)
+    .replace(/\/(?:home|tmp|usr|var|etc)\/[^\s"',;)}\]]+/g, '[path]');
+}
+
 /** Tool cost estimate entry. */
 export interface ToolCostEstimate {
   tool: string;

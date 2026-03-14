@@ -30,7 +30,7 @@ import { addJournalEntry, getJournalBySession, getSessionMilestones } from '../.
 import { getThreadState } from '../../core/thread.js';
 import { getDecisionsBySession } from '../../core/decisions.js';
 import { getObservationsByProject, getObservationById } from '../../core/observations.js';
-import { createArtifact } from '../../core/artifacts.js';
+import { createArtifact, tickArtifactTTL } from '../../core/artifacts.js';
 import { getLearningsByProject } from '../../core/learnings.js';
 
 // ---------------------------------------------------------------------------
@@ -155,6 +155,98 @@ export function processToolAndPressure(params: ToolObservationParams): void {
       updatePressureScore(params.db, sanitized, params.project, 0.1);
       break;
     }
+  }
+
+  // ARCH-003: Tick artifact TTL once per tool use.
+  // Idempotent within a turn (decrements by 1 max), so safe to call per tool call.
+  try {
+    tickArtifactTTL(params.db, params.project);
+  } catch {
+    // Non-throwing — artifact TTL tick must not break tool processing
+  }
+
+  // ARCH-006: Milestone detection — capture significant tool outcomes.
+  // Moved from post-tool-use.ts so both CC hooks and OpenClaw bridge get milestones.
+  try {
+    captureMilestone(params.db, params.sessionId, params.project, params.toolName, params.toolOutput);
+  } catch {
+    // Non-throwing — milestone capture must not break tool processing
+  }
+}
+
+/**
+ * Detect milestone events from tool execution results.
+ * Returns a concise milestone string, or null if no milestone detected.
+ * Pure function — no side effects.
+ * ARCH-006: Moved from post-tool-use.ts to lifecycle for adapter-agnostic access.
+ */
+export function detectMilestone(toolName: string, toolOutput: string): string | null {
+  if (!toolOutput) return null;
+
+  // Test suite results
+  const testMatch = toolOutput.match(/(\d+)\s+(?:tests?\s+)?pass(?:ed|ing)?/i);
+  const testFail = toolOutput.match(/(\d+)\s+(?:tests?\s+)?fail(?:ed|ing|ure)?/i);
+  if (testMatch || testFail) {
+    const passed = testMatch ? testMatch[1] : '0';
+    const failed = testFail ? testFail[1] : '0';
+    if (testFail && parseInt(failed) > 0) {
+      return `Tests: ${passed} passed, ${failed} failed`;
+    }
+    if (testMatch) {
+      return `Tests: ${passed} passing`;
+    }
+  }
+
+  // Build results
+  if (/build/i.test(toolOutput) && /success|clean|complete/i.test(toolOutput)) {
+    return 'Build succeeded';
+  }
+
+  // Git commits (match [branch abc1234] pattern)
+  if (toolName === 'Bash') {
+    const commitMatch = toolOutput.match(/\[\S+\s+([a-f0-9]{7,})\]/);
+    if (commitMatch) {
+      return `Committed ${commitMatch[1].slice(0, 7)}`;
+    }
+  }
+
+  // Deployment/team events
+  if (/workers?\s+(?:deployed|spawned|started)/i.test(toolOutput) ||
+      /agents?\s+(?:deployed|spawned|started)/i.test(toolOutput)) {
+    return 'Team agents deployed';
+  }
+
+  return null;
+}
+
+/**
+ * Capture a milestone journal entry if a significant event is detected.
+ * Non-throwing.
+ * ARCH-006: Moved from post-tool-use.ts to lifecycle for adapter-agnostic access.
+ */
+function captureMilestone(
+  db: Database.Database,
+  sessionId: string,
+  project: string,
+  toolName: string,
+  toolOutput: Record<string, unknown> | undefined,
+): void {
+  try {
+    // Extract text content from tool output
+    const outputText = toolOutput
+      ? (typeof toolOutput === 'string'
+        ? toolOutput
+        : (toolOutput.content as string) || (toolOutput.output as string) || (toolOutput.stdout as string) || JSON.stringify(toolOutput))
+      : '';
+
+    const milestone = detectMilestone(toolName, outputText);
+    if (milestone) {
+      // Truncate to 100 chars
+      const content = milestone.length > 100 ? milestone.slice(0, 97) + '...' : milestone;
+      addJournalEntry(db, sessionId, project, 'milestone', content);
+    }
+  } catch {
+    // Non-throwing — milestone capture must not break tool processing
   }
 }
 
