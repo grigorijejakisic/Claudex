@@ -15,7 +15,7 @@ updated_at: 2026-03-14T14:45:00Z
 
 ## Current State
 
-Session 8 delivered a complete architecture overhaul + full cleanup. **1168 tests**, 68 test files, build clean. All 26 review findings resolved. All dead code removed. V2 terminated. Pushed to GitHub (`a31cc77`).
+Session 8 delivered a complete architecture overhaul + full cleanup + Gemini architecture fixes. **1153 tests**, 68 test files, build clean. All 26 original review findings resolved. All Gemini architecture findings fixed. V2 terminated. Pushed to GitHub (`ba0b7d6`).
 
 ### Architecture
 
@@ -54,28 +54,52 @@ Three-layer assembly pipeline (artifact-based):
 2. **Gemini review** — `/architecture-review` skill created but not yet tested (Gemini CLI needs auth). Test when authenticated.
 3. **End-to-end integration test** — no test exercises the full artifact pipeline (capture → create artifact → tick TTL → search → materialize → render). Unit tests exist for each piece.
 
-### No Code Changes Needed
+### From Latest Codex+Gemini Review (Action Items)
 
-All 26 recommended findings resolved. All 7 critical findings fixed. All dead code removed. All wiring connected. System is clean.
+**Codex review was partial (28/77 perspectives).** To complete:
+```bash
+# Regenerate diffs and run remaining perspectives
+# Missing: security (most chunks), general, reuse, efficiency, code-health (most chunks)
+# Intelligence chunk has full 7/7 coverage — use as reference
+```
+
+**New findings from this review round to address:**
+
+1. **ACC-003 (bridge)**: Artifact TTL ticks per tool call instead of per turn — can over-pack in tool-heavy turns. Move tick to `trackAfterTurn` with turn-level idempotency guard.
+2. **ACC-001 (bridge)**: Mutable shared BridgeContext creates cross-session contamination risk. Use per-session Map keyed by sessionKey.
+3. **ACC-002 (bridge)**: plugin-entry.ts `finally` block closes DB after first session end, disabling the plugin for subsequent sessions.
+4. Quality scores from Codex review available in `FULL_REVIEW_REPORT.md`
+
+### Previously Resolved
+
+All 26 original recommended findings. All 7 original critical findings. All Gemini architecture findings (pure assembly, layer inversion, duplicate exchanges, cooldown persistence, milestone sharing, dead weight removal).
 
 ## Key Files
 
 | File | Purpose |
 |------|---------|
-| `src/assembly/assembler.ts` | Three-layer assembly with artifact gate + legacy fallback |
-| `src/assembly/sections.ts` | 12+ formatters including reference/materialization layers |
+| `src/assembly/assembler.ts` | Pure three-layer assembly (no side effects, no legacy fallback) |
+| `src/assembly/sections.ts` | Formatters: reference layer, materialization layer, flow, gauge |
 | `src/core/artifacts.ts` | Artifact CRUD + TTL lifecycle (9 functions) |
 | `src/core/journal.ts` | Session journal CRUD (6 functions) |
 | `src/cli/migrate.ts` | V2→V3 migration CLI |
-| `src/adapters/shared/lifecycle.ts` | Flow capture, milestone detection, artifact creation |
-| `src/adapters/cc-hooks/user-prompt-submit.ts` | Topic shift → flow capture + topic persistence |
+| `src/adapters/shared/lifecycle.ts` | Flow capture, milestone detection, artifact creation, TTL tick |
+| `src/adapters/cc-hooks/user-prompt-submit.ts` | Topic shift → flow capture + cooldown persistence |
+
+## Review Reports
+
+| Report | File | Coverage |
+|--------|------|----------|
+| Gemini Architecture | `ARCHITECTURE_REVIEW_REPORT.md` | 5/5 perspectives, 87/100 |
+| Codex Unified (partial) | `FULL_REVIEW_REPORT.md` | 28/77 perspectives |
+| Combined | `FULL_REVIEW_REPORT.md` | Merged Codex + Gemini |
 
 ## Session 8 Stats
 
-- 30+ agents spawned across 5 waves + cleanup team
-- 1168 tests (up from 1073 at start)
-- ~3000 lines added, ~2700 removed (net +300 after massive cleanup)
-- All 26 review findings resolved
-- V2 fully terminated
-- 34 commits pushed to GitHub
-- Context used: ~550K of 1M
+- 40+ agents spawned across 5 waves + cleanup teams + review
+- 1153 tests (up from 1073 at start, down from 1226 peak after dead code removal)
+- Legacy budget-cascade fully decommissioned — artifact-only assembly
+- All 26 original + all Gemini architecture findings resolved
+- V2 fully terminated, schema version 300
+- 40+ commits pushed to GitHub
+- Multi-model review infrastructure: `/unified-review` (Codex), `/architecture-review` (Gemini), `/full-review` (both)
