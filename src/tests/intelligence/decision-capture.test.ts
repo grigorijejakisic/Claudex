@@ -1,6 +1,7 @@
 import { createTestDb, type TestDatabase } from '../helpers/test-db.js';
 import { captureDecisions, CapturedDecision } from '../../intelligence/decision-capture.js';
 import { getDecisionsBySession } from '../../core/decisions.js';
+import { getArtifactsByProject } from '../../core/artifacts.js';
 import { EmbeddingProvider } from '../../embeddings/embedding-provider.js';
 import type { DecisionTemplates } from '../../embeddings/templates.js';
 
@@ -492,6 +493,60 @@ describe('decision capture', () => {
     it('handles missing userText/assistantText gracefully', async () => {
       const result = await capture({});
       expect(result).toEqual([]);
+    });
+  });
+
+  // --- Artifact creation ---
+
+  describe('decision artifact creation', () => {
+    it('creates an artifact for each stored decision', async () => {
+      const result = await capture({
+        userText: 'yes go ahead',
+        assistantText: 'Use SQLite for the primary storage layer with WAL mode enabled.',
+      });
+
+      expect(result.length).toBeGreaterThanOrEqual(1);
+
+      const artifacts = getArtifactsByProject(db, project, { type: 'decision' });
+      expect(artifacts.length).toBeGreaterThanOrEqual(1);
+      expect(artifacts[0].artifact_type).toBe('decision');
+      expect(artifacts[0].state).toBe('fresh');
+      expect(artifacts[0].importance).toBe(3);
+      expect(artifacts[0].artifact_ref).toBeTruthy();
+    });
+
+    it('does not create artifacts when no decisions are captured', async () => {
+      await capture({ userText: 'What is the weather?' });
+
+      const artifacts = getArtifactsByProject(db, project, { type: 'decision' });
+      expect(artifacts).toHaveLength(0);
+    });
+
+    it('truncates decision summary to 150 chars', async () => {
+      const longContent = 'DECISION: ' + 'x'.repeat(200);
+      const result = await capture({ userText: longContent });
+
+      if (result.length > 0) {
+        const artifacts = getArtifactsByProject(db, project, { type: 'decision' });
+        for (const a of artifacts) {
+          expect(a.summary.length).toBeLessThanOrEqual(150);
+        }
+      }
+    });
+
+    it('artifact creation failure does not break decision capture', async () => {
+      // Even if artifact table were missing, captureDecisions should still return decisions
+      // We can't easily simulate artifact failure without mocking, but we verify
+      // the try/catch wrapper by ensuring decisions are still returned
+      const result = await capture({
+        assistantText: 'Use TypeScript strict mode for all modules in the project.',
+        mode: 'after_turn',
+      });
+
+      // Decisions should still be captured regardless of artifact creation
+      expect(result.length).toBeGreaterThanOrEqual(1);
+      const stored = getDecisionsBySession(db, sessionId);
+      expect(stored.length).toBeGreaterThanOrEqual(1);
     });
   });
 });

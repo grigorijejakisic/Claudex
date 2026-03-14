@@ -20,6 +20,8 @@ import {
   runCompactionSequence,
   runSessionEndCleanup,
 } from '../../../adapters/shared/lifecycle.js';
+import { getArtifactsByProject } from '../../../core/artifacts.js';
+import { upsertLearning } from '../../../core/learnings.js';
 
 const testConfig = { ...DEFAULT_CONFIG } as unknown as ClaudexConfig;
 
@@ -163,6 +165,42 @@ describe('processToolAndPressure', () => {
     const paths = allFiles.map(f => f.file_path);
     // Path outside project root is kept as-is (no <project> prefix)
     expect(paths).toContain('/other/dir/file.ts');
+  });
+
+  it('creates an artifact when an observation is stored', () => {
+    // Content must pass quality gate: >= 100 chars + structural patterns
+    const fileContent = 'export function main() {\n  const result = computeValue();\n  return result;\n}\n\nexport function computeValue() {\n  return 42;\n}\n';
+    processToolAndPressure({
+      db,
+      sessionId: 'test-s1',
+      project: 'test-proj',
+      cwd: '/tmp/test',
+      toolName: 'Read',
+      toolInput: { file_path: '/tmp/test/src/index.ts' },
+      toolOutput: { content: fileContent },
+    });
+
+    const artifacts = getArtifactsByProject(db, 'test-proj', { type: 'observation' });
+    expect(artifacts.length).toBeGreaterThanOrEqual(1);
+    expect(artifacts[0].artifact_type).toBe('observation');
+    expect(artifacts[0].state).toBe('fresh');
+    expect(artifacts[0].ttl).toBe(3);
+    // artifact_ref should be the observation row ID
+    expect(artifacts[0].artifact_ref).toBeTruthy();
+  });
+
+  it('does not create an artifact when no observation is stored', () => {
+    processToolAndPressure({
+      db,
+      sessionId: 'test-s1',
+      project: 'test-proj',
+      cwd: '/tmp/test',
+      toolName: 'UnknownTool',
+      toolInput: {},
+    });
+
+    const artifacts = getArtifactsByProject(db, 'test-proj');
+    expect(artifacts).toHaveLength(0);
   });
 });
 
@@ -453,6 +491,35 @@ describe('runCompactionSequence', () => {
       cwd: '/tmp/test',
       scope: 'my-scope',
     })).resolves.not.toThrow();
+  });
+
+  it('creates learning artifacts during compaction', async () => {
+    // Insert some learnings for the project
+    upsertLearning(db, {
+      project: 'test-proj',
+      agent_id: 'default',
+      fingerprint: 'fp-1',
+      content: 'Always use forward slashes on Windows',
+    });
+    upsertLearning(db, {
+      project: 'test-proj',
+      agent_id: 'default',
+      fingerprint: 'fp-2',
+      content: 'SQLite WAL mode improves concurrency',
+    });
+
+    await runCompactionSequence({
+      db,
+      sessionId: 'test-s1',
+      project: 'test-proj',
+      cwd: '/tmp/test',
+    });
+
+    const artifacts = getArtifactsByProject(db, 'test-proj', { type: 'learning' });
+    expect(artifacts.length).toBe(2);
+    expect(artifacts.every(a => a.artifact_type === 'learning')).toBe(true);
+    expect(artifacts.every(a => a.importance === 4)).toBe(true);
+    expect(artifacts.every(a => a.state === 'fresh')).toBe(true);
   });
 
   it('skips promoteLearnings and markPostCompactPending when checkpoint fails', async () => {

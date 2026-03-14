@@ -11,6 +11,7 @@ import { normalizeForDedup, isDuplicate } from './semantic-dedup.js';
 import type { EmbeddingProvider } from '../embeddings/embedding-provider.js';
 import type { DecisionTemplates } from '../embeddings/templates.js';
 import { classifyDecision } from '../embeddings/templates.js';
+import { createArtifact } from '../core/artifacts.js';
 
 export interface CapturedDecision {
   content: string;
@@ -205,13 +206,31 @@ export async function captureDecisions(params: {
 
       // Store
       const fingerprint = normalizeForDedup(candidate.content);
-      insertDecision(db, {
+      const decisionId = insertDecision(db, {
         session_id: sessionId,
         project,
         content: candidate.content,
         source: candidate.source,
         fingerprint,
       });
+
+      // Create artifact from decision — non-throwing
+      if (decisionId != null) {
+        try {
+          createArtifact(
+            db,
+            sessionId,
+            project,
+            'decision',
+            String(decisionId),
+            candidate.content.slice(0, 150),
+            candidate.content,
+            3,
+          );
+        } catch {
+          // Non-throwing — artifact creation must not break decision capture
+        }
+      }
 
       stored.push(candidate);
     }

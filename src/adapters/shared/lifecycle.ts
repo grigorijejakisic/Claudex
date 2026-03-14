@@ -28,7 +28,9 @@ import { pruneTelemetry } from '../../observability/telemetry.js';
 import { addJournalEntry, getJournalBySession } from '../../core/journal.js';
 import { getThreadState } from '../../core/thread.js';
 import { getDecisionsBySession } from '../../core/decisions.js';
-import { getObservationsByProject } from '../../core/observations.js';
+import { getObservationsByProject, getObservationById } from '../../core/observations.js';
+import { createArtifact } from '../../core/artifacts.js';
+import { getLearningsByProject } from '../../core/learnings.js';
 
 // ---------------------------------------------------------------------------
 // Shared parameter types
@@ -111,7 +113,7 @@ export interface SessionEndParams {
  * Non-throwing.
  */
 export function processToolAndPressure(params: ToolObservationParams): void {
-  processToolObservation({
+  const observationId = processToolObservation({
     db: params.db,
     sessionId: params.sessionId,
     project: params.project,
@@ -120,6 +122,27 @@ export function processToolAndPressure(params: ToolObservationParams): void {
     toolOutput: params.toolOutput,
     projectRoot: params.cwd,
   });
+
+  // Create artifact from observation — non-throwing
+  if (observationId != null) {
+    try {
+      const obs = getObservationById(params.db, observationId);
+      if (obs) {
+        createArtifact(
+          params.db,
+          params.sessionId,
+          params.project,
+          'observation',
+          String(observationId),
+          obs.title.slice(0, 150),
+          obs.content,
+          obs.importance,
+        );
+      }
+    } catch {
+      // Non-throwing — artifact creation must not break observation capture
+    }
+  }
 
   // Update pressure from file paths in tool input
   // Sanitize paths to match observation extraction (cross-table join consistency)
@@ -361,6 +384,25 @@ export async function runCompactionSequence(params: CompactionParams): Promise<v
       project: params.project,
       sessionLearnings: [],
     });
+
+    // Create artifacts from learnings — non-throwing
+    try {
+      const learnings = getLearningsByProject(params.db, params.project, { limit: 50 });
+      for (const learning of learnings) {
+        createArtifact(
+          params.db,
+          params.sessionId,
+          params.project,
+          'learning',
+          String(learning.id),
+          learning.content.slice(0, 150),
+          learning.content,
+          4,
+        );
+      }
+    } catch {
+      // Non-throwing — artifact creation must not break compaction
+    }
 
     markPostCompactPending(params.db, params.sessionId);
   }
