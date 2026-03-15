@@ -8,6 +8,7 @@ import type { Database } from 'better-sqlite3';
 import { ulid } from 'ulid';
 import * as yaml from 'js-yaml';
 import { emitTelemetry } from '../observability/telemetry.js';
+import { cachedPrepare } from '../core/stmt-cache.js';
 import { emitErrorTelemetry } from '../observability/error-telemetry.js';
 import type { TokenUsage } from '../shared/types.js';
 import type { CheckpointTrackingRow } from '../core/checkpoint-tracking.js';
@@ -159,12 +160,14 @@ export async function writeCheckpoint(
   let enriched = false;
 
   try {
-    // Steps 1-4 (INSERT pending → read state → build → UPDATE committed) run in a
-    // transaction so a crash can't leave orphaned 'pending' rows in checkpoint_meta.
-    // Enrichment (step 5) and file I/O (steps 6-9) stay outside — enrichment can
-    // timeout (10s) and we must not hold a write lock that long.
+    // Step 1: INSERT pending record BEFORE reads — if a read throws, the pending
+    // row remains for failure traceability (catch block can UPDATE its status).
+    cachedPrepare(db,
+      `INSERT INTO checkpoint_meta (checkpoint_id, session_id, trigger, status, created_at_epoch, updated_at_epoch)
+       VALUES (?, ?, ?, 'pending', unixepoch(), unixepoch())`
+    ).run(checkpointId, sessionId, trigger);
 
-    // Step 2 (read) runs first to avoid holding the write lock during reads.
+    // Step 2: Read current state from DB
     const rawDecisions = getDecisionsBySession(db, sessionId).slice(0, 15);
     const decisions = rawDecisions.filter(d => isCheckpointWorthy(d.content));
     const threadState = getThreadState(db, sessionId);
@@ -290,18 +293,11 @@ export async function writeCheckpoint(
       verified_facts: verifiedFacts,
     };
 
-    // Atomic: INSERT pending + UPDATE committed in one transaction
-    db.transaction(() => {
-      db.prepare(
-        `INSERT INTO checkpoint_meta (checkpoint_id, session_id, trigger, status, created_at_epoch, updated_at_epoch)
-         VALUES (?, ?, ?, 'pending', unixepoch(), unixepoch())`
-      ).run(checkpointId, sessionId, trigger);
-
-      db.prepare(
-        `UPDATE checkpoint_meta SET status = 'committed', data = ?, updated_at_epoch = unixepoch()
-         WHERE checkpoint_id = ?`
-      ).run(JSON.stringify(checkpoint), checkpointId);
-    })();
+    // Step 4: UPDATE committed (pending row already exists from step 1)
+    cachedPrepare(db,
+      `UPDATE checkpoint_meta SET status = 'committed', data = ?, updated_at_epoch = unixepoch()
+       WHERE checkpoint_id = ?`
+    ).run(JSON.stringify(checkpoint), checkpointId);
 
     // Step 5: Optional enrichment (outside transaction — can timeout)
     if (enrichmentProvider) {
@@ -330,7 +326,7 @@ export async function writeCheckpoint(
           if (merged.learnings) checkpoint.learnings = merged.learnings;
           if (merged.key_exchanges) checkpoint.thread.key_exchanges = merged.key_exchanges;
 
-          db.prepare(
+          cachedPrepare(db,
             `UPDATE checkpoint_meta SET data = ?, updated_at_epoch = unixepoch()
              WHERE checkpoint_id = ?`
           ).run(JSON.stringify(checkpoint), checkpointId);
@@ -353,7 +349,7 @@ export async function writeCheckpoint(
     }
 
     if (!writeOk) {
-      db.prepare(
+      cachedPrepare(db,
         `UPDATE checkpoint_meta SET error = 'File write failed', updated_at_epoch = unixepoch()
          WHERE checkpoint_id = ?`
       ).run(checkpointId);
@@ -370,12 +366,12 @@ export async function writeCheckpoint(
 
     // Step 9: UPDATE mirrored (only if latest.yaml also written successfully)
     if (latestOk) {
-      db.prepare(
+      cachedPrepare(db,
         `UPDATE checkpoint_meta SET status = 'mirrored', mirror_path = ?, updated_at_epoch = unixepoch()
          WHERE checkpoint_id = ?`
       ).run(filePath, checkpointId);
     } else {
-      db.prepare(
+      cachedPrepare(db,
         `UPDATE checkpoint_meta SET mirror_path = ?, updated_at_epoch = unixepoch()
          WHERE checkpoint_id = ?`
       ).run(filePath, checkpointId);
@@ -404,7 +400,7 @@ export async function writeCheckpoint(
     // Set error on checkpoint_meta if it was inserted
     try {
       const msg = err instanceof Error ? err.message : 'Unknown error';
-      db.prepare(
+      cachedPrepare(db,
         `UPDATE checkpoint_meta SET error = ?, updated_at_epoch = unixepoch()
          WHERE checkpoint_id = ?`
       ).run(msg, checkpointId);

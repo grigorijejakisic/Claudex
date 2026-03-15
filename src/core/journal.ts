@@ -102,34 +102,3 @@ export function getSessionMilestones(
   ).all(sessionId, limit ?? 50) as JournalEntry[];
 }
 
-/**
- * Returns the latest session summary for a project.
- * Returns null if no summary exists.
- */
-export function getLatestSummary(
-  db: Database,
-  project: string
-): JournalEntry | null {
-  const row = cachedPrepare(db,
-    `SELECT * FROM session_journal
-     WHERE project = ? AND entry_type = 'summary'
-     ORDER BY timestamp_epoch DESC
-     LIMIT 1`
-  ).get(project) as JournalEntry | undefined;
-
-  return row ?? null;
-}
-
-/**
- * Deletes all journal entries for a session. Returns count deleted.
- */
-export function deleteJournalBySession(
-  db: Database,
-  sessionId: string
-): number {
-  const result = cachedPrepare(db,
-    'DELETE FROM session_journal WHERE session_id = ?'
-  ).run(sessionId);
-
-  return result.changes;
-}

@@ -5,7 +5,6 @@
  */
 
 import type { Database } from 'better-sqlite3';
-import { emitTelemetry } from '../observability/telemetry.js';
 import { emitErrorTelemetry } from '../observability/error-telemetry.js';
 import type { ExtractorFn } from './extractors/types.js';
 import { extractRead } from './extractors/read.js';
@@ -80,7 +79,7 @@ export function processToolObservation(input: ProcessToolObservationInput): numb
     const gate = passesQualityGate(toolName, toolInput, toolOutput);
     if (!gate.pass) {
       if (gate.reason === 'quality_gate_error') {
-        try { emitTelemetry(db, sessionId, 'error', { subsystem: 'extraction/quality_gate_error', error: `tool=${toolName}` }); } catch {}
+        emitErrorTelemetry(db, sessionId, 'extraction/quality_gate_error', new Error(`gate threw for tool=${toolName}`));
       }
       return null;
     }

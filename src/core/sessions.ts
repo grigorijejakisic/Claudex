@@ -60,27 +60,4 @@ export function endSession(
   ).run(status, sessionId);
 }
 
-/**
- * Returns the most recent active session, optionally filtered by project.
- * Filters by project scope when provided.
- */
-export function getActiveSession(
-  db: Database,
-  project?: string
-): SessionRow | undefined {
-  if (project) {
-    return cachedPrepare(db,
-        `SELECT * FROM sessions
-         WHERE status = 'active' AND project = ?
-         ORDER BY created_at_epoch DESC LIMIT 1`
-      )
-      .get(project) as SessionRow | undefined;
-  }
-  return cachedPrepare(db,
-      `SELECT * FROM sessions
-       WHERE status = 'active'
-       ORDER BY created_at_epoch DESC LIMIT 1`
-    )
-    .get() as SessionRow | undefined;
-}
 

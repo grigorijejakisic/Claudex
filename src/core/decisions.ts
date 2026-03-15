@@ -72,17 +72,3 @@ export function getDecisionsBySession(
     .all(sessionId) as DecisionRow[];
 }
 
-/**
- * Returns all decisions for a project, newest first.
- * Scoped by project.
- */
-export function getDecisionsByProject(
-  db: Database,
-  project: string
-): DecisionRow[] {
-  return cachedPrepare(db,
-      `SELECT * FROM decisions WHERE project = ?
-       ORDER BY timestamp_epoch DESC`
-    )
-    .all(project) as DecisionRow[];
-}

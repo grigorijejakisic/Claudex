@@ -4,8 +4,6 @@ import {
   getJournalBySession,
   getRecentFlow,
   getSessionMilestones,
-  getLatestSummary,
-  deleteJournalBySession,
 } from '../../core/journal.js';
 
 describe('session journal CRUD', () => {
@@ -167,57 +165,6 @@ describe('session journal CRUD', () => {
 
     const milestones = getSessionMilestones(db, 's1', 3);
     expect(milestones).toHaveLength(3);
-  });
-
-  it('getLatestSummary returns most recent summary for project', () => {
-    db.prepare(
-      `INSERT INTO session_journal (session_id, project, entry_type, content, timestamp_epoch)
-       VALUES (?, ?, ?, ?, ?)`
-    ).run('s1', 'myapp', 'summary', 'old summary', 1000);
-    db.prepare(
-      `INSERT INTO session_journal (session_id, project, entry_type, content, timestamp_epoch)
-       VALUES (?, ?, ?, ?, ?)`
-    ).run('s2', 'myapp', 'summary', 'latest summary', 2000);
-
-    const summary = getLatestSummary(db, 'myapp');
-    expect(summary).not.toBeNull();
-    expect(summary!.content).toBe('latest summary');
-    expect(summary!.session_id).toBe('s2');
-  });
-
-  it('getLatestSummary returns null for non-existent project', () => {
-    const summary = getLatestSummary(db, 'nonexistent');
-    expect(summary).toBeNull();
-  });
-
-  it('getLatestSummary ignores non-summary entry types', () => {
-    addJournalEntry(db, 's1', 'myapp', 'flow', 'not a summary');
-    addJournalEntry(db, 's1', 'myapp', 'milestone', 'also not a summary');
-
-    const summary = getLatestSummary(db, 'myapp');
-    expect(summary).toBeNull();
-  });
-
-  it('deleteJournalBySession removes all entries for session', () => {
-    addJournalEntry(db, 's1', 'myapp', 'flow', 'entry 1');
-    addJournalEntry(db, 's1', 'myapp', 'milestone', 'entry 2');
-    addJournalEntry(db, 's1', 'myapp', 'summary', 'entry 3');
-    addJournalEntry(db, 's2', 'myapp', 'flow', 'other session');
-
-    const deleted = deleteJournalBySession(db, 's1');
-    expect(deleted).toBe(3);
-
-    const s1Entries = getJournalBySession(db, 's1');
-    expect(s1Entries).toEqual([]);
-
-    // s2 entries should be untouched
-    const s2Entries = getJournalBySession(db, 's2');
-    expect(s2Entries).toHaveLength(1);
-  });
-
-  it('deleteJournalBySession returns 0 for non-existent session', () => {
-    const deleted = deleteJournalBySession(db, 'nonexistent');
-    expect(deleted).toBe(0);
   });
 
   it('multiple entries across sessions and projects', () => {

@@ -2,12 +2,10 @@ import { createTestDb, type TestDatabase } from '../helpers/test-db.js';
 import {
   createSession,
   endSession,
-  getActiveSession,
 } from '../../core/sessions.js';
 import {
   insertDecision,
   getDecisionsBySession,
-  getDecisionsByProject,
 } from '../../core/decisions.js';
 import {
   upsertLearning,
@@ -54,25 +52,6 @@ describe('sessions CRUD', () => {
     expect(session.ended_at_epoch).not.toBeNull();
   });
 
-  it('getActiveSession returns most recent active session', () => {
-    createSession(db, { session_id: 's4' });
-    createSession(db, { session_id: 's5' });
-    endSession(db, 's4', 'completed');
-
-    const active = getActiveSession(db);
-    expect(active).toBeDefined();
-    expect(active!.session_id).toBe('s5');
-  });
-
-  it('getActiveSession filters by project', () => {
-    createSession(db, { session_id: 's6', project: 'alpha' });
-    createSession(db, { session_id: 's7', project: 'beta' });
-
-    const active = getActiveSession(db, 'alpha');
-    expect(active).toBeDefined();
-    expect(active!.session_id).toBe('s6');
-    expect(active!.project).toBe('alpha');
-  });
 });
 
 describe('decisions CRUD', () => {
@@ -119,27 +98,6 @@ describe('decisions CRUD', () => {
 
     const rows = getDecisionsBySession(db, 's1');
     expect(rows).toHaveLength(1);
-  });
-
-  it('getDecisionsByProject returns decisions for project', () => {
-    insertDecision(db, {
-      session_id: 's1',
-      project: 'myproject',
-      content: 'decision 1',
-      source: 'direction',
-      fingerprint: 'fp-a',
-    });
-    insertDecision(db, {
-      session_id: 's1',
-      project: 'other',
-      content: 'decision 2',
-      source: 'direction',
-      fingerprint: 'fp-b',
-    });
-
-    const rows = getDecisionsByProject(db, 'myproject');
-    expect(rows).toHaveLength(1);
-    expect(rows[0].project).toBe('myproject');
   });
 
   it('getDecisionsBySession returns all decisions without hard limit', () => {

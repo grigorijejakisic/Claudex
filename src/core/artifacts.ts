@@ -298,16 +298,3 @@ export function searchArtifacts(
   }
 }
 
-/**
- * Returns total artifact count for a project.
- * Used by assembler to decide between artifact model vs legacy fallback.
- */
-export function getArtifactCount(
-  db: Database,
-  project: string,
-): number {
-  const row = cachedPrepare(db,
-    `SELECT COUNT(*) as cnt FROM artifacts WHERE project = ?`
-  ).get(project) as { cnt: number } | undefined;
-  return row?.cnt ?? 0;
-}
