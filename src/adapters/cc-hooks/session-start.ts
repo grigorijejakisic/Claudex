@@ -6,7 +6,7 @@
 import { wrapHook } from './infrastructure.js';
 import { createSession } from '../../core/sessions.js';
 import { recoverFromDb } from '../../checkpoint/loader.js';
-import { pruneTelemetry, emitTelemetry, sanitizeErrorForTelemetry } from '../../observability/telemetry.js';
+import { pruneTelemetry, emitTelemetry } from '../../observability/telemetry.js';
 import { emitErrorTelemetry } from '../../observability/error-telemetry.js';
 import { assembleFullContext } from '../../assembly/assembler.js';
 import { getIdentityDir } from '../../shared/paths.js';
