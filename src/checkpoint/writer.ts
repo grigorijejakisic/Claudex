@@ -7,7 +7,8 @@
 import type { Database } from 'better-sqlite3';
 import { ulid } from 'ulid';
 import * as yaml from 'js-yaml';
-import { emitTelemetry, sanitizeErrorForTelemetry } from '../observability/telemetry.js';
+import { emitTelemetry } from '../observability/telemetry.js';
+import { emitErrorTelemetry } from '../observability/error-telemetry.js';
 import type { TokenUsage } from '../shared/types.js';
 import type { CheckpointTrackingRow } from '../core/checkpoint-tracking.js';
 import { recordThresholdHit } from '../core/checkpoint-tracking.js';
@@ -158,22 +159,19 @@ export async function writeCheckpoint(
   let enriched = false;
 
   try {
-    // Step 1: INSERT pending
-    db.prepare(
-      `INSERT INTO checkpoint_meta (checkpoint_id, session_id, trigger, status, created_at_epoch, updated_at_epoch)
-       VALUES (?, ?, ?, 'pending', unixepoch(), unixepoch())`
-    ).run(checkpointId, sessionId, trigger);
+    // Steps 1-4 (INSERT pending → read state → build → UPDATE committed) run in a
+    // transaction so a crash can't leave orphaned 'pending' rows in checkpoint_meta.
+    // Enrichment (step 5) and file I/O (steps 6-9) stay outside — enrichment can
+    // timeout (10s) and we must not hold a write lock that long.
 
-    // Step 2: Read current state from DB
+    // Step 2 (read) runs first to avoid holding the write lock during reads.
     const rawDecisions = getDecisionsBySession(db, sessionId).slice(0, 15);
-    // Quality filter: exclude junk decisions (too short, tool titles, markdown-only, filler)
     const decisions = rawDecisions.filter(d => isCheckpointWorthy(d.content));
     const threadState = getThreadState(db, sessionId);
     const hotFiles = getHotFiles(db, project, 15);
     const topLearnings = getTopLearnings(db, project, 10);
     const openItems = extractOpenItems(lastAssistantText);
 
-    // Get read files from observations
     let readFiles: string[] = [];
     try {
       const rows = db
@@ -191,7 +189,6 @@ export async function writeCheckpoint(
       // json_each may fail on invalid data — skip
     }
 
-    // Get previous checkpoint basename
     let previousCheckpoint: string | null = null;
     try {
       const prev = db
@@ -203,7 +200,6 @@ export async function writeCheckpoint(
         )
         .get(sessionId, checkpointId) as { checkpoint_id: string } | undefined;
       if (prev) {
-        // Generate basename from checkpoint_id (we store basenames, not full paths)
         const prevRow = db
           .prepare('SELECT mirror_path FROM checkpoint_meta WHERE checkpoint_id = ?')
           .get(prev.checkpoint_id) as { mirror_path: string | null } | undefined;
@@ -211,14 +207,11 @@ export async function writeCheckpoint(
           const parts = prevRow.mirror_path.replace(/\\/g, '/').split('/');
           previousCheckpoint = parts[parts.length - 1];
         }
-        // No fallback — without mirror_path we lack the date prefix,
-        // so skip rather than generate a wrong basename
       }
     } catch {
       // No previous checkpoint — ok
     }
 
-    // Read verified facts from DB (Upgrade 12)
     let verifiedFacts: string[] = [];
     try {
       const factRows = db
@@ -231,7 +224,6 @@ export async function writeCheckpoint(
       // Table may not exist yet — non-fatal
     }
 
-    // Build current_objective from thread + working state (Upgrade 10)
     let currentObjective: string | null = null;
     try {
       const parts: string[] = [];
@@ -247,7 +239,8 @@ export async function writeCheckpoint(
       // Non-fatal
     }
 
-    // Step 3: Build CheckpointV3
+    // Steps 1+3+4 in a transaction: INSERT pending → build → UPDATE committed.
+    // Reads (step 2) already done above to minimize write-lock hold time.
     const checkpoint: CheckpointV3 = {
       schema: 'claudex/checkpoint',
       version: 3,
@@ -297,13 +290,20 @@ export async function writeCheckpoint(
       verified_facts: verifiedFacts,
     };
 
-    // Step 4: UPDATE committed
-    db.prepare(
-      `UPDATE checkpoint_meta SET status = 'committed', data = ?, updated_at_epoch = unixepoch()
-       WHERE checkpoint_id = ?`
-    ).run(JSON.stringify(checkpoint), checkpointId);
+    // Atomic: INSERT pending + UPDATE committed in one transaction
+    db.transaction(() => {
+      db.prepare(
+        `INSERT INTO checkpoint_meta (checkpoint_id, session_id, trigger, status, created_at_epoch, updated_at_epoch)
+         VALUES (?, ?, ?, 'pending', unixepoch(), unixepoch())`
+      ).run(checkpointId, sessionId, trigger);
 
-    // Step 5: Optional enrichment
+      db.prepare(
+        `UPDATE checkpoint_meta SET status = 'committed', data = ?, updated_at_epoch = unixepoch()
+         WHERE checkpoint_id = ?`
+      ).run(JSON.stringify(checkpoint), checkpointId);
+    })();
+
+    // Step 5: Optional enrichment (outside transaction — can timeout)
     if (enrichmentProvider) {
       try {
         const cpData: CheckpointData = {
@@ -411,23 +411,10 @@ export async function writeCheckpoint(
     } catch {
       // Best effort
     }
-    try { emitTelemetry(db, sessionId, 'error', { subsystem: 'checkpoint/write', error: sanitizeErrorForTelemetry(err) }); } catch {}
+    emitErrorTelemetry(db, sessionId, 'checkpoint/write', err);
     return null;
   }
 }
 
-/**
- * Records a verified fact for the current session.
- * Facts are persisted in the verified_facts table and included in subsequent checkpoints.
- * Non-throwing — silently fails if table doesn't exist.
- */
-export function addVerifiedFact(db: Database, sessionId: string, fact: string): void {
-  try {
-    db.prepare(
-      `INSERT INTO verified_facts (session_id, fact, created_at_epoch)
-       VALUES (?, ?, unixepoch())`
-    ).run(sessionId, fact.slice(0, 500));
-  } catch {
-    // Table may not exist yet or other DB error — non-fatal
-  }
-}
+// addVerifiedFact moved to core/verified-facts.ts — re-exported for backward compatibility
+export { addVerifiedFact } from '../core/verified-facts.js';

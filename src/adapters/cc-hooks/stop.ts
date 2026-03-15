@@ -6,7 +6,8 @@
 import { wrapHook, getTranscriptPath } from './infrastructure.js';
 import { getTokenGauge } from '../../gauge/token-gauge.js';
 import { CC_CAPABILITIES } from '../../shared/constants.js';
-import { emitTelemetry, sanitizeErrorForTelemetry } from '../../observability/telemetry.js';
+import { emitTelemetry } from '../../observability/telemetry.js';
+import { emitErrorTelemetry } from '../../observability/error-telemetry.js';
 import {
   captureDecisionsWithClassifier,
   captureInsightsAsLearnings,
@@ -34,7 +35,7 @@ const main = wrapHook('Stop', async (input, ctx) => {
       assistantText: lastAssistantText,
     });
   } catch (e) {
-    try { emitTelemetry(ctx.db, input.session_id, 'error', { subsystem: 'stop/decision_capture', error: sanitizeErrorForTelemetry(e) }); } catch {}
+    emitErrorTelemetry(ctx.db, input.session_id, 'stop/decision_capture', e);
   }
 
   // Insight extraction — analytical conclusions from assistant response
@@ -43,14 +44,14 @@ const main = wrapHook('Stop', async (input, ctx) => {
       captureInsightsAsLearnings(ctx.db, input.session_id, ctx.project, lastAssistantText);
     }
   } catch (e) {
-    try { emitTelemetry(ctx.db, input.session_id, 'error', { subsystem: 'stop/insight_extraction', error: sanitizeErrorForTelemetry(e) }); } catch {}
+    emitErrorTelemetry(ctx.db, input.session_id, 'stop/insight_extraction', e);
   }
 
   // Thread tracking
   try {
     trackAfterTurn(ctx.db, input.session_id, lastUserText, lastAssistantText);
   } catch (e) {
-    try { emitTelemetry(ctx.db, input.session_id, 'error', { subsystem: 'stop/track_after_turn', error: sanitizeErrorForTelemetry(e) }); } catch {}
+    emitErrorTelemetry(ctx.db, input.session_id, 'stop/track_after_turn', e);
   }
 
   // Checkpoint threshold check
@@ -70,7 +71,7 @@ const main = wrapHook('Stop', async (input, ctx) => {
       gauge,
     });
   } catch (e) {
-    try { emitTelemetry(ctx.db, input.session_id, 'error', { subsystem: 'stop/checkpoint', error: sanitizeErrorForTelemetry(e) }); } catch {}
+    emitErrorTelemetry(ctx.db, input.session_id, 'stop/checkpoint', e);
   }
 
   return {};

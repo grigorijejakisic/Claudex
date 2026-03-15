@@ -9,7 +9,8 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as zlib from 'zlib';
 import * as yaml from 'js-yaml';
-import { emitTelemetry, sanitizeErrorForTelemetry } from '../observability/telemetry.js';
+import { emitTelemetry } from '../observability/telemetry.js';
+import { emitErrorTelemetry } from '../observability/error-telemetry.js';
 import { atomicWriteFile, writeCompressedFile } from '../shared/fs-helpers.js';
 import { getCheckpointsDir } from '../shared/paths.js';
 import { hasFields } from '../shared/db-utils.js';
@@ -372,7 +373,7 @@ export function loadCheckpoint(
   } catch (e) {
     // No sessionId available in loadCheckpoint — emit with empty session if DB exists
     if (db) {
-      try { emitTelemetry(db, '', 'error', { subsystem: 'checkpoint/load', error: sanitizeErrorForTelemetry(e) }); } catch {}
+      emitErrorTelemetry(db, '', 'checkpoint/load', e);
     }
     return null;
   }

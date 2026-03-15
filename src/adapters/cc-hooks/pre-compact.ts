@@ -6,7 +6,8 @@
 import { wrapHook, getTranscriptPath } from './infrastructure.js';
 import { getTokenGauge } from '../../gauge/token-gauge.js';
 import { CC_CAPABILITIES } from '../../shared/constants.js';
-import { emitTelemetry, sanitizeErrorForTelemetry } from '../../observability/telemetry.js';
+import { emitTelemetry } from '../../observability/telemetry.js';
+import { emitErrorTelemetry } from '../../observability/error-telemetry.js';
 import { readGsdState } from '../../gsd/state-reader.js';
 import { runCompactionSequence } from '../shared/lifecycle.js';
 import { detectEnrichmentProvider } from '../../intelligence/enrichment.js';
@@ -23,9 +24,9 @@ const main = wrapHook('PreCompact', async (input, ctx) => {
   try {
     enrichmentProvider = await detectEnrichmentProvider(
       {
-        baseUrl: ctx.config.embeddings.ollama_base_url,
-        model: ctx.config.embeddings.model,
-        enabled: ctx.config.embeddings.enabled,
+        baseUrl: ctx.config.enrichment.ollama_base_url,
+        model: ctx.config.enrichment.ollama_model,
+        enabled: ctx.config.enrichment.enabled,
       },
       CC_CAPABILITIES,
     );
@@ -46,7 +47,7 @@ const main = wrapHook('PreCompact', async (input, ctx) => {
       enrichmentProvider: enrichmentProvider ?? undefined,
     });
   } catch (e) {
-    try { emitTelemetry(ctx.db, input.session_id, 'error', { subsystem: 'pre_compact/sequence', error: sanitizeErrorForTelemetry(e) }); } catch {}
+    emitErrorTelemetry(ctx.db, input.session_id, 'pre_compact/sequence', e);
   }
 
   // Return custom compaction instructions if configured

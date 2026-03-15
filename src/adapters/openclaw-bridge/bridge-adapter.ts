@@ -42,7 +42,7 @@ import {
   runCompactionSequence,
   persistTopicIfShifted,
 } from '../shared/lifecycle.js';
-import { sanitizeErrorForTelemetry } from '../cc-hooks/infrastructure.js';
+import { sanitizeErrorForTelemetry } from '../../observability/telemetry.js';
 
 /** Cached embedding resources reused across bridge callbacks. */
 export interface EmbeddingCache {

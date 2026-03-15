@@ -8,12 +8,13 @@ import type { Database } from 'better-sqlite3';
 import { insertDecision, getDecisionsBySession } from '../core/decisions.js';
 import { normalizeForDedup, isDuplicate } from './semantic-dedup.js';
 import { redactContent } from '../extraction/redaction.js';
-import { emitTelemetry, sanitizeErrorForTelemetry } from '../observability/telemetry.js';
+import { emitTelemetry } from '../observability/telemetry.js';
+import { emitErrorTelemetry } from '../observability/error-telemetry.js';
 import type { EmbeddingProvider } from '../embeddings/embedding-provider.js';
 import type { DecisionTemplates } from '../embeddings/templates.js';
 import { classifyDecision } from '../embeddings/templates.js';
 import { createArtifact } from '../core/artifacts.js';
-import { addVerifiedFact } from '../checkpoint/writer.js';
+import { addVerifiedFact } from '../core/verified-facts.js';
 
 export interface CapturedDecision {
   content: string;
@@ -251,7 +252,7 @@ export async function captureDecisions(params: {
 
     return stored;
   } catch (e) {
-    try { emitTelemetry(params.db, params.sessionId, 'error', { subsystem: 'decision_capture', error: sanitizeErrorForTelemetry(e) }); } catch {}
+    emitErrorTelemetry(params.db, params.sessionId, 'decision_capture', e);
     return [];
   }
 }

@@ -13,6 +13,7 @@ import type { TopicShiftResult } from '../../intelligence/topic-shift.js';
 import { EmbeddingProvider } from '../../embeddings/embedding-provider.js';
 import { getIdentityDir } from '../../shared/paths.js';
 import { emitTelemetry } from '../../observability/telemetry.js';
+import { emitErrorTelemetry } from '../../observability/error-telemetry.js';
 import { persistTopicIfShifted, ensureInitialTopic, captureFlowEntry, captureExplicitDecisions } from '../shared/lifecycle.js';
 import { searchArtifacts, materializeArtifacts } from '../../core/artifacts.js';
 import { getCooldownState, setCooldownState } from '../../core/thread.js';
@@ -57,7 +58,9 @@ const main = wrapHook('UserPromptSubmit', async (input, ctx) => {
       // (fresh process / fresh detector) picks up where we left off.
       try {
         setCooldownState(ctx.db, input.session_id, detector.getCooldownState());
-      } catch { /* non-fatal */ }
+      } catch (e) {
+        emitErrorTelemetry(ctx.db, input.session_id, 'cooldown_persist', e);
+      }
     } catch {
       topicShift = null;
     }
@@ -82,7 +85,9 @@ const main = wrapHook('UserPromptSubmit', async (input, ctx) => {
         project: ctx.project,
         userText: prompt,
       });
-    } catch { /* non-fatal */ }
+    } catch (e) {
+      emitErrorTelemetry(ctx.db, input.session_id, 'explicit_decisions', e);
+    }
   }
 
   // Capture flow entry at topic shift boundaries — natural narrative breakpoints.
@@ -102,7 +107,9 @@ const main = wrapHook('UserPromptSubmit', async (input, ctx) => {
         materializeArtifacts(ctx.db, matches.map(a => a.id));
       }
     }
-  } catch { /* non-fatal */ }
+  } catch (e) {
+    emitErrorTelemetry(ctx.db, input.session_id, 'artifact_materialize', e);
+  }
 
   const payload = assembleRegularPrompt({
     isPostCompaction,

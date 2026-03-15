@@ -248,6 +248,8 @@ CREATE TABLE IF NOT EXISTS artifacts (
 
 CREATE INDEX IF NOT EXISTS idx_artifacts_project_state
   ON artifacts(project, state, importance DESC, timestamp_epoch DESC);
+CREATE INDEX IF NOT EXISTS idx_artifacts_type_importance
+  ON artifacts(project, artifact_type, importance DESC, timestamp_epoch DESC);
 CREATE INDEX IF NOT EXISTS idx_artifacts_session
   ON artifacts(session_id, timestamp_epoch DESC);
 
@@ -338,24 +340,29 @@ function ensureAdapterColumns(db: Database): void {
  * Idempotent — no-op if FTS5 doesn't exist or already has the correct 2-column schema.
  */
 function rebuildStaleFts5(db: Database): void {
-  // FTS5 virtual tables don't appear in PRAGMA table_info in all SQLite versions.
-  // Instead, check the column count by querying the FTS5 table's own metadata.
-  // A content-synced FTS5 table's columns can be inspected via a zero-row query.
   if (!hasTable(db, 'observations_fts')) return;
 
   try {
-    // PRAGMA table_info works for FTS5 virtual tables and returns only user-defined columns
-    // (excludes hidden internal columns like rank and the table-name column).
-    // For a 2-column FTS (title, content), it returns exactly 2.
-    // For a 4-column FTS (title, content, category, tool_name), it returns 4.
+    // Check 1: Column count — v2 had 4 columns, v3 needs 2.
     const ftsColInfo = db.pragma('table_info(observations_fts)') as Array<{ name: string }>;
-    if (ftsColInfo.length <= 2) return; // Already correct 2-column schema
+    if (ftsColInfo.length > 2) {
+      // Stale v2 FTS5 with extra columns — drop it and its triggers
+      db.exec('DROP TABLE IF EXISTS observations_fts');
+      db.exec('DROP TRIGGER IF EXISTS observations_ai');
+      db.exec('DROP TRIGGER IF EXISTS observations_ad');
+      db.exec('DROP TRIGGER IF EXISTS observations_au');
+      return;
+    }
 
-    // Stale v2 FTS5 with extra columns — drop it and its triggers
-    db.exec('DROP TABLE IF EXISTS observations_fts');
-    db.exec('DROP TRIGGER IF EXISTS observations_ai');
-    db.exec('DROP TRIGGER IF EXISTS observations_ad');
-    db.exec('DROP TRIGGER IF EXISTS observations_au');
+    // Check 2: Row count consistency — FTS can silently desync if a trigger fails
+    // (e.g., disk full mid-INSERT). If the counts diverge by >5%, force a rebuild.
+    if (hasTable(db, 'observations')) {
+      const obsCount = (db.prepare('SELECT COUNT(*) as cnt FROM observations').get() as { cnt: number })?.cnt ?? 0;
+      const ftsCount = (db.prepare('SELECT COUNT(*) as cnt FROM observations_fts').get() as { cnt: number })?.cnt ?? 0;
+      if ((obsCount === 0 && ftsCount > 0) || (obsCount > 0 && Math.abs(obsCount - ftsCount) > obsCount * 0.05)) {
+        db.exec("INSERT INTO observations_fts(observations_fts) VALUES('rebuild')");
+      }
+    }
   } catch {
     // If anything goes wrong (e.g., corrupted FTS), drop and let SCHEMA_V3 recreate
     try {

@@ -6,7 +6,8 @@
 import { wrapHook, getTranscriptPath } from './infrastructure.js';
 import { getTokenGauge } from '../../gauge/token-gauge.js';
 import { CC_CAPABILITIES } from '../../shared/constants.js';
-import { emitTelemetry, sanitizeErrorForTelemetry } from '../../observability/telemetry.js';
+import { emitTelemetry } from '../../observability/telemetry.js';
+import { emitErrorTelemetry } from '../../observability/error-telemetry.js';
 import {
   processToolAndPressure,
   trackAfterTool,
@@ -31,7 +32,7 @@ const main = wrapHook('PostToolUse', async (input, ctx) => {
       toolOutput,
     });
   } catch (e) {
-    try { emitTelemetry(ctx.db, input.session_id, 'error', { subsystem: 'post_tool_use/process', error: sanitizeErrorForTelemetry(e) }); } catch {}
+    emitErrorTelemetry(ctx.db, input.session_id, 'post_tool_use/process', e);
   }
 
   // Note: observation artifact creation and milestone detection happen in
@@ -57,7 +58,7 @@ const main = wrapHook('PostToolUse', async (input, ctx) => {
       toolInput,
     );
   } catch (e) {
-    try { emitTelemetry(ctx.db, input.session_id, 'error', { subsystem: 'post_tool_use/track', error: sanitizeErrorForTelemetry(e) }); } catch {}
+    emitErrorTelemetry(ctx.db, input.session_id, 'post_tool_use/track', e);
   }
 
   // Checkpoint threshold check
@@ -77,7 +78,7 @@ const main = wrapHook('PostToolUse', async (input, ctx) => {
       gauge,
     });
   } catch (e) {
-    try { emitTelemetry(ctx.db, input.session_id, 'error', { subsystem: 'post_tool_use/checkpoint', error: sanitizeErrorForTelemetry(e) }); } catch {}
+    emitErrorTelemetry(ctx.db, input.session_id, 'post_tool_use/checkpoint', e);
   }
 
   return {};

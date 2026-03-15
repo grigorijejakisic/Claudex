@@ -39,7 +39,7 @@ import {
 import { getRecentFlow } from '../core/journal.js';
 import { getCheckpointTracking } from '../core/checkpoint-tracking.js';
 import { readGsdState } from '../gsd/state-reader.js';
-import { getPressureZone } from '../shared/constants.js';
+import { getPressureZone, scaleBudget } from '../shared/constants.js';
 import { getHandoffsDir, getSessionsDir } from '../shared/paths.js';
 import * as path from 'path';
 import type { Database } from 'better-sqlite3';
@@ -58,6 +58,8 @@ export interface FullAssemblyParams {
   identityDir?: string;
   sessionId?: string;
   isPostCompaction?: boolean;
+  /** Context window size for budget scaling. If omitted, base budget is used. */
+  contextWindowTokens?: number;
 }
 
 export interface RegularPromptParams {
@@ -89,7 +91,7 @@ const EMPTY_PAYLOAD: InjectPayload = { content: '', tokenEstimate: 0, sources: [
 export function assembleFullContext(params: FullAssemblyParams): InjectPayload {
   // Tier 1: Full assembly
   try {
-    let budget = params.config.injection.budget_tokens;
+    let budget = scaleBudget(params.config.injection.budget_tokens, params.contextWindowTokens);
     const sections: string[] = [];
     const sources: string[] = [];
 
@@ -235,7 +237,7 @@ export function assembleFullContext(params: FullAssemblyParams): InjectPayload {
   } catch (e) {
     // Tier 1 failed — fall through to Tier 2
     if (params.db && params.sessionId) {
-      try { emitTelemetry(params.db, params.sessionId, 'error', { subsystem: 'assembly/tier_fallback', error: sanitizeErrorForTelemetry(e) }); } catch {}
+      try { emitTelemetry(params.db, params.sessionId, 'error', { subsystem: 'assembly/tier1_failed', error: sanitizeErrorForTelemetry(e), fallback: 'tier2' }); } catch {}
     }
   }
 
@@ -256,7 +258,7 @@ export function assembleFullContext(params: FullAssemblyParams): InjectPayload {
   } catch (e) {
     // Tier 2 failed — fall through to Tier 3
     if (params.db && params.sessionId) {
-      try { emitTelemetry(params.db, params.sessionId, 'error', { subsystem: 'assembly/tier_fallback', error: sanitizeErrorForTelemetry(e) }); } catch {}
+      try { emitTelemetry(params.db, params.sessionId, 'error', { subsystem: 'assembly/tier2_failed', error: sanitizeErrorForTelemetry(e), fallback: 'tier3' }); } catch {}
     }
   }
 
@@ -268,9 +270,9 @@ export function assembleFullContext(params: FullAssemblyParams): InjectPayload {
       return { content, tokenEstimate: estimateTokens(content), sources: ['identity'] };
     }
   } catch (e) {
-    // Tier 3 failed
+    // Tier 3 failed — all tiers exhausted
     if (params.db && params.sessionId) {
-      try { emitTelemetry(params.db, params.sessionId, 'error', { subsystem: 'assembly/tier_fallback', error: sanitizeErrorForTelemetry(e) }); } catch {}
+      try { emitTelemetry(params.db, params.sessionId, 'error', { subsystem: 'assembly/tier3_failed', error: sanitizeErrorForTelemetry(e), fallback: 'empty' }); } catch {}
     }
   }
 
@@ -317,6 +319,7 @@ export function assembleRegularPrompt(params: RegularPromptParams): InjectPayloa
         identityDir: params.identityDir,
         sessionId: params.sessionId,
         isPostCompaction: true,
+        contextWindowTokens: params.gauge?.contextWindowTokens,
       });
     }
 

@@ -24,7 +24,8 @@ import { pruneObservations, applyRetentionPolicy } from '../../decay/decay-engin
 import { markObservationsConsumed } from '../../core/observations.js';
 import { decayPressureStratified } from '../../decay/pressure-decay.js';
 import { endSession } from '../../core/sessions.js';
-import { pruneTelemetry, emitTelemetry, sanitizeErrorForTelemetry } from '../../observability/telemetry.js';
+import { pruneTelemetry, emitTelemetry } from '../../observability/telemetry.js';
+import { emitErrorTelemetry } from '../../observability/error-telemetry.js';
 import { addJournalEntry, getJournalBySession, getSessionMilestones } from '../../core/journal.js';
 import { cachedPrepare } from '../../core/stmt-cache.js';
 import { getThreadState } from '../../core/thread.js';
@@ -172,25 +173,23 @@ function shouldTickArtifactTTL(db: Database.Database, sessionId: string, nowEpoc
     // be project-scoped — not session-scoped — to prevent N sessions draining
     // TTL N times faster than intended.
     const guardKey = project ? `__ttl_guard__${project}` : sessionId;
+    const threshold = nowEpoch - 120;
 
-    const row = cachedPrepare(db,
-      'SELECT last_tick_epoch FROM checkpoint_tracking WHERE session_id = ?'
-    ).get(guardKey) as { last_tick_epoch: number } | undefined;
-
-    if (row && (nowEpoch - row.last_tick_epoch) < 120) {
-      return false; // Ticked within last 2 minutes (any session) — skip
-    }
-
-    // Update the epoch (upsert to handle missing rows)
-    cachedPrepare(db,
+    // Single atomic UPSERT with WHERE guard on the ON CONFLICT path.
+    // - New row (no conflict): INSERT succeeds → changes = 1 → tick allowed.
+    // - Existing row, elapsed >= 120s: ON CONFLICT UPDATE fires, WHERE passes → changes = 1 → tick allowed.
+    // - Existing row, elapsed < 120s: ON CONFLICT UPDATE fires, WHERE fails → changes = 0 → tick skipped.
+    // No SELECT+UPDATE race window — SQLite guarantees atomicity of a single statement.
+    const result = cachedPrepare(db,
       `INSERT INTO checkpoint_tracking (session_id, last_tick_epoch, updated_at_epoch)
        VALUES (?, ?, unixepoch())
        ON CONFLICT(session_id) DO UPDATE SET
          last_tick_epoch = excluded.last_tick_epoch,
-         updated_at_epoch = unixepoch()`
-    ).run(guardKey, nowEpoch);
+         updated_at_epoch = unixepoch()
+       WHERE checkpoint_tracking.last_tick_epoch IS NULL OR checkpoint_tracking.last_tick_epoch <= ?`
+    ).run(guardKey, nowEpoch, threshold);
 
-    return true;
+    return result.changes > 0;
   } catch {
     // Fail open — allow tick if DB guard fails
     return true;
@@ -216,7 +215,7 @@ export function processToolAndPressure(params: ToolObservationParams): void {
       projectRoot: params.cwd,
     });
   } catch (e) {
-    try { emitTelemetry(params.db, params.sessionId, 'error', { subsystem: 'tool_processing/observation', error: sanitizeErrorForTelemetry(e) }); } catch {}
+    emitErrorTelemetry(params.db, params.sessionId, 'tool_processing/observation', e);
   }
 
   // Create artifact from high-signal observations only — routine low-importance
@@ -237,7 +236,7 @@ export function processToolAndPressure(params: ToolObservationParams): void {
         );
       }
     } catch (e) {
-      try { emitTelemetry(params.db, params.sessionId, 'error', { subsystem: 'tool_processing/artifact_create', error: sanitizeErrorForTelemetry(e) }); } catch {}
+      emitErrorTelemetry(params.db, params.sessionId, 'tool_processing/artifact_create', e);
     }
   }
 
@@ -254,7 +253,7 @@ export function processToolAndPressure(params: ToolObservationParams): void {
       }
     }
   } catch (e) {
-    try { emitTelemetry(params.db, params.sessionId, 'error', { subsystem: 'tool_processing/pressure', error: sanitizeErrorForTelemetry(e) }); } catch {}
+    emitErrorTelemetry(params.db, params.sessionId, 'tool_processing/pressure', e);
   }
 
   // Tick artifact TTL once per turn, not per tool call.
@@ -266,14 +265,14 @@ export function processToolAndPressure(params: ToolObservationParams): void {
       tickArtifactTTL(params.db, params.project);
     }
   } catch (e) {
-    try { emitTelemetry(params.db, params.sessionId, 'error', { subsystem: 'tool_processing/ttl_tick', error: sanitizeErrorForTelemetry(e) }); } catch {}
+    emitErrorTelemetry(params.db, params.sessionId, 'tool_processing/ttl_tick', e);
   }
 
   // Milestone detection — capture significant tool outcomes.
   try {
     captureMilestone(params.db, params.sessionId, params.project, params.toolName, params.toolOutput);
   } catch (e) {
-    try { emitTelemetry(params.db, params.sessionId, 'error', { subsystem: 'tool_processing/milestone', error: sanitizeErrorForTelemetry(e) }); } catch {}
+    emitErrorTelemetry(params.db, params.sessionId, 'tool_processing/milestone', e);
   }
 }
 
@@ -635,7 +634,7 @@ export function captureFlowEntry(
     }
   } catch (e) {
     // Non-throwing — journal capture must not break compaction
-    try { emitTelemetry(db, sessionId, 'error', { subsystem: 'session_narrative/flow_entry', error: sanitizeErrorForTelemetry(e) }); } catch {}
+    emitErrorTelemetry(db, sessionId, 'session_narrative/flow_entry', e);
   }
 }
 
@@ -662,7 +661,7 @@ export async function runCompactionSequence(params: CompactionParams): Promise<v
     });
     checkpointSucceeded = result != null;
   } catch (e) {
-    try { emitTelemetry(params.db, params.sessionId, 'error', { subsystem: 'compaction/checkpoint', error: sanitizeErrorForTelemetry(e) }); } catch {}
+    emitErrorTelemetry(params.db, params.sessionId, 'compaction/checkpoint', e);
   }
 
   if (checkpointSucceeded) {
@@ -673,7 +672,7 @@ export async function runCompactionSequence(params: CompactionParams): Promise<v
       const fiveMinutesAgo = Math.floor(Date.now() / 1000) - 300;
       markObservationsConsumed(params.db, params.project, params.sessionId, fiveMinutesAgo, 10);
     } catch (e) {
-      try { emitTelemetry(params.db, params.sessionId, 'error', { subsystem: 'compaction/mark_consumed', error: sanitizeErrorForTelemetry(e) }); } catch {}
+      emitErrorTelemetry(params.db, params.sessionId, 'compaction/mark_consumed', e);
     }
 
     // Pack all existing artifacts into the reference layer before creating new ones.
@@ -681,7 +680,7 @@ export async function runCompactionSequence(params: CompactionParams): Promise<v
     try {
       packAllArtifacts(params.db, params.project);
     } catch (e) {
-      try { emitTelemetry(params.db, params.sessionId, 'error', { subsystem: 'compaction/pack_artifacts', error: sanitizeErrorForTelemetry(e) }); } catch {}
+      emitErrorTelemetry(params.db, params.sessionId, 'compaction/pack_artifacts', e);
     }
 
     // Extract session learnings from two high-signal sources:
@@ -719,7 +718,7 @@ export async function runCompactionSequence(params: CompactionParams): Promise<v
         sessionLearnings,
       });
     } catch (e) {
-      try { emitTelemetry(params.db, params.sessionId, 'error', { subsystem: 'compaction/promote_learnings', error: sanitizeErrorForTelemetry(e) }); } catch {}
+      emitErrorTelemetry(params.db, params.sessionId, 'compaction/promote_learnings', e);
     }
 
     // Create artifacts from learnings — deduped by artifact_ref to prevent
@@ -736,7 +735,7 @@ export async function runCompactionSequence(params: CompactionParams): Promise<v
         }
       }
     } catch (e) {
-      try { emitTelemetry(params.db, params.sessionId, 'error', { subsystem: 'compaction/learning_artifacts', error: sanitizeErrorForTelemetry(e) }); } catch {}
+      emitErrorTelemetry(params.db, params.sessionId, 'compaction/learning_artifacts', e);
     }
   }
 
@@ -746,7 +745,7 @@ export async function runCompactionSequence(params: CompactionParams): Promise<v
   try {
     markPostCompactPending(params.db, params.sessionId);
   } catch (e) {
-    try { emitTelemetry(params.db, params.sessionId, 'error', { subsystem: 'compaction/mark_pending', error: sanitizeErrorForTelemetry(e) }); } catch {}
+    emitErrorTelemetry(params.db, params.sessionId, 'compaction/mark_pending', e);
   }
 }
 
@@ -797,7 +796,7 @@ export function captureSessionSummary(
     addJournalEntry(db, sessionId, project, 'summary', summary);
   } catch (e) {
     // Non-throwing — summary capture must not break session-end cleanup
-    try { emitTelemetry(db, sessionId, 'error', { subsystem: 'session_narrative/summary', error: sanitizeErrorForTelemetry(e) }); } catch {}
+    emitErrorTelemetry(db, sessionId, 'session_narrative/summary', e);
   }
 }
 
@@ -822,7 +821,7 @@ export async function runSessionEndCleanup(params: SessionEndParams): Promise<vo
       scope: params.scope,
     });
   } catch (e) {
-    try { emitTelemetry(params.db, params.sessionId, 'error', { subsystem: 'session_end/checkpoint', error: sanitizeErrorForTelemetry(e) }); } catch {}
+    emitErrorTelemetry(params.db, params.sessionId, 'session_end/checkpoint', e);
   }
 
   try {
@@ -831,19 +830,19 @@ export async function runSessionEndCleanup(params: SessionEndParams): Promise<vo
       pruneCount: params.config.observations.prune_count,
     });
   } catch (e) {
-    try { emitTelemetry(params.db, params.sessionId, 'error', { subsystem: 'session_end/prune_observations', error: sanitizeErrorForTelemetry(e) }); } catch {}
+    emitErrorTelemetry(params.db, params.sessionId, 'session_end/prune_observations', e);
   }
 
   try {
     applyRetentionPolicy(params.db, params.project, params.config.observations.retention_days);
   } catch (e) {
-    try { emitTelemetry(params.db, params.sessionId, 'error', { subsystem: 'session_end/retention_policy', error: sanitizeErrorForTelemetry(e) }); } catch {}
+    emitErrorTelemetry(params.db, params.sessionId, 'session_end/retention_policy', e);
   }
 
   try {
     decayPressureStratified(params.db, params.project);
   } catch (e) {
-    try { emitTelemetry(params.db, params.sessionId, 'error', { subsystem: 'session_end/pressure_decay', error: sanitizeErrorForTelemetry(e) }); } catch {}
+    emitErrorTelemetry(params.db, params.sessionId, 'session_end/pressure_decay', e);
   }
 
   // Promote session learnings (decisions + discoveries) before ending.
@@ -875,20 +874,20 @@ export async function runSessionEndCleanup(params: SessionEndParams): Promise<vo
       }
     }
   } catch (e) {
-    try { emitTelemetry(params.db, params.sessionId, 'error', { subsystem: 'session_end/promote_learnings', error: sanitizeErrorForTelemetry(e) }); } catch {}
+    emitErrorTelemetry(params.db, params.sessionId, 'session_end/promote_learnings', e);
   }
 
   // Capture session summary before ending session
   try {
     captureSessionSummary(params.db, params.sessionId, params.project);
   } catch (e) {
-    try { emitTelemetry(params.db, params.sessionId, 'error', { subsystem: 'session_end/summary', error: sanitizeErrorForTelemetry(e) }); } catch {}
+    emitErrorTelemetry(params.db, params.sessionId, 'session_end/summary', e);
   }
 
   try {
     endSession(params.db, params.sessionId, 'completed');
   } catch (e) {
-    try { emitTelemetry(params.db, params.sessionId, 'error', { subsystem: 'session_end/end_session', error: sanitizeErrorForTelemetry(e) }); } catch {}
+    emitErrorTelemetry(params.db, params.sessionId, 'session_end/end_session', e);
   }
 
   try {
@@ -897,6 +896,6 @@ export async function runSessionEndCleanup(params: SessionEndParams): Promise<vo
       retainErrorCount: params.config.observability.retain_error_count,
     });
   } catch (e) {
-    try { emitTelemetry(params.db, params.sessionId, 'error', { subsystem: 'session_end/prune_telemetry', error: sanitizeErrorForTelemetry(e) }); } catch {}
+    emitErrorTelemetry(params.db, params.sessionId, 'session_end/prune_telemetry', e);
   }
 }

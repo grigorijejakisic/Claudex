@@ -110,5 +110,17 @@ export function getPressureZone(utilization: number): PressureZone {
   return 'normal';
 }
 
+/**
+ * Scales injection budget based on context window size.
+ * 200K (default): 1x base budget. 1M: 3x base budget.
+ * Linear interpolation between thresholds — no arbitrary jumps.
+ */
+export function scaleBudget(baseBudget: number, contextWindowTokens?: number): number {
+  if (!contextWindowTokens || contextWindowTokens <= 200_000) return baseBudget;
+  // Scale linearly: 200K→1x, 1M→3x
+  const scale = 1 + 2 * Math.min((contextWindowTokens - 200_000) / 800_000, 1);
+  return Math.round(baseBudget * scale);
+}
+
 /** Maximum content length for observation extraction. */
 export const CONTENT_MAX_CHARS = 500;

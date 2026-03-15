@@ -6,7 +6,8 @@
 import { wrapHook, getTranscriptPath } from './infrastructure.js';
 import { getTokenGauge } from '../../gauge/token-gauge.js';
 import { CC_CAPABILITIES } from '../../shared/constants.js';
-import { emitTelemetry, sanitizeErrorForTelemetry } from '../../observability/telemetry.js';
+import { emitTelemetry } from '../../observability/telemetry.js';
+import { emitErrorTelemetry } from '../../observability/error-telemetry.js';
 import { runSessionEndCleanup } from '../shared/lifecycle.js';
 
 const main = wrapHook('SessionEnd', async (input, ctx) => {
@@ -28,7 +29,7 @@ const main = wrapHook('SessionEnd', async (input, ctx) => {
       gauge: gauge ?? undefined,
     });
   } catch (e) {
-    try { emitTelemetry(ctx.db, input.session_id, 'error', { subsystem: 'session_end/cleanup', error: sanitizeErrorForTelemetry(e) }); } catch {}
+    emitErrorTelemetry(ctx.db, input.session_id, 'session_end/cleanup', e);
   }
 
   return {};

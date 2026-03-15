@@ -69,9 +69,16 @@ export function getThreadState(
 
   if (!row) return undefined;
 
+  let parsed: Array<{ role: string; gist: string }> = [];
+  try {
+    parsed = JSON.parse(row.key_exchanges);
+  } catch {
+    // Corrupted JSON — fallback to empty exchanges
+  }
+
   return {
     ...row,
-    key_exchanges: JSON.parse(row.key_exchanges),
+    key_exchanges: parsed,
   };
 }
 

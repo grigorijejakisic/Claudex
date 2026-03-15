@@ -90,7 +90,7 @@ export function pruneTelemetry(
 export function sanitizeErrorForTelemetry(err: unknown): string {
   const raw = err instanceof Error ? err.message : String(err);
   return raw
-    .slice(0, 200)
+    .slice(0, 500)
     // Redact Windows absolute paths (C:\Users\..., D:\...)
     .replace(/[A-Za-z]:\\[^\s"',;)}\]]+/g, '[path]')
     // Redact Unix absolute paths (/home/..., /tmp/...)

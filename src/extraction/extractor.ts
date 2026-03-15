@@ -5,7 +5,8 @@
  */
 
 import type { Database } from 'better-sqlite3';
-import { emitTelemetry, sanitizeErrorForTelemetry } from '../observability/telemetry.js';
+import { emitTelemetry } from '../observability/telemetry.js';
+import { emitErrorTelemetry } from '../observability/error-telemetry.js';
 import type { ExtractorFn } from './extractors/types.js';
 import { extractRead } from './extractors/read.js';
 import { extractEdit } from './extractors/edit.js';
@@ -77,7 +78,12 @@ export function processToolObservation(input: ProcessToolObservationInput): numb
 
     // 2. Quality gate — reject low-signal observations
     const gate = passesQualityGate(toolName, toolInput, toolOutput);
-    if (!gate.pass) return null;
+    if (!gate.pass) {
+      if (gate.reason === 'quality_gate_error') {
+        try { emitTelemetry(db, sessionId, 'error', { subsystem: 'extraction/quality_gate_error', error: `tool=${toolName}` }); } catch {}
+      }
+      return null;
+    }
 
     // 3. Extract — get structured data from tool input/output
     const result = extractor(toolInput, toolOutput);
@@ -166,7 +172,7 @@ export function processToolObservation(input: ProcessToolObservationInput): numb
 
     return id;
   } catch (e) {
-    try { emitTelemetry(input.db, input.sessionId, 'error', { subsystem: 'extraction/observe', error: sanitizeErrorForTelemetry(e) }); } catch {}
+    emitErrorTelemetry(input.db, input.sessionId, 'extraction/observe', e);
     return null;
   }
 }

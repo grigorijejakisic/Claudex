@@ -151,10 +151,6 @@ export function getTranscriptPath(input: HookInput): string | undefined {
   }
 }
 
-// sanitizeErrorForTelemetry moved to ../../observability/telemetry.ts.
-// Re-exported here for backward compatibility (bridge-adapter.ts imports from here).
-export { sanitizeErrorForTelemetry };
-
 /**
  * Higher-order function wrapping a hook handler with:
  * - Latency measurement

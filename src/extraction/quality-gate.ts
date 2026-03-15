@@ -106,7 +106,7 @@ export function passesQualityGate(
         return { pass: true };
     }
   } catch {
-    // Non-throwing: default to pass on error
-    return { pass: true };
+    // Non-throwing: reject on error — malformed data should not pollute artifacts
+    return { pass: false, reason: 'quality_gate_error' };
   }
 }
