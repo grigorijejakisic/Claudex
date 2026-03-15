@@ -57,4 +57,7 @@ async function build() {
   });
 }
 
-build();
+build().then(() => {
+  // Remind about hook registration after every build
+  console.log('\nTo register hooks in Claude Code: bun run setup');
+});
