@@ -71,6 +71,22 @@ export function detectProjectScope(cwd: string): string | null {
 }
 
 /**
+ * Derives a project ID from a directory path without consulting projects.json.
+ * Uses directory name + FNV-1a hash for uniqueness. Exported for reuse by content-router.
+ * Always returns a string. Never throws.
+ */
+export function deriveProjectId(cwd: string): string {
+  try {
+    const baseName = path.basename(cwd);
+    const sanitized = baseName.toLowerCase().replace(/[^a-z0-9-]/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '') || 'unknown';
+    const hash = simpleHash(normalizePath(path.resolve(cwd)));
+    return `${sanitized}-${hash}`;
+  } catch {
+    return 'unknown';
+  }
+}
+
+/**
  * Convenience: detects project scope, or derives a project ID from the directory name.
  * Always returns a string. Never throws.
  */
@@ -78,12 +94,7 @@ export function getProjectId(cwd: string): string {
   try {
     const detected = detectProjectScope(cwd);
     if (detected) return detected;
-
-    // Derive from directory name: last segment, lowercased, sanitized + short hash of full path for uniqueness
-    const baseName = path.basename(cwd);
-    const sanitized = baseName.toLowerCase().replace(/[^a-z0-9-]/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '') || 'unknown';
-    const hash = simpleHash(normalizePath(path.resolve(cwd)));
-    return `${sanitized}-${hash}`;
+    return deriveProjectId(cwd);
   } catch {
     // Non-throwing: no DB access — caller always gets a valid project ID string
     return 'unknown';

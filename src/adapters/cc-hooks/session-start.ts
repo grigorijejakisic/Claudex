@@ -65,7 +65,12 @@ const main = wrapHook('SessionStart', async (input, ctx) => {
   }
 
   if (payload.content) {
-    return { additionalContext: payload.content };
+    return {
+      hookSpecificOutput: {
+        hookEventName: 'SessionStart',
+        additionalContext: payload.content,
+      },
+    };
   }
   return {};
 });

@@ -8,7 +8,7 @@ import { openDatabase, closeDatabase } from '../../core/storage.js';
 import type { Database } from 'better-sqlite3';
 import { loadConfig } from '../../shared/config.js';
 import type { ClaudexConfig } from '../../shared/config.js';
-import { detectProjectScope, getProjectId } from '../../shared/scope-detector.js';
+import { detectProjectScope, deriveProjectId } from '../../shared/scope-detector.js';
 import { getDbPath } from '../../shared/paths.js';
 import { emitTelemetry, sanitizeErrorForTelemetry } from '../../observability/telemetry.js';
 import { isPathSafe } from '../../shared/fs-helpers.js';
@@ -131,7 +131,8 @@ export function bootstrapHook(input: HookInput): BootstrapResult {
   const db = openDatabase(getDbPath());
   const config = loadConfig();
   const scope = detectProjectScope(input.cwd);
-  const project = getProjectId(input.cwd);
+  // Use scope directly if found, otherwise derive without re-reading projects.json
+  const project = scope ?? deriveProjectId(input.cwd);
 
   return { db, config, project, scope, adapter: 'cc-hooks' };
 }
@@ -190,7 +191,8 @@ export function wrapHook(hookName: string, handler: HookHandler): () => Promise<
       }
 
       const elapsed = Date.now() - startMs;
-      const hasInjection = !!(output.additionalContext || output.systemMessage);
+      const hso = output.hookSpecificOutput as Record<string, unknown> | undefined;
+      const hasInjection = !!(output.additionalContext || output.systemMessage || hso?.additionalContext);
       emitTelemetry(ctx.db, input.session_id, 'hook_invocation', {
         hook: hookName,
         duration_ms: elapsed,

@@ -17,6 +17,7 @@ import { emitErrorTelemetry } from '../../observability/error-telemetry.js';
 import { persistTopicIfShifted, ensureInitialTopic, captureFlowEntry, captureExplicitDecisions } from '../shared/lifecycle.js';
 import { searchArtifacts, materializeArtifacts } from '../../core/artifacts.js';
 import { getCooldownState, setCooldownState } from '../../core/thread.js';
+import { routeByContent, buildProjectIndex } from '../../shared/content-router.js';
 
 const main = wrapHook('UserPromptSubmit', async (input, ctx) => {
   const prompt = (input.prompt as string) || (input.user_prompt as string) || '';
@@ -74,6 +75,11 @@ const main = wrapHook('UserPromptSubmit', async (input, ctx) => {
     ensureInitialTopic(ctx.db, input.session_id, prompt);
   }
 
+  // Content-aware routing — route decisions/artifacts to the correct project
+  const routedProject = prompt
+    ? routeByContent(prompt, ctx.project, buildProjectIndex())
+    : ctx.project;
+
   // Capture explicit decision markers (Tier 4 only) from user prompt.
   // Tier 1 confirmations are captured in Stop hook where assistant text is
   // available — so the confirmed CONTENT (not the user's "yes") is stored.
@@ -82,7 +88,7 @@ const main = wrapHook('UserPromptSubmit', async (input, ctx) => {
       await captureExplicitDecisions({
         db: ctx.db,
         sessionId: input.session_id,
-        project: ctx.project,
+        project: routedProject,
         userText: prompt,
       });
     } catch (e) {
@@ -94,15 +100,21 @@ const main = wrapHook('UserPromptSubmit', async (input, ctx) => {
   // This supplements compaction-time flow capture, ensuring flow is recorded
   // even in long sessions that never hit compaction (especially on 1M context).
   if (topicShift?.shifted) {
-    captureFlowEntry(ctx.db, input.session_id, ctx.project);
+    captureFlowEntry(ctx.db, input.session_id, routedProject);
   }
 
   // Materialize artifacts matching the current prompt/topic BEFORE assembly reads them.
   // Assembly is pure read-render; state updates happen here at the turn boundary (ARCH-002).
+  // Search across BOTH CWD project and routed project for cross-project retrieval.
   try {
     const query = prompt || topicShift?.newTopic;
     if (query) {
       const matches = searchArtifacts(ctx.db, ctx.project, query, 10);
+      // Also search routed project if different from CWD
+      if (routedProject !== ctx.project) {
+        const crossMatches = searchArtifacts(ctx.db, routedProject, query, 5);
+        matches.push(...crossMatches);
+      }
       if (matches.length > 0) {
         materializeArtifacts(ctx.db, matches.map(a => a.id));
       }
@@ -146,7 +158,12 @@ const main = wrapHook('UserPromptSubmit', async (input, ctx) => {
   }
 
   if (payload.content) {
-    return { systemMessage: payload.content };
+    return {
+      hookSpecificOutput: {
+        hookEventName: 'UserPromptSubmit',
+        additionalContext: payload.content,
+      },
+    };
   }
   return {};
 });

@@ -14,6 +14,7 @@ import {
   trackAfterTurn,
   checkpointIfThresholdMet,
 } from '../shared/lifecycle.js';
+import { routeByContent, buildProjectIndex } from '../../shared/content-router.js';
 
 const main = wrapHook('Stop', async (input, ctx) => {
   const lastAssistantText = (input.stop_assistant_turn as string)
@@ -22,6 +23,11 @@ const main = wrapHook('Stop', async (input, ctx) => {
     ?? undefined;
   const lastUserText = (input.prompt as string) ?? (input.user_prompt as string) ?? undefined;
 
+  // Content-aware routing — route decisions/insights to the correct project
+  const routingContent = ((lastUserText || '') + ' ' + (lastAssistantText || '')).substring(0, 5000);
+  const projectIndex = buildProjectIndex();
+  const routedProject = routeByContent(routingContent, ctx.project, projectIndex);
+
   // Each operation isolated — if A fails, B and C still run
 
   // Decision capture with optional embedding classifier (built fresh each invocation)
@@ -29,7 +35,7 @@ const main = wrapHook('Stop', async (input, ctx) => {
     await captureDecisionsWithClassifier({
       db: ctx.db,
       sessionId: input.session_id,
-      project: ctx.project,
+      project: routedProject,
       config: ctx.config,
       userText: lastUserText,
       assistantText: lastAssistantText,
@@ -41,7 +47,7 @@ const main = wrapHook('Stop', async (input, ctx) => {
   // Insight extraction — analytical conclusions from assistant response
   try {
     if (lastAssistantText) {
-      captureInsightsAsLearnings(ctx.db, input.session_id, ctx.project, lastAssistantText);
+      captureInsightsAsLearnings(ctx.db, input.session_id, routedProject, lastAssistantText);
     }
   } catch (e) {
     emitErrorTelemetry(ctx.db, input.session_id, 'stop/insight_extraction', e);

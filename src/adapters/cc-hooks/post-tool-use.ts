@@ -13,11 +13,17 @@ import {
   trackAfterTool,
   checkpointIfThresholdMet,
 } from '../shared/lifecycle.js';
+import { routeByContent, extractRoutingContent, buildProjectIndex } from '../../shared/content-router.js';
 
 const main = wrapHook('PostToolUse', async (input, ctx) => {
   const toolName = (input.tool_name as string) || '';
   const toolInput = (input.tool_input as Record<string, unknown>) || {};
   const toolOutput = (input.tool_response as Record<string, unknown>) || undefined;
+
+  // Content-aware routing — route to the project the content belongs to
+  const routingContent = extractRoutingContent(toolInput, toolOutput);
+  const projectIndex = buildProjectIndex();
+  const routedProject = routeByContent(routingContent, ctx.project, projectIndex);
 
   // Each operation isolated — if A fails, B and C still run
 
@@ -25,7 +31,7 @@ const main = wrapHook('PostToolUse', async (input, ctx) => {
     processToolAndPressure({
       db: ctx.db,
       sessionId: input.session_id,
-      project: ctx.project,
+      project: routedProject,
       cwd: input.cwd,
       toolName,
       toolInput,

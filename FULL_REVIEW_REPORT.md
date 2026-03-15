@@ -1,129 +1,107 @@
 # Full Multi-Model Code Review Report
 
-**Scope:** Full codebase (src/, 77 source files)
-**Date:** 2026-03-14
-**Models:** Codex CLI (28/77 perspectives completed) + Gemini CLI (5/5 perspectives)
+**Scope:** Uncommitted changes (hook injection fix + content-aware project routing)
+**Date:** 2026-03-15
+**Models:** Codex CLI (7 perspectives) + Gemini CLI (5 perspectives)
 
 ---
 
-## Coverage
+## Codex Quality Scores
 
-| Chunk | Files | Codex Quality | Codex Acceptance | Codex Other | Gemini |
-|-------|-------|:---:|:---:|:---:|:---:|
-| assembly | assembler.ts, sections.ts, token-estimator.ts | Done | Rate-limited | -- | Covered |
-| bridge | bridge-adapter.ts, plugin-entry.ts, bridge-types.ts, lifecycle.ts | Done | Done | Rate-limited (5 perspectives) | Covered |
-| checkpoint | inject.ts, loader.ts, writer.ts, types.ts | Done | Done | general (rate-limited) | Covered |
-| cli | dashboard.ts, migrate.ts, setup.ts | Done | Rate-limited | -- | Covered |
-| core-data | storage.ts, observations.ts, decisions.ts, thread.ts, pressure.ts | Done | Done | Rate-limited (5 perspectives) | Covered |
-| core-new | artifacts.ts, checkpoint-tracking.ts, migrations.ts, learnings.ts, sessions.ts | Done | Rate-limited | -- | Covered |
-| extraction | extractor.ts, scoring.ts, redaction.ts, quality-gate.ts, type-classifier.ts, bash.ts | Done | Done | Rate-limited (5 perspectives) | Covered |
-| hooks | infrastructure.ts, post-tool-use.ts, user-prompt-submit.ts, stop.ts, session-start.ts, session-end.ts, pre-compact.ts | Done | Done | Rate-limited (5 perspectives) | Covered |
-| intelligence | decision-capture.ts, enrichment.ts, topic-shift.ts, thread-tracker.ts, semantic-dedup.ts, learnings-promoter.ts | Done | Rate-limited | -- | Covered |
-| shared | config.ts, fs-helpers.ts, scope-detector.ts, fetch-utils.ts, constants.ts, types.ts, tool-catalog.ts, paths.ts, db-stats.ts, text-utils.ts | Done | Done | security (Done) | Covered |
-| support | decay-engine.ts, telemetry.ts, token-gauge.ts, embedding-provider.ts, templates.ts, gsd/state-reader.ts | Done | Rate-limited | -- | Covered |
-
-**Summary:** 11 quality perspectives (all completed), 6 acceptance perspectives (completed), 5+ other perspectives hit Codex rate limits. Gemini provided full architectural coverage across all 5 dimensions.
-
----
-
-## Codex Quality Scores (averaged across 11 chunks)
-
-| Dimension | Assembly | Bridge | Checkpoint | CLI | Core-Data | Core-New | Extraction | Hooks | Intelligence | Shared | Support | **Average** |
-|-----------|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|
-| naming_quality | 82 | 84 | 82 | 84 | 86 | 84 | 89 | 84 | 87 | 86 | 82 | **84.5** |
-| error_consistency | 69 | 62 | 66 | 61 | 68 | 61 | 66 | 71 | 71 | 71 | 66 | **66.5** |
-| abstraction_fitness | 71 | 69 | 75 | 72 | 79 | 72 | 84 | 87 | 79 | 69 | 70 | **75.2** |
-| logic_clarity | 67 | 73 | 70 | 76 | 74 | 67 | 71 | 78 | 73 | 73 | 68 | **71.8** |
-| ai_generated_debt | 62 | 56 | 54 | 57 | 64 | 59 | 64 | 64 | 66 | 48 | 61 | **59.5** |
-| type_safety | 64 | 58 | 61 | 68 | 71 | 63 | 72 | 65 | 76 | 62 | 74 | **66.7** |
-| contract_coherence | 58 | 53 | 72 | 63 | 67 | 58 | 68 | 74 | 69 | 67 | 67 | **65.1** |
-
-**Composite average: 70.0 / 100**
+| Dimension | Score |
+|-----------|:-----:|
+| naming_quality | 88 |
+| error_consistency | 66 |
+| abstraction_fitness | 62 |
+| logic_clarity | 64 |
+| ai_generated_debt | 63 |
+| type_safety | 78 |
+| contract_coherence | 61 |
+| **Average** | **~69** |
 
 ---
 
 ## Gemini Architecture Scores
 
-| Dimension | Score | Assessment |
-|-----------|:-----:|------------|
-| Architectural Coherence | 86/100 | Strong layer separation; assembly has hidden side effects (TTL/materialization writes during read) |
-| Pattern Consistency | 88/100 | Excellent error handling consistency; minor drift in decay/intelligence layers |
-| Structural Efficiency | 88/100 | Lean and purposeful; legacy fallback is transitional dead weight |
-| Contract Alignment | 88/100 | Strong interfaces; CC hooks ephemeral model breaks stateful contracts |
-| Dependency Health | 85/100 | Good layering; core layer has layer-inversion imports from extraction |
-
-**Gemini composite: 87/100 (Grade B+)**
+| Dimension | Weight | Score | Weighted |
+|-----------|:------:|:-----:|:--------:|
+| Architectural Coherence | 0.30 | 88/100 | 26.40 |
+| Pattern Consistency | 0.20 | 92/100 | 18.40 |
+| Structural Efficiency | 0.15 | 92/100 | 13.80 |
+| Contract Alignment | 0.20 | 82/100 | 16.40 |
+| Dependency Health | 0.15 | 85/100 | 12.75 |
+| **Gemini composite** | | | **87.75** |
 
 ---
 
-## Cross-Model Findings (both models found independently)
+## Combined Grade
+
+| Model | Composite | Weight | Contribution |
+|-------|:---------:|:------:|:------------:|
+| Codex | 69 | 0.55 | 37.95 |
+| Gemini | 87.75 | 0.45 | 39.49 |
+| **Combined** | | | **77.4** |
+
+### Grading Rubric
+
+| Grade | Criteria |
+|-------|----------|
+| A | 90-100 |
+| A- | 85-89 |
+| B+ | 80-84 |
+| B | 75-79 |
+| B- | 70-74 |
+| C+ | 65-69 |
+| C | 60-64 |
+| D | 50-59 |
+| F | <50 |
+
+### Overall Grade: **B (77.4/100)**
+
+The codebase scores well on naming quality (88) and architectural coherence (88), but is dragged down by weak contract coherence (61), abstraction fitness (62), and AI-generated debt (63). Gemini's higher scores reflect strong macro-level design; Codex's lower scores reflect accumulated micro-level quality issues in error handling, type safety, and abstraction boundaries.
+
+---
+
+## Cross-Model Findings
 
 These findings were identified by both Codex and Gemini independently, giving them the highest confidence:
 
-### 1. [CODEX][GEMINI] Bridge Adapter Mutable Shared State -- Cross-Session Contamination
-- **Files:** `src/adapters/openclaw-bridge/bridge-adapter.ts:202`
-- **Severity:** Critical
-- **Issue:** Bridge state is a single mutable global (`bctx.sessionId`, `bctx.cwd`, `bctx.project`) overwritten on each `onInit`. All callbacks read from the shared global instead of per-event `ctx.sessionKey/cwd`, creating cross-session contamination risk.
-- **Both sources:** Codex bridge-acceptance FINDING-ACC-001 + bridge-quality quality-001; Gemini FINDING-CTR-003
-
-### 2. [CODEX][GEMINI] Plugin Entry Premature Bridge Teardown
-- **Files:** `src/adapters/openclaw-bridge/plugin-entry.ts:72`
-- **Severity:** Critical
-- **Issue:** `session_end` always unregisters the bridge and closes DB in `finally`, disabling the plugin after the first session end, even on early return with empty sessionId.
-- **Both sources:** Codex bridge-acceptance FINDING-ACC-002; Gemini contract analysis
-
-### 3. [CODEX][GEMINI] Checkpoint Loader Tautological Path Validation
-- **Files:** `src/checkpoint/loader.ts:102-119`
-- **Severity:** Critical
-- **Issue:** `isWithinDir(resolvedMirror, mirrorParent)` is tautological because `mirrorParent` is `dirname(resolvedMirror)`. The only real gate is checking if parent contains 'checkpoints' segment.
-- **Both sources:** Codex checkpoint-acceptance FINDING-ACC-002 + checkpoint-quality quality-001; Gemini FINDING-ARCH-003 context
-
-### 4. [CODEX][GEMINI] Assembly Side Effects During Read
-- **Files:** `src/assembly/assembler.ts:285`
-- **Severity:** Critical
-- **Issue:** `assembleRegularPrompt` and `assembleFullContext` call `tickArtifactTTL(db)` and `materializeArtifacts(db)` -- DB writes during what should be pure read-render operations.
-- **Both sources:** Codex assembly-quality (abstraction fitness commentary); Gemini FINDING-ARCH-003
-
-### 5. [CODEX][GEMINI] Layer Inversion -- Core Imports from Extraction
-- **Files:** `src/core/decisions.ts:10`, `src/core/thread.ts:11`
+### 1. [CODEX][GEMINI] lifecycle.ts God Module
+- **Files:** `src/adapters/shared/lifecycle.ts`
 - **Severity:** Recommended
-- **Issue:** Core DB layer imports `redactContent` from extraction, breaking dependency direction and causing double-redaction.
-- **Both sources:** Codex core-data quality commentary; Gemini FINDING-DEP-001
+- **Issue:** lifecycle.ts has 25+ imports and serves as an orchestration monolith (~900 lines). Both models flagged it as a structural bottleneck that couples too many concerns into a single file.
+- **Both sources:** Gemini ARCH-001, DEP-002; Codex HLT-001
 
-### 6. [CODEX][GEMINI] isPathSafe Symlink Escape on Nonexistent Targets
-- **Files:** `src/shared/fs-helpers.ts:139-140`
-- **Severity:** Critical
-- **Issue:** `isPathSafe` falls back to unresolved path when `realpath` fails (new file), so a symlinked in-home directory pointing outside home is incorrectly accepted.
-- **Both sources:** Codex shared-acceptance FINDING-ACC-001 + shared-quality quality-001; Gemini FINDING-ARCH-001 context
-
-### 7. [CODEX][GEMINI] Artifact TTL Ticking Per Tool Call Instead of Per Turn
-- **Files:** `src/adapters/shared/lifecycle.ts:163`
+### 2. [CODEX][GEMINI] Unused FTS5 searchObservations
+- **Files:** `src/core/observations.ts`
 - **Severity:** Recommended
-- **Issue:** Artifact TTL is decremented on every tool call, but the API contract says TTL ticking is turn-boundary behavior. Over-decrements in tool-heavy turns.
-- **Both sources:** Codex bridge-acceptance FINDING-ACC-003; Gemini FINDING-ARCH-003
+- **Issue:** FTS5 full-text search infrastructure exists (`searchObservations`) but the assembler uses LIKE-based queries instead. The FTS5 path is dead code that adds maintenance burden without providing value.
+- **Both sources:** Gemini DWT-001, CTR-006; Codex noted assembler uses LIKE not FTS5
+
+### 3. [CODEX][GEMINI] Checkpoint Writer Layer Leak
+- **Files:** `src/checkpoint/writer.ts`, `src/adapters/shared/lifecycle.ts`
+- **Severity:** Recommended
+- **Issue:** Checkpoint writing aggregation logic leaks across the lifecycle/writer boundary. lifecycle.ts performs aggregation that should be encapsulated within the checkpoint writer module.
+- **Both sources:** Gemini DEP-004; Codex HLT-001 (lifecycle aggregation concern)
 
 ---
 
 ## Critical Findings
 
-| # | ID | File:Line | Issue | Source |
-|---|-----|-----------|-------|--------|
-| 1 | CROSS-001 | bridge-adapter.ts:202 | Mutable shared global state causes cross-session contamination | [CODEX][GEMINI] |
-| 2 | CROSS-002 | plugin-entry.ts:72 | Bridge teardown in `finally` disables plugin after first session end | [CODEX][GEMINI] |
-| 3 | CROSS-003 | loader.ts:102 | Tautological path validation in checkpoint recovery | [CODEX][GEMINI] |
-| 4 | CROSS-004 | assembler.ts:285 | Non-idempotent assembly -- DB writes during read-render | [CODEX][GEMINI] |
-| 5 | CROSS-006 | fs-helpers.ts:139 | isPathSafe symlink escape on nonexistent targets | [CODEX][GEMINI] |
-| 6 | CDX-CP-001 | loader.ts:65 | Gzip bomb: decompressed size checked after full decompression | [CODEX] |
-| 7 | CDX-ASM-001 | sections.ts:570 | Unsanitized rationale interpolation enables prompt-shaping injection | [CODEX] |
-| 8 | CDX-EXT-001 | extractor.ts:130 | Dedup compares pre-canonicalized content, bypassing storage normalization | [CODEX] |
-| 9 | CDX-RED-001 | redaction.ts:68 | Base64 heuristic lets slash-heavy secrets bypass redaction | [CODEX] |
-| 10 | GEM-PAT-006 | extractor.ts:74 | Missing per-string path-length validation (path-bomb risk) | [GEMINI] |
-| 11 | GEM-DWT-006 | assembler.ts:254-325 | Legacy fallback dead weight (~70 lines, rarely activated) | [GEMINI] |
-| 12 | CDX-MIG-001 | migrations.ts:511 | v2-to-v3 copy assumes v2 column names that may not exist | [CODEX] |
-| 13 | CDX-DEC-001 | decay-engine.ts:90 | Co-occurrence LIKE matching without wildcard escaping | [CODEX] |
-| 14 | CDX-DEC-002 | decay-engine.ts:143 | N+1 per-candidate DB queries during pruning | [CODEX] |
+| # | ID | File:Line | Issue | Source | Models |
+|---|-----|-----------|-------|--------|:------:|
+| 1 | CRIT-001 | content-router.ts:163, migrate-routing.cjs:91 | Path prefix collision: `includes(pathFwd)` matches `/Projects/app` inside `/Projects/app-old` | [CODEX-QUALITY][CODEX-ACCEPTANCE][CODEX-GENERAL][CODEX-SECURITY] | 4 |
+| 2 | CRIT-002 | content-router.ts:83, scope-detector.ts:82 | Unregistered project ID mismatch: buildProjectIndex generates `sanitized` IDs but runtime getProjectId uses `sanitized-hash`. Same physical project gets different IDs | [CODEX-ACCEPTANCE][CODEX-GENERAL][CODEX-REUSE] | 3 |
+| 3 | CRIT-003 | decisions.ts:54, lifecycle.ts:693 | Session-scoped aggregation breaks with cross-project writes: decision dedup is UNIQUE(session_id, fingerprint), cross-project writes can collide | [CODEX-CODE-HEALTH] | 1 |
+| 4 | CRIT-004 | post-tool-use.ts:25, stop.ts:28, user-prompt-submit.ts:80 | Cross-project writes without authorization: content-derived routing enables writing to other projects without explicit project-switch | [CODEX-SECURITY] | 1 |
+| 5 | CRIT-005 | infrastructure.ts:137 | buildProjectIndex on every hook invocation: filesystem scan (projects.json + directory listing) runs on PostToolUse hot path | [CODEX-EFFICIENCY] | 1 |
+| 6 | CRIT-006 | content-router.ts:231 | JSON.stringify of full tool output before truncation: O(payload) work on every PostToolUse | [CODEX-EFFICIENCY] | 1 |
+| 7 | CRIT-007 | thread.ts:44 | Thread state persistence bug: upsertThreadState prevents clearing key_exchanges when empty array passed | [GEMINI-CONTRACT] | 1 |
+| 8 | CRIT-008 | content-router.ts:58 | Legacy projects.json format inversion: string entries parsed differently than scope-detector | [CODEX-ACCEPTANCE] | 1 |
 
-**Total critical: 14** (6 cross-model, 6 Codex-only, 2 Gemini-only)
+**Total critical: 8** (0 cross-model at critical level, 8 single-source)
+
+**Note on CRIT-001:** 4 independent Codex perspectives flagged the path prefix collision, making it the highest-confidence finding in this review despite being Codex-only. The `includes()` check on forward-slash normalized paths will match any project whose path is a substring of another project's path.
 
 ---
 
@@ -131,115 +109,86 @@ These findings were identified by both Codex and Gemini independently, giving th
 
 | # | ID | File:Line | Issue | Source |
 |---|-----|-----------|-------|--------|
-| 1 | CROSS-005 | decisions.ts:10, thread.ts:11 | Layer inversion: core imports from extraction | [CODEX][GEMINI] |
-| 2 | CROSS-007 | lifecycle.ts:163 | Artifact TTL decremented per tool call, not per turn | [CODEX][GEMINI] |
-| 3 | CDX-CP-002 | loader.ts:309 | Sync re-mirror does not update latest.yaml | [CODEX] |
-| 4 | CDX-CP-003 | loader.ts:98 | Schema/version validation too loose (non-v3 accepted) | [CODEX] |
-| 5 | CDX-ASM-002 | assembler.ts:240 | Fallback tiers bypass budget_tokens enforcement | [CODEX] |
-| 6 | CDX-ASM-003 | assembler.ts:367 | Keyword extraction collapses to empty, matches all learnings | [CODEX] |
-| 7 | CDX-ASM-004 | assembler.ts:361 | Core pivot path uses `any[]`, losing type safety | [CODEX] |
-| 8 | CDX-ASM-005 | assembler.ts:235 | Top-level catch silently downgrades tiers without telemetry | [CODEX] |
-| 9 | CDX-BRG-001 | plugin-entry.ts:23 | activate() swallows init failures without cleanup/telemetry | [CODEX] |
-| 10 | CDX-BRG-002 | lifecycle.ts:237 | toolOutput type mismatch between bridge types and lifecycle | [CODEX] |
-| 11 | CDX-BRG-003 | lifecycle.ts:417 | buildFlowEntry mixes session/project scoped data | [CODEX] |
-| 12 | CDX-CP-004 | writer.ts:279 | key_exchanges cast without validating gist field | [CODEX] |
-| 13 | CDX-CP-005 | loader.ts:326 | Remirroring uses inconsistent write methods | [CODEX] |
-| 14 | CDX-CP-006 | writer.ts:404 | Bare catch blocks swallow write failures | [CODEX] |
-| 15 | CDX-CLI-001 | dashboard.ts:380 | Operational failures returned as strings, exit 0 | [CODEX] |
-| 16 | CDX-CLI-002 | dashboard.ts:120 | Query exceptions swallowed into empty results | [CODEX] |
-| 17 | CDX-CLI-003 | dashboard.ts:51 | Arg parsing lets last positional win silently | [CODEX] |
-| 18 | CDX-CLI-004 | setup.ts:88 | Hook ownership detected via substring heuristic | [CODEX] |
-| 19 | CDX-CLI-005 | migrate.ts:283 | Already-upgraded DB reported as migration failure | [CODEX] |
-| 20 | CDX-CLI-006 | setup.ts:68 | Broad type assertions on untrusted JSON | [CODEX] |
-| 21 | CDX-COR-001 | thread.ts:41 | upsertThreadState uses INSERT OR REPLACE, silently clears fields | [CODEX] |
-| 22 | CDX-COR-002 | thread.ts:113 | setCooldownState silently no-ops when row missing | [CODEX] |
-| 23 | CDX-COR-003 | observations.ts:142 | FTS5 MATCH without query sanitization | [CODEX] |
-| 24 | CDX-COR-004 | pressure.ts:34 | 4-positional parameter binding is fragile | [CODEX] |
-| 25 | CDX-COR-005 | checkpoint-tracking.ts:42 | Unguarded JSON.parse on malformed data | [CODEX] |
-| 26 | CDX-COR-006 | checkpoint-tracking.ts:66 | clear/mark asymmetry for tracking rows | [CODEX] |
-| 27 | CDX-COR-007 | artifacts.ts:27 | ArtifactRow.artifact_type typed as string, not union | [CODEX] |
-| 28 | CDX-COR-008 | artifacts.ts:153 | materializeArtifacts not scoped by project/session | [CODEX] |
-| 29 | CDX-EXT-002 | scoring.ts:51 | Case-sensitive regex misses common variants | [CODEX] |
-| 30 | CDX-EXT-003 | scoring.ts:54 | Test-failure regex also partially case-sensitive | [CODEX] |
-| 31 | CDX-EXT-004 | redaction.ts:203 | Path normalization missing for Windows case/separator | [CODEX] |
-| 32 | CDX-EXT-005 | quality-gate.ts:107 | Quality gate fails open, dispatcher fails closed (inconsistent) | [CODEX] |
-| 33 | CDX-EXT-006 | extractor.ts:103 | exitCode cast to number without runtime check | [CODEX] |
-| 34 | CDX-HK-001 | session-start.ts:15 | SessionStart creates session without adapter identity | [CODEX] |
-| 35 | CDX-HK-002 | session-start.ts:42, user-prompt-submit.ts:99 | Injection telemetry emitted without adapter arg | [CODEX] |
-| 36 | CDX-HK-003 | user-prompt-submit.ts:51 | jaccardShiftThreshold config not passed to detector | [CODEX] |
-| 37 | CDX-HK-004 | session-start.ts:32, user-prompt-submit.ts:76 | Assembly called without sessionId | [CODEX] |
-| 38 | CDX-HK-005 | post-tool-use.ts:17 | tool_input cast without runtime shape check | [CODEX] |
-| 39 | CDX-HK-006 | user-prompt-submit.ts:22 | user_prompt force-cast to string | [CODEX] |
-| 40 | CDX-HK-007 | infrastructure.ts:67 | Parsed stdin fields lack typeof enforcement | [CODEX] |
-| 41 | CDX-HK-008 | infrastructure.ts:181 | Invalid input returns {} without telemetry | [CODEX] |
-| 42 | CDX-INT-001 | learnings-promoter.ts:45 | Promotion inserts new rows when agent_id differs | [CODEX] |
-| 43 | CDX-INT-002 | decision-capture.ts:234 | Top-level catch returns [] silently on all failures | [CODEX] |
-| 44 | CDX-INT-003 | enrichment.ts:160 | Strict JSON parse rejects fenced/prose LLM output | [CODEX] |
-| 45 | CDX-INT-004 | learnings-promoter.ts:61 | Partial object assertion bypasses required fields | [CODEX] |
-| 46 | CDX-SH-001 | scope-detector.ts:29 | detectProjectScope does not validate projectId type | [CODEX] |
-| 47 | CDX-SH-002 | fetch-utils.ts:60 | Response fully buffered before size check | [CODEX] |
-| 48 | CDX-SH-003 | config.ts:85 | Multiple `as unknown as` casts bypass static safety | [CODEX] |
-| 49 | CDX-SH-004 | scope-detector.ts:86 | normalizePath overly complex | [CODEX] |
-| 50 | CDX-SH-005 | db-stats.ts:26 | Errors silently swallowed at multiple levels | [CODEX] |
-| 51 | CDX-SUP-001 | telemetry.ts:43 | pruneTelemetry not wrapped in try/catch | [CODEX] |
-| 52 | CDX-SUP-002 | embedding-provider.ts:62 | LAN option exposed but unreachable via constructor | [CODEX] |
-| 53 | CDX-SUP-003 | telemetry.ts:94 | Unix path redaction misses /Users/ (macOS) | [CODEX] |
-| 54 | GEM-ARCH-001 | gauge/token-gauge.ts:25 | isPathSafe in gauge module (leaky abstraction) | [GEMINI] |
-| 55 | GEM-ARCH-002 | migrate.ts, dashboard.ts | Inconsistent database initialization in CLI | [GEMINI] |
-| 56 | GEM-ARCH-004 | infrastructure.ts:133 | sanitizeErrorForTelemetry in wrong module | [GEMINI] |
-| 57 | GEM-ARCH-006 | post-tool-use.ts:35 | Milestone detection only in CC hooks | [GEMINI] |
-| 58 | GEM-CTR-002 | user-prompt-submit.ts:31 | Topic shift cooldown not loaded in CC hooks | [GEMINI] |
-| 59 | GEM-PAT-001 | decay-engine.ts:94 | cachedPrepare not used for hot-path queries | [GEMINI] |
-| 60 | GEM-PAT-002 | observations.ts:56 | Observation redaction inconsistency | [GEMINI] |
-| 61 | GEM-DEP-002 | thread.ts:133, topic-shift.ts:11 | Circular type dependency (core <-> intelligence) | [GEMINI] |
-| 62 | GEM-DEP-003 | loader.ts:12 | Loader imports from writer (read/write coupling) | [GEMINI] |
+| 1 | REC-001 | migrate-routing.cjs:20 | Migration script duplicates routing logic (~130-170 removable lines) | [CODEX-QUALITY][CODEX-GENERAL][CODEX-CODE-HEALTH][CODEX-REUSE] |
+| 2 | REC-002 | session-start.ts:69, user-prompt-submit.ts:162 | Missing hook contract tests for hookSpecificOutput format | [CODEX-QUALITY][CODEX-ACCEPTANCE][CODEX-GENERAL] |
+| 3 | REC-003 | bridge-adapter.ts:366 | OpenClaw bridge missing content routing (adapter drift) | [CODEX-CODE-HEALTH][CODEX-GENERAL][CODEX-REUSE] |
+| 4 | REC-004 | user-prompt-submit.ts:112 | Cross-project artifact materialization doesn't flow to assembly | [CODEX-GENERAL] |
+| 5 | REC-005 | infrastructure.ts:135 | Triple projects.json read per hook invocation | [CODEX-EFFICIENCY] |
+| 6 | REC-006 | content-router.ts:186 | Regex recompilation per routing call | [CODEX-EFFICIENCY] |
+| 7 | REC-007 | content-router.ts:224 | extractRoutingContent hardcodes keys that exist in TOOL_CATALOG | [CODEX-REUSE] |
+| 8 | REC-008 | user-prompt-submit.ts:106 | Artifact query/materialization duplicated between adapters | [CODEX-REUSE] |
+| 9 | REC-009 | user-prompt-submit.ts:115 | Cross-project materialization side effects (changes TTL state) | [CODEX-SECURITY] |
+| 10 | REC-010 | lifecycle.ts | lifecycle.ts God Module with 25+ imports | [GEMINI-ARCH] |
+| 11 | REC-011 | user-prompt-submit.ts:47 | Topic shift sliding window state loss in multi-process CC hooks | [GEMINI-ARCH] |
+| 12 | REC-012 | assembler.ts:257 | Rudimentary keyword matching in topic pivots | [GEMINI-ARCH] |
+| 13 | REC-013 | assembler.ts:150 | Manual error telemetry instead of emitErrorTelemetry helper | [GEMINI-PAT] |
+| 14 | REC-014 | enrichment.ts:186 | Data loss risk in mergeEnrichment for key_exchanges | [GEMINI-CONTRACT] |
+| 15 | REC-015 | thread.ts:8 | CooldownState type import leaks from intelligence to core layer | [GEMINI-DEP] |
+| 16 | REC-016 | migrate-routing.cjs:151 | Migration .all() loads full tables into memory | [GEMINI-EFFICIENCY] |
 
-**Total recommended: 62**
+**Total recommended: 16**
 
 ---
 
 ## Observations
 
-**Total observation-level findings: 23**
+**Total observation-level findings: 15**
 
-Top 5:
+### From Gemini (8)
 
-1. **CDX-CP-007** -- Thread section gated on `topic` only; summary/exchanges skipped when topic is null (`inject.ts:43`) [CODEX]
-2. **CDX-COR-009** -- `markObservationsConsumed` prefetches IDs into Set but never uses Set contents (`observations.ts:200`) [CODEX]
-3. **CDX-EXT-007** -- `sanitizePath` project-root matching is exact `startsWith` without path normalization (`redaction.ts:203`) [CODEX]
-4. **GEM-DWT-001** -- Unused RuntimeEvent types in `types.ts:105` [GEMINI]
-5. **GEM-DWT-002** -- token-estimator.ts is a passthrough re-export [GEMINI]
+1. Resilient assembly fallback pattern (positive)
+2. Multi-process sync pattern is well-designed (positive)
+3. Intentional naming divergence between adapters
+4. Empty bridge interfaces awaiting implementation
+5. Thin pass-through wrapper in token-estimator
+6. Defensive schema validation in migrations
+7. Hardcoded DB tuning parameters (WAL, cache_size)
+8. Redundant single-use interface definitions
 
-Additional observations from Gemini: redundant path normalization logic (ARCH-005), tight coupling thread<->topic-shift (ARCH-007), positional vs object parameter drift (PAT-003), fake async in writeCompressedFile (PAT-004), inconsistent DB type import sources (PAT-005), dead hookToEventKind variable (DWT-003), redundant try-catch in getDefaultConfig (DWT-005), extractTopic coupled to heavy ThreadTracker module (DEP-004), unused createArtifact/getObservationsByProject imports (DEP-005).
+### From Codex (7)
+
+1. Migration usage text shows wrong filename
+2. Unchecked hookSpecificOutput cast in session-start
+3. Migration db.close not in finally block
+4. Adapter-specific routing divergence noted as intentional
+5. Migration path helpers not reused from shared module
+6. Content router regex patterns could be pre-compiled constants
+7. projects.json schema lacks formal validation
 
 ---
 
-## Grade
+## Summary
 
-### Grading Rubric Application
+| Metric | Value |
+|--------|-------|
+| Critical findings | 8 |
+| Recommended findings | 16 |
+| Observations | 15 |
+| Cross-model findings | 3 (all at recommended level) |
+| Highest-confidence single-source | CRIT-001 (path prefix collision, 4 Codex perspectives) |
+| Codex composite | 69/100 |
+| Gemini composite | 87.75/100 |
+| **Overall grade** | **B (77.4/100)** |
 
-| Factor | Value | Assessment |
-|--------|-------|------------|
-| Critical findings | 14 | Significant -- includes security (isPathSafe, gzip bomb, prompt injection), correctness (session contamination, tautological validation), and data integrity issues |
-| Recommended findings | 62 | High count, but many are contract tightening, type safety, and error consistency improvements rather than bugs |
-| Cross-model agreement | 7 findings | High confidence -- both models independently found the same issues |
-| Codex quality composite | 70/100 | Below-average on ai_generated_debt (59.5), contract_coherence (65.1), and error_consistency (66.5) |
-| Gemini architecture composite | 87/100 | Strong architectural foundation despite specific issues |
+### Weakest Dimensions
 
-### Scoring
+1. **Contract coherence** (61) -- API behavior diverges from implied promises, especially around project routing identity and thread state persistence
+2. **Abstraction fitness** (62) -- Content router mixes routing, serialization, and validation; lifecycle.ts is an orchestration monolith
+3. **AI-generated debt** (63) -- Duplicated logic in migration script, hardcoded keys that exist in catalogs, regex recompilation
 
-- **Architecture & Design:** B+ (87/100, per Gemini)
-- **Code Quality:** C+ (70/100, per Codex)
-- **Security posture:** Needs attention (3 security-relevant criticals: isPathSafe symlink escape, gzip bomb guard, prompt injection via rationale interpolation)
-- **Error handling:** Weakest dimension codebase-wide (66.5/100 average)
+### Strongest Dimensions
 
-### Overall Grade: **B- (74/100)**
+1. **Pattern consistency** (92, Gemini) -- Non-throwing discipline, consistent hook structure, telemetry patterns
+2. **Structural efficiency** (92, Gemini) -- Lean module boundaries, purposeful file organization
+3. **Naming quality** (88, Codex) -- Clear, consistent naming across modules
 
-The codebase has a strong architectural foundation with clear module boundaries and good abstraction patterns. However, it is held back by: (1) 14 critical findings including security vulnerabilities and correctness bugs that need immediate attention; (2) pervasive AI-generated boilerplate debt (lowest dimension at 59.5/100) suggesting insufficient human refinement; (3) weak error consistency (66.5/100) with many silent catch blocks that hide operational failures; and (4) contract coherence gaps (65.1/100) where API behavior diverges from documented/implied promises.
+### Priority Fixes (in order)
 
-**Priority fixes (in order):**
-1. Bridge adapter mutable global state (session contamination risk)
-2. isPathSafe symlink escape (security)
-3. Gzip bomb decompression guard (security)
-4. Sections.ts rationale injection (prompt safety)
-5. Plugin entry premature teardown (reliability)
+1. **CRIT-001** -- Path prefix collision in content router (correctness, 4 models agree)
+2. **CRIT-002** -- Project ID mismatch between buildProjectIndex and getProjectId (correctness, 3 models agree)
+3. **CRIT-004** -- Cross-project writes without authorization (security)
+4. **CRIT-003** -- Session-scoped dedup collision on cross-project writes (data integrity)
+5. **CRIT-007** -- Thread state persistence bug preventing key_exchanges clear (correctness)
+6. **CRIT-005** -- buildProjectIndex filesystem scan on hot path (performance)
+7. **CRIT-006** -- JSON.stringify before truncation (performance)
+8. **CRIT-008** -- Legacy projects.json format inversion (compatibility)
