@@ -8,6 +8,7 @@ import {
   tickArtifactTTL,
   packAllArtifacts,
   searchArtifacts,
+  searchArtifactsGlobal,
 } from '../../core/artifacts.js';
 import {
   formatReferenceLayer,
@@ -387,6 +388,118 @@ describe('project isolation', () => {
   });
 });
 
+describe('searchArtifactsGlobal', () => {
+  let db: TestDatabase;
+
+  beforeEach(() => {
+    db = createTestDb();
+  });
+
+  afterEach(() => {
+    db.close();
+  });
+
+  it('finds artifacts across all projects', () => {
+    createArtifact(db, 'sess-1', 'project-a', 'observation', null, 'SSH config analysis', 'SSH content', 4);
+    createArtifact(db, 'sess-1', 'project-b', 'observation', null, 'SSH server setup', 'SSH server content', 4);
+
+    const results = searchArtifactsGlobal(db, 'project-a', 'SSH config server');
+    expect(results.length).toBeGreaterThanOrEqual(2);
+  });
+
+  it('prioritizes current project in results', () => {
+    createArtifact(db, 'sess-1', 'project-a', 'decision', null, 'Deployment strategy', 'Deploy to prod', 5);
+    createArtifact(db, 'sess-1', 'project-b', 'decision', null, 'Deployment strategy', 'Deploy to staging', 5);
+
+    const results = searchArtifactsGlobal(db, 'project-a', 'deployment strategy');
+    expect(results.length).toBeGreaterThanOrEqual(2);
+    // Current project should come first
+    expect(results[0].project).toBe('project-a');
+  });
+
+  it('respects limit parameter', () => {
+    for (let i = 0; i < 15; i++) {
+      createArtifact(db, 'sess-1', `proj-${i}`, 'decision', null, `Auth decision ${i}`, `Auth content ${i}`, 4);
+    }
+
+    const results = searchArtifactsGlobal(db, 'proj-0', 'auth decision', 5);
+    expect(results).toHaveLength(5);
+  });
+});
+
+describe('getMaterializedArtifacts globalScope', () => {
+  let db: TestDatabase;
+
+  beforeEach(() => {
+    db = createTestDb();
+  });
+
+  afterEach(() => {
+    db.close();
+  });
+
+  it('returns artifacts from all projects when globalScope=true', () => {
+    createArtifact(db, 'sess-1', 'project-a', 'observation', null, 'A obs', 'content a', 4);
+    createArtifact(db, 'sess-1', 'project-b', 'observation', null, 'B obs', 'content b', 4);
+
+    const scoped = getMaterializedArtifacts(db, 'project-a');
+    expect(scoped).toHaveLength(1);
+
+    const global = getMaterializedArtifacts(db, 'project-a', true);
+    expect(global).toHaveLength(2);
+  });
+
+  it('prioritizes current project in global results', () => {
+    createArtifact(db, 'sess-1', 'project-a', 'observation', null, 'A obs', 'content a', 3);
+    createArtifact(db, 'sess-1', 'project-b', 'observation', null, 'B obs', 'content b', 5);
+
+    const global = getMaterializedArtifacts(db, 'project-a', true);
+    // project-a comes first despite lower importance (project priority)
+    expect(global[0].project).toBe('project-a');
+  });
+
+  it('respects LIMIT cap', () => {
+    for (let i = 0; i < 25; i++) {
+      createArtifact(db, 'sess-1', `proj-${i}`, 'observation', null, `Obs ${i}`, `Content ${i}`, 4);
+    }
+
+    const global = getMaterializedArtifacts(db, 'proj-0', true);
+    expect(global.length).toBeLessThanOrEqual(20);
+  });
+});
+
+describe('materializeArtifacts with scopeProject', () => {
+  let db: TestDatabase;
+
+  beforeEach(() => {
+    db = createTestDb();
+  });
+
+  afterEach(() => {
+    db.close();
+  });
+
+  it('only materializes same-project artifacts when scopeProject set', () => {
+    createArtifact(db, 'sess-1', 'project-a', 'observation', null, 'A obs', 'content a', 4);
+    createArtifact(db, 'sess-1', 'project-b', 'observation', null, 'B obs', 'content b', 4);
+
+    // Pack all first
+    packAllArtifacts(db, 'project-a');
+    packAllArtifacts(db, 'project-b');
+
+    const allArtifacts = [...getArtifactsByProject(db, 'project-a'), ...getArtifactsByProject(db, 'project-b')];
+    const allIds = allArtifacts.map(a => a.id);
+
+    // Materialize with scope — only project-a should change
+    materializeArtifacts(db, allIds, 'project-a');
+
+    const matA = getMaterializedArtifacts(db, 'project-a');
+    const matB = getMaterializedArtifacts(db, 'project-b');
+    expect(matA).toHaveLength(1);
+    expect(matB).toHaveLength(0); // project-b was NOT materialized
+  });
+});
+
 describe('section formatters', () => {
   it('formatReferenceLayer returns null for empty array', () => {
     expect(formatReferenceLayer([])).toBeNull();
@@ -470,9 +583,9 @@ describe('section formatters', () => {
     const result = formatMaterializationLayer(artifacts);
     expect(result).not.toBeNull();
     expect(result).toContain('## Materialized Context');
-    expect(result).toContain('### [obs] API endpoint analysis');
+    expect(result).toContain('### [obs] [p] API endpoint analysis');
     expect(result).toContain('GET /api/threads returns ThreadState with artifacts array.');
-    expect(result).toContain('### [decision] Use TTL-based lifecycle');
+    expect(result).toContain('### [decision] [p] Use TTL-based lifecycle');
     expect(result).toContain('TTL replaces consumed flag.');
   });
 

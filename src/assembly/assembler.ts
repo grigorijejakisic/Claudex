@@ -33,7 +33,7 @@ import { getTopLearnings, type LearningRow } from '../core/learnings.js';
 import { getHotFiles, type PressureRow } from '../core/pressure.js';
 import {
   getPackedArtifacts,
-  searchArtifacts,
+  searchArtifactsGlobal,
   getMaterializedArtifacts,
 } from '../core/artifacts.js';
 import { getRecentFlow } from '../core/journal.js';
@@ -187,13 +187,13 @@ export function assembleFullContext(params: FullAssemblyParams): InjectPayload {
       let materializedArtifacts: ArtifactRow[] = [];
 
       if (query) {
-        const searchResults = searchArtifacts(params.db, params.project, query, 10);
+        const searchResults = searchArtifactsGlobal(params.db, params.project, query, 10);
         if (searchResults.length > 0) {
           materializedArtifacts = searchResults;
         }
       }
 
-      const alreadyMaterialized = getMaterializedArtifacts(params.db, params.project);
+      const alreadyMaterialized = getMaterializedArtifacts(params.db, params.project, true);
       const seen = new Set(materializedArtifacts.map(a => a.id));
       for (const a of alreadyMaterialized) {
         if (!seen.has(a.id)) { materializedArtifacts.push(a); seen.add(a.id); }

@@ -143,10 +143,25 @@ export function getPackedArtifacts(
  * Returns materialized artifacts (full content visible).
  * Ordered by importance DESC, timestamp_epoch DESC.
  */
+/**
+ * Get materialized/fresh artifacts. Global scope searches all projects with
+ * current-project priority and a hard cap to prevent unbounded context bloat.
+ */
 export function getMaterializedArtifacts(
   db: Database,
   project: string,
+  globalScope: boolean = false,
 ): ArtifactRow[] {
+  if (globalScope) {
+    return cachedPrepare(db,
+      `SELECT * FROM artifacts
+       WHERE state IN ('fresh', 'materialized')
+       ORDER BY
+         CASE WHEN project = ? THEN 0 ELSE 1 END,
+         importance DESC, timestamp_epoch DESC
+       LIMIT 20`
+    ).all(project) as ArtifactRow[];
+  }
   return cachedPrepare(db,
     `SELECT * FROM artifacts
      WHERE project = ? AND state IN ('fresh', 'materialized')
@@ -157,21 +172,37 @@ export function getMaterializedArtifacts(
 /**
  * Materializes specific artifacts by ID — sets state to 'materialized', TTL to 2,
  * and records the materialization timestamp.
+ *
+ * When scopeProject is provided, only materializes artifacts belonging to that project.
+ * Cross-project artifacts are left unchanged — they surface via global search each turn
+ * without contaminating other projects' artifact lifecycle state.
  */
 export function materializeArtifacts(
   db: Database,
   artifactIds: number[],
+  scopeProject?: string,
 ): void {
   if (artifactIds.length === 0) return;
 
-  const stmt = cachedPrepare(db,
-    `UPDATE artifacts
-     SET state = 'materialized', ttl = 2, last_materialized_epoch = unixepoch()
-     WHERE id = ?`
-  );
-
-  for (const id of artifactIds) {
-    stmt.run(id);
+  if (scopeProject) {
+    // Only materialize same-project artifacts — prevents cross-project state contamination
+    const stmt = cachedPrepare(db,
+      `UPDATE artifacts
+       SET state = 'materialized', ttl = 2, last_materialized_epoch = unixepoch()
+       WHERE id = ? AND project = ?`
+    );
+    for (const id of artifactIds) {
+      stmt.run(id, scopeProject);
+    }
+  } else {
+    const stmt = cachedPrepare(db,
+      `UPDATE artifacts
+       SET state = 'materialized', ttl = 2, last_materialized_epoch = unixepoch()
+       WHERE id = ?`
+    );
+    for (const id of artifactIds) {
+      stmt.run(id);
+    }
   }
 }
 
@@ -231,11 +262,90 @@ const SEARCH_STOP_WORDS = new Set([
   'how', 'what', 'when', 'where', 'why', 'which', 'who', 'whom',
 ]);
 
+/** Extract search keywords from a query string. Shared by all search paths. */
+function tokenizeQuery(query: string, maxTerms?: number): string[] {
+  const keywords = query
+    .toLowerCase()
+    .replace(/[^\w\s]/g, '')
+    .split(/\s+/)
+    .filter(w => w.length > 2 && !SEARCH_STOP_WORDS.has(w));
+  return maxTerms ? keywords.slice(0, maxTerms) : keywords;
+}
+
 /**
- * Searches artifacts using a two-stage strategy:
- * 1. FTS5 search on observations_fts → find observation IDs → match via artifact_ref
- * 2. Fallback: keyword LIKE matching on artifact summary
- * Returns matching artifacts ordered by importance DESC.
+ * Internal two-stage artifact search. Consolidates project-scoped and global
+ * search into one implementation to eliminate code duplication.
+ *
+ * When globalScope is false: filters by project (original behavior).
+ * When globalScope is true: searches all projects, prioritizes currentProject.
+ */
+function searchArtifactsInternal(
+  db: Database,
+  currentProject: string,
+  query: string,
+  limit: number,
+  globalScope: boolean,
+): ArtifactRow[] {
+  if (!query || query.length < 3) return [];
+
+  const projectFilter = globalScope ? '' : 'AND a.project = ?';
+  const orderPrefix = globalScope
+    ? 'CASE WHEN a.project = ? THEN 0 ELSE 1 END,'
+    : '';
+
+  // Stage 1: FTS5 search on observations → artifact_ref join
+  try {
+    const keywords = tokenizeQuery(query);
+    if (keywords.length > 0) {
+      const ftsQuery = keywords.join(' OR ');
+      const sql = `SELECT a.* FROM artifacts a
+         INNER JOIN observations_fts fts ON CAST(a.artifact_ref AS INTEGER) = fts.rowid
+         WHERE a.artifact_type = 'observation'
+           ${projectFilter}
+           AND observations_fts MATCH ?
+         ORDER BY ${orderPrefix}
+           a.importance DESC, a.timestamp_epoch DESC
+         LIMIT ?`;
+
+      const params = globalScope
+        ? [ftsQuery, currentProject, limit]
+        : [currentProject, ftsQuery, limit];
+      const ftsResults = cachedPrepare(db, sql).all(...params) as ArtifactRow[];
+      if (ftsResults.length > 0) return ftsResults;
+    }
+  } catch {
+    // FTS may fail on invalid query syntax — fall through to keyword search
+  }
+
+  // Stage 2: Keyword LIKE fallback
+  try {
+    const keywords = tokenizeQuery(query, 5);
+    if (keywords.length === 0) return [];
+
+    const conditions = keywords.map(() => '(LOWER(summary) LIKE ?)').join(' OR ');
+    const likeParams = keywords.map(k => `%${k}%`);
+    const projectWhere = globalScope ? '' : 'project = ? AND';
+    const orderPrefixLike = globalScope
+      ? 'CASE WHEN project = ? THEN 0 ELSE 1 END,'
+      : '';
+
+    const sql = `SELECT * FROM artifacts
+       WHERE ${projectWhere} (${conditions})
+       ORDER BY ${orderPrefixLike}
+         importance DESC, timestamp_epoch DESC
+       LIMIT ?`;
+
+    const params = globalScope
+      ? [...likeParams, currentProject, limit]
+      : [currentProject, ...likeParams, limit];
+    return cachedPrepare(db, sql).all(...params) as ArtifactRow[];
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Search artifacts within a specific project.
  */
 export function searchArtifacts(
   db: Database,
@@ -243,58 +353,20 @@ export function searchArtifacts(
   query: string,
   limit?: number,
 ): ArtifactRow[] {
-  if (!query || query.length < 3) return [];
+  return searchArtifactsInternal(db, project, query, limit ?? 10, false);
+}
 
-  const maxResults = limit ?? 10;
-
-  // Stage 1: FTS5 search on observations → artifact_ref join
-  try {
-    // Extract keywords for FTS query
-    const keywords = query
-      .toLowerCase()
-      .replace(/[^\w\s]/g, '')
-      .split(/\s+/)
-      .filter(w => w.length > 2 && !SEARCH_STOP_WORDS.has(w));
-
-    if (keywords.length > 0) {
-      const ftsQuery = keywords.join(' OR ');
-      const ftsResults = cachedPrepare(db,
-        `SELECT a.* FROM artifacts a
-         INNER JOIN observations_fts fts ON CAST(a.artifact_ref AS INTEGER) = fts.rowid
-         WHERE a.project = ? AND a.artifact_type = 'observation'
-           AND observations_fts MATCH ?
-         ORDER BY a.importance DESC, a.timestamp_epoch DESC
-         LIMIT ?`
-      ).all(project, ftsQuery, maxResults) as ArtifactRow[];
-
-      if (ftsResults.length > 0) return ftsResults;
-    }
-  } catch {
-    // FTS may fail on invalid query syntax — fall through to keyword search
-  }
-
-  // Stage 2: Keyword LIKE fallback for non-observation artifacts and FTS failures
-  try {
-    const keywords = query
-      .toLowerCase()
-      .replace(/[^\w\s]/g, '')
-      .split(/\s+/)
-      .filter(w => w.length > 2 && !SEARCH_STOP_WORDS.has(w))
-      .slice(0, 5);
-
-    if (keywords.length === 0) return [];
-
-    const conditions = keywords.map(() => '(LOWER(summary) LIKE ?)').join(' OR ');
-    const params = keywords.map(k => `%${k}%`);
-
-    return cachedPrepare(db,
-      `SELECT * FROM artifacts
-       WHERE project = ? AND (${conditions})
-       ORDER BY importance DESC, timestamp_epoch DESC
-       LIMIT ?`
-    ).all(project, ...params, maxResults) as ArtifactRow[];
-  } catch {
-    return [];
-  }
+/**
+ * Search artifacts across ALL projects. Enables cross-project knowledge
+ * retrieval — the artifact layer is the shared memory surface.
+ * Current project results are prioritized in ordering.
+ */
+export function searchArtifactsGlobal(
+  db: Database,
+  currentProject: string,
+  query: string,
+  limit?: number,
+): ArtifactRow[] {
+  return searchArtifactsInternal(db, currentProject, query, limit ?? 10, true);
 }
 

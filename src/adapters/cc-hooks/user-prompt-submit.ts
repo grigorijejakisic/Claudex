@@ -15,7 +15,7 @@ import { getIdentityDir } from '../../shared/paths.js';
 import { emitTelemetry } from '../../observability/telemetry.js';
 import { emitErrorTelemetry } from '../../observability/error-telemetry.js';
 import { persistTopicIfShifted, ensureInitialTopic, captureFlowEntry, captureExplicitDecisions } from '../shared/lifecycle.js';
-import { searchArtifacts, materializeArtifacts } from '../../core/artifacts.js';
+import { searchArtifactsGlobal, materializeArtifacts } from '../../core/artifacts.js';
 import { getCooldownState, setCooldownState } from '../../core/thread.js';
 import { routeByContent, buildProjectIndex } from '../../shared/content-router.js';
 
@@ -103,24 +103,24 @@ const main = wrapHook('UserPromptSubmit', async (input, ctx) => {
     captureFlowEntry(ctx.db, input.session_id, routedProject);
   }
 
-  // Materialize artifacts matching the current prompt/topic BEFORE assembly reads them.
-  // Assembly is pure read-render; state updates happen here at the turn boundary (ARCH-002).
-  // Search across BOTH CWD project and routed project for cross-project retrieval.
-  try {
-    const query = prompt || topicShift?.newTopic;
-    if (query) {
-      const matches = searchArtifacts(ctx.db, ctx.project, query, 10);
-      // Also search routed project if different from CWD
-      if (routedProject !== ctx.project) {
-        const crossMatches = searchArtifacts(ctx.db, routedProject, query, 5);
-        matches.push(...crossMatches);
+  // Materialize artifacts for assembly turns only (post-compaction and topic shift).
+  // Regular turns don't render materialized artifacts — no point searching every prompt.
+  // Global search: artifacts are the cross-project knowledge layer. routedProject is
+  // used as the priority bias so content-routed project results surface first.
+  if (isPostCompaction || topicShift?.shifted) {
+    try {
+      const query = prompt || topicShift?.newTopic;
+      if (query) {
+        const matches = searchArtifactsGlobal(ctx.db, routedProject, query, 10);
+        if (matches.length > 0) {
+          // Only materialize same-project artifacts — cross-project ones surface
+          // via global search without contaminating their home project's state
+          materializeArtifacts(ctx.db, matches.map(a => a.id), ctx.project);
+        }
       }
-      if (matches.length > 0) {
-        materializeArtifacts(ctx.db, matches.map(a => a.id));
-      }
+    } catch (e) {
+      emitErrorTelemetry(ctx.db, input.session_id, 'artifact_materialize', e);
     }
-  } catch (e) {
-    emitErrorTelemetry(ctx.db, input.session_id, 'artifact_materialize', e);
   }
 
   const payload = assembleRegularPrompt({

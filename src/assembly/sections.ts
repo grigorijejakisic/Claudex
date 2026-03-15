@@ -578,7 +578,8 @@ export function formatMaterializationLayer(
       const abbrev = ARTIFACT_TYPE_ABBREV[a.artifact_type] ?? a.artifact_type;
       const age = a.timestamp_epoch ? formatRelativeTime(a.timestamp_epoch) : 'unknown';
       const sessionAttr = getSessionAttribution(a.session_id, currentSessionId);
-      lines.push(`### [${abbrev}] ${a.summary} — ${age}, ${sessionAttr}`);
+      const projectTag = a.project ? ` [${a.project}]` : '';
+      lines.push(`### [${abbrev}]${projectTag} ${a.summary} — ${age}, ${sessionAttr}`);
       if (a.content) {
         lines.push(a.content);
         lines.push('');

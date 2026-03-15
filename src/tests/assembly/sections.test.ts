@@ -637,7 +637,8 @@ describe('formatMaterializationLayer', () => {
     const result = formatMaterializationLayer(artifacts);
     expect(result).not.toBeNull();
     expect(result).toContain('## Materialized Context');
-    expect(result).toContain('### [obs] Auth module');
+    expect(result).toContain('[obs]');
+    expect(result).toContain('Auth module');
     expect(result).toContain('Detailed analysis of the auth module.');
   });
 
