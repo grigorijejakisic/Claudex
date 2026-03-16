@@ -315,6 +315,29 @@ END;
 `;
 
 /**
+ * Team coordination tables: file leases + artifact claims.
+ * Advisory locks and retrieved-set coordination for parallel workers.
+ */
+const TEAM_COORDINATION_SCHEMA = `
+-- file_leases: advisory file locks for parallel workers (MCP Agent Mail pattern)
+CREATE TABLE IF NOT EXISTS file_leases (
+  file_path TEXT PRIMARY KEY,
+  worker_id TEXT NOT NULL,
+  granted_at_epoch INTEGER NOT NULL,
+  ttl_seconds INTEGER NOT NULL DEFAULT 600
+);
+
+-- artifact_claims: retrieved-set coordination to prevent duplicate worker work
+CREATE TABLE IF NOT EXISTS artifact_claims (
+  artifact_id TEXT NOT NULL,
+  worker_id TEXT NOT NULL,
+  claimed_at_epoch INTEGER NOT NULL,
+  ttl_seconds INTEGER NOT NULL DEFAULT 300,
+  PRIMARY KEY (artifact_id, worker_id)
+);
+`;
+
+/**
  * Telemetry table DDL — separate constant for clarity.
  */
 const TELEMETRY_SCHEMA = `
@@ -552,6 +575,7 @@ export function initializeSchema(db: Database): void {
 
   db.exec(SCHEMA_V3);
   db.exec(TELEMETRY_SCHEMA);
+  db.exec(TEAM_COORDINATION_SCHEMA);
 
   // Rebuild FTS5 content index from observations table.
   // Needed after upgradeV2SchemaInPlace drops a stale 4-column FTS and SCHEMA_V3 recreates
@@ -600,6 +624,7 @@ export function migrateFromV2(db: Database, v2DbPath: string): void {
       // 2. Create new v3 tables (IF NOT EXISTS — safe re-run)
       db.exec(SCHEMA_V3);
       db.exec(TELEMETRY_SCHEMA);
+      db.exec(TEAM_COORDINATION_SCHEMA);
 
       // Helper: check if a table exists in the v2 database
       const v2HasTable = (tableName: string): boolean => {
