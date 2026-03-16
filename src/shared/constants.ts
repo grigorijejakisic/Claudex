@@ -124,3 +124,9 @@ export function scaleBudget(baseBudget: number, contextWindowTokens?: number): n
 
 /** Maximum content length for observation extraction. */
 export const CONTENT_MAX_CHARS = 500;
+
+/** Tool names that perform file edits — used for behavioral signal detection. */
+export const EDIT_TOOL_NAMES = ['Edit', 'Write', 'MultiEdit', 'NotebookEdit'] as const;
+
+/** Sentinel project scope for cross-project (global) patterns and artifacts. */
+export const GLOBAL_PROJECT_SCOPE = '__global__';

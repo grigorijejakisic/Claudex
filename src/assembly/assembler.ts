@@ -7,7 +7,8 @@
  *
  * Boundary-only injection: full assembly at session-start and post-compaction only.
  * Topic-shift pivot and gauge injection for regular turns.
- * Assembly is a pure read-render operation — no DB writes.
+ * Assembly is primarily read-render. Exception: experience pattern trigger
+ * counts and flags are written during assembly for Stop hook feedback loop.
  * All public functions are non-throwing.
  */
 
@@ -25,7 +26,15 @@ import {
   formatReferenceLayer,
   formatMaterializationLayer,
   renderSessionContinuity,
+  renderExperienceWarnings,
 } from './sections.js';
+import {
+  findMatchingPatterns,
+  incrementTriggerCount,
+  generateTopicKey,
+  promoteToGlobalIfCrossProject,
+} from '../intelligence/experience-patterns.js';
+import { setExperienceFlags } from '../intelligence/experience-flags.js';
 import { redactContent } from '../extraction/redaction.js';
 import { loadCheckpoint, loadFromFile } from '../checkpoint/loader.js';
 import { renderCheckpointMarkdown } from '../checkpoint/inject.js';
@@ -39,7 +48,7 @@ import {
 import { getRecentFlow } from '../core/journal.js';
 import { getCheckpointTracking } from '../core/checkpoint-tracking.js';
 import { readGsdState } from '../gsd/state-reader.js';
-import { getPressureZone, scaleBudget } from '../shared/constants.js';
+import { getPressureZone, scaleBudget, GLOBAL_PROJECT_SCOPE } from '../shared/constants.js';
 import { getHandoffsDir, getSessionsDir } from '../shared/paths.js';
 import * as path from 'path';
 import type { Database } from 'better-sqlite3';
@@ -85,6 +94,57 @@ export interface TopicPivotParams {
 const EMPTY_PAYLOAD: InjectPayload = { content: '', tokenEstimate: 0, sources: [] };
 
 /**
+ * Matches experience patterns against `query`, renders a warning section, increments
+ * trigger counts, and persists injected IDs and topic keys to experience flags for
+ * Stop hook feedback.
+ *
+ * Topic keys (one per pattern, parallel to IDs) are lightweight fingerprints of
+ * each pattern's trigger_context. The Stop hook uses them to match a correction
+ * to the specific pattern(s) it relates to, avoiding penalising unrelated patterns.
+ *
+ * Returns the rendered section string, injected IDs, topic keys, and token cost on a
+ * match; returns null if no patterns matched or rendering produced no output.
+ * Non-throwing — failures are silently swallowed; experience warnings never block assembly.
+ */
+function injectExperienceWarnings(
+  db: Database,
+  query: string,
+  project: string,
+  sessionId?: string,
+): { section: string; injectedIds: string[]; tokenCost: number } | null {
+  try {
+    if (!query) return null;
+    const patterns = findMatchingPatterns(db, query, project, 3);
+    if (patterns.length === 0) return null;
+    const section = renderExperienceWarnings(patterns);
+    if (!section) return null;
+    const injectedIds: string[] = [];
+    const injectedTopicKeys: string[] = [];
+    for (const p of patterns) {
+      incrementTriggerCount(db, p.id);
+      injectedIds.push(p.id);
+      injectedTopicKeys.push(generateTopicKey(p));
+      // Auto-promote cross-project patterns: if a pattern was stored under a
+      // different project but matched here, it proved global relevance.
+      if (p.source_project !== project && p.source_project !== GLOBAL_PROJECT_SCOPE) {
+        promoteToGlobalIfCrossProject(db, p.id, project);
+      }
+    }
+    if (injectedIds.length > 0 && sessionId) {
+      setExperienceFlags(db, sessionId, {
+        injected_pattern_ids: injectedIds,
+        // Persist topic keys alongside IDs so Stop hook can do per-pattern
+        // topic-aware scoring without an extra DB read of each pattern.
+        injected_topic_keys: injectedTopicKeys,
+      });
+    }
+    return { section, injectedIds, tokenCost: estimateTokens(section) };
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Full context assembly with priority-budgeted cascade and three-tier degradation.
  * Fires at session-start and post-compaction only.
  */
@@ -108,6 +168,19 @@ export function assembleFullContext(params: FullAssemblyParams): InjectPayload {
           budget -= cost;
           sources.push('identity');
         }
+      }
+
+      // Priority 1.5: Experience pattern warnings
+      // Lightweight FTS5 query — fires on every full assembly.
+      // Pattern IDs are tracked via incrementTriggerCount and persisted via
+      // setExperienceFlags (injected_pattern_ids) so Stop hook can score them next turn.
+      const expWarnings = injectExperienceWarnings(
+        params.db, params.searchQuery ?? '', params.project, params.sessionId,
+      );
+      if (expWarnings && expWarnings.tokenCost <= budget) {
+        sections.push(expWarnings.section);
+        budget -= expWarnings.tokenCost;
+        sources.push('experience_warnings');
       }
 
       // Priority 2: Project context
@@ -353,7 +426,26 @@ export function assembleRegularPrompt(params: RegularPromptParams): InjectPayloa
       }
     }
 
-    // 4. Zero injection (most turns)
+    // 4. Experience pattern warnings — lightweight FTS5 match on every prompt.
+    // Only fires when prompt text matches a stored pattern (score >= 2).
+    // Skips prompts shorter than 20 chars (too short for meaningful FTS match).
+    // Non-blocking — failures return empty.
+    // The assembler is the single owner of pattern injection — the hook only
+    // detects corrections to avoid double injection and inflated trigger counts.
+    if (params.prompt && params.prompt.length >= 20) {
+      const expWarnings = injectExperienceWarnings(
+        params.db, params.prompt, params.project, params.sessionId,
+      );
+      if (expWarnings) {
+        return {
+          content: expWarnings.section,
+          tokenEstimate: expWarnings.tokenCost,
+          sources: ['experience_warnings'],
+        };
+      }
+    }
+
+    // 5. Zero injection (most turns)
     return { ...EMPTY_PAYLOAD };
   } catch {
     return { ...EMPTY_PAYLOAD };

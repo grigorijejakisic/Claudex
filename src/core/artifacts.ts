@@ -12,6 +12,7 @@
 
 import type { Database } from 'better-sqlite3';
 import { cachedPrepare } from './stmt-cache.js';
+import { tokenizeQuery } from '../shared/search-utils.js';
 
 /** Artifact lifecycle states. */
 export type ArtifactState = 'fresh' | 'packed' | 'materialized';
@@ -249,27 +250,6 @@ export function packAllArtifacts(
   ).run(project);
 
   return result.changes;
-}
-
-/** Stop words for keyword extraction in artifact search. */
-const SEARCH_STOP_WORDS = new Set([
-  'the', 'a', 'an', 'is', 'are', 'was', 'were', 'be', 'been', 'being',
-  'have', 'has', 'had', 'do', 'does', 'did', 'will', 'would', 'could',
-  'should', 'may', 'might', 'shall', 'can', 'to', 'of', 'in', 'for',
-  'on', 'with', 'at', 'by', 'from', 'it', 'this', 'that', 'these',
-  'those', 'i', 'we', 'you', 'he', 'she', 'they', 'me', 'my', 'your',
-  'let', 'just', 'now', 'so', 'if', 'but', 'or', 'and', 'not', 'no',
-  'how', 'what', 'when', 'where', 'why', 'which', 'who', 'whom',
-]);
-
-/** Extract search keywords from a query string. Shared by all search paths. */
-function tokenizeQuery(query: string, maxTerms?: number): string[] {
-  const keywords = query
-    .toLowerCase()
-    .replace(/[^\w\s]/g, '')
-    .split(/\s+/)
-    .filter(w => w.length > 2 && !SEARCH_STOP_WORDS.has(w));
-  return maxTerms ? keywords.slice(0, maxTerms) : keywords;
 }
 
 /**

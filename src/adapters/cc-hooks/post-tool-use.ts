@@ -5,7 +5,7 @@
 
 import { wrapHook, getTranscriptPath } from './infrastructure.js';
 import { getTokenGauge } from '../../gauge/token-gauge.js';
-import { CC_CAPABILITIES } from '../../shared/constants.js';
+import { CC_CAPABILITIES, EDIT_TOOL_NAMES } from '../../shared/constants.js';
 import { emitTelemetry } from '../../observability/telemetry.js';
 import { emitErrorTelemetry } from '../../observability/error-telemetry.js';
 import {
@@ -14,6 +14,13 @@ import {
   checkpointIfThresholdMet,
 } from '../shared/lifecycle.js';
 import { routeByContent, extractRoutingContent, buildProjectIndex } from '../../shared/content-router.js';
+import { withBehavioralBatch, applyFileEditIncrement, applyToolCallPattern } from '../../intelligence/experience-flags.js';
+import { buildToolSignature } from '../../intelligence/behavioral-signals.js';
+
+// ---------------------------------------------------------------------------
+// Behavioral signal thresholds (spec-defined)
+// ---------------------------------------------------------------------------
+const FILE_THRASHING_THRESHOLD = 3; // same file edited 3+ times = thrashing
 
 const main = wrapHook('PostToolUse', async (input, ctx) => {
   const toolName = (input.tool_name as string) || '';
@@ -85,6 +92,52 @@ const main = wrapHook('PostToolUse', async (input, ctx) => {
     });
   } catch (e) {
     emitErrorTelemetry(ctx.db, input.session_id, 'post_tool_use/checkpoint', e);
+  }
+
+  // ---------------------------------------------------------------------------
+  // Behavioral signal detection (v1: detect + telemetry only; no auto-pattern)
+  // Per spec: behavioral signals are detected here but pattern creation from
+  // behavioral signals is v2. v1 only logs signals to telemetry.
+  //
+  // Batch pattern: read counters ONCE, mutate in memory, write ONCE — avoids
+  // N×2 DB round-trips from separate incrementFileEditCount + trackToolCallPattern
+  // calls on every tool invocation (R8/R15).
+  // ---------------------------------------------------------------------------
+  try {
+    const isEditTool = (EDIT_TOOL_NAMES as readonly string[]).includes(toolName);
+    const filePath = (toolInput.path as string) || (toolInput.file_path as string) || '';
+    const sig = toolName ? buildToolSignature(toolName, toolInput) : '';
+
+    withBehavioralBatch(ctx.db, input.session_id, (counters) => {
+      if (isEditTool && filePath) {
+        const editCount = applyFileEditIncrement(counters, filePath);
+        if (editCount >= FILE_THRASHING_THRESHOLD) {
+          emitTelemetry(ctx.db, input.session_id, 'injection', {
+            trigger: 'gauge' as const,
+            sections_included: ['behavioral_signal_file_thrashing'],
+            sections_skipped: [],
+            total_tokens: 0,
+            budget_remaining: 0,
+          });
+        }
+      }
+
+      // Loop detection: track tool+input signature, log if loop detected
+      if (toolName && sig) {
+        const loopDetected = applyToolCallPattern(counters, toolName, sig);
+        if (loopDetected) {
+          emitTelemetry(ctx.db, input.session_id, 'injection', {
+            trigger: 'gauge' as const,
+            sections_included: ['behavioral_signal_loop_detected'],
+            sections_skipped: [],
+            total_tokens: 0,
+            budget_remaining: 0,
+          });
+        }
+      }
+    });
+  } catch (e) {
+    emitErrorTelemetry(ctx.db, input.session_id, 'post_tool_use/behavioral_signals', e);
   }
 
   return {};

@@ -18,6 +18,8 @@ import { persistTopicIfShifted, ensureInitialTopic, captureFlowEntry, captureExp
 import { searchArtifactsGlobal, materializeArtifacts } from '../../core/artifacts.js';
 import { getCooldownState, setCooldownState } from '../../core/thread.js';
 import { routeByContent, buildProjectIndex } from '../../shared/content-router.js';
+import { setExperienceFlags } from '../../intelligence/experience-flags.js';
+import { detectCorrectionSignal } from '../../intelligence/correction-detection.js';
 
 const main = wrapHook('UserPromptSubmit', async (input, ctx) => {
   const prompt = (input.prompt as string) || (input.user_prompt as string) || '';
@@ -120,6 +122,29 @@ const main = wrapHook('UserPromptSubmit', async (input, ctx) => {
       }
     } catch (e) {
       emitErrorTelemetry(ctx.db, input.session_id, 'artifact_materialize', e);
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Experience pattern detection
+  // ---------------------------------------------------------------------------
+
+  // Correction signal detection — flag the turn for Stop hook extraction.
+  // Pattern matching and injection is handled exclusively by the assembler;
+  // the hook only detects corrections to avoid double injection and inflated counts.
+  if (prompt) {
+    try {
+      const correctionFlagged = detectCorrectionSignal(prompt);
+      if (correctionFlagged) {
+        setExperienceFlags(ctx.db, input.session_id, {
+          correction_flagged: true,
+          // Store the prompt text so Stop hook can extract topic words for
+          // per-pattern scoring. Cap at 500 chars to bound storage size.
+          correction_prompt: prompt.slice(0, 500),
+        });
+      }
+    } catch (e) {
+      emitErrorTelemetry(ctx.db, input.session_id, 'exp_correction_detect', e);
     }
   }
 

@@ -1,55 +1,65 @@
 ---
 schema: claudex/handoff
 version: 1
-id: v3-post-session-9
-session_id: session-9-2026-03-14
+id: v3-post-session-13
+session_id: 2eb66b7b-aa03-43a6-95be-9899d5749e93
 scope: project:claudex-v3
 status: active
-created_at: 2026-03-14T18:00:00Z
-updated_at: 2026-03-14T18:15:00Z
+created_at: 2026-03-16T00:00:00Z
+updated_at: 2026-03-16T13:10:00Z
 ---
 
-# Handoff: Post-Session 9 — Validation & Scoring
+# Handoff: Post-Session 13 — Server Live, Business Strategy Set
 
 **Priority: MEDIUM**
-**Goal: Validate the system works live, get updated quality scores**
+**Goal: Start building (Paperclip, trading agent, or digital products)**
 
 ## Current State
 
-Session 9 fixed 20+ bugs and deployed 15 workers. All phases complete (0-4). 1197 tests, 70 files, build clean. But the current Claude Code session was started pre-fix — needs restart to validate.
+Echo alive on Linux server (srv.teneral.xyz). OpenClaw 2026.3.13 running as systemd service with linger. Claudex v3 built, DB verified (17K obs). Paperclip cloned and built (needs PostgreSQL). Business strategy verified across 4 tracks. Trading agent designed (paper trade first). Local OpenClaw removed. Self-healing cron running every 15min (silent unless issues). 72 files, 1243 tests passing locally.
 
-## Remaining Work
+## Server Access
 
-### 1. Restart Claude Code and validate
-- Close and reopen Claude Code in the CLAUDEXv3 project directory
-- SessionStart should fire with `scope: claudex-v3` (not `__global__`)
-- Run `claudex health` to verify live DB
-- Check statusline for `0 err(5m)`
-- Use Claude Code normally for a few turns — verify observations and artifacts are created
-
-### 2. Migrate misrouted observations (optional)
-6,600+ observations are under `__global__` instead of `claudex-v3` because scope detection was broken. Consider:
-```sql
-UPDATE observations SET project = 'claudex-v3' WHERE project = '__global__' AND session_id IN (
-  SELECT session_id FROM sessions WHERE cwd LIKE '%CLAUDEXv3%'
-);
+```
+ssh -p 3377 -i ~/.ssh/openclaw_server openclaw@srv.teneral.xyz
 ```
 
-### 3. Re-score with review tools
-Run `/unified-review` (Codex) and/or `/architecture-review` (Gemini) to get updated quality scores. Previous scores (pre-Session 9):
-- ai_generated_debt: 59.5 (should jump — ~95 comments stripped)
-- error_consistency: 66.5 (should jump — telemetry in all critical catches)
-- contract_coherence: 65.1 (should jump — 7 false configs deleted, 3 wired, upsert fixed)
-- type_safety: 66.7 (should improve — any[] replaced, ArtifactType union, hasFields validation)
+## What's Running on Server
 
-### 4. Commit session 9 changes
-84 files changed, uncommitted. Commit when satisfied with validation.
+- OpenClaw 2026.3.13 — systemd service, auto-starts on boot, linger enabled
+- Echo (@Echo2101_bot) — Telegram, Discord, WhatsApp
+- Claudex v3 bridge — memory plugin active
+- Self-healing check — every 15min, silent unless issues
+- Paperclip — built at ~/paperclip, NOT running (needs PostgreSQL)
 
-## What Session 9 Fixed (for reference)
-- 8 direct bug fixes (scope detection, NOT NULL crashes, initializeSchema, schema_versions)
-- Phase 0: runtime correctness (session cleanup isolation, PreCompact cascade, TTL guard, FTS5 rebuild)
-- Phase 1: error visibility (stderr logging, hook isolation, telemetry in catches, error helper)
-- Phase 2: AI debt cleanup (~95 comments removed, 68 architecture refs deleted)
-- Phase 3: config cleanup (7 deleted, 3 wired, 4 re-exports fixed, upsert COALESCE)
-- Phase 4: type safety (any[] replaced, ArtifactType union, hasFields validation)
-- Health infrastructure: claudex health CLI, post-hook assertion, statusline errors, v2 fixture tests
+## Next Work (User Chooses)
+
+1. **Paperclip** — Install PostgreSQL, configure .env, start the control plane
+2. **Trading agent spec** — Formal spec for information→analysis→direction→OKX execution pipeline. Paper trade first.
+3. **Digital products setup** — Wise account, Payhip store, first KDP books (non-engineering)
+4. **Claudex "learning from experience" feature** — Trigger-based pattern detection for repeated mistakes
+
+## Business Strategy
+
+Decision document: `~/.openclaw/workspace/research/strategic-comparison-v2.md`
+
+| # | Track | Score | Year 1 ROI |
+|---|---|---|---|
+| 1 | Digital Products (KDP+Payhip+LemonSqueezy) | 3.85 | $2,500-$11,000 |
+| 2 | Crypto Trading (OKX bots + custom agent) | 3.55 | $300-$1,500 |
+| 3 | Content Factory (human-fronted only) | 2.85 | Traffic multiplier |
+| 4 | Dropshipping (EU only) | 1.70 | Dead for US |
+
+## Architecture
+
+- Crux (CC/Opus) — local, engineering agent
+- Echo (OpenClaw/Sonnet) — server, personal assistant
+- Paperclip — server, AI company orchestration
+- Trading agent — server, 24/7 market monitoring (future)
+
+## Key Memories Saved This Session
+
+- self_name_crux.md — I am Crux
+- project_paperclip_architecture.md — Simplified architecture
+- project_business_strategy_v2.md — 4 tracks verified and scored
+- feedback_server_migration_oauth.md — Always transfer OAuth tokens during migration

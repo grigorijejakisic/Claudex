@@ -262,6 +262,56 @@ CREATE TABLE IF NOT EXISTS verified_facts (
 );
 CREATE INDEX IF NOT EXISTS idx_verified_facts_session
   ON verified_facts(session_id, created_at_epoch DESC);
+
+-- experience_patterns: cross-session failure pattern memory with ExpeL scoring
+CREATE TABLE IF NOT EXISTS experience_patterns (
+  id TEXT PRIMARY KEY,
+  pattern_type TEXT NOT NULL CHECK (pattern_type IN ('correction', 'behavioral', 'discovery')),
+  trigger_context TEXT NOT NULL,
+  lesson TEXT NOT NULL,
+  anti_pattern TEXT,
+  severity TEXT NOT NULL DEFAULT 'important'
+    CHECK (severity IN ('critical', 'important', 'minor')),
+  score INTEGER NOT NULL DEFAULT 2,
+  times_triggered INTEGER NOT NULL DEFAULT 0,
+  times_useful INTEGER NOT NULL DEFAULT 0,
+  source_session TEXT,
+  source_project TEXT NOT NULL,
+  created_at_epoch INTEGER NOT NULL,
+  last_triggered_epoch INTEGER
+);
+
+CREATE INDEX IF NOT EXISTS idx_expat_project_score
+  ON experience_patterns(source_project, score DESC);
+CREATE INDEX IF NOT EXISTS idx_expat_score
+  ON experience_patterns(score DESC, times_triggered DESC);
+
+-- FTS5 index for trigger context matching
+CREATE VIRTUAL TABLE IF NOT EXISTS experience_patterns_fts USING fts5(
+  trigger_context,
+  lesson,
+  anti_pattern,
+  content='experience_patterns',
+  content_rowid='rowid'
+);
+
+-- Keep FTS in sync with experience_patterns
+CREATE TRIGGER IF NOT EXISTS experience_patterns_ai AFTER INSERT ON experience_patterns BEGIN
+  INSERT INTO experience_patterns_fts(rowid, trigger_context, lesson, anti_pattern)
+  VALUES (new.rowid, new.trigger_context, new.lesson, new.anti_pattern);
+END;
+
+CREATE TRIGGER IF NOT EXISTS experience_patterns_ad AFTER DELETE ON experience_patterns BEGIN
+  INSERT INTO experience_patterns_fts(experience_patterns_fts, rowid, trigger_context, lesson, anti_pattern)
+  VALUES ('delete', old.rowid, old.trigger_context, old.lesson, old.anti_pattern);
+END;
+
+CREATE TRIGGER IF NOT EXISTS experience_patterns_au AFTER UPDATE ON experience_patterns BEGIN
+  INSERT INTO experience_patterns_fts(experience_patterns_fts, rowid, trigger_context, lesson, anti_pattern)
+  VALUES ('delete', old.rowid, old.trigger_context, old.lesson, old.anti_pattern);
+  INSERT INTO experience_patterns_fts(rowid, trigger_context, lesson, anti_pattern)
+  VALUES (new.rowid, new.trigger_context, new.lesson, new.anti_pattern);
+END;
 `;
 
 /**
