@@ -81,14 +81,17 @@ export function renderExperienceWarnings(patterns: ExperiencePattern[]): string 
   try {
     if (!patterns || patterns.length === 0) return '';
 
+    // Escape closing XML tags in pattern text to prevent boundary breakout
+    const escapeXml = (s: string) => s.replace(/<\//g, '&lt;/');
+
     let inner = '## Past Experience — Relevant Patterns\n\n';
 
     for (const p of patterns) {
-      inner += `### ${p.severity === 'critical' ? 'Critical' : 'Important'}: ${p.trigger_context}\n`;
+      inner += `### ${p.severity === 'critical' ? 'Critical' : 'Important'}: ${escapeXml(p.trigger_context)}\n`;
       if (p.anti_pattern) {
-        inner += `**What went wrong:** ${p.anti_pattern}\n`;
+        inner += `**What went wrong:** ${escapeXml(p.anti_pattern)}\n`;
       }
-      inner += `**Correct approach:** ${p.lesson}\n`;
+      inner += `**Correct approach:** ${escapeXml(p.lesson)}\n`;
       inner += `*Helped ${p.times_useful}/${p.times_triggered} times*\n\n`;
     }
 

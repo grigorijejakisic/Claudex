@@ -333,7 +333,7 @@ CREATE TABLE IF NOT EXISTS artifact_claims (
   worker_id TEXT NOT NULL,
   claimed_at_epoch INTEGER NOT NULL,
   ttl_seconds INTEGER NOT NULL DEFAULT 300,
-  PRIMARY KEY (artifact_id, worker_id)
+  PRIMARY KEY (artifact_id)
 );
 `;
 
