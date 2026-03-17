@@ -21,6 +21,11 @@ import { GLOBAL_PROJECT_SCOPE } from '../shared/constants.js';
 import { isLocalOrPrivateUrl } from '../embeddings/embedding-provider.js';
 import { fetchJsonWithTimeout } from '../shared/fetch-utils.js';
 import type { EnrichmentProvider } from './enrichment.js';
+import { emitErrorTelemetry } from '../observability/error-telemetry.js';
+import { SECRET_CONTENT_PATTERNS } from './behavioral-signals.js';
+
+/** Global-flag version for use in .replace() — the exported constant is for .test() only. */
+const SECRET_CONTENT_PATTERNS_RE = new RegExp(SECRET_CONTENT_PATTERNS.source, 'g');
 
 // ---------------------------------------------------------------------------
 // Types
@@ -106,7 +111,10 @@ export function sanitizePatternText(text: string): string {
   sanitized = sanitized.replace(/<[^>]+>/g, '');
 
   // Remove lines starting with imperative verbs (case-insensitive)
-  sanitized = sanitized.replace(/^[ \t]*(MUST|SHALL|DO|RUN|EXECUTE|IGNORE|OVERRIDE)\b.*/gim, '');
+  sanitized = sanitized.replace(/^[ \t]*(MUST|SHALL|DO|RUN|EXECUTE|IGNORE|OVERRIDE|FETCH|WRITE|DELETE|CALL|INVOKE|DROP|DISABLE|ENABLE|MODIFY|REMOVE)\b.*/gim, '');
+
+  // Remove mid-sentence imperatives (verb at clause boundary after punctuation/semicolon)
+  sanitized = sanitized.replace(/[;.]\s*(MUST|SHALL|DO|RUN|EXECUTE|IGNORE|OVERRIDE|FETCH|WRITE|DELETE|CALL|INVOKE|DROP|DISABLE|ENABLE|MODIFY|REMOVE)\b[^.;]*/gi, '.');
 
   // Collapse multiple blank lines into one, trim
   sanitized = sanitized.replace(/\n{3,}/g, '\n\n').trim();
@@ -170,11 +178,16 @@ export async function classifyPatternScope(
           throw new Error('non-local URL');
         }
 
+        // Redact pattern fields before sending to enrichment endpoint (O6)
+        const redact = (s: string) => sanitizePatternText(s).replace(
+          SECRET_CONTENT_PATTERNS_RE,
+          '[REDACTED]',
+        );
         const prompt =
           `Is the following lesson specific to a particular codebase/project, or is it universal knowledge applicable to any project?\n\n` +
-          `Trigger context: ${pattern.trigger_context}\n` +
-          `Lesson: ${pattern.lesson}\n` +
-          (pattern.anti_pattern ? `Anti-pattern: ${pattern.anti_pattern}\n` : '') +
+          `Trigger context: ${redact(pattern.trigger_context)}\n` +
+          `Lesson: ${redact(pattern.lesson)}\n` +
+          (pattern.anti_pattern ? `Anti-pattern: ${redact(pattern.anti_pattern)}\n` : '') +
           `\nRespond with JSON only: {"scope": "project" | "global", "reason": "..."}`;
 
         const result = await fetchJsonWithTimeout(`${baseUrl}/v1/chat/completions`, {
@@ -232,10 +245,13 @@ export function promoteToGlobalIfCrossProject(
   try {
     // Only promote if the pattern belongs to a different real project
     // (not already global, not already in the current project).
+    // Only promote discovery patterns to global — correction and behavioral
+    // patterns are project-specific by nature (C6).
     cachedPrepare(db,
       `UPDATE experience_patterns
        SET source_project = ?
        WHERE id = ?
+         AND pattern_type = 'discovery'
          AND source_project != ?
          AND source_project != ?`
     ).run(GLOBAL_PROJECT_SCOPE, patternId, GLOBAL_PROJECT_SCOPE, triggeringProject);
@@ -293,6 +309,12 @@ export function createPattern(
       const id = ulid();
       const now = Math.floor(Date.now() / 1000);
 
+      // Non-discovery patterns must not be stored as GLOBAL_PROJECT_SCOPE —
+      // they are project-specific by nature (C7).
+      const effectiveProject = sanitized.pattern_type !== 'discovery' && project === GLOBAL_PROJECT_SCOPE
+        ? 'unknown'
+        : project;
+
       cachedPrepare(db,
         `INSERT INTO experience_patterns
            (id, pattern_type, trigger_context, lesson, anti_pattern, severity,
@@ -307,7 +329,7 @@ export function createPattern(
         sanitized.anti_pattern ?? null,
         sanitized.severity ?? 'important',
         sessionId,
-        project,
+        effectiveProject,
         now,
       );
 
@@ -315,7 +337,8 @@ export function createPattern(
     });
 
     return doCreate();
-  } catch {
+  } catch (e) {
+    emitErrorTelemetry(db, sessionId, 'create_pattern', e);
     return '';
   }
 }
@@ -342,7 +365,7 @@ export function findMatchingPatterns(
     const keywords = tokenizeQuery(prompt)
       .slice(0, 20)
       // Strip FTS5 special characters to prevent MATCH syntax errors and
-      // avoid unnecessary fallback to slow LIKE queries (O26).
+      // avoid unnecessary fallback to slow LIKE queries .
       .map(term => term.replace(/[*+\-^~:()"]/g, ''))
       .filter(term => term.length > 0);
     if (keywords.length === 0) return [];
@@ -488,9 +511,8 @@ export function pruneDeadPatterns(db: Database): number {
  * negative rank means better match in FTS5's BM25 scoring).
  * Keywords capped at 20 terms to prevent unbounded FTS query expansion.
  * GLOBAL_PROJECT_SCOPE passed as parameter — never embedded in SQL.
- * Score filter: score >= 2 (patterns need at least one validation beyond creation
- * score to participate in dedup matching; avoids merging with freshly created but
- * unvalidated patterns that may be pruned before they accumulate real signal).
+ * Score filter: score >= 2 (matches creation score — all patterns participate in
+ * dedup matching from birth; prevents exact duplicate inserts).
  * Non-throwing — returns null on any error.
  */
 export function deduplicateCheck(
@@ -504,7 +526,7 @@ export function deduplicateCheck(
   try {
     const keywords = tokenizeQuery(triggerContext)
       .slice(0, 20)
-      // Strip FTS5 special characters to prevent MATCH syntax errors (O26).
+      // Strip FTS5 special characters to prevent MATCH syntax errors .
       .map(term => term.replace(/[*+\-^~:()"]/g, ''))
       .filter(term => term.length > 0);
     if (keywords.length === 0) return null;

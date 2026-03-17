@@ -483,6 +483,137 @@ function migrateV1toV2(db: Database): void {
 }
 
 /**
+ * Migration: schema correctness and performance fixes.
+ * Applies 6 changes in a single transaction:
+ *   C4+A1: Recreate artifact_claims — single-owner PK, artifact_id INTEGER
+ *   C9+A4: Recreate experience_patterns_fts — porter stemmer + scoped UPDATE trigger
+ *   A2:    Add worker_id index on file_leases
+ *   A3:    Add learnings_fts FTS5 table + sync triggers + backfill
+ *
+ * Idempotent — safe to run on databases that already have the new schema.
+ * Called from initializeSchema() after base DDL has been applied.
+ */
+function migrateSchemaFixes(db: Database): void {
+  // Guard: only run once. Check if artifact_claims already has INTEGER type
+  // AND learnings_fts exists. Both conditions mean migration was already applied.
+  if (hasTable(db, 'learnings_fts') && hasTable(db, 'artifact_claims')) {
+    try {
+      const cols = db.pragma('table_info(artifact_claims)') as Array<{ name: string; type: string }>;
+      const artCol = cols.find(c => c.name === 'artifact_id');
+      if (artCol?.type === 'INTEGER') return; // Already migrated
+    } catch { /* proceed with migration */ }
+  }
+
+  const migrate = db.transaction(() => {
+    // C4 + A1: Recreate artifact_claims with single-owner PK and correct types.
+    // Claims are advisory TTL-based data — safe to lose on migration.
+    if (hasTable(db, 'artifact_claims')) {
+      db.exec('DROP TABLE artifact_claims');
+    }
+    db.exec(`
+      CREATE TABLE artifact_claims (
+        artifact_id INTEGER PRIMARY KEY,
+        worker_id TEXT NOT NULL,
+        claimed_at_epoch INTEGER NOT NULL,
+        ttl_seconds INTEGER NOT NULL DEFAULT 300
+      )
+    `);
+
+    // A4 + C9: Recreate experience_patterns_fts with porter stemmer.
+    // Also recreates all three sync triggers — UPDATE trigger scoped to text columns only.
+    if (hasTable(db, 'experience_patterns_fts')) {
+      db.exec('DROP TABLE experience_patterns_fts');
+    }
+    db.exec('DROP TRIGGER IF EXISTS experience_patterns_ai');
+    db.exec('DROP TRIGGER IF EXISTS experience_patterns_ad');
+    db.exec('DROP TRIGGER IF EXISTS experience_patterns_au');
+
+    db.exec(`
+      CREATE VIRTUAL TABLE experience_patterns_fts USING fts5(
+        trigger_context, lesson, anti_pattern,
+        tokenize='porter unicode61',
+        content=experience_patterns,
+        content_rowid=rowid
+      )
+    `);
+
+    db.exec(`
+      CREATE TRIGGER experience_patterns_ai AFTER INSERT ON experience_patterns BEGIN
+        INSERT INTO experience_patterns_fts(rowid, trigger_context, lesson, anti_pattern)
+        VALUES (new.rowid, new.trigger_context, new.lesson, new.anti_pattern);
+      END
+    `);
+
+    db.exec(`
+      CREATE TRIGGER experience_patterns_ad AFTER DELETE ON experience_patterns BEGIN
+        INSERT INTO experience_patterns_fts(experience_patterns_fts, rowid, trigger_context, lesson, anti_pattern)
+        VALUES ('delete', old.rowid, old.trigger_context, old.lesson, old.anti_pattern);
+      END
+    `);
+
+    db.exec(`
+      CREATE TRIGGER experience_patterns_au AFTER UPDATE OF trigger_context, lesson, anti_pattern ON experience_patterns BEGIN
+        INSERT INTO experience_patterns_fts(experience_patterns_fts, rowid, trigger_context, lesson, anti_pattern)
+        VALUES ('delete', old.rowid, old.trigger_context, old.lesson, old.anti_pattern);
+        INSERT INTO experience_patterns_fts(rowid, trigger_context, lesson, anti_pattern)
+        VALUES (new.rowid, new.trigger_context, new.lesson, new.anti_pattern);
+      END
+    `);
+
+    // Backfill experience_patterns_fts from existing data
+    if (hasTable(db, 'experience_patterns')) {
+      db.exec(`
+        INSERT INTO experience_patterns_fts(rowid, trigger_context, lesson, anti_pattern)
+          SELECT rowid, trigger_context, lesson, COALESCE(anti_pattern, '') FROM experience_patterns
+      `);
+    }
+
+    // A2: Add worker_id index on file_leases
+    if (hasTable(db, 'file_leases')) {
+      db.exec('CREATE INDEX IF NOT EXISTS idx_file_leases_worker ON file_leases(worker_id)');
+    }
+
+    // A3: Add learnings FTS5 table + sync triggers
+    if (!hasTable(db, 'learnings_fts')) {
+      db.exec(`
+        CREATE VIRTUAL TABLE learnings_fts USING fts5(
+          content,
+          tokenize='porter unicode61',
+          content=learnings,
+          content_rowid=id
+        )
+      `);
+
+      db.exec(`
+        CREATE TRIGGER learnings_fts_ai AFTER INSERT ON learnings BEGIN
+          INSERT INTO learnings_fts(rowid, content) VALUES(new.id, new.content);
+        END
+      `);
+
+      db.exec(`
+        CREATE TRIGGER learnings_fts_ad AFTER DELETE ON learnings BEGIN
+          INSERT INTO learnings_fts(learnings_fts, rowid, content) VALUES('delete', old.id, old.content);
+        END
+      `);
+
+      db.exec(`
+        CREATE TRIGGER learnings_fts_au AFTER UPDATE OF content ON learnings BEGIN
+          INSERT INTO learnings_fts(learnings_fts, rowid, content) VALUES('delete', old.id, old.content);
+          INSERT INTO learnings_fts(rowid, content) VALUES(new.id, new.content);
+        END
+      `);
+
+      // Backfill learnings_fts from existing data
+      if (hasTable(db, 'learnings')) {
+        db.exec('INSERT INTO learnings_fts(rowid, content) SELECT id, content FROM learnings');
+      }
+    }
+  });
+
+  migrate();
+}
+
+/**
  * PRAGMA user_version migration runner.
  * Detects DB version and applies incremental migrations.
  * Called by openDatabase() (hot path) and initializeSchema() (CLI/test path).
@@ -586,6 +717,10 @@ export function initializeSchema(db: Database): void {
       db.exec("INSERT INTO observations_fts(observations_fts) VALUES('rebuild')");
     } catch { /* FTS rebuild failed — non-fatal, search won't work but writes are fine */ }
   }
+
+  // Schema fixes: single-owner artifact_claims, porter stemmer on FTS, scoped triggers,
+  // file_leases index, learnings FTS. Idempotent — no-op on fresh DBs or already-migrated.
+  migrateSchemaFixes(db);
 
   // Live DB may have v2 schema (applied_at TEXT NOT NULL, no DEFAULT) or v3 (applied_at_epoch).
   // Provide both to handle either table shape; OR IGNORE handles the UNIQUE constraint.

@@ -15,6 +15,7 @@
 
 import type { Database } from 'better-sqlite3';
 import { cachedPrepare } from '../core/stmt-cache.js';
+import { emitErrorTelemetry } from '../observability/error-telemetry.js';
 
 // ---------------------------------------------------------------------------
 // claimArtifacts
@@ -38,32 +39,37 @@ export function claimArtifacts(
   ttlSeconds: number = 300,
 ): string[] {
   if (!artifactIds || artifactIds.length === 0) return [];
+  if (ttlSeconds < 1) return [];
+
+  const uniqueIds = [...new Set(artifactIds)];
 
   try {
     const now = Math.floor(Date.now() / 1000);
     const claimed: string[] = [];
 
     const doClaim = db.transaction((): void => {
-      for (const artifactId of artifactIds) {
-        // Check for an existing active claim by another worker.
+      for (const artifactId of uniqueIds) {
+        // Check for an existing claim (single-owner PK: one row per artifact_id).
         const existing = cachedPrepare(db,
           `SELECT worker_id, claimed_at_epoch, ttl_seconds
            FROM artifact_claims
-           WHERE artifact_id = ? AND worker_id != ?`
-        ).get(artifactId, workerId) as
+           WHERE artifact_id = ?`
+        ).get(artifactId) as
           | { worker_id: string; claimed_at_epoch: number; ttl_seconds: number }
           | undefined;
 
         if (existing) {
           const expiresAt = existing.claimed_at_epoch + existing.ttl_seconds;
-          if (expiresAt >= now) {
+          if (expiresAt >= now && existing.worker_id !== workerId) {
             // Another worker holds an active claim — skip this artifact.
             continue;
           }
-          // Existing claim is expired — delete it so we can insert fresh.
-          cachedPrepare(db,
-            `DELETE FROM artifact_claims WHERE artifact_id = ? AND worker_id = ?`
-          ).run(artifactId, existing.worker_id);
+          if (expiresAt < now) {
+            // Expired claim — delete it so we can insert fresh.
+            cachedPrepare(db,
+              `DELETE FROM artifact_claims WHERE artifact_id = ?`
+            ).run(artifactId);
+          }
         }
 
         // Upsert: INSERT OR REPLACE handles both new claims and same-worker renewals.
@@ -77,7 +83,8 @@ export function claimArtifacts(
 
     doClaim();
     return claimed;
-  } catch {
+  } catch (e) {
+    emitErrorTelemetry(db, '', 'artifact-claims/claimArtifacts', e);
     return [];
   }
 }
@@ -87,8 +94,13 @@ export function claimArtifacts(
 // ---------------------------------------------------------------------------
 
 /**
- * Returns artifact IDs from the artifacts table (scoped to project) that are
- * NOT currently claimed by any worker with an active TTL.
+ * Returns artifact IDs (not full Artifact objects) that are not currently claimed.
+ *
+ * NOTE: Spec defines getUnclaimedArtifacts(db, query, project, excludeWorker?) → Artifact[].
+ * This implementation intentionally returns string[] of IDs without query filtering:
+ * - The PM/orchestrator handles query-based selection via searchArtifacts
+ * - This function provides the unclaimed filter layer only
+ * - Returning IDs (not objects) avoids loading full artifact content just for claim checking
  *
  * Used by assembleWorkerContext() to find artifacts eligible for the next
  * worker's context package.
@@ -99,19 +111,20 @@ export function getUnclaimedArtifactIds(db: Database, project: string): string[]
   try {
     const now = Math.floor(Date.now() / 1000);
     const rows = cachedPrepare(db,
-      `SELECT CAST(a.id AS TEXT) AS artifact_id
+      `SELECT a.id AS artifact_id
        FROM artifacts a
        WHERE a.project = ?
          AND NOT EXISTS (
            SELECT 1 FROM artifact_claims ac
-           WHERE ac.artifact_id = CAST(a.id AS TEXT)
+           WHERE ac.artifact_id = a.id
              AND ac.claimed_at_epoch + ac.ttl_seconds >= ?
          )
        ORDER BY a.importance DESC, a.timestamp_epoch DESC`
-    ).all(project, now) as Array<{ artifact_id: string }>;
+    ).all(project, now) as Array<{ artifact_id: number }>;
 
-    return rows.map(r => r.artifact_id);
-  } catch {
+    return rows.map(r => String(r.artifact_id));
+  } catch (e) {
+    emitErrorTelemetry(db, '', 'artifact-claims/getUnclaimedArtifactIds', e);
     return [];
   }
 }
@@ -130,8 +143,8 @@ export function releaseAllClaims(db: Database, workerId: string): void {
     cachedPrepare(db,
       `DELETE FROM artifact_claims WHERE worker_id = ?`
     ).run(workerId);
-  } catch {
-    // Non-throwing
+  } catch (e) {
+    emitErrorTelemetry(db, '', 'artifact-claims/releaseAllClaims', e);
   }
 }
 
@@ -151,7 +164,8 @@ export function expireStaleClaims(db: Database): number {
       `DELETE FROM artifact_claims WHERE claimed_at_epoch + ttl_seconds < ?`
     ).run(now);
     return result.changes;
-  } catch {
+  } catch (e) {
+    emitErrorTelemetry(db, '', 'artifact-claims/expireStaleClaims', e);
     return 0;
   }
 }

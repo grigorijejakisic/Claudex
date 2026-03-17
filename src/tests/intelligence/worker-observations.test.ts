@@ -1,3 +1,4 @@
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { createTestDb, type TestDatabase } from '../helpers/test-db.js';
 import {
   ingestWorkerObservation,

@@ -50,7 +50,7 @@ const main = wrapHook('PostToolUse', async (input, ctx) => {
 
   // Note: observation artifact creation and milestone detection happen in
   // lifecycle.ts processToolAndPressure, not here — avoids duplication and
-  // ensures both CC hooks and OpenClaw bridge get milestones (ARCH-006).
+  // ensures both CC hooks and OpenClaw bridge get milestones.
 
   // Thread tracking
   //
@@ -101,11 +101,12 @@ const main = wrapHook('PostToolUse', async (input, ctx) => {
   //
   // Batch pattern: read counters ONCE, mutate in memory, write ONCE — avoids
   // N×2 DB round-trips from separate incrementFileEditCount + trackToolCallPattern
-  // calls on every tool invocation (R8/R15).
+  // calls on every tool invocation.
   // ---------------------------------------------------------------------------
   try {
     const isEditTool = (EDIT_TOOL_NAMES as readonly string[]).includes(toolName);
-    const filePath = (toolInput.path as string) || (toolInput.file_path as string) || '';
+    // NotebookEdit sends `notebook_path` — verify against real CC payloads if field name changes.
+    const filePath = (toolInput.file_path as string) || (toolInput.path as string) || (toolInput.notebook_path as string) || '';
     const sig = toolName ? buildToolSignature(toolName, toolInput) : '';
 
     withBehavioralBatch(ctx.db, input.session_id, (counters) => {

@@ -2,7 +2,7 @@
  * Tests for experience-patterns CRUD, matching, scoring, and deduplication.
  */
 
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { createTestDb, type TestDatabase } from '../helpers/test-db.js';
 import { tokenizeQuery } from '../../shared/search-utils.js';
 import {
@@ -103,16 +103,17 @@ describe('createPattern', () => {
   });
 
   it('deduplicates: same trigger_context increments score instead of creating new row', () => {
-    // BM25 IDF requires a corpus with >1 document to produce meaningful ranks.
-    // Noise rows must be in the dedup search scope (proj-a or __global__) so
-    // they inflate the corpus for BM25 and push the target's rank below -0.5.
+    // Seed noise rows to give FTS5 BM25 a multi-document corpus.
+    // Global-scoped patterns use 'discovery' type (only type eligible for global scope).
     createPattern(db, makePattern({
       trigger_context: 'CSS flexbox grid layout responsive design typography',
       lesson: 'Use rem units for responsive typography',
+      pattern_type: 'discovery',
     }), 'sess-noise-1', GLOBAL_PROJECT_SCOPE);
     createPattern(db, makePattern({
       trigger_context: 'Docker container networking port mapping bridge overlay',
       lesson: 'Use host networking for low-latency services',
+      pattern_type: 'discovery',
     }), 'sess-noise-2', GLOBAL_PROJECT_SCOPE);
 
     const richPattern = makePattern({
@@ -120,21 +121,32 @@ describe('createPattern', () => {
     });
     const id1 = createPattern(db, richPattern, 'sess-1', 'proj-a');
 
-    // With a 3-row corpus in scope, BM25 rank for an exact-match row reliably crosses -0.5.
-    const dedupResult = deduplicateCheck(db, richPattern.trigger_context, 'proj-a', 'correction');
-    expect(dedupResult).not.toBeNull();
-    expect(dedupResult!.id).toBe(id1);
-
-    // createPattern with duplicate trigger must reinforce, not insert.
+    // Inserting a duplicate trigger_context returns the existing pattern ID
     const id2 = createPattern(db, richPattern, 'sess-2', 'proj-a');
     expect(id2).toBe(id1);
 
+    // No new row was created — only the original remains
     const count = (db.prepare('SELECT COUNT(*) AS cnt FROM experience_patterns WHERE source_project = ?').get('proj-a') as { cnt: number }).cnt;
     expect(count).toBe(1);
 
     // Score incremented by +1 AGREE (2 → 3).
     const row = getById(db, id1);
     expect(row!.score).toBe(3);
+  });
+
+  it('creates a new row when trigger_context is different', () => {
+    const id1 = createPattern(db, makePattern({
+      trigger_context: 'server migration OAuth token transfer credentials authentication secret key',
+    }), 'sess-1', 'proj-a');
+
+    const id2 = createPattern(db, makePattern({
+      trigger_context: 'CSS flexbox grid layout responsive design typography',
+    }), 'sess-2', 'proj-a');
+
+    expect(id2).not.toBe(id1);
+
+    const count = (db.prepare('SELECT COUNT(*) AS cnt FROM experience_patterns WHERE source_project = ?').get('proj-a') as { cnt: number }).cnt;
+    expect(count).toBe(2);
   });
 
   it('returns empty string on DB error (non-throwing)', () => {
@@ -343,17 +355,22 @@ describe('incrementTriggerCount', () => {
   });
 
   it('updates last_triggered_epoch', () => {
-    const id = createPattern(db, makePattern(), 'sess-1', 'proj-a');
-    expect(getById(db, id)!.last_triggered_epoch).toBeNull();
+    vi.useFakeTimers();
+    try {
+      vi.setSystemTime(new Date('2026-01-15T12:00:00Z'));
+      const expectedEpoch = Math.floor(new Date('2026-01-15T12:00:00Z').getTime() / 1000);
 
-    const before = Math.floor(Date.now() / 1000) - 1;
-    incrementTriggerCount(db, id);
-    const after = Math.floor(Date.now() / 1000) + 1;
+      const id = createPattern(db, makePattern(), 'sess-1', 'proj-a');
+      expect(getById(db, id)!.last_triggered_epoch).toBeNull();
 
-    const epoch = getById(db, id)!.last_triggered_epoch;
-    expect(epoch).not.toBeNull();
-    expect(epoch!).toBeGreaterThanOrEqual(before);
-    expect(epoch!).toBeLessThanOrEqual(after);
+      incrementTriggerCount(db, id);
+
+      const epoch = getById(db, id)!.last_triggered_epoch;
+      expect(epoch).not.toBeNull();
+      expect(epoch).toBe(expectedEpoch);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('is non-throwing on missing id', () => {
@@ -457,6 +474,10 @@ describe('pruneDeadPatterns', () => {
 // ---------------------------------------------------------------------------
 // deduplicateCheck
 // ---------------------------------------------------------------------------
+// Dedup eligibility: initial score is 2, threshold is score >= 2, so newly
+// created patterns are immediately eligible for dedup matching. No additional
+// validation is required before a pattern participates in dedup checks.
+// ---------------------------------------------------------------------------
 
 describe('deduplicateCheck', () => {
   let db: TestDatabase;
@@ -475,18 +496,22 @@ describe('deduplicateCheck', () => {
     expect(deduplicateCheck(db, '')).toBeNull();
   });
 
-  it('returns matching pattern when trigger_context is similar', () => {
-    // BM25 IDF is ~0 with a single-row corpus (log(1/1) = 0), so ranks never
-    // cross the -0.5 threshold. Noise rows must be in the dedup search scope
-    // (proj-a or __global__) so they inflate the corpus and push the target
-    // row's rank below -0.5.
+  // NOTE: This test depends on FTS5 BM25 rank behavior (threshold < -0.5).
+  // Noise rows are required to give BM25 a multi-document corpus so that IDF
+  // produces meaningful (non-zero) ranks. If the SQLite FTS5 tokenizer or BM25
+  // weighting changes, this test may need its noise rows or keyword density adjusted.
+  it('returns matching pattern when trigger_context is similar (BM25-coupled)', () => {
+    // Noise rows give FTS5 BM25 a multi-document corpus for meaningful ranking.
+    // Global-scoped patterns use 'discovery' type (only type eligible for global scope).
     createPattern(db, makePattern({
       trigger_context: 'CSS flexbox grid layout responsive design typography',
       lesson: 'Use rem units for responsive typography',
+      pattern_type: 'discovery',
     }), 'sess-noise-1', GLOBAL_PROJECT_SCOPE);
     createPattern(db, makePattern({
       trigger_context: 'Docker container networking port mapping bridge overlay',
       lesson: 'Use host networking for low-latency services',
+      pattern_type: 'discovery',
     }), 'sess-noise-2', GLOBAL_PROJECT_SCOPE);
 
     const richTrigger = 'server migration OAuth token transfer credentials authentication secret key';
@@ -564,7 +589,9 @@ describe('classifyPatternScope (heuristic — no enrichment provider)', () => {
     expect(result).toBe('proj-b');
   });
 
-  it('returns currentProject when enrichment provider is undefined (no LLM)', async () => {
+  it('returns GLOBAL_PROJECT_SCOPE via heuristic fallback when enrichment provider is undefined', async () => {
+    // No enrichment provider → skips LLM tier → heuristic detects global signals
+    // (docker, deployment, permissions) with no project-specific file paths → global.
     const pattern: ExtractionInput = {
       pattern_type: 'discovery',
       trigger_context: 'docker deployment container permissions',
@@ -594,13 +621,24 @@ describe('promoteToGlobalIfCrossProject', () => {
   beforeEach(() => { db = createTestDb(); });
   afterEach(() => { db.close(); });
 
-  it('promotes a pattern from project A to __global__ when triggered in project B', () => {
-    const id = createPattern(db, makePattern(), 'sess-1', 'proj-a');
+  it('promotes a discovery pattern from project A to __global__ when triggered in project B', () => {
+    const id = createPattern(db, makePattern({ pattern_type: 'discovery' }), 'sess-1', 'proj-a');
     expect(getById(db, id)!.source_project).toBe('proj-a');
 
     promoteToGlobalIfCrossProject(db, id, 'proj-b');
 
     expect(getById(db, id)!.source_project).toBe(GLOBAL_PROJECT_SCOPE);
+  });
+
+  it('does NOT promote non-discovery patterns (correction/behavioral)', () => {
+    const corrId = createPattern(db, makePattern({ pattern_type: 'correction' }), 'sess-1', 'proj-a');
+    const behId = createPattern(db, makePattern({ pattern_type: 'behavioral', trigger_context: 'behavioral loop signal' }), 'sess-1', 'proj-a');
+
+    promoteToGlobalIfCrossProject(db, corrId, 'proj-b');
+    promoteToGlobalIfCrossProject(db, behId, 'proj-b');
+
+    expect(getById(db, corrId)!.source_project).toBe('proj-a');
+    expect(getById(db, behId)!.source_project).toBe('proj-a');
   });
 
   it('does NOT re-promote a pattern already in __global__', () => {
@@ -615,7 +653,7 @@ describe('promoteToGlobalIfCrossProject', () => {
   });
 
   it('does NOT demote a pattern triggered in its own project', () => {
-    const id = createPattern(db, makePattern(), 'sess-1', 'proj-a');
+    const id = createPattern(db, makePattern({ pattern_type: 'discovery' }), 'sess-1', 'proj-a');
     // Same project as source — should not promote
     promoteToGlobalIfCrossProject(db, id, 'proj-a');
     expect(getById(db, id)!.source_project).toBe('proj-a');
@@ -626,7 +664,7 @@ describe('promoteToGlobalIfCrossProject', () => {
   });
 
   it('is non-throwing on DB error', () => {
-    const id = createPattern(db, makePattern(), 'sess-1', 'proj-a');
+    const id = createPattern(db, makePattern({ pattern_type: 'discovery' }), 'sess-1', 'proj-a');
     db.close();
     expect(() => promoteToGlobalIfCrossProject(db, id, 'proj-b')).not.toThrow();
     db = createTestDb();
@@ -644,8 +682,9 @@ describe('cross-project matching after promotion', () => {
   afterEach(() => { db.close(); });
 
   it('finds a pattern from project B after it is promoted to __global__', () => {
-    // Pattern created in project A
+    // Pattern created in project A (discovery type — only discovery can be promoted)
     const id = createPattern(db, makePattern({
+      pattern_type: 'discovery',
       trigger_context: 'OAuth token migration credentials server transfer authentication',
       lesson: 'Always transfer OAuth credentials during server migration',
     }), 'sess-1', 'proj-a');
@@ -665,14 +704,15 @@ describe('cross-project matching after promotion', () => {
 
   it('promoted pattern retains its original lesson and score', () => {
     const id = createPattern(db, makePattern({
+      pattern_type: 'discovery',
       trigger_context: 'SSH authentication permissions systemd linger deployment',
-      lesson: 'Enable systemd linger for user services to survive logout',
+      lesson: 'Systemd linger is required for user services to survive logout',
     }), 'sess-1', 'proj-a');
 
     promoteToGlobalIfCrossProject(db, id, 'proj-c');
 
     const row = getById(db, id)!;
-    expect(row.lesson).toBe('Enable systemd linger for user services to survive logout');
+    expect(row.lesson).toBe('Systemd linger is required for user services to survive logout');
     expect(row.score).toBe(2);
     expect(row.source_project).toBe(GLOBAL_PROJECT_SCOPE);
   });

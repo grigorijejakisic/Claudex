@@ -5,6 +5,7 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { createTestDbWithSession, type TestDatabase } from '../helpers/test-db.js';
 import { createArtifact } from '../../core/artifacts.js';
+import { createSession } from '../../core/sessions.js';
 import {
   claimArtifacts,
   getUnclaimedArtifactIds,
@@ -27,7 +28,7 @@ function setup() {
   project = result.project;
 }
 
-/** Creates an artifact and returns its id as a string (artifact_claims uses TEXT ids). */
+/** Creates an artifact and returns its id as a string. */
 function makeArtifact(importance: number = 3): string {
   const id = createArtifact(db, sessionId, project, 'observation', null, 'summary', 'content', importance);
   return String(id);
@@ -37,7 +38,7 @@ function getClaim(artifactId: string, workerId: string) {
   return db.prepare(
     'SELECT * FROM artifact_claims WHERE artifact_id = ? AND worker_id = ?'
   ).get(artifactId, workerId) as
-    | { artifact_id: string; worker_id: string; claimed_at_epoch: number; ttl_seconds: number }
+    | { artifact_id: number; worker_id: string; claimed_at_epoch: number; ttl_seconds: number }
     | undefined;
 }
 
@@ -187,18 +188,22 @@ describe('getUnclaimedArtifactIds', () => {
   });
 
   it('only returns artifacts scoped to the given project', () => {
-    // Artifacts for project-a and project-b in same DB
-    const { db: db2, sessionId: sid2 } = createTestDbWithSession('sess-b', 'proj-b');
-    // Use the same db instance (test-db creates :memory: — need to share)
+    // Create a second session for project-b in the SAME db so both projects
+    // share the same :memory: database.  This properly tests project scoping.
+    createSession(db, { session_id: 'sess-b', project: 'proj-b', cwd: '/test', source: 'test' });
+
     const idA = makeArtifact(); // in project 'proj-a'
-    const idB = String(createArtifact(db, sid2, 'proj-b', 'observation', null, 'b-summary', null, 3));
-    db2.close();
+    const idB = String(createArtifact(db, 'sess-b', 'proj-b', 'observation', null, 'b-summary', null, 3));
 
     const unclaimedA = getUnclaimedArtifactIds(db, project);
     expect(unclaimedA).toContain(idA);
-    // idB was inserted into db2 which is a separate :memory: DB — idB doesn't exist in db.
-    // This test just verifies isolation by confirming idA is present.
+    // idB belongs to 'proj-b' — should not appear in 'proj-a' results
     expect(unclaimedA).not.toContain(idB);
+
+    // Verify idB IS returned for proj-b
+    const unclaimedB = getUnclaimedArtifactIds(db, 'proj-b');
+    expect(unclaimedB).toContain(idB);
+    expect(unclaimedB).not.toContain(idA);
   });
 
   it('is non-throwing on DB error — returns []', () => {

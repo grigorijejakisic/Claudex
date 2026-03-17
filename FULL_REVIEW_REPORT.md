@@ -1,194 +1,104 @@
 # Full Multi-Model Code Review Report
 
-**Scope:** Uncommitted changes (hook injection fix + content-aware project routing)
-**Date:** 2026-03-15
-**Models:** Codex CLI (7 perspectives) + Gemini CLI (5 perspectives)
+**Scope:** Uncommitted changes — 24 files, +905/-535 lines (session 14 review fixes + experience patterns + team shared memory)
+**Date:** 2026-03-17 08:50 UTC
+**Models:** Codex CLI (0.105.0) + Gemini CLI (0.33.1, gemini-2.5-pro)
+**Tests:** 79 files, 1478/1478 passing
 
 ---
 
-## Codex Quality Scores
+## Combined Grade: **B+**
 
-| Dimension | Score |
-|-----------|:-----:|
-| naming_quality | 88 |
-| error_consistency | 66 |
-| abstraction_fitness | 62 |
-| logic_clarity | 64 |
-| ai_generated_debt | 63 |
-| type_safety | 78 |
-| contract_coherence | 61 |
-| **Average** | **~69** |
+| Model | Focus | Grade | Weight | Confidence |
+|-------|-------|-------|--------|------------|
+| Codex | Security, Quality, Acceptance (7 perspectives) | **A-** | 0.55 | High — diff-focused, line-level |
+| Gemini | Architecture, Patterns, Contracts (5 perspectives) | **C-** | 0.45 | Low — sandbox-limited, couldn't run `git diff` |
 
----
-
-## Gemini Architecture Scores
-
-| Dimension | Weight | Score | Weighted |
-|-----------|:------:|:-----:|:--------:|
-| Architectural Coherence | 0.30 | 88/100 | 26.40 |
-| Pattern Consistency | 0.20 | 92/100 | 18.40 |
-| Structural Efficiency | 0.15 | 92/100 | 13.80 |
-| Contract Alignment | 0.20 | 82/100 | 16.40 |
-| Dependency Health | 0.15 | 85/100 | 12.75 |
-| **Gemini composite** | | | **87.75** |
-
----
-
-## Combined Grade
-
-| Model | Composite | Weight | Contribution |
-|-------|:---------:|:------:|:------------:|
-| Codex | 69 | 0.55 | 37.95 |
-| Gemini | 87.75 | 0.45 | 39.49 |
-| **Combined** | | | **77.4** |
-
-### Grading Rubric
-
-| Grade | Criteria |
-|-------|----------|
-| A | 90-100 |
-| A- | 85-89 |
-| B+ | 80-84 |
-| B | 75-79 |
-| B- | 70-74 |
-| C+ | 65-69 |
-| C | 60-64 |
-| D | 50-59 |
-| F | <50 |
-
-### Overall Grade: **B (77.4/100)**
-
-The codebase scores well on naming quality (88) and architectural coherence (88), but is dragged down by weak contract coherence (61), abstraction fitness (62), and AI-generated debt (63). Gemini's higher scores reflect strong macro-level design; Codex's lower scores reflect accumulated micro-level quality issues in error handling, type safety, and abstraction boundaries.
+**Note:** Gemini was sandbox-restricted (no shell access), used `codebase_investigator` instead of `git diff`. Its critical finding is on an **unmodified file**. One recommended finding is a false positive. Effective grade weighted toward Codex.
 
 ---
 
 ## Cross-Model Findings
 
-These findings were identified by both Codex and Gemini independently, giving them the highest confidence:
-
-### 1. [CODEX][GEMINI] lifecycle.ts God Module
-- **Files:** `src/adapters/shared/lifecycle.ts`
-- **Severity:** Recommended
-- **Issue:** lifecycle.ts has 25+ imports and serves as an orchestration monolith (~900 lines). Both models flagged it as a structural bottleneck that couples too many concerns into a single file.
-- **Both sources:** Gemini ARCH-001, DEP-002; Codex HLT-001
-
-### 2. [CODEX][GEMINI] Unused FTS5 searchObservations
-- **Files:** `src/core/observations.ts`
-- **Severity:** Recommended
-- **Issue:** FTS5 full-text search infrastructure exists (`searchObservations`) but the assembler uses LIKE-based queries instead. The FTS5 path is dead code that adds maintenance burden without providing value.
-- **Both sources:** Gemini DWT-001, CTR-006; Codex noted assembler uses LIKE not FTS5
-
-### 3. [CODEX][GEMINI] Checkpoint Writer Layer Leak
-- **Files:** `src/checkpoint/writer.ts`, `src/adapters/shared/lifecycle.ts`
-- **Severity:** Recommended
-- **Issue:** Checkpoint writing aggregation logic leaks across the lifecycle/writer boundary. lifecycle.ts performs aggregation that should be encapsulated within the checkpoint writer module.
-- **Both sources:** Gemini DEP-004; Codex HLT-001 (lifecycle aggregation concern)
+None — Gemini couldn't access the actual diff, so no genuine cross-model agreement was possible.
 
 ---
 
 ## Critical Findings
 
-| # | ID | File:Line | Issue | Source | Models |
-|---|-----|-----------|-------|--------|:------:|
-| 1 | CRIT-001 | content-router.ts:163, migrate-routing.cjs:91 | Path prefix collision: `includes(pathFwd)` matches `/Projects/app` inside `/Projects/app-old` | [CODEX-QUALITY][CODEX-ACCEPTANCE][CODEX-GENERAL][CODEX-SECURITY] | 4 |
-| 2 | CRIT-002 | content-router.ts:83, scope-detector.ts:82 | Unregistered project ID mismatch: buildProjectIndex generates `sanitized` IDs but runtime getProjectId uses `sanitized-hash`. Same physical project gets different IDs | [CODEX-ACCEPTANCE][CODEX-GENERAL][CODEX-REUSE] | 3 |
-| 3 | CRIT-003 | decisions.ts:54, lifecycle.ts:693 | Session-scoped aggregation breaks with cross-project writes: decision dedup is UNIQUE(session_id, fingerprint), cross-project writes can collide | [CODEX-CODE-HEALTH] | 1 |
-| 4 | CRIT-004 | post-tool-use.ts:25, stop.ts:28, user-prompt-submit.ts:80 | Cross-project writes without authorization: content-derived routing enables writing to other projects without explicit project-switch | [CODEX-SECURITY] | 1 |
-| 5 | CRIT-005 | infrastructure.ts:137 | buildProjectIndex on every hook invocation: filesystem scan (projects.json + directory listing) runs on PostToolUse hot path | [CODEX-EFFICIENCY] | 1 |
-| 6 | CRIT-006 | content-router.ts:231 | JSON.stringify of full tool output before truncation: O(payload) work on every PostToolUse | [CODEX-EFFICIENCY] | 1 |
-| 7 | CRIT-007 | thread.ts:44 | Thread state persistence bug: upsertThreadState prevents clearing key_exchanges when empty array passed | [GEMINI-CONTRACT] | 1 |
-| 8 | CRIT-008 | content-router.ts:58 | Legacy projects.json format inversion: string entries parsed differently than scope-detector | [CODEX-ACCEPTANCE] | 1 |
+| # | Source | File | Finding | Verdict |
+|---|--------|------|---------|---------|
+| 1 | GEMINI | `src/embeddings/embedding-provider.ts` | SSRF via DNS rebinding in `isLocalOrPrivateUrl` | **NOT IN DIFF** — file is unmodified. Pre-existing concern for future hardening. |
 
-**Total critical: 8** (0 cross-model at critical level, 8 single-source)
-
-**Note on CRIT-001:** 4 independent Codex perspectives flagged the path prefix collision, making it the highest-confidence finding in this review despite being Codex-only. The `includes()` check on forward-slash normalized paths will match any project whose path is a substring of another project's path.
+**Verdict: 0 critical findings in the actual uncommitted changes.**
 
 ---
 
 ## Recommended Findings
 
-| # | ID | File:Line | Issue | Source |
-|---|-----|-----------|-------|--------|
-| 1 | REC-001 | migrate-routing.cjs:20 | Migration script duplicates routing logic (~130-170 removable lines) | [CODEX-QUALITY][CODEX-GENERAL][CODEX-CODE-HEALTH][CODEX-REUSE] |
-| 2 | REC-002 | session-start.ts:69, user-prompt-submit.ts:162 | Missing hook contract tests for hookSpecificOutput format | [CODEX-QUALITY][CODEX-ACCEPTANCE][CODEX-GENERAL] |
-| 3 | REC-003 | bridge-adapter.ts:366 | OpenClaw bridge missing content routing (adapter drift) | [CODEX-CODE-HEALTH][CODEX-GENERAL][CODEX-REUSE] |
-| 4 | REC-004 | user-prompt-submit.ts:112 | Cross-project artifact materialization doesn't flow to assembly | [CODEX-GENERAL] |
-| 5 | REC-005 | infrastructure.ts:135 | Triple projects.json read per hook invocation | [CODEX-EFFICIENCY] |
-| 6 | REC-006 | content-router.ts:186 | Regex recompilation per routing call | [CODEX-EFFICIENCY] |
-| 7 | REC-007 | content-router.ts:224 | extractRoutingContent hardcodes keys that exist in TOOL_CATALOG | [CODEX-REUSE] |
-| 8 | REC-008 | user-prompt-submit.ts:106 | Artifact query/materialization duplicated between adapters | [CODEX-REUSE] |
-| 9 | REC-009 | user-prompt-submit.ts:115 | Cross-project materialization side effects (changes TTL state) | [CODEX-SECURITY] |
-| 10 | REC-010 | lifecycle.ts | lifecycle.ts God Module with 25+ imports | [GEMINI-ARCH] |
-| 11 | REC-011 | user-prompt-submit.ts:47 | Topic shift sliding window state loss in multi-process CC hooks | [GEMINI-ARCH] |
-| 12 | REC-012 | assembler.ts:257 | Rudimentary keyword matching in topic pivots | [GEMINI-ARCH] |
-| 13 | REC-013 | assembler.ts:150 | Manual error telemetry instead of emitErrorTelemetry helper | [GEMINI-PAT] |
-| 14 | REC-014 | enrichment.ts:186 | Data loss risk in mergeEnrichment for key_exchanges | [GEMINI-CONTRACT] |
-| 15 | REC-015 | thread.ts:8 | CooldownState type import leaks from intelligence to core layer | [GEMINI-DEP] |
-| 16 | REC-016 | migrate-routing.cjs:151 | Migration .all() loads full tables into memory | [GEMINI-EFFICIENCY] |
-
-**Total recommended: 16**
+| # | Source | File | Finding | Action |
+|---|--------|------|---------|--------|
+| R1 | CODEX | `correction-detection.ts` | No unit tests for `extractLessonFromUserCorrection` — primary extraction path for experience patterns | **Add tests** |
+| R2 | CODEX | `behavioral-signals.ts` + `experience-patterns.ts` | Secret content regex (`Bearer/sk-/AKIA/ghp_/xox`) duplicated — inline lambda vs exported constant | **Deduplicate** |
+| R3 | CODEX | `cli/worker-context.ts:148` | `main().catch(() => process.exit(0))` silences all errors with success exit code | **Fix (1 line)** |
+| R4 | CODEX | `assembly/worker-context.ts:157-163` | Hard-cap line trimming may break mid-XML-section, leaving unclosed tags | **Consider** |
+| R5 | CODEX | `assembly/worker-context.ts` | Premature async — function body is entirely synchronous, 26 tests updated to async | **Accept (intentional prep)** |
+| R6 | GEMINI | `experience-flags.ts` | JSON blob state in `thread_state.key_exchanges` sacrifices queryability | **Accept (known tradeoff)** |
+| R7 | GEMINI | `experience-patterns.ts:deduplicateCheck` | SQL string concatenation | **FALSE POSITIVE** — uses `cachedPrepare` with parameterized `?` placeholders |
 
 ---
 
 ## Observations
 
-**Total observation-level findings: 15**
-
-### From Gemini (8)
-
-1. Resilient assembly fallback pattern (positive)
-2. Multi-process sync pattern is well-designed (positive)
-3. Intentional naming divergence between adapters
-4. Empty bridge interfaces awaiting implementation
-5. Thin pass-through wrapper in token-estimator
-6. Defensive schema validation in migrations
-7. Hardcoded DB tuning parameters (WAL, cache_size)
-8. Redundant single-use interface definitions
-
-### From Codex (7)
-
-1. Migration usage text shows wrong filename
-2. Unchecked hookSpecificOutput cast in session-start
-3. Migration db.close not in finally block
-4. Adapter-specific routing divergence noted as intentional
-5. Migration path helpers not reused from shared module
-6. Content router regex patterns could be pre-compiled constants
-7. projects.json schema lacks formal validation
+| # | Source | File | Finding |
+|---|--------|------|---------|
+| O1 | CODEX | `correction-detection.ts` | `USER_LESSON_PATTERNS` regex could backtrack on adversarial input; bounded by try/catch |
+| O2 | CODEX | `worker-observations.ts:215-220` | `splitReportIntoObservations` substring check could produce near-duplicate observations |
+| O3 | CODEX | `assembler.ts` | Naming confusion: two `renderExperienceWarnings` functions (one aliased) |
+| O4 | CODEX | Multiple files | Spec markers (O25, O26, etc.) cleanly removed from comments |
+| O5 | CODEX | `migrations.ts` | `migrateSchemaFixes` guard is efficient — fast path for already-migrated DBs |
+| O6 | CODEX | `worker-observations.ts:50` | Good: switched to `cachedPrepare` for hot-path `isDuplicate` |
+| O7 | CODEX | `artifact-claims.ts` | Good: removed unnecessary CAST now that column types match |
+| O8 | CODEX | Tests | High quality — proper async conversion, better integration paths, timing fixes |
+| O9 | CODEX | `correction-detection.ts` | Well-structured dual extraction with clear header comments |
+| O10 | GEMINI | `behavioral-signals.ts` | Good: automatic secret redaction in tool signatures |
+| O11 | CODEX | `sections.ts` | Full XML escape is correct — `&` first, then `<>"'` |
+| O12 | CODEX | Multiple files | Systematic `emitErrorTelemetry` addition in catch blocks — consistent cross-cutting |
 
 ---
 
-## Summary
+## Actionable Summary
 
-| Metric | Value |
-|--------|-------|
-| Critical findings | 8 |
-| Recommended findings | 16 |
-| Observations | 15 |
-| Cross-model findings | 3 (all at recommended level) |
-| Highest-confidence single-source | CRIT-001 (path prefix collision, 4 Codex perspectives) |
-| Codex composite | 69/100 |
-| Gemini composite | 87.75/100 |
-| **Overall grade** | **B (77.4/100)** |
+| Priority | Finding | Effort | Impact |
+|----------|---------|--------|--------|
+| **Do now** | R3: Fix CLI error swallowing | 1 line | Prevents silent failures |
+| **Do now** | R2: Deduplicate secret regex | 5 min | Prevents drift |
+| **Do soon** | R1: Add correction extraction tests | 30 min | Covers primary extraction path |
+| **Consider** | R4: Section-boundary truncation | Medium | Edge case in worker context |
+| **Accept** | R5: Premature async | — | Intentional prep |
+| **Accept** | R6: JSON blob state | — | Known tradeoff |
+| **Dismiss** | R7: SQL concatenation | — | False positive |
 
-### Weakest Dimensions
+---
 
-1. **Contract coherence** (61) -- API behavior diverges from implied promises, especially around project routing identity and thread state persistence
-2. **Abstraction fitness** (62) -- Content router mixes routing, serialization, and validation; lifecycle.ts is an orchestration monolith
-3. **AI-generated debt** (63) -- Duplicated logic in migration script, hardcoded keys that exist in catalogs, regex recompilation
+## Codex Perspective Grades
 
-### Strongest Dimensions
+| Perspective | Grade | Notes |
+|---|---|---|
+| Code Quality | B+ | Sound logic. Hard-cap truncation and CLI error swallowing are concerns. |
+| Acceptance | A- | Code matches intent. Handoff doc stale but code correct. |
+| Security | A- | Tighter secret patterns, content scanning, XML escape, enrichment redaction. One DRY issue. |
+| General | A | Clean naming, consistent style, good comments. |
+| Reuse | B+ | One DRY violation (secret regex), one minor (trigger context cleaning). |
+| Efficiency | A | No regressions. Several micro-optimizations. |
+| Code Health | B+ | Systematic error telemetry. Missing unit tests for new extraction path. |
 
-1. **Pattern consistency** (92, Gemini) -- Non-throwing discipline, consistent hook structure, telemetry patterns
-2. **Structural efficiency** (92, Gemini) -- Lean module boundaries, purposeful file organization
-3. **Naming quality** (88, Codex) -- Clear, consistent naming across modules
+## Gemini Perspective Grades
 
-### Priority Fixes (in order)
-
-1. **CRIT-001** -- Path prefix collision in content router (correctness, 4 models agree)
-2. **CRIT-002** -- Project ID mismatch between buildProjectIndex and getProjectId (correctness, 3 models agree)
-3. **CRIT-004** -- Cross-project writes without authorization (security)
-4. **CRIT-003** -- Session-scoped dedup collision on cross-project writes (data integrity)
-5. **CRIT-007** -- Thread state persistence bug preventing key_exchanges clear (correctness)
-6. **CRIT-005** -- buildProjectIndex filesystem scan on hot path (performance)
-7. **CRIT-006** -- JSON.stringify before truncation (performance)
-8. **CRIT-008** -- Legacy projects.json format inversion (compatibility)
+| Perspective | Grade | Notes |
+|---|---|---|
+| Coherence | B+ | Architecture is coherent. JSON blob state is a smell. |
+| Design Patterns | B | Good facade/batching. SQL concatenation is false positive. |
+| Dead Weight | A | Dense, purposeful code. |
+| Contract Compliance | A- | Excellent docs/types. SSRF finding is pre-existing. |
+| Dependency Health | D | Dragged down by SSRF finding that's not in the diff. |

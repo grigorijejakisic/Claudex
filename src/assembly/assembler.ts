@@ -7,8 +7,9 @@
  *
  * Boundary-only injection: full assembly at session-start and post-compaction only.
  * Topic-shift pivot and gauge injection for regular turns.
- * Assembly is primarily read-render. Exception: experience pattern trigger
- * counts and flags are written during assembly for Stop hook feedback loop.
+ * Assembly is primarily read-render. Experience pattern trigger counts and
+ * flags are deferred to an applyEffects() callback, committed only when the
+ * rendered section survives the budget check (Stop hook feedback loop).
  * All public functions are non-throwing.
  */
 
@@ -26,7 +27,7 @@ import {
   formatReferenceLayer,
   formatMaterializationLayer,
   renderSessionContinuity,
-  renderExperienceWarnings,
+  renderExperienceWarnings as formatExperienceWarningsSection,
 } from './sections.js';
 import {
   findMatchingPatterns,
@@ -94,51 +95,82 @@ export interface TopicPivotParams {
 const EMPTY_PAYLOAD: InjectPayload = { content: '', tokenEstimate: 0, sources: [] };
 
 /**
- * Matches experience patterns against `query`, renders a warning section, increments
- * trigger counts, and persists injected IDs and topic keys to experience flags for
- * Stop hook feedback.
+ * Result of matching experience patterns against a query.
  *
- * Topic keys (one per pattern, parallel to IDs) are lightweight fingerprints of
- * each pattern's trigger_context. The Stop hook uses them to match a correction
- * to the specific pattern(s) it relates to, avoiding penalising unrelated patterns.
+ * Contains the rendered warning section, matched pattern metadata, and an
+ * `applyEffects` callback that commits DB side effects (trigger count
+ * increments, experience flags, cross-project promotion).
  *
- * Returns the rendered section string, injected IDs, topic keys, and token cost on a
- * match; returns null if no patterns matched or rendering produced no output.
+ * **Critical contract:** Callers MUST only invoke `applyEffects()` after
+ * confirming the section will be included in the assembled output. Calling it
+ * unconditionally corrupts the feedback loop — the Stop hook would score
+ * patterns as injected when they were actually dropped by the budget check.
+ */
+interface ExperienceWarningResult {
+  section: string;
+  injectedIds: string[];
+  topicKeys: string[];
+  tokenCost: number;
+  /** Call ONLY after confirming section will be included in output. */
+  applyEffects: () => void;
+}
+
+/**
+ * Matches experience patterns against `query` and renders a warning section.
+ *
+ * Pure render phase — no DB writes occur until `applyEffects()` is called.
+ * This split ensures that budget-gated callers (assembleFullContext) do not
+ * commit side effects for sections that are ultimately dropped, while
+ * ungated callers (assembleRegularPrompt) can apply effects immediately.
+ *
+ * Returns an ExperienceWarningResult on match, or null if no patterns matched
+ * or rendering produced no output.
  * Non-throwing — failures are silently swallowed; experience warnings never block assembly.
  */
-function injectExperienceWarnings(
+function renderExperienceWarnings(
   db: Database,
   query: string,
   project: string,
   sessionId?: string,
-): { section: string; injectedIds: string[]; tokenCost: number } | null {
+): ExperienceWarningResult | null {
   try {
     if (!query) return null;
     const patterns = findMatchingPatterns(db, query, project, 3);
     if (patterns.length === 0) return null;
-    const section = renderExperienceWarnings(patterns);
+    const section = formatExperienceWarningsSection(patterns);
     if (!section) return null;
+
     const injectedIds: string[] = [];
-    const injectedTopicKeys: string[] = [];
+    const topicKeys: string[] = [];
     for (const p of patterns) {
-      incrementTriggerCount(db, p.id);
       injectedIds.push(p.id);
-      injectedTopicKeys.push(generateTopicKey(p));
-      // Auto-promote cross-project patterns: if a pattern was stored under a
-      // different project but matched here, it proved global relevance.
-      if (p.source_project !== project && p.source_project !== GLOBAL_PROJECT_SCOPE) {
-        promoteToGlobalIfCrossProject(db, p.id, project);
-      }
+      topicKeys.push(generateTopicKey(p));
     }
-    if (injectedIds.length > 0 && sessionId) {
-      setExperienceFlags(db, sessionId, {
-        injected_pattern_ids: injectedIds,
-        // Persist topic keys alongside IDs so Stop hook can do per-pattern
-        // topic-aware scoring without an extra DB read of each pattern.
-        injected_topic_keys: injectedTopicKeys,
-      });
-    }
-    return { section, injectedIds, tokenCost: estimateTokens(section) };
+
+    return {
+      section,
+      injectedIds,
+      topicKeys,
+      tokenCost: estimateTokens(section),
+      applyEffects: () => {
+        for (const p of patterns) {
+          incrementTriggerCount(db, p.id);
+          // Auto-promote cross-project patterns: if a pattern was stored under a
+          // different project but matched here, it proved global relevance.
+          if (p.source_project !== project && p.source_project !== GLOBAL_PROJECT_SCOPE) {
+            promoteToGlobalIfCrossProject(db, p.id, project);
+          }
+        }
+        if (injectedIds.length > 0 && sessionId) {
+          setExperienceFlags(db, sessionId, {
+            injected_pattern_ids: injectedIds,
+            // Persist topic keys alongside IDs so Stop hook can do per-pattern
+            // topic-aware scoring without an extra DB read of each pattern.
+            injected_topic_keys: topicKeys,
+          });
+        }
+      },
+    };
   } catch {
     return null;
   }
@@ -172,15 +204,16 @@ export function assembleFullContext(params: FullAssemblyParams): InjectPayload {
 
       // Priority 1.5: Experience pattern warnings
       // Lightweight FTS5 query — fires on every full assembly.
-      // Pattern IDs are tracked via incrementTriggerCount and persisted via
-      // setExperienceFlags (injected_pattern_ids) so Stop hook can score them next turn.
-      const expWarnings = injectExperienceWarnings(
+      // Side effects (trigger counts, flags) are deferred to applyEffects()
+      // and committed ONLY after the budget check passes.
+      const expWarnings = renderExperienceWarnings(
         params.db, params.searchQuery ?? '', params.project, params.sessionId,
       );
       if (expWarnings && expWarnings.tokenCost <= budget) {
         sections.push(expWarnings.section);
         budget -= expWarnings.tokenCost;
         sources.push('experience_warnings');
+        expWarnings.applyEffects(); // Side effects ONLY after budget check passes
       }
 
       // Priority 2: Project context
@@ -433,10 +466,11 @@ export function assembleRegularPrompt(params: RegularPromptParams): InjectPayloa
     // The assembler is the single owner of pattern injection — the hook only
     // detects corrections to avoid double injection and inflated trigger counts.
     if (params.prompt && params.prompt.length >= 20) {
-      const expWarnings = injectExperienceWarnings(
+      const expWarnings = renderExperienceWarnings(
         params.db, params.prompt, params.project, params.sessionId,
       );
       if (expWarnings) {
+        expWarnings.applyEffects(); // Always apply — no budget check here
         return {
           content: expWarnings.section,
           tokenEstimate: expWarnings.tokenCost,

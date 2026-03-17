@@ -3,23 +3,23 @@
  *
  * Tests the full lifecycle exercised by UserPromptSubmit (injection), Stop/finally
  * (promotion to awaiting), and the next Stop (score feedback) — without spawning
- * real hook processes.  All DB interactions go through the same functions the
- * hooks call, so this test exercises the real pipeline at the unit-integration
- * boundary.
+ * real hook processes.
+ *
+ * Turn 1 injection is simulated via direct flag writes (UserPromptSubmit's job),
+ * then applyExperienceFeedback() is called for the Stop hook — testing the real
+ * production scoring + flag rotation path.
  *
  * Scenario:
  *   Turn 1 — UserPromptSubmit injects two patterns (A and B).
- *             Stop/finally promotes them to awaiting_feedback_ids + awaiting_topic_keys.
+ *             Stop (applyExperienceFeedback) promotes them to awaiting.
  *   Turn 2 — UserPromptSubmit detects a correction whose topic overlaps only pattern A.
- *             Stop scores: A gets -1, B is unchanged (ExpeL neutral path).
+ *             Stop (applyExperienceFeedback) scores: A gets -1, B unchanged (ExpeL neutral).
  */
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { createTestDbWithSession, type TestDatabase } from '../helpers/test-db.js';
 import {
   createPattern,
-  updatePatternScore,
-  incrementUsefulCount,
   generateTopicKey,
   type ExtractionInput,
   type ExperiencePattern,
@@ -28,7 +28,14 @@ import {
   getExperienceFlags,
   setExperienceFlags,
 } from '../../intelligence/experience-flags.js';
-import { tokenizeQuery } from '../../shared/search-utils.js';
+import { applyExperienceFeedback } from '../../intelligence/experience-scoring.js';
+import { DEFAULT_CONFIG } from '../../shared/constants.js';
+import type { ClaudexConfig } from '../../shared/config.js';
+
+const testConfig = {
+  ...DEFAULT_CONFIG,
+  enrichment: { ...DEFAULT_CONFIG.enrichment, enabled: false },
+} as unknown as ClaudexConfig;
 
 function makePattern(overrides: Partial<ExtractionInput> = {}): ExtractionInput {
   return {
@@ -56,7 +63,7 @@ describe('experience-patterns two-turn e2e: inject → promote → score', () =>
 
   afterEach(() => { db.close(); });
 
-  it('matching pattern gets -1, non-matching pattern unchanged after correction', () => {
+  it('matching pattern gets -1, non-matching pattern unchanged after correction', async () => {
     // -----------------------------------------------------------------------
     // Setup: create two patterns in the DB
     // -----------------------------------------------------------------------
@@ -93,18 +100,11 @@ describe('experience-patterns two-turn e2e: inject → promote → score', () =>
     expect(flagsAfterInject.injected_topic_keys).toEqual([topicKeyA, topicKeyB]);
 
     // -----------------------------------------------------------------------
-    // Turn 1 Step 2: Simulate Stop/finally promoting injected patterns to
-    // awaiting_feedback_ids + awaiting_topic_keys for the next turn.
-    // Clears correction state and current-turn injection lists.
+    // Turn 1 Step 2: Call applyExperienceFeedback (Stop hook).
+    // No awaiting patterns yet → scoring is a no-op.
+    // Finally block promotes injected → awaiting for next turn.
     // -----------------------------------------------------------------------
-    setExperienceFlags(db, sessionId, {
-      correction_flagged: false,
-      correction_prompt: '',
-      injected_pattern_ids: [],
-      injected_topic_keys: [],
-      awaiting_feedback_ids: flagsAfterInject.injected_pattern_ids,
-      awaiting_topic_keys: flagsAfterInject.injected_topic_keys,
-    }, flagsAfterInject);
+    await applyExperienceFeedback(db, sessionId, undefined, undefined, project, testConfig);
 
     // Verify promotion
     const flagsAfterPromote = getExperienceFlags(db, sessionId);
@@ -124,28 +124,12 @@ describe('experience-patterns two-turn e2e: inject → promote → score', () =>
     }, flagsAfterPromote);
 
     // -----------------------------------------------------------------------
-    // Turn 2 Step 2: Simulate Stop score feedback — replicate the exact logic
-    // from stop.ts: topic-overlap check, -1 for overlap, neutral for no overlap.
+    // Turn 2 Step 2: Call applyExperienceFeedback (Stop hook).
+    // Scores awaiting patterns: A penalised (topic overlap), B neutral.
+    // Pass undefined for assistant/user text to skip pattern extraction —
+    // we only care about the scoring path here.
     // -----------------------------------------------------------------------
-    const flagsForScoring = getExperienceFlags(db, sessionId);
-    const { awaiting_feedback_ids, awaiting_topic_keys, correction_flagged, correction_prompt: storedPrompt } = flagsForScoring;
-
-    expect(correction_flagged).toBe(true);
-    expect(awaiting_feedback_ids).toEqual([idA, idB]);
-
-    const correctionWords = tokenizeQuery(storedPrompt).slice(0, 5);
-
-    for (let i = 0; i < awaiting_feedback_ids.length; i++) {
-      const patternId = awaiting_feedback_ids[i];
-      const topicKey = awaiting_topic_keys[i] ?? '';
-      const patternWords = topicKey.split('_').filter(Boolean);
-      const hasOverlap = correctionWords.some(w => patternWords.includes(w));
-
-      if (hasOverlap) {
-        updatePatternScore(db, patternId, -1);
-      }
-      // else: ExpeL neutral path — no penalty, no reward
-    }
+    await applyExperienceFeedback(db, sessionId, undefined, undefined, project, testConfig);
 
     // -----------------------------------------------------------------------
     // Assertions: A penalised (2 → 1), B unchanged (2)
@@ -154,7 +138,7 @@ describe('experience-patterns two-turn e2e: inject → promote → score', () =>
     expect(getById(db, idB)!.score).toBe(2);
   });
 
-  it('all awaiting patterns rewarded when no correction in turn 2', () => {
+  it('all awaiting patterns rewarded when no correction in turn 2', async () => {
     // -----------------------------------------------------------------------
     // Setup: two patterns injected and promoted
     // -----------------------------------------------------------------------
@@ -177,29 +161,12 @@ describe('experience-patterns two-turn e2e: inject → promote → score', () =>
       injected_topic_keys: [topicKeyA, topicKeyB],
     });
 
-    const flagsAfterInject = getExperienceFlags(db, sessionId);
+    // Turn 1 Stop: applyExperienceFeedback promotes injected → awaiting
+    await applyExperienceFeedback(db, sessionId, undefined, undefined, project, testConfig);
 
-    // Turn 1 Stop/finally: promote
-    setExperienceFlags(db, sessionId, {
-      correction_flagged: false,
-      correction_prompt: '',
-      injected_pattern_ids: [],
-      injected_topic_keys: [],
-      awaiting_feedback_ids: flagsAfterInject.injected_pattern_ids,
-      awaiting_topic_keys: flagsAfterInject.injected_topic_keys,
-    }, flagsAfterInject);
-
-    // Turn 2: no correction detected
-    const flagsForScoring = getExperienceFlags(db, sessionId);
-    const { awaiting_feedback_ids, correction_flagged } = flagsForScoring;
-
-    expect(correction_flagged).toBe(false);
-
-    // Reward all awaiting patterns (Stop hook "no correction" branch)
-    for (const patternId of awaiting_feedback_ids) {
-      incrementUsefulCount(db, patternId);
-      updatePatternScore(db, patternId, 1);
-    }
+    // Turn 2: no correction detected (correction_flagged remains false from promotion)
+    // Call applyExperienceFeedback for Turn 2 Stop — should reward all awaiting patterns.
+    await applyExperienceFeedback(db, sessionId, undefined, undefined, project, testConfig);
 
     // Both patterns rewarded: score 2 → 3, times_useful 0 → 1
     const rowA = getById(db, idA)!;

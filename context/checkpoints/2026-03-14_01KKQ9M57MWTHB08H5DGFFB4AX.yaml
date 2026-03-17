@@ -1,0 +1,145 @@
+schema: claudex/checkpoint
+version: 3
+meta:
+  checkpoint_id: 01KKQ9M57MWTHB08H5DGFFB4AX
+  session_id: 605c37db-0a99-45c8-8799-98ee7958c4c4
+  scope: claudex-v3
+  trigger: compaction
+  token_usage:
+    input_tokens: 1
+    output_tokens: 46
+    window_size: 200000
+    utilization: 0.000005
+  previous_checkpoint: null
+working:
+  task: null
+  status: null
+  next_action: null
+  branch: null
+decisions:
+  - content: >-
+      do it then man! Make it happen! You said if you were designing: The highest-leverage addition would be extracting
+      structured insights from the assistant response text at turn
+        boundaries — not the full response, but the analytical conclusions. "Found root cause: field name mismatch" is more
+        valuable than 50 observation titles. The Stop hook already receives last_assistant_message. A focused extraction pass
+        on that text would produce dramatically better learnings than anything the tool-level pipeline can capture. - We are here to make it work for you! Do it brother!
+    source: confirmation
+    timestamp: 1773526934
+  - content: yes, is this a small work or significant one?
+    source: confirmation
+    timestamp: 1773526882
+  - content: '**What artifacts SHOULD be:**'
+    source: direction
+    timestamp: 1773522590
+  - content: Send another message and we should see thread topic + decisions populate for the first time.
+    source: direction
+    timestamp: 1773522410
+files:
+  hot:
+    - path: <project>/src\adapters\shared\lifecycle.ts
+    - path: <project>/src\core\migrations.ts
+    - path: <project>/src\checkpoint\loader.ts
+    - path: <project>/src\adapters\cc-hooks\user-prompt-submit.ts
+    - path: <project>/src\checkpoint\writer.ts
+    - path: <project>/src\shared\config.ts
+    - path: <project>/src\shared\fs-helpers.ts
+    - path: <project>/src\adapters\cc-hooks\infrastructure.ts
+    - path: <project>/src\intelligence\decision-capture.ts
+    - path: <project>/src\shared\constants.ts
+    - path: <project>/src\core\observations.ts
+    - path: <project>/src
+    - path: <project>/src\core\artifacts.ts
+    - path: <project>/
+    - path: <project>/src\adapters\cc-hooks\pre-compact.ts
+  read:
+    - <project>/src\core\artifacts.ts
+    - <project>/src\extraction\scoring.ts
+    - <project>/.gitignore
+    - <project>/src\tests\intelligence\insight-extractor.test.ts
+    - <project>/src\extraction\extractors\bash.ts
+    - <project>/src\intelligence\decision-capture.ts
+    - <project>/src\adapters\shared\lifecycle.ts
+    - <project>/src\adapters\cc-hooks\user-prompt-submit.ts
+    - <project>/src\tests\adapters\cc-hooks\hooks.test.ts
+    - <project>/src\core\journal.ts
+    - <project>/src\adapters\cc-hooks\stop.ts
+    - <project>/src\intelligence\insight-extractor.ts
+    - src\adapters\shared\lifecycle.ts
+    - src\core\learnings.ts
+    - src\intelligence\learnings-promoter.ts
+    - src\tests\core\sessions.test.ts
+    - src\tests\intelligence\learnings-promoter.test.ts
+    - <project>/src\core\learnings.ts
+    - <project>/src\adapters\cc-hooks\pre-compact.ts
+    - <project>/src\checkpoint\writer.ts
+thread:
+  topic: what incredible jump v2 v3
+  summary: >-
+    what incredible jump v2 v3. No. Here's what still bothers me:
+
+
+    **I've never looked at what the assembly actually injects.. Ready. When you run `/compact`, the PreCompact hook
+    should:
+
+
+    1.. Fixed. Now reference layer will show decisions and learnings first, observations second.
+  key_exchanges:
+    - role: agent
+      gist: 'To answer fully: concurrent sessions are safe with one caveat now fixed.'
+    - role: agent
+      gist: It is. Go enjoy your evening — the system is live, tested, and building knowledge as we speak.
+    - role: agent
+      gist: |-
+        Insight extraction is working — 4 genuine learnings captured from my response text:
+
+        - `[diagnosis]` "Root cause: CC sen...
+    - role: agent
+      gist: |-
+        All three fixed. Now I'm satisfied with the state:
+
+        - Insight extraction: working live, tested with 13 unit tests
+        - Deci...
+    - role: agent
+      gist: |-
+        No. Here's what still bothers me:
+
+        **I've never looked at what the assembly actually injects.
+    - role: agent
+      gist: |-
+        Ready. When you run `/compact`, the PreCompact hook should:
+
+        1.
+    - role: agent
+      gist: Fixed. Now reference layer will show decisions and learnings first, observations second.
+open_items: []
+learnings:
+  - The architecture was always sound.
+  - 'They''re "Root cause: CC sends tool_response not tool_output, which is why observation extraction was dead.'
+  - >-
+    Went from a system where every intelligence feature was dead — wrong field names, unwired pipelines, artifacts
+    expiring in 15 seconds — to every subsystem producing real data in a single session.
+  - It's shared persistent state across every instance of me on this machine.
+  - You likely don't have Ollama running, so the most sophisticated detection path is dead.
+gsd:
+  phase: 11
+  plan: 1
+  status: All 12 phases complete -- Claudex v3 fully implemented, tested, and deployment-ready
+  goal: Claudex v3 is running in production on both adapters, verified on fresh installs, with predecessor systems archived
+  success_criteria:
+    - Fresh `claudex setup` on a clean Windows machine produces a fully operational CC hook system
+    - Fresh OpenClaw plugin install produces a fully operational bridge adapter
+    - Optional v2 migration completes successfully for existing Claudex users (data preserved, backup created)
+    - Both adapters verified independently for one week of real usage
+  completion: 0/0 requirements met
+current_objective: |-
+  Task: what incredible jump v2 v3. what incredible jump v2 v3. No. Here's what still bothers me:
+
+  **I've never looked at what the assembly actually injects.. Ready. When you run `/compact`, the PreComp
+verified_facts:
+  - >-
+    do it then man! Make it happen! You said if you were designing: The highest-leverage addition would be extracting
+    structured insights from the assistant response text at turn
+      boundaries — not the full response, but the analytical conclusions. "Found root cause: field name mismatch" is more
+      valuable than 50 observation titles. The Stop hook already receives last_assistant_message. A focused extraction pass
+      on that text would produce dramatically better learnings than anything the tool-level
+  - yes, is this a small work or significant one?

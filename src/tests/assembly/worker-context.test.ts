@@ -37,8 +37,8 @@ describe('assembleWorkerContext', () => {
   // Empty DB
   // --------------------------------------------------------------------------
 
-  it('returns empty formatted string when DB has no relevant data', () => {
-    const pkg = assembleWorkerContext(db, 'implement authentication middleware', PROJECT);
+  it('returns empty formatted string when DB has no relevant data', async () => {
+    const pkg = await assembleWorkerContext(db, 'implement authentication middleware', PROJECT);
 
     expect(pkg.formatted).toBe('');
     expect(pkg.experienceWarnings).toBe('');
@@ -49,8 +49,8 @@ describe('assembleWorkerContext', () => {
     expect(pkg.tokenBudget).toBe(0);
   });
 
-  it('returns a valid package shape on empty DB', () => {
-    const pkg = assembleWorkerContext(db, 'add unit tests for extractor', PROJECT);
+  it('returns a valid package shape on empty DB', async () => {
+    const pkg = await assembleWorkerContext(db, 'add unit tests for extractor', PROJECT);
 
     expect(pkg).toHaveProperty('primer');
     expect(pkg).toHaveProperty('relevantArtifacts');
@@ -65,7 +65,7 @@ describe('assembleWorkerContext', () => {
   // Experience warnings
   // --------------------------------------------------------------------------
 
-  it('includes experience warnings when patterns match task description', () => {
+  it('includes experience warnings when patterns match task description', async () => {
     createPattern(db, {
       pattern_type: 'correction',
       trigger_context: 'authentication OAuth token migration',
@@ -74,14 +74,14 @@ describe('assembleWorkerContext', () => {
       severity: 'important',
     }, SESSION_ID, PROJECT);
 
-    const pkg = assembleWorkerContext(db, 'authentication OAuth token setup', PROJECT);
+    const pkg = await assembleWorkerContext(db, 'authentication OAuth token setup', PROJECT);
 
     expect(pkg.experienceWarnings).not.toBe('');
     expect(pkg.formatted).toContain('Warnings from Past Experience');
     expect(pkg.formatted).toContain('## Project Knowledge (auto-assembled by Claudex)');
   });
 
-  it('omits experience warnings when includeExperience is false', () => {
+  it('omits experience warnings when includeExperience is false', async () => {
     createPattern(db, {
       pattern_type: 'correction',
       trigger_context: 'authentication OAuth token migration',
@@ -89,7 +89,7 @@ describe('assembleWorkerContext', () => {
       severity: 'important',
     }, SESSION_ID, PROJECT);
 
-    const pkg = assembleWorkerContext(
+    const pkg = await assembleWorkerContext(
       db,
       'authentication OAuth token setup',
       PROJECT,
@@ -100,7 +100,7 @@ describe('assembleWorkerContext', () => {
     expect(pkg.formatted).not.toContain('Warnings from Past Experience');
   });
 
-  it('does not include experience warnings when no patterns match', () => {
+  it('does not include experience warnings when no patterns match', async () => {
     // Create a pattern about something unrelated
     createPattern(db, {
       pattern_type: 'correction',
@@ -110,7 +110,7 @@ describe('assembleWorkerContext', () => {
     }, SESSION_ID, PROJECT);
 
     // Query about something different
-    const pkg = assembleWorkerContext(
+    const pkg = await assembleWorkerContext(
       db,
       'refactor UI component styles',
       PROJECT,
@@ -126,7 +126,7 @@ describe('assembleWorkerContext', () => {
   // Learnings
   // --------------------------------------------------------------------------
 
-  it('includes relevant learnings when content matches task keywords', () => {
+  it('includes relevant learnings when content matches task keywords', async () => {
     upsertLearning(db, {
       project: PROJECT,
       fingerprint: 'fp-auth-1',
@@ -138,13 +138,13 @@ describe('assembleWorkerContext', () => {
       content: 'deployment requires Docker setup and environment variables',
     });
 
-    const pkg = assembleWorkerContext(db, 'implement authentication token rotation', PROJECT);
+    const pkg = await assembleWorkerContext(db, 'implement authentication token rotation', PROJECT);
 
     expect(pkg.learnings).toContain('authentication tokens must be rotated every 24 hours');
     expect(pkg.formatted).toContain('Key Learnings');
   });
 
-  it('handles missing learnings gracefully (no matching content)', () => {
+  it('handles missing learnings gracefully (no matching content)', async () => {
     upsertLearning(db, {
       project: PROJECT,
       fingerprint: 'fp-unrelated',
@@ -152,21 +152,21 @@ describe('assembleWorkerContext', () => {
     });
 
     // Task with no keyword overlap
-    const pkg = assembleWorkerContext(db, 'xyz_very_specific_nonexistent_topic_abc', PROJECT);
+    const pkg = await assembleWorkerContext(db, 'xyz_very_specific_nonexistent_topic_abc', PROJECT);
 
     // Should not crash; learnings may be empty
     expect(pkg).toBeDefined();
     expect(pkg.formatted).toBeDefined();
   });
 
-  it('includes global learnings (project = __global__) in results', () => {
+  it('includes global learnings (project = __global__) in results', async () => {
     upsertLearning(db, {
       project: '__global__',
       fingerprint: 'fp-global-1',
       content: 'authentication requires careful token validation',
     });
 
-    const pkg = assembleWorkerContext(db, 'authentication token validation', PROJECT);
+    const pkg = await assembleWorkerContext(db, 'authentication token validation', PROJECT);
 
     expect(pkg.learnings).toContain('authentication requires careful token validation');
   });
@@ -175,7 +175,7 @@ describe('assembleWorkerContext', () => {
   // Artifacts
   // --------------------------------------------------------------------------
 
-  it('includes artifact summaries when they match task description', () => {
+  it('includes artifact summaries when they match task description', async () => {
     createArtifact(
       db,
       SESSION_ID,
@@ -187,7 +187,7 @@ describe('assembleWorkerContext', () => {
       4,
     );
 
-    const pkg = assembleWorkerContext(db, 'implement JWT authentication', PROJECT);
+    const pkg = await assembleWorkerContext(db, 'implement JWT authentication', PROJECT);
 
     // Artifact search searches observations_fts via artifact_ref join.
     // With no matching observation, the LIKE fallback on summary may match.
@@ -196,7 +196,7 @@ describe('assembleWorkerContext', () => {
     expect(pkg.formatted).toBeDefined();
   });
 
-  it('includes relevant context header in formatted output when artifacts exist', () => {
+  it('includes relevant context header in formatted output when artifacts exist', async () => {
     // Insert an observation to make artifact_ref join work via FTS
     db.prepare(
       `INSERT INTO observations (session_id, project, tool_name, category, title, content, importance)
@@ -216,7 +216,7 @@ describe('assembleWorkerContext', () => {
       4,
     );
 
-    const pkg = assembleWorkerContext(db, 'JWT authentication implementation', PROJECT);
+    const pkg = await assembleWorkerContext(db, 'JWT authentication implementation', PROJECT);
 
     // Should not crash; artifact may or may not match depending on FTS state
     expect(pkg).toBeDefined();
@@ -226,7 +226,7 @@ describe('assembleWorkerContext', () => {
   // Token budget enforcement
   // --------------------------------------------------------------------------
 
-  it('respects maxTokens budget — total tokenBudget does not exceed limit', () => {
+  it('respects maxTokens budget — total tokenBudget does not exceed limit', async () => {
     // Insert several learnings to generate content
     for (let i = 0; i < 20; i++) {
       upsertLearning(db, {
@@ -244,26 +244,26 @@ describe('assembleWorkerContext', () => {
     }, SESSION_ID, PROJECT);
 
     const maxTokens = 200;
-    const pkg = assembleWorkerContext(db, 'authentication token validation', PROJECT, { maxTokens });
+    const pkg = await assembleWorkerContext(db, 'authentication token validation', PROJECT, { maxTokens });
 
     // tokenBudget is estimated from the formatted string
     expect(pkg.tokenBudget).toBeLessThanOrEqual(maxTokens + 10); // small margin for estimation
   });
 
-  it('returns empty package when maxTokens is 0', () => {
+  it('returns empty package when maxTokens is 0', async () => {
     upsertLearning(db, {
       project: PROJECT,
       fingerprint: 'fp-1',
       content: 'some important learning about authentication',
     });
 
-    const pkg = assembleWorkerContext(db, 'authentication', PROJECT, { maxTokens: 0 });
+    const pkg = await assembleWorkerContext(db, 'authentication', PROJECT, { maxTokens: 0 });
 
     expect(pkg.formatted).toBe('');
     expect(pkg.tokenBudget).toBe(0);
   });
 
-  it('formatted string stays within maxTokens with very small budget', () => {
+  it('formatted string stays within maxTokens with very small budget', async () => {
     // Seed data that would exceed 100 tokens individually
     for (let i = 0; i < 5; i++) {
       upsertLearning(db, {
@@ -274,7 +274,7 @@ describe('assembleWorkerContext', () => {
     }
 
     const maxTokens = 100;
-    const pkg = assembleWorkerContext(db, 'authentication token management', PROJECT, { maxTokens });
+    const pkg = await assembleWorkerContext(db, 'authentication token management', PROJECT, { maxTokens });
 
     const estimated = Math.ceil(pkg.formatted.length / 4);
     expect(estimated).toBeLessThanOrEqual(maxTokens + 15); // small margin for header overhead
@@ -284,22 +284,22 @@ describe('assembleWorkerContext', () => {
   // Hot files / fileScope
   // --------------------------------------------------------------------------
 
-  it('includes hot files in formatted output when pressure data exists', () => {
+  it('includes hot files in formatted output when pressure data exists', async () => {
     updatePressureScore(db, 'src/auth/token-manager.ts', PROJECT, 1.0);
     updatePressureScore(db, 'src/auth/middleware.ts', PROJECT, 0.8);
 
-    const pkg = assembleWorkerContext(db, 'update authentication middleware', PROJECT);
+    const pkg = await assembleWorkerContext(db, 'update authentication middleware', PROJECT);
 
     expect(pkg.hotFiles).toContain('src/auth/token-manager.ts');
     expect(pkg.formatted).toContain('Active Files');
   });
 
-  it('filters hot files to fileScope when provided', () => {
+  it('filters hot files to fileScope when provided', async () => {
     updatePressureScore(db, 'src/auth/token-manager.ts', PROJECT, 1.0);
     updatePressureScore(db, 'src/db/migrations.ts', PROJECT, 0.9);
     updatePressureScore(db, 'src/api/routes.ts', PROJECT, 0.8);
 
-    const pkg = assembleWorkerContext(db, 'update authentication middleware', PROJECT, {
+    const pkg = await assembleWorkerContext(db, 'update authentication middleware', PROJECT, {
       fileScope: ['src/auth/token-manager.ts', 'src/api/routes.ts'],
     });
 
@@ -309,27 +309,27 @@ describe('assembleWorkerContext', () => {
     expect(pkg.hotFiles).not.toContain('src/db/migrations.ts');
   });
 
-  it('returns empty hotFiles when fileScope has no matching hot files', () => {
+  it('returns empty hotFiles when fileScope has no matching hot files', async () => {
     updatePressureScore(db, 'src/auth/token-manager.ts', PROJECT, 1.0);
 
-    const pkg = assembleWorkerContext(db, 'update authentication middleware', PROJECT, {
+    const pkg = await assembleWorkerContext(db, 'update authentication middleware', PROJECT, {
       fileScope: ['src/nonexistent/file.ts'],
     });
 
     expect(pkg.hotFiles).toBe('');
   });
 
-  it('returns empty hotFiles when no pressure data exists', () => {
-    const pkg = assembleWorkerContext(db, 'implement new feature', PROJECT);
+  it('returns empty hotFiles when no pressure data exists', async () => {
+    const pkg = await assembleWorkerContext(db, 'implement new feature', PROJECT);
 
     expect(pkg.hotFiles).toBe('');
   });
 
-  it('fileScope is case-insensitive and slash-normalized', () => {
+  it('fileScope is case-insensitive and slash-normalized', async () => {
     updatePressureScore(db, 'src/auth/token-manager.ts', PROJECT, 1.0);
 
     // Provide scope with different casing/slash style
-    const pkg = assembleWorkerContext(db, 'authentication', PROJECT, {
+    const pkg = await assembleWorkerContext(db, 'authentication', PROJECT, {
       fileScope: ['src\\auth\\token-manager.ts'],
     });
 
@@ -341,27 +341,25 @@ describe('assembleWorkerContext', () => {
   // Non-throwing / error resilience
   // --------------------------------------------------------------------------
 
-  it('does not throw when DB is null', () => {
-    expect(() => {
-      assembleWorkerContext(null as any, 'implement feature', PROJECT);
-    }).not.toThrow();
+  it('does not throw when DB is null', async () => {
+    const pkg = await assembleWorkerContext(null as any, 'implement feature', PROJECT);
+    expect(pkg).toBeDefined();
   });
 
-  it('returns empty package when DB is null', () => {
-    const pkg = assembleWorkerContext(null as any, 'implement feature', PROJECT);
+  it('returns empty package when DB is null', async () => {
+    const pkg = await assembleWorkerContext(null as any, 'implement feature', PROJECT);
 
     expect(pkg.formatted).toBe('');
     expect(pkg.tokenBudget).toBe(0);
   });
 
-  it('does not throw on empty task description', () => {
-    expect(() => {
-      assembleWorkerContext(db, '', PROJECT);
-    }).not.toThrow();
+  it('does not throw on empty task description', async () => {
+    const pkg = await assembleWorkerContext(db, '', PROJECT);
+    expect(pkg).toBeDefined();
   });
 
-  it('returns empty formatted on empty task description', () => {
-    const pkg = assembleWorkerContext(db, '', PROJECT);
+  it('returns empty formatted on empty task description', async () => {
+    const pkg = await assembleWorkerContext(db, '', PROJECT);
 
     // No search terms → all search-based sections empty
     // hotFiles might still appear if there's pressure data (unscoped), but no crash
@@ -369,20 +367,15 @@ describe('assembleWorkerContext', () => {
     expect(pkg.formatted).toBeDefined();
   });
 
-  it('does not throw on very short task description (below FTS minimum)', () => {
-    expect(() => {
-      assembleWorkerContext(db, 'hi', PROJECT);
-    }).not.toThrow();
+  it('does not throw on very short task description (below FTS minimum)', async () => {
+    const pkg = await assembleWorkerContext(db, 'hi', PROJECT);
+    expect(pkg).toBeDefined();
   });
 
-  it('is non-throwing when DB prepare throws', () => {
+  it('is non-throwing when DB prepare throws', async () => {
     const brokenDb = { prepare: () => { throw new Error('DB broken'); } } as any;
 
-    expect(() => {
-      assembleWorkerContext(brokenDb, 'implement authentication', PROJECT);
-    }).not.toThrow();
-
-    const pkg = assembleWorkerContext(brokenDb, 'implement authentication', PROJECT);
+    const pkg = await assembleWorkerContext(brokenDb, 'implement authentication', PROJECT);
     expect(pkg.formatted).toBe('');
   });
 
@@ -390,21 +383,21 @@ describe('assembleWorkerContext', () => {
   // Formatted output structure
   // --------------------------------------------------------------------------
 
-  it('formatted output contains outer header when sections are present', () => {
+  it('formatted output contains outer header when sections are present', async () => {
     upsertLearning(db, {
       project: PROJECT,
       fingerprint: 'fp-auth-fmt',
       content: 'authentication patterns should be centralized',
     });
 
-    const pkg = assembleWorkerContext(db, 'centralize authentication patterns', PROJECT);
+    const pkg = await assembleWorkerContext(db, 'centralize authentication patterns', PROJECT);
 
     if (pkg.formatted) {
       expect(pkg.formatted).toContain('## Project Knowledge (auto-assembled by Claudex)');
     }
   });
 
-  it('section headers appear only when section has content', () => {
+  it('section headers appear only when section has content', async () => {
     // Seed only learnings, no patterns/artifacts/hot files
     upsertLearning(db, {
       project: PROJECT,
@@ -412,7 +405,7 @@ describe('assembleWorkerContext', () => {
       content: 'authentication tokens expire in 24 hours',
     });
 
-    const pkg = assembleWorkerContext(db, 'authentication token expiry', PROJECT);
+    const pkg = await assembleWorkerContext(db, 'authentication token expiry', PROJECT);
 
     if (pkg.learnings) {
       expect(pkg.formatted).toContain('### Key Learnings');
@@ -426,14 +419,14 @@ describe('assembleWorkerContext', () => {
     }
   });
 
-  it('tokenBudget reflects actual formatted string token estimate', () => {
+  it('tokenBudget reflects actual formatted string token estimate', async () => {
     upsertLearning(db, {
       project: PROJECT,
       fingerprint: 'fp-budget-verify',
       content: 'authentication token validation is critical for security',
     });
 
-    const pkg = assembleWorkerContext(db, 'authentication validation', PROJECT);
+    const pkg = await assembleWorkerContext(db, 'authentication validation', PROJECT);
 
     const expectedTokens = Math.ceil(pkg.formatted.length / 4);
     expect(pkg.tokenBudget).toBe(expectedTokens);

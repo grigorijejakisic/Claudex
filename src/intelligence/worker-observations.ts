@@ -10,6 +10,8 @@
 import type { Database } from 'better-sqlite3';
 import { createHash } from 'crypto';
 import { insertObservation } from '../core/observations.js';
+import { createArtifact } from '../core/artifacts.js';
+import { cachedPrepare } from '../core/stmt-cache.js';
 import { redactContent } from '../extraction/redaction.js';
 
 /** Maximum characters for a stored observation. Longer text is truncated. */
@@ -28,12 +30,13 @@ export interface WorkerObservation {
 }
 
 /**
- * Computes a stable dedup hash from (worker_id + observation text).
- * Used to prevent duplicate writes on retry.
+ * Computes a stable dedup hash from (worker_id + observation text + session_id).
+ * Includes session_id so that cross-session re-observation of the same fact is
+ * not silently dropped — legitimate in a new session context.
  */
-function observationHash(workerId: string, observation: string): string {
+function observationHash(workerId: string, observation: string, sessionId: string): string {
   return createHash('sha256')
-    .update(`${workerId}\x00${observation}`)
+    .update(`${workerId}\x00${observation}\x00${sessionId}`)
     .digest('hex')
     .slice(0, 16);
 }
@@ -44,7 +47,7 @@ function observationHash(workerId: string, observation: string): string {
  */
 function isDuplicate(db: Database, hash: string): boolean {
   try {
-    const row = db.prepare(
+    const row = cachedPrepare(db,
       `SELECT 1 FROM observations WHERE obs_type = ? LIMIT 1`
     ).get(`worker:${hash}`);
     return row != null;
@@ -85,8 +88,8 @@ export function ingestWorkerObservation(
       return '';
     }
 
-    // Gate 2: dedup check
-    const hash = observationHash(obs.worker_id, obs.observation);
+    // Gate 2: dedup check (includes session_id so cross-session re-observation is allowed)
+    const hash = observationHash(obs.worker_id, obs.observation, obs.session_id);
     if (isDuplicate(db, hash)) {
       return '';
     }
@@ -101,17 +104,43 @@ export function ingestWorkerObservation(
 
     const title = truncated.slice(0, 100);
 
-    const id = insertObservation(db, {
-      session_id: obs.session_id,
-      project,
-      tool_name: 'worker_report',
-      category: 'other',
-      title,
-      content: truncated,
-      importance: obs.importance,
-      files_modified: obs.files_involved,
-      obs_type: `worker:${hash}`,
-    });
+    let id: number;
+    try {
+      id = insertObservation(db, {
+        session_id: obs.session_id,
+        project,
+        tool_name: 'worker_report',
+        category: 'other',
+        title,
+        content: truncated,
+        importance: obs.importance,
+        files_modified: obs.files_involved,
+        obs_type: `worker:${hash}`,
+      });
+    } catch (e: any) {
+      // Handle race condition: concurrent insert with same obs_type (UNIQUE constraint)
+      if (e?.code === 'SQLITE_CONSTRAINT') return '';
+      throw e; // Re-throw unexpected errors to outer catch
+    }
+
+    // C8: Promote high-importance worker observations to artifacts so they
+    // surface via searchArtifacts in assembleWorkerContext.
+    if (obs.importance >= 4) {
+      try {
+        createArtifact(
+          db,
+          obs.session_id,
+          project,
+          'observation',      // artifact_type
+          String(id),         // artifact_ref — links back to observation
+          title,              // summary
+          truncated,          // content (already redacted and truncated)
+          obs.importance,     // importance
+        );
+      } catch {
+        // Non-throwing — artifact promotion is best-effort
+      }
+    }
 
     return String(id);
   } catch {
@@ -183,7 +212,14 @@ function splitReportIntoObservations(reportText: string): string[] {
     }
   }
 
-  if (listItems.length > 0) return listItems;
+  if (listItems.length > 0) {
+    // Also preserve substantive non-list paragraphs (context, analysis, etc.)
+    const paragraphs = reportText
+      .split(/\n{2,}/)
+      .map(p => p.replace(/\n/g, ' ').trim())
+      .filter(p => p.length > 20 && !listItems.some(li => p.includes(li)));
+    return [...listItems, ...paragraphs];
+  }
 
   // Fall back to paragraph splitting
   return reportText

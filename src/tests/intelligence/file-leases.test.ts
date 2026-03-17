@@ -300,13 +300,12 @@ describe('getWorkerLeases', () => {
     expect(getWorkerLeases(db, 'worker-nobody')).toEqual([]);
   });
 
-  it('includes expired-but-not-yet-cleaned leases (reflects raw table state)', () => {
-    // getWorkerLeases doesn't filter by TTL — it reflects what's in the table.
-    // expireStaleLeases() is the cleanup mechanism.
+  it('filters expired leases from results', () => {
+    // getWorkerLeases now filters by TTL — only active leases returned.
     const past = Math.floor(Date.now() / 1000) - 700;
     insertLease(db, '/src/expired.ts', 'worker-1', past, 600);
     const leases = getWorkerLeases(db, 'worker-1');
-    expect(leases).toContain('/src/expired.ts');
+    expect(leases).not.toContain('/src/expired.ts');
   });
 
   it('returns empty after releaseAllLeases', () => {

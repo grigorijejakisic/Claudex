@@ -78,8 +78,9 @@ const EMPTY_PACKAGE: WorkerContextPackage = {
  * @param opts.maxTokens   - Total token cap (default 3000)
  * @param opts.includeExperience - Whether to include experience warnings (default true)
  * @param opts.fileScope   - If provided, filter hot files to this set; else top by pressure
+ * @param opts.projectDir  - Explicit project root directory for primer lookup (avoids CWD dependency)
  */
-export function assembleWorkerContext(
+export async function assembleWorkerContext(
   db: Database,
   taskDescription: string,
   project: string,
@@ -87,8 +88,9 @@ export function assembleWorkerContext(
     maxTokens?: number;
     includeExperience?: boolean;
     fileScope?: string[];
+    projectDir?: string;
   },
-): WorkerContextPackage {
+): Promise<WorkerContextPackage> {
   try {
     const maxTokens = opts?.maxTokens ?? DEFAULT_MAX_TOKENS;
     const includeExperience = opts?.includeExperience !== false; // default true
@@ -100,7 +102,7 @@ export function assembleWorkerContext(
     // --- Section 1: Experience warnings (Hot, 500 tokens) ---
     let experienceWarnings = '';
     if (includeExperience) {
-      experienceWarnings = assembleExperienceSection(db, taskDescription, project, BUDGET_EXPERIENCE);
+      experienceWarnings = assembleExperienceSection(db, taskDescription, project, BUDGET_EXPERIENCE, opts?.fileScope);
     }
     const expCost = estimateTokens(experienceWarnings);
     if (expCost <= remaining) {
@@ -137,19 +139,32 @@ export function assembleWorkerContext(
     // --- Section 5: Primer excerpt (Cold, 500 tokens) ---
     let primer = '';
     if (remaining > 0) {
-      primer = assemblePrimerSection(project, Math.min(BUDGET_PRIMER, remaining));
+      primer = assemblePrimerSection(project, Math.min(BUDGET_PRIMER, remaining), opts?.projectDir);
       const cost = estimateTokens(primer);
       remaining = Math.max(0, remaining - cost);
     }
 
     // --- Format combined output ---
-    const formatted = formatWorkerContext({
+    let formatted = formatWorkerContext({
       experienceWarnings,
       learnings,
       relevantArtifacts,
       hotFiles,
       primer,
     });
+
+    // --- Hard-cap: trim at section boundaries (## headers) to avoid breaking mid-XML ---
+    const tokens = estimateTokens(formatted);
+    if (tokens > maxTokens) {
+      // Split into sections at ## boundaries, trim from the end
+      const sectionBreaks = formatted.split(/(?=^## )/m);
+      let current = tokens;
+      while (current > maxTokens && sectionBreaks.length > 1) {
+        const removed = sectionBreaks.pop()!;
+        current -= estimateTokens(removed);
+      }
+      formatted = sectionBreaks.join('').trimEnd();
+    }
 
     const tokenBudget = estimateTokens(formatted);
 
@@ -174,15 +189,31 @@ export function assembleWorkerContext(
 /**
  * Experience warnings: FTS5 match against task description.
  * Uses existing findMatchingPatterns + renderExperienceWarnings (same path as main assembler).
+ * When fileScope is provided, augments the query with path segments so patterns about
+ * specific files are found even if the task description doesn't mention them by name.
  */
 function assembleExperienceSection(
   db: Database,
-  query: string,
+  taskDescription: string,
   project: string,
   budget: number,
+  fileScope?: string[],
 ): string {
   try {
-    if (!query || query.length < 3) return '';
+    if (!taskDescription || taskDescription.length < 3) return '';
+
+    // Augment query with file scope paths so experience patterns about specific files
+    // are found even if the task description doesn't mention them by name.
+    let query = taskDescription;
+    if (fileScope && fileScope.length > 0) {
+      const pathTokens = fileScope
+        .flatMap(f => f.split(/[/\\]/).filter(seg => seg.length > 2 && !seg.includes('.')))
+        .slice(0, 5);
+      if (pathTokens.length > 0) {
+        query = `${taskDescription} ${pathTokens.join(' ')}`;
+      }
+    }
+
     const patterns = findMatchingPatterns(db, query, project, 3);
     if (patterns.length === 0) return '';
     const section = renderExperienceWarnings(patterns);
@@ -297,13 +328,13 @@ function assembleHotFilesSection(
 function assemblePrimerSection(
   project: string,
   budget: number,
+  projectDir?: string,
 ): string {
   try {
-    // PROJECT_PRIMER.md lives at the project root. We receive project (name),
-    // not projectDir. Use cwd-relative lookup: walk up from cwd looking for
-    // PROJECT_PRIMER.md, or skip if not found. This is best-effort — the primer
-    // is a Cold section and failure is acceptable.
-    const primerContent = readProjectPrimer(project);
+    // PROJECT_PRIMER.md lives at the project root. When projectDir is provided,
+    // use it directly instead of relying on CWD (which may not match project root
+    // when the CLI passes a logical project ID).
+    const primerContent = readProjectPrimer(project, projectDir);
     if (!primerContent) return '';
 
     const extracted = extractPrimerSections(primerContent, [
@@ -323,12 +354,15 @@ function assemblePrimerSection(
 
 /**
  * Attempts to read PROJECT_PRIMER.md.
- * Tries cwd and common project root locations. Non-throwing, returns null on miss.
+ * When projectDir is provided, uses it directly (avoids CWD dependency).
+ * Falls back to cwd and project-as-path candidates. Non-throwing, returns null on miss.
  */
-function readProjectPrimer(project: string): string | null {
+function readProjectPrimer(project: string, projectDir?: string): string | null {
   try {
-    // Try cwd-relative (most common case when claudex runs inside project)
     const candidates = [
+      // Explicit project directory takes priority (avoids CWD dependency)
+      ...(projectDir ? [path.join(projectDir, 'PROJECT_PRIMER.md')] : []),
+      // Fallback: cwd-relative (most common case when claudex runs inside project)
       path.join(process.cwd(), 'PROJECT_PRIMER.md'),
       // Also try as absolute if project looks like a path
       ...(project.includes('/') || project.includes('\\')
@@ -352,7 +386,8 @@ function readProjectPrimer(project: string): string | null {
 
 /**
  * Extracts named sections from markdown primer content.
- * Matches headings (##, ###) containing any of the given section names.
+ * Matches headings containing any of the given section names.
+ * Terminates extraction when a heading at the same level or higher is encountered.
  * Returns extracted content joined, or null if none found.
  */
 function extractPrimerSections(content: string, sectionNames: string[]): string | null {
@@ -362,12 +397,15 @@ function extractPrimerSections(content: string, sectionNames: string[]): string 
 
     let inSection = false;
     let currentSectionLines: string[] = [];
+    /** Heading level (number of #'s) of the currently captured target section. */
+    let targetLevel = 0;
 
     for (const line of lines) {
       // Check if this line is a heading that matches one of our target sections
-      const headingMatch = line.match(/^#{1,3}\s+(.+)$/);
+      const headingMatch = line.match(/^(#{1,6})\s+(.+)$/);
       if (headingMatch) {
-        const headingText = headingMatch[1].trim();
+        const headingLevel = headingMatch[1].length;
+        const headingText = headingMatch[2].trim();
         const isTargetSection = sectionNames.some(name =>
           headingText.toLowerCase().includes(name.toLowerCase()),
         );
@@ -379,14 +417,16 @@ function extractPrimerSections(content: string, sectionNames: string[]): string 
             currentSectionLines = [];
           }
           inSection = true;
+          targetLevel = headingLevel;
           currentSectionLines.push(line);
-        } else if (inSection && headingMatch[0].startsWith('##') && !headingMatch[0].startsWith('###')) {
-          // Top-level heading terminates current section
+        } else if (inSection && headingLevel <= targetLevel) {
+          // A heading at the same level or higher terminates the current section
           if (currentSectionLines.length > 0) {
             extracted.push(currentSectionLines.join('\n').trim());
             currentSectionLines = [];
           }
           inSection = false;
+          targetLevel = 0;
         } else if (!inSection) {
           // Not in a target section, skip
         }

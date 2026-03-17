@@ -82,7 +82,12 @@ export function renderExperienceWarnings(patterns: ExperiencePattern[]): string 
     if (!patterns || patterns.length === 0) return '';
 
     // Escape closing XML tags in pattern text to prevent boundary breakout
-    const escapeXml = (s: string) => s.replace(/<\//g, '&lt;/');
+    const escapeXml = (s: string) =>
+      s.replace(/&/g, '&amp;')
+       .replace(/</g, '&lt;')
+       .replace(/>/g, '&gt;')
+       .replace(/"/g, '&quot;')
+       .replace(/'/g, '&apos;');
 
     let inner = '## Past Experience — Relevant Patterns\n\n';
 

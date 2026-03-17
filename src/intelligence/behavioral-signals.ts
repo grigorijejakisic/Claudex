@@ -10,7 +10,10 @@
 import { createHash } from 'crypto';
 
 /** Patterns for file paths that are likely to contain secrets. */
-const SECRET_PATH_PATTERNS = /\.env|credentials|secret|token|key|password|auth/i;
+const SECRET_PATH_PATTERNS = /(?:^|[\/\\._-])(?:\.env|credentials|secrets?|tokens?|passwords?|private[_-]?keys?)(?:[\/\\._-]|$)/i;
+
+/** Patterns for content that is likely to contain secrets (Bearer tokens, API keys, PEM blocks, etc.). */
+export const SECRET_CONTENT_PATTERNS = /(?:Bearer\s+[A-Za-z0-9\-._~+/]+=*|sk-[A-Za-z0-9]{20,}|AKIA[A-Z0-9]{16}|-----BEGIN\s+(?:RSA\s+)?PRIVATE\s+KEY-----|ghp_[A-Za-z0-9]{36}|xox[bpras]-[A-Za-z0-9\-]+)/;
 
 /**
  * Returns true if the file path matches known secret file patterns.
@@ -18,6 +21,14 @@ const SECRET_PATH_PATTERNS = /\.env|credentials|secret|token|key|password|auth/i
  */
 function isSecretPath(filePath: string): boolean {
   return SECRET_PATH_PATTERNS.test(filePath);
+}
+
+/**
+ * Returns true if the content contains patterns that look like secrets.
+ * Used to redact tool output before signature storage.
+ */
+function hasSecretContent(content: string): boolean {
+  return SECRET_CONTENT_PATTERNS.test(content);
 }
 
 /**
@@ -31,7 +42,9 @@ export function buildToolSignature(toolName: string, toolInput: Record<string, u
     const rawContent = String(toolInput?.content ?? toolInput?.command ?? '');
 
     // Redact content if the file path matches known secret patterns
-    const safeContent = filePath && isSecretPath(filePath) ? '[REDACTED]' : rawContent;
+    const safeContent = (filePath && isSecretPath(filePath)) || hasSecretContent(rawContent)
+      ? '[REDACTED]'
+      : rawContent;
 
     if (filePath || safeContent) {
       // Hash the content portion to avoid storing raw code/command fragments in signatures
@@ -41,7 +54,9 @@ export function buildToolSignature(toolName: string, toolInput: Record<string, u
       return `${toolName}:${filePath}:${contentHash}`;
     }
 
-    return `${toolName}:${JSON.stringify(toolInput).slice(0, 100)}`;
+    const keys = Object.keys(toolInput).sort().join(',');
+    const inputHash = createHash('sha256').update(`${toolName}:${keys}`).digest('hex').slice(0, 12);
+    return `${toolName}:shape:${inputHash}`;
   } catch {
     return toolName || '';
   }

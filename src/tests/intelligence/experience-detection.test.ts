@@ -8,6 +8,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import {
   detectCorrectionSignal,
   extractPatternFromAssistantText,
+  extractLessonFromUserCorrection,
 } from '../../intelligence/correction-detection.js';
 import { buildToolSignature } from '../../intelligence/behavioral-signals.js';
 import { createTestDbWithSession, type TestDatabase } from '../helpers/test-db.js';
@@ -386,6 +387,173 @@ describe('pattern extraction', () => {
         'The fix is something.',
         undefined as unknown as string,
       )).not.toThrow();
+    });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// extractLessonFromUserCorrection (PRIMARY extraction path)
+// ---------------------------------------------------------------------------
+
+describe('extractLessonFromUserCorrection', () => {
+  describe('lesson extraction', () => {
+    it('extracts "always use X" pattern', () => {
+      const result = extractLessonFromUserCorrection(
+        'I told you we always use oauth for authentication, never API keys!',
+      );
+      expect(result).not.toBeNull();
+      expect(result!.lesson).toContain('oauth');
+      expect(result!.pattern_type).toBe('correction');
+    });
+
+    it('extracts "just use X" pattern', () => {
+      const result = extractLessonFromUserCorrection(
+        'no, just use the existing database connection pool',
+      );
+      expect(result).not.toBeNull();
+      expect(result!.lesson).toContain('database connection pool');
+    });
+
+    it('extracts "use X instead" pattern', () => {
+      const result = extractLessonFromUserCorrection(
+        "that's wrong, use parameterized queries instead of string concatenation",
+      );
+      expect(result).not.toBeNull();
+      expect(result!.lesson).toContain('parameterized queries');
+    });
+
+    it('extracts "we use X" declarative policy', () => {
+      const result = extractLessonFromUserCorrection(
+        "that's not right, we only use TypeScript strict mode in this project",
+      );
+      expect(result).not.toBeNull();
+      expect(result!.lesson).toContain('TypeScript strict mode');
+    });
+
+    it('extracts "it should be X" pattern', () => {
+      const result = extractLessonFromUserCorrection(
+        'same mistake again, it should always be camelCase not snake_case',
+      );
+      expect(result).not.toBeNull();
+      expect(result!.lesson).toContain('camelCase');
+    });
+  });
+
+  describe('anti-pattern extraction', () => {
+    it('extracts "never X" anti-pattern', () => {
+      const result = extractLessonFromUserCorrection(
+        'I told you never use API keys for authentication, always use oauth!',
+      );
+      expect(result).not.toBeNull();
+      expect(result!.anti_pattern).toBeTruthy();
+      expect(result!.anti_pattern).toContain('API keys');
+    });
+
+    it('extracts "stop doing X" anti-pattern', () => {
+      const result = extractLessonFromUserCorrection(
+        "you keep doing this! stop suggesting quick fixes, we always do proper fixes",
+      );
+      expect(result).not.toBeNull();
+      expect(result!.anti_pattern).toContain('quick fixes');
+    });
+  });
+
+  describe('combined lesson + anti-pattern', () => {
+    it('extracts both lesson and anti-pattern from one prompt', () => {
+      const result = extractLessonFromUserCorrection(
+        'I told you: always use oauth for server auth! never use API key credentials!',
+      );
+      expect(result).not.toBeNull();
+      expect(result!.lesson).toBeTruthy();
+      expect(result!.anti_pattern).toBeTruthy();
+    });
+
+    it('derives lesson from anti-pattern when no explicit lesson', () => {
+      const result = extractLessonFromUserCorrection(
+        "that's wrong, never use mocks for integration tests",
+      );
+      expect(result).not.toBeNull();
+      // Should derive "avoid mocks for integration tests"
+      expect(result!.lesson).toMatch(/avoid/i);
+    });
+  });
+
+  describe('severity escalation', () => {
+    it('marks as critical when user indicates repeated correction', () => {
+      const result = extractLessonFromUserCorrection(
+        'I told you this before! we always use oauth!',
+      );
+      expect(result).not.toBeNull();
+      expect(result!.severity).toBe('critical');
+    });
+
+    it('marks as critical for "how many times"', () => {
+      const result = extractLessonFromUserCorrection(
+        'how many times do I have to say this? just use the standard config!',
+      );
+      expect(result).not.toBeNull();
+      expect(result!.severity).toBe('critical');
+    });
+
+    it('marks as important (non-escalated) for first correction', () => {
+      const result = extractLessonFromUserCorrection(
+        "no, actually we use a different approach. just use the shared helper function",
+      );
+      expect(result).not.toBeNull();
+      expect(result!.severity).toBe('important');
+    });
+  });
+
+  describe('trigger_context', () => {
+    it('strips correction signal phrases from trigger_context', () => {
+      const result = extractLessonFromUserCorrection(
+        'I told you about SSH key verification always use the standard approach',
+      );
+      expect(result).not.toBeNull();
+      expect(result!.trigger_context).not.toMatch(/I\s+told\s+you/i);
+      expect(result!.trigger_context).toContain('SSH key verification');
+    });
+
+    it('caps trigger_context at 120 chars', () => {
+      const longPrompt = 'same mistake again ' + 'a'.repeat(200) + ' always use the correct approach';
+      const result = extractLessonFromUserCorrection(longPrompt);
+      if (result) {
+        expect(result.trigger_context.length).toBeLessThanOrEqual(120);
+      }
+    });
+  });
+
+  describe('null return cases', () => {
+    it('returns null for normal questions (no lesson or anti-pattern)', () => {
+      expect(extractLessonFromUserCorrection(
+        'How do I configure the database connection?',
+      )).toBeNull();
+    });
+
+    it('returns null for input shorter than 10 chars', () => {
+      expect(extractLessonFromUserCorrection('fix it')).toBeNull();
+    });
+
+    it('returns null for empty input', () => {
+      expect(extractLessonFromUserCorrection('')).toBeNull();
+    });
+
+    it('handles null/undefined gracefully (non-throwing)', () => {
+      expect(() => extractLessonFromUserCorrection(null as unknown as string)).not.toThrow();
+      expect(() => extractLessonFromUserCorrection(undefined as unknown as string)).not.toThrow();
+    });
+
+    it('returns null when trigger_context would be too short', () => {
+      // Very short prompt — after stripping correction phrases, < 5 chars remain
+      expect(extractLessonFromUserCorrection('we already ok')).toBeNull();
+    });
+  });
+
+  describe('input capping', () => {
+    it('caps input at 500 chars to prevent regex backtracking', () => {
+      const longInput = 'I told you always use ' + 'x'.repeat(600) + ' important';
+      // Should not hang or throw — the regex operates on capped input
+      expect(() => extractLessonFromUserCorrection(longInput)).not.toThrow();
     });
   });
 });

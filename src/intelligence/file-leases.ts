@@ -13,6 +13,7 @@
 
 import type { Database } from 'better-sqlite3';
 import { cachedPrepare } from '../core/stmt-cache.js';
+import { emitErrorTelemetry } from '../observability/error-telemetry.js';
 
 // ---------------------------------------------------------------------------
 // requestLease
@@ -38,6 +39,8 @@ export function requestLease(
   workerId: string,
   ttlSeconds: number = 600,
 ): boolean {
+  if (ttlSeconds < 1) return false;
+
   try {
     const now = Math.floor(Date.now() / 1000);
 
@@ -72,7 +75,8 @@ export function requestLease(
     });
 
     return doRequest();
-  } catch {
+  } catch (e) {
+    emitErrorTelemetry(db, '', 'file-leases/requestLease', e);
     return false;
   }
 }
@@ -92,8 +96,8 @@ export function releaseLease(db: Database, filePath: string, workerId: string): 
     cachedPrepare(db,
       `DELETE FROM file_leases WHERE file_path = ? AND worker_id = ?`
     ).run(filePath, workerId);
-  } catch {
-    // Non-throwing
+  } catch (e) {
+    emitErrorTelemetry(db, '', 'file-leases/releaseLease', e);
   }
 }
 
@@ -111,8 +115,8 @@ export function releaseAllLeases(db: Database, workerId: string): void {
     cachedPrepare(db,
       `DELETE FROM file_leases WHERE worker_id = ?`
     ).run(workerId);
-  } catch {
-    // Non-throwing
+  } catch (e) {
+    emitErrorTelemetry(db, '', 'file-leases/releaseAllLeases', e);
   }
 }
 
@@ -136,7 +140,8 @@ export function getLeaseHolder(db: Database, filePath: string): string | null {
     const expiresAt = row.granted_at_epoch + row.ttl_seconds;
     if (expiresAt < now) return null; // Expired — treat as no holder
     return row.worker_id;
-  } catch {
+  } catch (e) {
+    emitErrorTelemetry(db, '', 'file-leases/getLeaseHolder', e);
     return null;
   }
 }
@@ -157,7 +162,8 @@ export function expireStaleLeases(db: Database): number {
       `DELETE FROM file_leases WHERE granted_at_epoch + ttl_seconds < ?`
     ).run(now);
     return result.changes;
-  } catch {
+  } catch (e) {
+    emitErrorTelemetry(db, '', 'file-leases/expireStaleLeases', e);
     return 0;
   }
 }
@@ -167,17 +173,18 @@ export function expireStaleLeases(db: Database): number {
 // ---------------------------------------------------------------------------
 
 /**
- * Returns the list of file paths currently leased by the given worker.
- * Includes both active and expired-but-not-yet-cleaned leases held by this worker.
+ * Returns the list of file paths with active (non-expired) leases held by the given worker.
  * Non-throwing — returns [] on error.
  */
 export function getWorkerLeases(db: Database, workerId: string): string[] {
   try {
+    const now = Math.floor(Date.now() / 1000);
     const rows = cachedPrepare(db,
-      `SELECT file_path FROM file_leases WHERE worker_id = ?`
-    ).all(workerId) as Array<{ file_path: string }>;
+      `SELECT file_path FROM file_leases WHERE worker_id = ? AND granted_at_epoch + ttl_seconds >= ?`
+    ).all(workerId, now) as Array<{ file_path: string }>;
     return rows.map(r => r.file_path);
-  } catch {
+  } catch (e) {
+    emitErrorTelemetry(db, '', 'file-leases/getWorkerLeases', e);
     return [];
   }
 }

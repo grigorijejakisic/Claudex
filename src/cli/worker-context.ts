@@ -70,7 +70,7 @@ function parseArgs(argv: string[]): ParsedArgs {
 // Section count helper
 // ---------------------------------------------------------------------------
 
-function countSections(pkg: ReturnType<typeof assembleWorkerContext>): number {
+function countSections(pkg: Awaited<ReturnType<typeof assembleWorkerContext>>): number {
   return [
     pkg.experienceWarnings,
     pkg.learnings,
@@ -84,7 +84,7 @@ function countSections(pkg: ReturnType<typeof assembleWorkerContext>): number {
 // Main
 // ---------------------------------------------------------------------------
 
-function main(): void {
+async function main(): Promise<void> {
   const args = parseArgs(process.argv.slice(2));
 
   if (!args.taskDescription) {
@@ -111,7 +111,7 @@ function main(): void {
   }
 
   try {
-    const pkg = assembleWorkerContext(db, args.taskDescription, project, {
+    const pkg = await assembleWorkerContext(db, args.taskDescription, project, {
       maxTokens: args.maxTokens,
       fileScope: args.files.length > 0 ? args.files : undefined,
     });
@@ -145,5 +145,5 @@ const isDirectExecution =
   (process.argv[1].includes('worker-context') || process.argv[1].endsWith('worker-context.cjs'));
 
 if (isDirectExecution) {
-  main();
+  main().catch((e) => { process.stderr.write(String(e) + '\n'); process.exit(1); });
 }

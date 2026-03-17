@@ -129,6 +129,13 @@ const main = wrapHook('UserPromptSubmit', async (input, ctx) => {
   // Experience pattern detection
   // ---------------------------------------------------------------------------
 
+  // Reset correction flags at turn start — stale flags from a previous turn
+  // must not leak into this turn's Stop hook processing (R6).
+  setExperienceFlags(ctx.db, input.session_id, {
+    correction_flagged: false,
+    correction_prompt: '',
+  });
+
   // Correction signal detection — flag the turn for Stop hook extraction.
   // Pattern matching and injection is handled exclusively by the assembler;
   // the hook only detects corrections to avoid double injection and inflated counts.

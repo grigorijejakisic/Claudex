@@ -18,6 +18,7 @@
 
 import type { Database } from 'better-sqlite3';
 import { getThreadState, upsertThreadState } from '../core/thread.js';
+import { emitErrorTelemetry } from '../observability/error-telemetry.js';
 
 // Reserved role keys for experience pattern state
 const EXP_FLAGS_ROLE = '__exp_flags';
@@ -37,12 +38,16 @@ function readRoleExchange<T>(
   role: string,
   defaults: T,
 ): T {
-  const state = getThreadState(db, sessionId);
-  if (!state) return defaults;
-  const entry = state.key_exchanges.find(e => e.role === role);
-  if (!entry) return defaults;
-  const parsed = JSON.parse(entry.gist);
-  return parsed as T;
+  try {
+    const state = getThreadState(db, sessionId);
+    if (!state) return defaults;
+    const entry = state.key_exchanges.find(e => e.role === role);
+    if (!entry) return defaults;
+    const parsed = JSON.parse(entry.gist);
+    return parsed as T;
+  } catch {
+    return defaults;
+  }
 }
 
 /**
@@ -183,8 +188,8 @@ export function setExperienceFlags(
       correction_prompt: updates.correction_prompt ?? current.correction_prompt,
     };
     writeRoleExchange(db, sessionId, EXP_FLAGS_ROLE, merged);
-  } catch {
-    // Non-throwing
+  } catch (e) {
+    emitErrorTelemetry(db, sessionId, 'set_experience_flags', e);
   }
 }
 
@@ -208,7 +213,11 @@ export function getBehavioralCounters(
     const parsed = readRoleExchange<Record<string, unknown>>(db, sessionId, EXP_BEHAVIORAL_ROLE, {});
     return {
       file_edit_counts: parsed.file_edit_counts && typeof parsed.file_edit_counts === 'object'
-        ? parsed.file_edit_counts as Record<string, number>
+        ? Object.fromEntries(
+            Object.entries(parsed.file_edit_counts as Record<string, unknown>)
+              .map(([k, v]) => [k, Number(v)])
+              .filter(([, v]) => Number.isFinite(v))
+          ) as Record<string, number>
         : {},
       tool_call_patterns: Array.isArray(parsed.tool_call_patterns)
         ? (parsed.tool_call_patterns as Array<{ tool: string; sig: string }>).slice(-20)
@@ -235,8 +244,8 @@ export function setBehavioralCounters(
       tool_call_patterns: counters.tool_call_patterns.slice(-20),
     };
     writeRoleExchange(db, sessionId, EXP_BEHAVIORAL_ROLE, capped);
-  } catch {
-    // Non-throwing
+  } catch (e) {
+    emitErrorTelemetry(db, sessionId, 'set_behavioral_counters', e);
   }
 }
 
