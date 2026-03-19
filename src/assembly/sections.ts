@@ -555,6 +555,9 @@ const ARTIFACT_TYPE_ABBREV: Record<string, string> = {
   hot_file: 'hot',
   flow: 'flow',
   milestone: 'milestone',
+  memory_file: 'memory',
+  session_log: 'session',
+  handoff: 'handoff',
 };
 
 /**
@@ -621,9 +624,20 @@ export function formatMaterializationLayer(
       const age = a.timestamp_epoch ? formatRelativeTime(a.timestamp_epoch) : 'unknown';
       const sessionAttr = getSessionAttribution(a.session_id, currentSessionId);
       const projectTag = a.project ? ` [${a.project}]` : '';
-      lines.push(`### [${abbrev}]${projectTag} ${a.summary} — ${age}, ${sessionAttr}`);
+
+      // Provenance: for ingested files, show source path from artifact_ref
+      const isFileArtifact = a.artifact_type === 'memory_file' || a.artifact_type === 'session_log' || a.artifact_type === 'handoff';
+      const provenance = isFileArtifact && a.artifact_ref
+        ? ` (from: ${path.basename(a.artifact_ref)})`
+        : '';
+
+      lines.push(`### [${abbrev}]${projectTag}${provenance} ${a.summary} — ${age}, ${sessionAttr}`);
       if (a.content) {
-        lines.push(a.content);
+        // File artifacts are untrusted content — wrap in data boundary markers
+        // to prevent prompt injection (same guard as identity/primer files)
+        lines.push(isFileArtifact
+          ? wrapFileContent(a.content, a.artifact_ref ?? a.artifact_type)
+          : a.content);
         lines.push('');
       }
     }

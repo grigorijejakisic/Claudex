@@ -233,7 +233,8 @@ CREATE TABLE IF NOT EXISTS artifacts (
   session_id TEXT NOT NULL,
   project TEXT NOT NULL,
   artifact_type TEXT NOT NULL CHECK (artifact_type IN (
-    'observation', 'learning', 'decision', 'hot_file', 'flow', 'milestone'
+    'observation', 'learning', 'decision', 'hot_file', 'flow', 'milestone',
+    'memory_file', 'session_log', 'handoff'
   )),
   artifact_ref TEXT,
   summary TEXT NOT NULL,
@@ -625,7 +626,7 @@ function migrateSchemaFixes(db: Database): void {
  *
  * Dual version tracking:
  * Both `PRAGMA user_version` and `schema_versions` table are needed:
- *   - `PRAGMA user_version = 2` — fast O(1) check on every DB open (runMigrations hot path)
+ *   - `PRAGMA user_version = 3` — fast O(1) check on every DB open (runMigrations hot path)
  *   - `schema_versions.version = 300` — semantic version for cross-version detection
  *     (detectV2Database, verifyMigration, migrateFromV2)
  * user_version gates incremental ALTER migrations; schema_versions gates data migrations
@@ -635,8 +636,15 @@ export function runMigrations(db: Database): void {
   const row = db.pragma('user_version') as Array<{ user_version: number }>;
   const version = row[0]?.user_version ?? 0;
 
-  if (version >= 2) {
+  if (version >= 3) {
     return; // Already current — no-op
+  }
+
+  if (version === 2) {
+    if (migrateV2toV3(db)) {
+      db.pragma('user_version = 3');
+    }
+    return;
   }
 
   if (version === 0) {
@@ -646,7 +654,11 @@ export function runMigrations(db: Database): void {
     if (tables.includes('observations')) {
       // Legacy DB — run all migrations from V1
       migrateV1toV2(db);
-      db.pragma('user_version = 2');
+      if (migrateV2toV3(db)) {
+        db.pragma('user_version = 3');
+      } else {
+        db.pragma('user_version = 2');
+      }
     }
     // Fresh DB — no tables yet; initializeSchema() will create them and set version.
     // Don't run CREATE TABLE here — that's initializeSchema()'s job.
@@ -655,7 +667,75 @@ export function runMigrations(db: Database): void {
 
   if (version === 1) {
     migrateV1toV2(db);
-    db.pragma('user_version = 2');
+    if (migrateV2toV3(db)) {
+      db.pragma('user_version = 3');
+    } else {
+      db.pragma('user_version = 2');
+    }
+  }
+}
+
+/**
+ * Extends artifact_type CHECK constraint to include file-based types
+ * (memory_file, session_log, handoff) for Claudex Recall.
+ * SQLite doesn't support ALTER CHECK — must rebuild the table.
+ * Idempotent — safe to call on DBs that already have the new types.
+ */
+function migrateV2toV3(db: Database): boolean {
+  try {
+    // Check if artifacts table exists
+    const tables = (db.prepare("SELECT name FROM sqlite_master WHERE type='table'").all() as Array<{ name: string }>).map(t => t.name);
+    if (!tables.includes('artifacts')) return true; // Fresh DB — DDL will create correct table
+
+    // Check if the CHECK constraint already allows new types via SAVEPOINT (no data risk)
+    try {
+      db.exec(`SAVEPOINT v3_probe`);
+      db.exec(`INSERT INTO artifacts (session_id, project, artifact_type, artifact_ref, summary, state, ttl, importance)
+        VALUES ('__v3_probe__', '__v3_probe__', 'memory_file', NULL, '__v3_probe__', 'packed', 0, 1)`);
+      db.exec(`ROLLBACK TO v3_probe`);
+      db.exec(`RELEASE v3_probe`);
+      return true; // Constraint already allows new types
+    } catch {
+      try { db.exec('ROLLBACK TO v3_probe'); } catch { /* */ }
+      try { db.exec('RELEASE v3_probe'); } catch { /* */ }
+    }
+
+    // Rebuild table with extended CHECK constraint (in a transaction)
+    db.exec('BEGIN');
+    try {
+      db.exec(`
+        CREATE TABLE artifacts_new (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          session_id TEXT NOT NULL,
+          project TEXT NOT NULL,
+          artifact_type TEXT NOT NULL CHECK (artifact_type IN (
+            'observation', 'learning', 'decision', 'hot_file', 'flow', 'milestone',
+            'memory_file', 'session_log', 'handoff'
+          )),
+          artifact_ref TEXT,
+          summary TEXT NOT NULL,
+          content TEXT,
+          state TEXT NOT NULL DEFAULT 'fresh'
+            CHECK (state IN ('fresh', 'packed', 'materialized')),
+          ttl INTEGER NOT NULL DEFAULT 3,
+          importance INTEGER NOT NULL DEFAULT 3 CHECK (importance BETWEEN 1 AND 5),
+          timestamp_epoch INTEGER NOT NULL DEFAULT (unixepoch()),
+          last_materialized_epoch INTEGER
+        );
+        INSERT INTO artifacts_new SELECT * FROM artifacts;
+        DROP TABLE artifacts;
+        ALTER TABLE artifacts_new RENAME TO artifacts;
+        CREATE INDEX IF NOT EXISTS idx_artifacts_project_state ON artifacts(project, state);
+        CREATE INDEX IF NOT EXISTS idx_artifacts_type ON artifacts(artifact_type);
+      `);
+      db.exec('COMMIT');
+      return true;
+    } catch {
+      try { db.exec('ROLLBACK'); } catch { /* */ }
+      return false;
+    }
+  } catch {
+    return false;
   }
 }
 
@@ -730,7 +810,7 @@ export function initializeSchema(db: Database): void {
   } else {
     db.prepare('INSERT OR IGNORE INTO schema_versions (version) VALUES (?)').run(SCHEMA_VERSION);
   }
-  db.pragma('user_version = 2');
+  db.pragma('user_version = 3');
 }
 
 /**

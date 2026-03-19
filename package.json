@@ -8,7 +8,8 @@
     "test": "vitest run",
     "setup": "node dist/cli/setup.cjs",
     "health": "node dist/cli/health.cjs",
-    "projects-touched": "node dist/cli/projects-touched.cjs"
+    "projects-touched": "node dist/cli/projects-touched.cjs",
+    "recall": "node dist/cli/recall.cjs"
   },
   "dependencies": {
     "better-sqlite3": "^11.7.0",

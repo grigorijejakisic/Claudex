@@ -10,6 +10,7 @@ import { pruneTelemetry, emitTelemetry } from '../../observability/telemetry.js'
 import { emitErrorTelemetry } from '../../observability/error-telemetry.js';
 import { assembleFullContext } from '../../assembly/assembler.js';
 import { getIdentityDir } from '../../shared/paths.js';
+import { ingestFileArtifacts, pruneStaleFileArtifacts } from '../../core/file-ingester.js';
 
 const main = wrapHook('SessionStart', async (input, ctx) => {
   // Each operation isolated — if A fails, B and C still run
@@ -41,6 +42,19 @@ const main = wrapHook('SessionStart', async (input, ctx) => {
     }
   } catch (e) {
     emitErrorTelemetry(ctx.db, input.session_id, 'session_start/prune_telemetry', e);
+  }
+
+  // Ingest file-based context sources (memory files, session logs, handoffs)
+  // into the artifact pipeline so searchArtifactsGlobal finds them.
+  try {
+    const ingestResult = ingestFileArtifacts(ctx.db, input.session_id, ctx.project, input.cwd);
+    if (ingestResult.errors > 0) {
+      emitErrorTelemetry(ctx.db, input.session_id, 'session_start/file_ingest',
+        new Error(`${ingestResult.errors} file(s) failed to ingest`));
+    }
+    pruneStaleFileArtifacts(ctx.db, ctx.project);
+  } catch (e) {
+    emitErrorTelemetry(ctx.db, input.session_id, 'session_start/file_ingest', e);
   }
 
   const payload = assembleFullContext({

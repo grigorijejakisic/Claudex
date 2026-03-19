@@ -18,7 +18,7 @@ import { tokenizeQuery } from '../shared/search-utils.js';
 export type ArtifactState = 'fresh' | 'packed' | 'materialized';
 
 /** Valid artifact type discriminators. */
-export type ArtifactType = 'observation' | 'learning' | 'decision' | 'hot_file' | 'flow' | 'milestone';
+export type ArtifactType = 'observation' | 'learning' | 'decision' | 'hot_file' | 'flow' | 'milestone' | 'memory_file' | 'session_log' | 'handoff';
 
 /** Row shape returned from artifact queries. */
 export interface ArtifactRow {
@@ -273,7 +273,8 @@ function searchArtifactsInternal(
     ? 'CASE WHEN a.project = ? THEN 0 ELSE 1 END,'
     : '';
 
-  // Stage 1: FTS5 search on observations → artifact_ref join
+  // Stage 1: FTS5 search on observation artifacts (via observations_fts join)
+  let ftsResults: ArtifactRow[] = [];
   try {
     const keywords = tokenizeQuery(query);
     if (keywords.length > 0) {
@@ -290,20 +291,21 @@ function searchArtifactsInternal(
       const params = globalScope
         ? [ftsQuery, currentProject, limit]
         : [currentProject, ftsQuery, limit];
-      const ftsResults = cachedPrepare(db, sql).all(...params) as ArtifactRow[];
-      if (ftsResults.length > 0) return ftsResults;
+      ftsResults = cachedPrepare(db, sql).all(...params) as ArtifactRow[];
     }
   } catch {
     // FTS may fail on invalid query syntax — fall through to keyword search
   }
 
-  // Stage 2: Keyword LIKE fallback
+  // Stage 2: Keyword LIKE search on all artifacts (summary + content)
+  // Covers file-type artifacts (memory_file, session_log, handoff) which
+  // aren't in observations_fts, and acts as fallback for observation artifacts.
   try {
     const keywords = tokenizeQuery(query, 5);
     if (keywords.length === 0) return [];
 
-    const conditions = keywords.map(() => '(LOWER(summary) LIKE ?)').join(' OR ');
-    const likeParams = keywords.map(k => `%${k}%`);
+    const conditions = keywords.map(() => '(LOWER(summary) LIKE ? OR LOWER(content) LIKE ?)').join(' OR ');
+    const likeParams = keywords.flatMap(k => [`%${k}%`, `%${k}%`]);
     const projectWhere = globalScope ? '' : 'project = ? AND';
     const orderPrefixLike = globalScope
       ? 'CASE WHEN project = ? THEN 0 ELSE 1 END,'
@@ -318,9 +320,24 @@ function searchArtifactsInternal(
     const params = globalScope
       ? [...likeParams, currentProject, limit]
       : [currentProject, ...likeParams, limit];
-    return cachedPrepare(db, sql).all(...params) as ArtifactRow[];
+    const likeResults = cachedPrepare(db, sql).all(...params) as ArtifactRow[];
+
+    // Merge FTS1 + LIKE results, deduplicate by id, cap at limit
+    if (ftsResults.length === 0) return likeResults;
+    if (likeResults.length === 0) return ftsResults;
+
+    const seen = new Set<number>();
+    const merged: ArtifactRow[] = [];
+    for (const r of [...ftsResults, ...likeResults]) {
+      if (!seen.has(r.id)) {
+        seen.add(r.id);
+        merged.push(r);
+        if (merged.length >= limit) break;
+      }
+    }
+    return merged;
   } catch {
-    return [];
+    return ftsResults.length > 0 ? ftsResults : [];
   }
 }
 
