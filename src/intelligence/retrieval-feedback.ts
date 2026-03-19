@@ -54,8 +54,10 @@ export function updateRetrievalScore(
 
 /**
  * Detects whether the assistant's response references injected artifact content.
- * Uses Jaccard similarity on the first 500 tokens of output.
- * Returns true if overlap exceeds threshold.
+ * Two strategies:
+ * 1. File path match — if artifact summary contains a file path, check if assistant mentions it
+ * 2. Jaccard similarity — keyword overlap on first 500 tokens
+ * Returns true if either strategy matches.
  */
 export function wasArtifactReferenced(
   assistantOutput: string,
@@ -63,7 +65,18 @@ export function wasArtifactReferenced(
   threshold: number = 0.15,
 ): boolean {
   try {
-    // Cap to first ~2000 chars (roughly 500 tokens)
+    const outputLower = assistantOutput.slice(0, 2000).toLowerCase();
+
+    // Strategy 1: File path extraction — observation summaries are "Edit: stop.ts" format
+    const pathMatch = artifactSummary.match(/(?:Edit|Read|Write|Grep|Glob|Bash):\s*(.+)/);
+    if (pathMatch) {
+      const filePart = pathMatch[1].trim().toLowerCase();
+      // Check if assistant mentions the file name (basename)
+      const basename = filePart.split(/[/\\]/).pop() ?? filePart;
+      if (basename.length >= 3 && outputLower.includes(basename)) return true;
+    }
+
+    // Strategy 2: Jaccard similarity on keywords
     const outputTokens = new Set(tokenizeQuery(assistantOutput.slice(0, 2000), 50));
     const artifactTokens = new Set(tokenizeQuery(artifactSummary, 20));
 

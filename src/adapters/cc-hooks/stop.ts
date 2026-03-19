@@ -115,28 +115,26 @@ const main = wrapHook('Stop', async (input, ctx) => {
     ctx.config,
   );
 
-  // Retrieval feedback — score injected artifacts based on assistant output
+  // Retrieval feedback — score ALL recently-active artifacts, regardless of state.
+  // Fresh artifacts (from recent tool use) and materialized artifacts (from triggers)
+  // both appear in assembly output. Score them all based on whether the assistant
+  // referenced their content.
   try {
-    const flags = getExperienceFlags(ctx.db, input.session_id);
-    if (flags.injected_pattern_ids.length > 0) {
-      // Load artifact IDs that were injected this turn (materialized artifacts)
-      // Pattern IDs are experience patterns, not artifact IDs — but we can score
-      // any artifacts that were materialized during this session's assembly
-      const materializedRows = cachedPrepare(ctx.db,
+    if (lastAssistantText) {
+      const recentArtifacts = cachedPrepare(ctx.db,
         `SELECT id, summary FROM artifacts
-         WHERE project = ? AND state = 'materialized'
-         ORDER BY last_materialized_epoch DESC LIMIT 10`
+         WHERE project = ? AND state IN ('fresh', 'materialized')
+         ORDER BY timestamp_epoch DESC LIMIT 15`
       ).all(routedProject) as Array<{ id: number; summary: string }>;
 
-      if (materializedRows.length > 0) {
-        const artifactIds = materializedRows.map(r => r.id);
-        const summaryMap = new Map(materializedRows.map(r => [r.id, r.summary]));
+      if (recentArtifacts.length > 0) {
+        const flags = getExperienceFlags(ctx.db, input.session_id);
         processRetrievalFeedback(
           ctx.db,
-          artifactIds,
+          recentArtifacts.map(r => r.id),
           lastAssistantText,
           flags.correction_flagged,
-          summaryMap,
+          new Map(recentArtifacts.map(r => [r.id, r.summary])),
         );
       }
     }

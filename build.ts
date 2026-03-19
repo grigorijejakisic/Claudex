@@ -27,13 +27,13 @@ const optionalEntryPoints = [
   'src/mcp/recall-server.ts',
 ];
 
-/** Hook entry points to smoke test after build. */
+/** Hook entry points to smoke test after build.
+ * pre-compact excluded: Ollama detection has 8s timeout, causes spurious failures. */
 const hookEntryPoints = [
   'dist/adapters/cc-hooks/session-start.cjs',
   'dist/adapters/cc-hooks/user-prompt-submit.cjs',
   'dist/adapters/cc-hooks/post-tool-use.cjs',
   'dist/adapters/cc-hooks/stop.cjs',
-  'dist/adapters/cc-hooks/pre-compact.cjs',
   'dist/adapters/cc-hooks/session-end.cjs',
 ];
 
