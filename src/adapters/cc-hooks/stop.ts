@@ -15,6 +15,8 @@ import {
 } from '../shared/lifecycle.js';
 import { routeByContent, buildProjectIndex } from '../../shared/content-router.js';
 import { applyExperienceFeedback } from '../../intelligence/experience-scoring.js';
+import * as fs from 'fs';
+import * as path from 'path';
 import { getSessionEvents, synthesizeSessionSummary, saveSessionSummary } from '../../core/session-events.js';
 import { processRetrievalFeedback } from '../../intelligence/retrieval-feedback.js';
 import { getExperienceFlags } from '../../intelligence/experience-flags.js';
@@ -151,6 +153,43 @@ const main = wrapHook('Stop', async (input, ctx) => {
     }
   } catch (e) {
     emitErrorTelemetry(ctx.db, input.session_id, 'stop/session_summary', e);
+  }
+
+  // Behavioral gate: check if hook source is newer than dist (edited but not rebuilt)
+  let gateWarning = '';
+  try {
+    const srcDir = path.join(input.cwd, 'src', 'adapters', 'cc-hooks');
+    const distDir = path.join(input.cwd, 'dist', 'adapters', 'cc-hooks');
+    if (fs.existsSync(srcDir) && fs.existsSync(distDir)) {
+      const srcFiles = fs.readdirSync(srcDir).filter(f => f.endsWith('.ts'));
+      let newestSrc = 0;
+      for (const f of srcFiles) {
+        try {
+          const mt = fs.statSync(path.join(srcDir, f)).mtimeMs;
+          if (mt > newestSrc) newestSrc = mt;
+        } catch { /* skip */ }
+      }
+      const distFiles = fs.readdirSync(distDir).filter(f => f.endsWith('.cjs'));
+      let newestDist = 0;
+      for (const f of distFiles) {
+        try {
+          const mt = fs.statSync(path.join(distDir, f)).mtimeMs;
+          if (mt > newestDist) newestDist = mt;
+        } catch { /* skip */ }
+      }
+      if (newestSrc > newestDist + 1000) {
+        gateWarning = '## Workflow Warning\nHook source files are newer than dist/ — run `bun run build && bun run setup` before ending the session.';
+      }
+    }
+  } catch { /* non-throwing */ }
+
+  if (gateWarning) {
+    return {
+      hookSpecificOutput: {
+        hookEventName: 'Stop',
+        additionalContext: gateWarning,
+      },
+    };
   }
 
   return {};

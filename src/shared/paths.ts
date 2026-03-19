@@ -18,12 +18,14 @@ export function getClaudexHome(): string {
   }
 }
 
-/** Returns ~/.claudex/db/claudex.db path. Never throws. */
+/** Returns ~/.claudex/db/claudex.db path. Respects CLAUDEX_DB_PATH env var. Never throws. */
 export function getDbPath(): string {
   try {
+    // Allow override for smoke tests, CI, and isolated environments
+    const envPath = process.env.CLAUDEX_DB_PATH;
+    if (envPath) return path.normalize(envPath);
     return path.normalize(path.join(getClaudexHome(), 'db', 'claudex.db'));
   } catch {
-    // Non-throwing: no DB access — getClaudexHome() failed, fall back to relative path
     return path.normalize(path.join('.', CLAUDEX_DIR, 'db', 'claudex.db'));
   }
 }

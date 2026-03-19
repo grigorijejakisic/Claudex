@@ -54,6 +54,7 @@ import { getHandoffsDir, getSessionsDir } from '../shared/paths.js';
 import * as path from 'path';
 import type { Database } from 'better-sqlite3';
 import type { ArtifactRow } from '../core/artifacts.js';
+import { getMaterializedArtifacts } from '../core/artifacts.js';
 import type { GaugeTimingContext } from './sections.js';
 import type { InjectPayload, TokenUsage } from '../shared/types.js';
 import type { ClaudexConfig } from '../shared/config.js';
@@ -479,7 +480,28 @@ export function assembleRegularPrompt(params: RegularPromptParams): InjectPayloa
       }
     }
 
-    // 5. Zero injection (most turns)
+    // 5. Trigger-materialized artifacts — surfaced by PostToolUse trigger engine
+    // These were materialized mid-turn (not at session-start/compaction) and
+    // need to be injected on the next prompt. Includes rules, feedback memories,
+    // and domain-relevant knowledge triggered by file paths.
+    try {
+      const materialized = getMaterializedArtifacts(params.db, params.project);
+      if (materialized.length > 0) {
+        const section = formatMaterializationLayer(materialized, 'trigger-matched', params.sessionId);
+        if (section) {
+          const tokens = estimateTokens(section);
+          if (tokens <= params.config.injection.budget_tokens) {
+            return {
+              content: section,
+              tokenEstimate: tokens,
+              sources: ['trigger_materialized'],
+            };
+          }
+        }
+      }
+    } catch { /* non-throwing */ }
+
+    // 6. Zero injection (most turns)
     return { ...EMPTY_PAYLOAD };
   } catch {
     return { ...EMPTY_PAYLOAD };
