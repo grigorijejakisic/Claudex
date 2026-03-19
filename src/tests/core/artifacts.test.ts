@@ -425,6 +425,32 @@ describe('searchArtifactsGlobal', () => {
     const results = searchArtifactsGlobal(db, 'proj-0', 'auth decision', 5);
     expect(results).toHaveLength(5);
   });
+
+  it('finds artifacts by content when summary does not match', () => {
+    // Summary says "project note" — no mention of "kubernetes"
+    // Content contains "kubernetes cluster migration" — the actual searchable term
+    createArtifact(db, 'sess-1', 'project-a', 'decision', null,
+      'Project infrastructure note',
+      'We decided to migrate the kubernetes cluster to a new region for latency reasons',
+      4);
+
+    const results = searchArtifactsGlobal(db, 'project-a', 'kubernetes migration');
+    expect(results.length).toBeGreaterThanOrEqual(1);
+    expect(results[0].summary).toContain('infrastructure note');
+  });
+
+  it('finds file-type artifacts (memory_file, session_log, handoff) via content search', () => {
+    // File artifacts aren't in observations_fts — they must be found via LIKE on content
+    createArtifact(db, 'sess-1', 'project-a', 'memory_file' as any,
+      '/path/to/feedback_testing.md',
+      'Testing preferences',
+      'Always run integration tests against a real database not mocks',
+      3);
+
+    const results = searchArtifactsGlobal(db, 'project-a', 'integration tests database mocks');
+    expect(results.length).toBeGreaterThanOrEqual(1);
+    expect(results[0].artifact_type).toBe('memory_file');
+  });
 });
 
 describe('getMaterializedArtifacts globalScope', () => {
