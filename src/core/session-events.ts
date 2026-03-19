@@ -209,16 +209,19 @@ export function extractEventsFromToolUse(
       const cmd = String(toolInput?.command ?? '');
       const output = String(toolOutput?.output ?? toolOutput?.stdout ?? '');
 
+      // Extract short command label (first meaningful command, not full pipeline)
+      const cmdLabel = cmd.split('&&').pop()?.trim().split(' ').slice(0, 3).join(' ').slice(0, 60) ?? 'bash';
+
       // Test detection
       if (/\b(vitest|jest|test|spec)\b/i.test(cmd)) {
         const failed = /fail|error|FAIL/i.test(output) && !/0 failed/i.test(output);
-        events.push({ type: 'test_run', entity: cmd.slice(0, 100), action: failed ? 'failed' : 'passed' });
+        events.push({ type: 'test_run', entity: cmdLabel, action: failed ? 'failed' : 'passed' });
       }
 
       // Build detection
       if (/\b(build|compile|tsc)\b/i.test(cmd)) {
         const errored = /error|Error|ERR/i.test(output);
-        events.push({ type: 'build', entity: cmd.slice(0, 100), action: errored ? 'error' : 'success' });
+        events.push({ type: 'build', entity: cmdLabel, action: errored ? 'error' : 'success' });
       }
       break;
     }

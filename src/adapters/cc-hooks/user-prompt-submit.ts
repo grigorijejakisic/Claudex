@@ -18,7 +18,7 @@ import { persistTopicIfShifted, ensureInitialTopic, captureFlowEntry, captureExp
 import { searchArtifactsGlobal, materializeArtifacts } from '../../core/artifacts.js';
 import { getCooldownState, setCooldownState } from '../../core/thread.js';
 import { routeByContent, buildProjectIndex } from '../../shared/content-router.js';
-import { setExperienceFlags } from '../../intelligence/experience-flags.js';
+import { setExperienceFlags, getExperienceFlags } from '../../intelligence/experience-flags.js';
 import { detectCorrectionSignal } from '../../intelligence/correction-detection.js';
 
 const main = wrapHook('UserPromptSubmit', async (input, ctx) => {
