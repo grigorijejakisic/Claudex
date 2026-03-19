@@ -784,7 +784,11 @@ function migrateV2toV3(db: Database): boolean {
           timestamp_epoch INTEGER NOT NULL DEFAULT (unixepoch()),
           last_materialized_epoch INTEGER
         );
-        INSERT INTO artifacts_new SELECT * FROM artifacts;
+        INSERT INTO artifacts_new (id, session_id, project, artifact_type, artifact_ref,
+        summary, content, state, ttl, importance, timestamp_epoch, last_materialized_epoch)
+      SELECT id, session_id, project, artifact_type, artifact_ref,
+        summary, content, state, ttl, importance, timestamp_epoch, last_materialized_epoch
+      FROM artifacts;
         DROP TABLE artifacts;
         ALTER TABLE artifacts_new RENAME TO artifacts;
         CREATE INDEX IF NOT EXISTS idx_artifacts_project_state ON artifacts(project, state);
@@ -868,6 +872,14 @@ function migrateV3toV4(db: Database): void {
         CREATE INDEX IF NOT EXISTS idx_session_events_project ON session_events(project, timestamp_epoch);
       `);
     }
+
+    // Unique index for file artifact dedup (moved from runtime to migration)
+    try {
+      db.exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_artifacts_file_ref
+        ON artifacts(project, artifact_type, artifact_ref)
+        WHERE artifact_ref IS NOT NULL
+          AND artifact_type IN ('memory_file', 'session_log', 'handoff')`);
+    } catch { /* partial index may not be supported on older SQLite */ }
 
     // retrieval_score column on artifacts
     const artCols = (db.pragma('table_info(artifacts)') as Array<{ name: string }>).map(c => c.name);

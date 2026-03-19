@@ -1,33 +1,23 @@
 /**
  * Claudex Recall MCP Server — exposes Claudex DB as MCP tools.
  *
- * Implements MCP protocol (JSON-RPC over stdio) without external dependencies.
+ * JSON-RPC over stdio (Content-Length framed, raw Buffer for byte accuracy).
  * 4 tools: claudex_search, claudex_recall, claudex_store, claudex_events.
  *
- * Usage:
- *   node dist/mcp/recall-server.cjs
- *
- * Register in ~/.claude/settings.json:
- *   "mcpServers": {
- *     "claudex-recall": {
- *       "command": "node",
- *       "args": ["<path>/dist/mcp/recall-server.cjs"]
- *     }
- *   }
+ * Usage: node dist/mcp/recall-server.cjs
  */
 
 import Database from 'better-sqlite3';
-import * as readline from 'readline';
 import { getDbPath } from '../shared/paths.js';
 import { getProjectId } from '../shared/scope-detector.js';
 import { searchArtifactsGlobal } from '../core/artifacts.js';
 import type { ArtifactRow } from '../core/artifacts.js';
 import { getSessionEvents } from '../core/session-events.js';
 import { cachedPrepare } from '../core/stmt-cache.js';
-import { runMigrations } from '../core/migrations.js';
+import { initializeSchema, runMigrations } from '../core/migrations.js';
 
 // ---------------------------------------------------------------------------
-// DB connection (shared across all tool calls)
+// DB connection
 // ---------------------------------------------------------------------------
 
 let db: Database.Database | null = null;
@@ -36,7 +26,9 @@ function getDb(): Database.Database {
   if (!db) {
     db = new Database(getDbPath());
     db.pragma('journal_mode = WAL');
-    db.pragma('busy_timeout = 3000');
+    db.pragma('busy_timeout = 5000');
+    // initializeSchema handles both fresh DBs and existing ones
+    initializeSchema(db);
     runMigrations(db);
   }
   return db;
@@ -51,13 +43,13 @@ const defaultProject = getProjectId(process.cwd());
 const TOOLS = [
   {
     name: 'claudex_search',
-    description: 'Search Claudex memory across all artifacts (observations, decisions, learnings, memory files, session logs, handoffs). Returns ranked results with source provenance.',
+    description: 'Search Claudex memory across all artifacts. Returns ranked results with provenance.',
     inputSchema: {
       type: 'object' as const,
       properties: {
         query: { type: 'string' as const, description: 'Search query text' },
         project: { type: 'string' as const, description: 'Project scope (defaults to CWD project)' },
-        limit: { type: 'number' as const, description: 'Max results (default 10)' },
+        limit: { type: 'number' as const, description: 'Max results (default 10, max 50)' },
       },
       required: ['query'] as const,
     },
@@ -75,7 +67,7 @@ const TOOLS = [
   },
   {
     name: 'claudex_store',
-    description: 'Explicitly store a decision or learning in Claudex memory.',
+    description: 'Store a decision or learning in Claudex memory.',
     inputSchema: {
       type: 'object' as const,
       properties: {
@@ -88,7 +80,7 @@ const TOOLS = [
   },
   {
     name: 'claudex_events',
-    description: 'Query structured session events (file edits, test runs, builds, decisions) for a project.',
+    description: 'Query structured session events for a project.',
     inputSchema: {
       type: 'object' as const,
       properties: {
@@ -106,7 +98,8 @@ const TOOLS = [
 function handleSearch(args: Record<string, unknown>): unknown {
   const query = String(args.query ?? '');
   const project = String(args.project ?? defaultProject);
-  const limit = Math.min(Number(args.limit ?? 10), 50);
+  const rawLimit = Number(args.limit ?? 10);
+  const limit = Number.isInteger(rawLimit) && rawLimit > 0 ? Math.min(rawLimit, 50) : 10;
 
   if (!query) return { error: 'query is required' };
 
@@ -115,14 +108,15 @@ function handleSearch(args: Record<string, unknown>): unknown {
     id: a.id,
     type: a.artifact_type,
     summary: a.summary,
-    provenance: a.artifact_ref ? a.artifact_ref : `artifact #${a.id}`,
+    provenance: a.artifact_ref ?? `artifact #${a.id}`,
     importance: a.importance,
     project: a.project,
   }));
 }
 
 function handleRecall(args: Record<string, unknown>): unknown {
-  const id = args.id ? Number(args.id) : null;
+  const rawId = args.id !== undefined ? Number(args.id) : null;
+  const id = rawId !== null && Number.isInteger(rawId) && rawId > 0 ? rawId : null;
   const ref = args.artifact_ref ? String(args.artifact_ref) : null;
 
   if (!id && !ref) return { error: 'id or artifact_ref required' };
@@ -154,21 +148,22 @@ function handleStore(args: Record<string, unknown>): unknown {
   if (!content) return { error: 'content is required' };
   if (type !== 'decision' && type !== 'learning') return { error: 'type must be "decision" or "learning"' };
 
-  if (type === 'decision') {
-    const fingerprint = content.toLowerCase().replace(/\s+/g, ' ').trim().slice(0, 100);
-    cachedPrepare(getDb(),
-      `INSERT OR IGNORE INTO decisions (session_id, project, content, source, fingerprint)
-       VALUES ('mcp', ?, ?, 'explicit', ?)`
-    ).run(project, content, fingerprint);
-  } else {
-    const fingerprint = content.toLowerCase().replace(/\s+/g, ' ').trim().slice(0, 100);
-    cachedPrepare(getDb(),
-      `INSERT OR IGNORE INTO learnings (content, project, source_type, source_ref, fingerprint)
-       VALUES (?, ?, 'mcp', 'claudex_store', ?)`
-    ).run(content, project, fingerprint);
-  }
+  const fingerprint = content.toLowerCase().replace(/\s+/g, ' ').trim().slice(0, 100);
 
-  return { stored: true, type, project };
+  if (type === 'decision') {
+    const result = cachedPrepare(getDb(),
+      `INSERT OR IGNORE INTO decisions (session_id, project, content, source, fingerprint)
+       VALUES (?, ?, ?, 'explicit', ?)`
+    ).run(`mcp:${project}`, project, content, fingerprint);
+    return { stored: result.changes > 0, type, project };
+  } else {
+    // Match actual learnings schema (no source_type/source_ref columns)
+    const result = cachedPrepare(getDb(),
+      `INSERT OR IGNORE INTO learnings (content, project, fingerprint)
+       VALUES (?, ?, ?)`
+    ).run(content, project, fingerprint);
+    return { stored: result.changes > 0, type, project };
+  }
 }
 
 function handleEvents(args: Record<string, unknown>): unknown {
@@ -179,7 +174,6 @@ function handleEvents(args: Record<string, unknown>): unknown {
     return getSessionEvents(getDb(), sessionId);
   }
 
-  // Find latest session for project
   const session = cachedPrepare(getDb(),
     `SELECT session_id FROM sessions WHERE project = ? ORDER BY created_at_epoch DESC LIMIT 1`
   ).get(project) as { session_id: string } | undefined;
@@ -189,17 +183,32 @@ function handleEvents(args: Record<string, unknown>): unknown {
 }
 
 // ---------------------------------------------------------------------------
-// JSON-RPC MCP protocol handler
+// JSON-RPC MCP protocol (raw Buffer transport for byte-accurate framing)
 // ---------------------------------------------------------------------------
 
 interface JsonRpcRequest {
   jsonrpc: '2.0';
-  id: number | string;
+  id?: number | string;
   method: string;
   params?: Record<string, unknown>;
 }
 
-function handleRequest(req: JsonRpcRequest): unknown {
+function sendResponse(id: number | string, result: unknown): void {
+  const response = JSON.stringify({ jsonrpc: '2.0', id, result });
+  const buf = Buffer.from(response, 'utf-8');
+  process.stdout.write(`Content-Length: ${buf.length}\r\n\r\n`);
+  process.stdout.write(buf);
+}
+
+function sendError(id: number | string | null, code: number, message: string): void {
+  if (id === null) return; // Can't respond without an id
+  const response = JSON.stringify({ jsonrpc: '2.0', id, error: { code, message } });
+  const buf = Buffer.from(response, 'utf-8');
+  process.stdout.write(`Content-Length: ${buf.length}\r\n\r\n`);
+  process.stdout.write(buf);
+}
+
+function dispatch(req: JsonRpcRequest): unknown {
   switch (req.method) {
     case 'initialize':
       return {
@@ -207,17 +216,13 @@ function handleRequest(req: JsonRpcRequest): unknown {
         capabilities: { tools: {} },
         serverInfo: { name: 'claudex-recall', version: '1.0.0' },
       };
-
     case 'notifications/initialized':
-      return undefined; // No response needed for notifications
-
+      return undefined;
     case 'tools/list':
       return { tools: TOOLS };
-
     case 'tools/call': {
       const toolName = String(req.params?.name ?? '');
       const toolArgs = (req.params?.arguments as Record<string, unknown>) ?? {};
-
       let result: unknown;
       switch (toolName) {
         case 'claudex_search': result = handleSearch(toolArgs); break;
@@ -226,68 +231,52 @@ function handleRequest(req: JsonRpcRequest): unknown {
         case 'claudex_events': result = handleEvents(toolArgs); break;
         default: return { content: [{ type: 'text', text: `Unknown tool: ${toolName}` }], isError: true };
       }
-
-      return {
-        content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],
-      };
+      return { content: [{ type: 'text', text: JSON.stringify(result, null, 2) }] };
     }
-
     default:
       return undefined;
   }
 }
 
-// ---------------------------------------------------------------------------
-// Stdio transport
-// ---------------------------------------------------------------------------
+// Raw Buffer stdin — no setEncoding (byte-accurate Content-Length framing)
+let buffer = Buffer.alloc(0);
 
-function sendResponse(id: number | string | null, result: unknown): void {
-  if (id === null) return; // Notification — no response
-  const response = { jsonrpc: '2.0', id, result };
-  const json = JSON.stringify(response);
-  process.stdout.write(`Content-Length: ${Buffer.byteLength(json)}\r\n\r\n${json}`);
-}
-
-function sendError(id: number | string | null, code: number, message: string): void {
-  if (id === null) return;
-  const response = { jsonrpc: '2.0', id, error: { code, message } };
-  const json = JSON.stringify(response);
-  process.stdout.write(`Content-Length: ${Buffer.byteLength(json)}\r\n\r\n${json}`);
-}
-
-// Read JSON-RPC messages from stdin (Content-Length framed)
-let buffer = '';
-
-process.stdin.setEncoding('utf-8');
-process.stdin.on('data', (chunk: string) => {
-  buffer += chunk;
+process.stdin.on('data', (chunk: Buffer) => {
+  buffer = Buffer.concat([buffer, chunk]);
 
   while (true) {
     const headerEnd = buffer.indexOf('\r\n\r\n');
     if (headerEnd < 0) break;
 
-    const header = buffer.slice(0, headerEnd);
+    const header = buffer.subarray(0, headerEnd).toString('utf-8');
     const match = header.match(/Content-Length:\s*(\d+)/i);
     if (!match) {
-      buffer = buffer.slice(headerEnd + 4);
+      buffer = buffer.subarray(headerEnd + 4);
       continue;
     }
 
     const contentLength = parseInt(match[1], 10);
     const bodyStart = headerEnd + 4;
-    if (buffer.length < bodyStart + contentLength) break; // Wait for more data
+    if (buffer.length < bodyStart + contentLength) break;
 
-    const body = buffer.slice(bodyStart, bodyStart + contentLength);
-    buffer = buffer.slice(bodyStart + contentLength);
+    const body = buffer.subarray(bodyStart, bodyStart + contentLength).toString('utf-8');
+    buffer = buffer.subarray(bodyStart + contentLength);
 
+    let reqId: number | string | null = null;
     try {
       const req = JSON.parse(body) as JsonRpcRequest;
-      const result = handleRequest(req);
-      if (result !== undefined) {
-        sendResponse(req.id, result);
+      reqId = req.id ?? null;
+
+      const result = dispatch(req);
+      if (result !== undefined && reqId !== null) {
+        sendResponse(reqId, result);
       }
     } catch (e) {
-      sendError(null, -32700, `Parse error: ${e instanceof Error ? e.message : String(e)}`);
+      // Dispatch error — respond with the request's id if available
+      if (reqId !== null) {
+        sendError(reqId, -32603, `Internal error: ${e instanceof Error ? e.message : String(e)}`);
+      }
+      // Parse error with no id — we can't respond meaningfully
     }
   }
 });

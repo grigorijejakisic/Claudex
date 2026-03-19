@@ -15,10 +15,7 @@ import type { Database } from 'better-sqlite3';
 import { cachedPrepare } from '../core/stmt-cache.js';
 import { tokenizeQuery } from '../shared/search-utils.js';
 
-/** Decay factor for exponential moving average. */
-const DECAY = 0.95;
-
-/** Score deltas for each signal type. */
+/** Score deltas for each signal type (additive). */
 const SCORE_REFERENCED = 0.1;
 const SCORE_CORRECTION = -0.2;
 const SCORE_SESSION_SUCCESS = 0.05;

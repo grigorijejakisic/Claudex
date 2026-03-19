@@ -14,10 +14,9 @@ import {
   checkpointIfThresholdMet,
 } from '../shared/lifecycle.js';
 import { routeByContent, extractRoutingContent, buildProjectIndex } from '../../shared/content-router.js';
-import { withBehavioralBatch, applyFileEditIncrement, applyToolCallPattern } from '../../intelligence/experience-flags.js';
+import { withBehavioralBatch, applyFileEditIncrement, applyToolCallPattern, setExperienceFlags, getExperienceFlags } from '../../intelligence/experience-flags.js';
 import { buildToolSignature } from '../../intelligence/behavioral-signals.js';
 import { matchTriggers } from '../../intelligence/trigger-engine.js';
-import { setExperienceFlags, getExperienceFlags } from '../../intelligence/experience-flags.js';
 import { extractEventsFromToolUse, recordEvent } from '../../core/session-events.js';
 
 // ---------------------------------------------------------------------------
@@ -166,14 +165,17 @@ const main = wrapHook('PostToolUse', async (input, ctx) => {
 
   // ---------------------------------------------------------------------------
   // Session events — lightweight structured event capture
+  // Only for mutative tools (Edit, Write, Bash) — skip reads to avoid DB bloat
   // ---------------------------------------------------------------------------
-  try {
-    const events = extractEventsFromToolUse(toolName, toolInput, toolOutput);
-    for (const ev of events) {
-      recordEvent(ctx.db, input.session_id, routedProject, ev.type, ev.entity, ev.action, ev.detail);
+  if (toolName === 'Edit' || toolName === 'Write' || toolName === 'Bash') {
+    try {
+      const events = extractEventsFromToolUse(toolName, toolInput, toolOutput);
+      for (const ev of events) {
+        recordEvent(ctx.db, input.session_id, routedProject, ev.type, ev.entity, ev.action, ev.detail);
+      }
+    } catch (e) {
+      emitErrorTelemetry(ctx.db, input.session_id, 'post_tool_use/session_events', e);
     }
-  } catch (e) {
-    emitErrorTelemetry(ctx.db, input.session_id, 'post_tool_use/session_events', e);
   }
 
   return {};

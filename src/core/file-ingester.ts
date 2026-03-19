@@ -17,7 +17,7 @@ import * as fs from 'fs';
 import * as fsp from 'fs/promises';
 import * as path from 'path';
 import * as os from 'os';
-import * as crypto from 'crypto';
+// crypto removed — contentHash was computed but never stored/used
 import type { Database } from 'better-sqlite3';
 import { cachedPrepare } from './stmt-cache.js';
 import type { ArtifactType } from './artifacts.js';
@@ -47,7 +47,6 @@ interface FileSource {
   type: ArtifactType;
   summary: string;
   content: string;
-  contentHash: string;
   mtimeMs: number;
 }
 
@@ -212,14 +211,12 @@ async function processFile(
   if (content.length < MIN_CONTENT_LENGTH) return null;
 
   const summary = content.replace(/\n/g, ' ').slice(0, 200).trim();
-  const contentHash = crypto.createHash('sha256').update(raw).digest('hex').slice(0, 16);
 
   return {
     path: filePath,
     type,
     summary,
     content,
-    contentHash,
     mtimeMs: stat.mtimeMs,
   };
 }
@@ -265,7 +262,7 @@ export async function ingestFileArtifacts(
   const result: IngestResult = { ingested: 0, skipped: 0, errors: 0 };
 
   try {
-    ensureFileArtifactIndex(db);
+    // Index creation moved to migrateV3toV4 — no runtime DDL on hot path
     const sources = await scanSources(db, projectDir, project);
     if (sources.length === 0) return result;
 
