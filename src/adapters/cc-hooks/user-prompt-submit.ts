@@ -105,6 +105,26 @@ const main = wrapHook('UserPromptSubmit', async (input, ctx) => {
     captureFlowEntry(ctx.db, input.session_id, routedProject);
   }
 
+  // Consume pending trigger domains — search for domain-relevant artifacts
+  // (task-aware assembly: tool input drove the search, not the user's prompt)
+  const triggerFlags = getExperienceFlags(ctx.db, input.session_id);
+  const pendingDomains = triggerFlags.pending_trigger_domains;
+  if (pendingDomains.length > 0) {
+    try {
+      const domainQuery = pendingDomains.join(' ');
+      const domainMatches = searchArtifactsGlobal(ctx.db, routedProject, domainQuery, 5);
+      if (domainMatches.length > 0) {
+        materializeArtifacts(ctx.db, domainMatches.map(a => a.id), ctx.project);
+      }
+      // Clear consumed domains
+      setExperienceFlags(ctx.db, input.session_id, {
+        pending_trigger_domains: [],
+      }, triggerFlags);
+    } catch (e) {
+      emitErrorTelemetry(ctx.db, input.session_id, 'trigger_domain_materialize', e);
+    }
+  }
+
   // Materialize artifacts for assembly turns only (post-compaction and topic shift).
   // Regular turns don't render materialized artifacts — no point searching every prompt.
   // Global search: artifacts are the cross-project knowledge layer. routedProject is

@@ -149,16 +149,19 @@ const main = wrapHook('PostToolUse', async (input, ctx) => {
   // ---------------------------------------------------------------------------
   try {
     const triggerMatch = matchTriggers(ctx.db, routedProject, toolName, toolInput);
-    if (triggerMatch.patternIds.length > 0) {
-      // Persist matched predictive pattern IDs for injection at next assembly
+    if (triggerMatch.patternIds.length > 0 || triggerMatch.domains.length > 0) {
       const flags = getExperienceFlags(ctx.db, input.session_id);
-      const merged = [...new Set([...flags.injected_pattern_ids, ...triggerMatch.patternIds])];
+      const mergedPatterns = triggerMatch.patternIds.length > 0
+        ? [...new Set([...flags.injected_pattern_ids, ...triggerMatch.patternIds])]
+        : flags.injected_pattern_ids;
+      const mergedDomains = triggerMatch.domains.length > 0
+        ? [...new Set([...flags.pending_trigger_domains, ...triggerMatch.domains])]
+        : flags.pending_trigger_domains;
       setExperienceFlags(ctx.db, input.session_id, {
-        injected_pattern_ids: merged,
+        injected_pattern_ids: mergedPatterns,
+        pending_trigger_domains: mergedDomains,
       }, flags);
     }
-    // Domain matches are stored for assembly lookup (via thread_state)
-    // TODO: persist triggerMatch.domains for UserPromptSubmit to use as FTS5 queries
   } catch (e) {
     emitErrorTelemetry(ctx.db, input.session_id, 'post_tool_use/trigger_engine', e);
   }

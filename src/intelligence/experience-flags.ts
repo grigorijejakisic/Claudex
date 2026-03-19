@@ -109,6 +109,12 @@ export interface ExperienceFlags {
    * Capped at 500 chars to bound storage size.
    */
   correction_prompt: string;
+  /**
+   * Knowledge domains matched by the trigger engine in PostToolUse.
+   * Consumed by UserPromptSubmit to augment FTS5 search queries.
+   * Cleared after consumption.
+   */
+  pending_trigger_domains: string[];
 }
 
 export interface BehavioralCounters {
@@ -137,6 +143,7 @@ export function getExperienceFlags(
     awaiting_feedback_ids: [],
     awaiting_topic_keys: [],
     correction_prompt: '',
+    pending_trigger_domains: [],
   };
   try {
     const parsed = readRoleExchange<Record<string, unknown>>(db, sessionId, EXP_FLAGS_ROLE, {});
@@ -157,6 +164,9 @@ export function getExperienceFlags(
       correction_prompt: typeof parsed.correction_prompt === 'string'
         ? parsed.correction_prompt
         : '',
+      pending_trigger_domains: Array.isArray(parsed.pending_trigger_domains)
+        ? parsed.pending_trigger_domains as string[]
+        : [],
     };
   } catch {
     return defaults;
@@ -186,6 +196,7 @@ export function setExperienceFlags(
       awaiting_feedback_ids: updates.awaiting_feedback_ids ?? current.awaiting_feedback_ids,
       awaiting_topic_keys: updates.awaiting_topic_keys ?? current.awaiting_topic_keys,
       correction_prompt: updates.correction_prompt ?? current.correction_prompt,
+      pending_trigger_domains: updates.pending_trigger_domains ?? current.pending_trigger_domains,
     };
     writeRoleExchange(db, sessionId, EXP_FLAGS_ROLE, merged);
   } catch (e) {

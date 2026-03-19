@@ -16,6 +16,9 @@ import {
 import { routeByContent, buildProjectIndex } from '../../shared/content-router.js';
 import { applyExperienceFeedback } from '../../intelligence/experience-scoring.js';
 import { getSessionEvents, synthesizeSessionSummary, saveSessionSummary } from '../../core/session-events.js';
+import { processRetrievalFeedback } from '../../intelligence/retrieval-feedback.js';
+import { getExperienceFlags } from '../../intelligence/experience-flags.js';
+import { cachedPrepare } from '../../core/stmt-cache.js';
 import type { Database } from 'better-sqlite3';
 
 // ---------------------------------------------------------------------------
@@ -109,6 +112,35 @@ const main = wrapHook('Stop', async (input, ctx) => {
     routedProject,
     ctx.config,
   );
+
+  // Retrieval feedback — score injected artifacts based on assistant output
+  try {
+    const flags = getExperienceFlags(ctx.db, input.session_id);
+    if (flags.injected_pattern_ids.length > 0) {
+      // Load artifact IDs that were injected this turn (materialized artifacts)
+      // Pattern IDs are experience patterns, not artifact IDs — but we can score
+      // any artifacts that were materialized during this session's assembly
+      const materializedRows = cachedPrepare(ctx.db,
+        `SELECT id, summary FROM artifacts
+         WHERE project = ? AND state = 'materialized'
+         ORDER BY last_materialized_epoch DESC LIMIT 10`
+      ).all(routedProject) as Array<{ id: number; summary: string }>;
+
+      if (materializedRows.length > 0) {
+        const artifactIds = materializedRows.map(r => r.id);
+        const summaryMap = new Map(materializedRows.map(r => [r.id, r.summary]));
+        processRetrievalFeedback(
+          ctx.db,
+          artifactIds,
+          lastAssistantText,
+          flags.correction_flagged,
+          summaryMap,
+        );
+      }
+    }
+  } catch (e) {
+    emitErrorTelemetry(ctx.db, input.session_id, 'stop/retrieval_feedback', e);
+  }
 
   // Pre-compute session summary from events (for next session's reconstruction)
   try {

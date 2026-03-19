@@ -11,6 +11,7 @@ import { emitErrorTelemetry } from '../../observability/error-telemetry.js';
 import { assembleFullContext } from '../../assembly/assembler.js';
 import { getIdentityDir } from '../../shared/paths.js';
 import { ingestFileArtifacts, pruneStaleFileArtifacts } from '../../core/file-ingester.js';
+import { getLastSessionSummary } from '../../core/session-events.js';
 
 const main = wrapHook('SessionStart', async (input, ctx) => {
   // Each operation isolated — if A fails, B and C still run
@@ -78,11 +79,23 @@ const main = wrapHook('SessionStart', async (input, ctx) => {
     } catch { /* non-fatal */ }
   }
 
-  if (payload.content) {
+  // Append last session summary to the assembled context (cross-session reconstruction)
+  let fullContent = payload.content || '';
+  try {
+    const lastSummary = getLastSessionSummary(ctx.db, ctx.project);
+    if (lastSummary) {
+      const summarySection = `\n## Last Session\n${lastSummary}\n`;
+      fullContent = fullContent ? fullContent + summarySection : summarySection;
+    }
+  } catch (e) {
+    emitErrorTelemetry(ctx.db, input.session_id, 'session_start/last_session_summary', e);
+  }
+
+  if (fullContent) {
     return {
       hookSpecificOutput: {
         hookEventName: 'SessionStart',
-        additionalContext: payload.content,
+        additionalContext: fullContent,
       },
     };
   }
