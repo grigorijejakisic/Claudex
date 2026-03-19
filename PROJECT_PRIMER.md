@@ -4,7 +4,7 @@
 
 Claudex v3 is a unified context management system that gives LLMs persistent memory across sessions and compaction events. It replaces two predecessors (Claudex v2 + OpenClaw's Context Manager) with a single codebase that runs on both Claude Code (as lifecycle hooks) and OpenClaw (as a bridge plugin). One core, two swappable runtime adapters, standalone install.
 
-**Status**: All phases implemented. Session 18: daemon/telegram purge, multi-project CLI + /endsession, worker context enrichment with user standards. 1521 tests, 80 test files. `claudex health` + `claudex projects-touched` CLI available.
+**Status**: All phases + 6 brain upgrades implemented. Session 18: Claudex Recall (file-to-artifact ingester), unified FTS5 search (`artifacts_fts`), trigger engine (task-aware context), session events (cross-session reconstruction), retrieval feedback (implicit scoring), MCP recall server (4 tools for on-demand search). 1585 tests, 86 test files. CLI: `claudex health`, `claudex projects-touched`, `claudex recall`.
 
 ## Core Architecture (30-second version)
 
@@ -103,9 +103,10 @@ Informed by IAM project artifact patterns (Teneral Agent Platform).
 
 ```
 src/
-  core/           # Storage: SQLite, CRUD, FTS5, telemetry
+  core/           # Storage, CRUD, FTS5, telemetry, file-ingester, session-events
   extraction/     # Per-tool observation extractors + redaction + quality gates
-  intelligence/   # Decisions, threads, dedup, enrichment, learnings, topic-shift
+  intelligence/   # Decisions, threads, dedup, enrichment, learnings, topic-shift,
+                  # trigger-engine, retrieval-feedback
   embeddings/     # Ollama nomic-embed-text client, cosine similarity, templates
   observability/  # Structured telemetry emit/query/prune
   assembly/       # Priority-budgeted context assembly + worker context enrichment
@@ -113,6 +114,7 @@ src/
   gauge/          # Token utilization (transcript-derived or SDK-derived)
   decay/          # EI formula, pressure half-life, pruning
   gsd/            # GSD integration (read-only)
+  mcp/            # MCP recall server (4 tools: search, recall, store, events)
   shared/         # Types, paths, config, fs-helpers, constants
 adapters/
   cc-hooks/       # 6 hook entry points + infrastructure + setup CLI
