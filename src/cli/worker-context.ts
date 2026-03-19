@@ -72,6 +72,7 @@ function parseArgs(argv: string[]): ParsedArgs {
 
 function countSections(pkg: Awaited<ReturnType<typeof assembleWorkerContext>>): number {
   return [
+    pkg.userStandards,
     pkg.experienceWarnings,
     pkg.learnings,
     pkg.relevantArtifacts,

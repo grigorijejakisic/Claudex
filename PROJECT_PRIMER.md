@@ -4,7 +4,7 @@
 
 Claudex v3 is a unified context management system that gives LLMs persistent memory across sessions and compaction events. It replaces two predecessors (Claudex v2 + OpenClaw's Context Manager) with a single codebase that runs on both Claude Code (as lifecycle hooks) and OpenClaw (as a bridge plugin). One core, two swappable runtime adapters, standalone install.
 
-**Status**: All phases implemented. Session 14: 46 review fixes (security, contracts, schema, tests) + architectural fix for experience pattern extraction. 1477 tests, 79 test files. `claudex health` CLI available for live DB validation.
+**Status**: All phases implemented. Session 18: daemon/telegram purge, multi-project CLI + /endsession, worker context enrichment with user standards. 1521 tests, 80 test files. `claudex health` + `claudex projects-touched` CLI available.
 
 ## Core Architecture (30-second version)
 
@@ -97,6 +97,7 @@ Informed by IAM project artifact patterns (Teneral Agent Platform).
 - **Fix regressions are common**: Bulk fix rounds (83 fixes, session 6) produced 5/7 new criticals as regressions. Always write fix-specific test cases BEFORE applying fixes (TDD for fixes). The cycle "fix → build → existing tests pass" is insufficient — existing tests don't cover the fix's own edge cases.
 - **POSIX quoting doesn't work on Windows**: Shell command construction must use platform-aware quoting. POSIX `'\''` escaping is invalid in PowerShell/cmd.exe — characters like `&`/`|` are interpreted.
 - **SQLite error messages vary**: `err.message.includes('already exists')` is brittle — SQLite uses different wording for rename conflicts (`there is already another table or index with this name`) and shadow table errors (`table may not be altered`). Centralize error classification.
+- **Multi-project sessions**: Hooks route observations dynamically via `content-router.ts` (file paths, project name mentions). `/endsession` calls `claudex projects-touched` CLI to create per-project session logs and handoffs. Worker context enrichment (`worker-context.ts`) now includes user feedback memories and CLAUDE.md rules.
 
 ## File Structure (Key Modules)
 
@@ -107,7 +108,7 @@ src/
   intelligence/   # Decisions, threads, dedup, enrichment, learnings, topic-shift
   embeddings/     # Ollama nomic-embed-text client, cosine similarity, templates
   observability/  # Structured telemetry emit/query/prune
-  assembly/       # Priority-budgeted context assembly
+  assembly/       # Priority-budgeted context assembly + worker context enrichment
   checkpoint/     # ULID writer (DB-first), 3-hop loader, inject renderer
   gauge/          # Token utilization (transcript-derived or SDK-derived)
   decay/          # EI formula, pressure half-life, pruning

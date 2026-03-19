@@ -35,18 +35,20 @@ export interface WorkerContextPackage {
   experienceWarnings: string;
   hotFiles: string;
   learnings: string;
+  userStandards: string;
   tokenBudget: number;
   /** Ready-to-inject string combining all non-empty sections. */
   formatted: string;
 }
 
 // Per-section token budgets (from spec)
+const BUDGET_STANDARDS   = 600;
 const BUDGET_EXPERIENCE  = 500;
 const BUDGET_LEARNINGS   = 500;
 const BUDGET_ARTIFACTS   = 1000;
 const BUDGET_HOT_FILES   = 500;
 const BUDGET_PRIMER      = 500;
-const DEFAULT_MAX_TOKENS = 3000;
+const DEFAULT_MAX_TOKENS = 3600;
 
 /**
  * Reserved token budget for the outer header and section title strings.
@@ -61,6 +63,7 @@ const EMPTY_PACKAGE: WorkerContextPackage = {
   experienceWarnings: '',
   hotFiles: '',
   learnings: '',
+  userStandards: '',
   tokenBudget: 0,
   formatted: '',
 };
@@ -98,6 +101,19 @@ export async function assembleWorkerContext(
     // Reserve budget for outer header + section title strings (~50 tokens).
     // This ensures the final formatted string stays within maxTokens.
     let remaining = Math.max(0, maxTokens - HEADER_OVERHEAD);
+
+    // --- Section 0: User standards (Highest, 600 tokens) ---
+    // Feedback memories + CLAUDE.md rules = the user's quality standards.
+    // This is the most impactful section — workers without it produce output
+    // that technically works but violates the user's expectations.
+    let userStandards = assembleUserStandardsSection(BUDGET_STANDARDS, opts?.projectDir);
+    const stdCost = estimateTokens(userStandards);
+    if (stdCost <= remaining) {
+      remaining -= stdCost;
+    } else {
+      userStandards = truncateToTokens(userStandards, remaining);
+      remaining = 0;
+    }
 
     // --- Section 1: Experience warnings (Hot, 500 tokens) ---
     let experienceWarnings = '';
@@ -146,6 +162,7 @@ export async function assembleWorkerContext(
 
     // --- Format combined output ---
     let formatted = formatWorkerContext({
+      userStandards,
       experienceWarnings,
       learnings,
       relevantArtifacts,
@@ -174,6 +191,7 @@ export async function assembleWorkerContext(
       experienceWarnings,
       hotFiles,
       learnings,
+      userStandards,
       tokenBudget,
       formatted,
     };
@@ -349,6 +367,83 @@ function assemblePrimerSection(
 }
 
 // ---------------------------------------------------------------------------
+// User standards (feedback memories + CLAUDE.md rules)
+// ---------------------------------------------------------------------------
+
+/**
+ * Derives the Claude Code project key from a directory path.
+ * Claude Code stores project-scoped data at ~/.claude/projects/<key>/
+ * where key = absolute path with separators replaced by '-' and ':' removed.
+ */
+function deriveClaudeProjectKey(dir: string): string {
+  return path.resolve(dir)
+    .replace(/:/g, '')
+    .replace(/[/\\]/g, '-');
+}
+
+/**
+ * Reads feedback memory files and CLAUDE.md rules.
+ * These represent the user's quality standards, collaboration preferences,
+ * and correction history — critical context that workers otherwise lack.
+ *
+ * Sources (in priority order):
+ * 1. ~/.claude/projects/<key>/memory/feedback_*.md — project-specific feedback
+ * 2. ~/.claude/CLAUDE.md — global rules (extracted: Rules + Quality Standard sections)
+ */
+function assembleUserStandardsSection(budget: number, projectDir?: string): string {
+  try {
+    const parts: string[] = [];
+    const home = os.homedir();
+
+    // 1. Feedback memories from project auto-memory
+    const dir = projectDir || process.cwd();
+    const projectKey = deriveClaudeProjectKey(dir);
+    const memoryDir = path.join(home, '.claude', 'projects', projectKey, 'memory');
+
+    try {
+      if (fs.existsSync(memoryDir)) {
+        const files = fs.readdirSync(memoryDir)
+          .filter(f => f.startsWith('feedback_') && f.endsWith('.md'))
+          .sort();
+
+        for (const file of files) {
+          try {
+            let content = fs.readFileSync(path.join(memoryDir, file), 'utf-8').trim();
+            // Strip YAML frontmatter
+            if (content.startsWith('---')) {
+              const endIdx = content.indexOf('---', 3);
+              if (endIdx > 0) {
+                content = content.slice(endIdx + 3).trim();
+              }
+            }
+            if (content) parts.push(`- ${content.replace(/\n/g, ' ').slice(0, 200)}`);
+          } catch { /* skip unreadable files */ }
+        }
+      }
+    } catch { /* non-throwing */ }
+
+    // 2. Global CLAUDE.md rules (extract key sections)
+    try {
+      const claudeMdPath = path.join(home, '.claude', 'CLAUDE.md');
+      if (fs.existsSync(claudeMdPath)) {
+        const content = fs.readFileSync(claudeMdPath, 'utf-8');
+        const extracted = extractPrimerSections(content, [
+          'Rules',
+          'Quality Standard',
+          'Working Identity',
+        ]);
+        if (extracted) parts.push(extracted);
+      }
+    } catch { /* non-throwing */ }
+
+    if (parts.length === 0) return '';
+    return truncateToTokens(parts.join('\n'), budget);
+  } catch {
+    return '';
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Primer reading and extraction
 // ---------------------------------------------------------------------------
 
@@ -455,6 +550,7 @@ function extractPrimerSections(content: string, sectionNames: string[]): string 
  * Combines non-empty sections into the final formatted string with headers.
  */
 function formatWorkerContext(sections: {
+  userStandards: string;
   experienceWarnings: string;
   learnings: string;
   relevantArtifacts: string;
@@ -463,6 +559,9 @@ function formatWorkerContext(sections: {
 }): string {
   const parts: string[] = [];
 
+  if (sections.userStandards) {
+    parts.push(`### User Quality Standards\n${sections.userStandards}`);
+  }
   if (sections.experienceWarnings) {
     parts.push(`### Warnings from Past Experience\n${sections.experienceWarnings}`);
   }
