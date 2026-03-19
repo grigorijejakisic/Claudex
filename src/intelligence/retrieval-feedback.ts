@@ -44,7 +44,7 @@ export function updateRetrievalScore(
 
     if (!row) return;
 
-    let newScore = row.retrieval_score * DECAY + signal * (1 - DECAY);
+    let newScore = row.retrieval_score + signal;
     newScore = Math.max(MIN_SCORE, Math.min(MAX_SCORE, newScore));
 
     cachedPrepare(db,

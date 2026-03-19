@@ -21,6 +21,7 @@ const requiredEntryPoints = [
 /** Optional/scaffolding entry points — warn-and-skip if missing. */
 const optionalEntryPoints = [
   'src/adapters/openclaw-bridge/plugin-entry.ts',
+  'src/mcp/recall-server.ts',
 ];
 
 const allEntryPoints = [...requiredEntryPoints, ...optionalEntryPoints];

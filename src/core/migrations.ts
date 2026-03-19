@@ -104,7 +104,8 @@ CREATE TABLE IF NOT EXISTS sessions (
   observation_count INTEGER NOT NULL DEFAULT 0,
   created_at_epoch INTEGER NOT NULL DEFAULT (unixepoch()),
   ended_at_epoch INTEGER,
-  adapter TEXT DEFAULT 'unknown'
+  adapter TEXT DEFAULT 'unknown',
+  session_summary TEXT
 );
 
 -- getActiveSession: WHERE status='active' AND project=? ORDER BY created_at_epoch DESC
