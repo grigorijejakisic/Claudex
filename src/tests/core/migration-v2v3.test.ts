@@ -166,12 +166,13 @@ describe('migrateV2toV3', () => {
     }
   });
 
-  it('sets user_version to 3 after successful migration', () => {
+  it('sets user_version to latest after successful migration', () => {
     const db = createV2ArtifactsDb();
     try {
       runMigrations(db);
       const row = db.pragma('user_version') as Array<{ user_version: number }>;
-      expect(row[0].user_version).toBe(3);
+      // v2→v3 (artifact types) + v3→v4 (FTS5, triggers, events) = version 4
+      expect(row[0].user_version).toBe(4);
     } finally {
       db.close();
     }

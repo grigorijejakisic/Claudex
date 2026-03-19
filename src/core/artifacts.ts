@@ -32,6 +32,7 @@ export interface ArtifactRow {
   state: ArtifactState;
   ttl: number;
   importance: number;
+  retrieval_score: number;
   timestamp_epoch: number;
   last_materialized_epoch: number | null;
 }
@@ -297,30 +298,59 @@ function searchArtifactsInternal(
     // FTS may fail on invalid query syntax — fall through to keyword search
   }
 
-  // Stage 2: Keyword LIKE search on all artifacts (summary + content)
-  // Covers file-type artifacts (memory_file, session_log, handoff) which
-  // aren't in observations_fts, and acts as fallback for observation artifacts.
+  // Stage 2: FTS5 search on artifacts_fts (summary + content of ALL artifact types)
+  // Covers file-type artifacts, decisions, learnings — everything in the artifacts table.
+  // Falls back to LIKE if artifacts_fts doesn't exist (pre-migration DB).
   try {
     const keywords = tokenizeQuery(query, 5);
-    if (keywords.length === 0) return [];
+    if (keywords.length === 0) return ftsResults.length > 0 ? ftsResults : [];
 
-    const conditions = keywords.map(() => '(LOWER(summary) LIKE ? OR LOWER(content) LIKE ?)').join(' OR ');
-    const likeParams = keywords.flatMap(k => [`%${k}%`, `%${k}%`]);
-    const projectWhere = globalScope ? '' : 'project = ? AND';
-    const orderPrefixLike = globalScope
-      ? 'CASE WHEN project = ? THEN 0 ELSE 1 END,'
-      : '';
+    let stage2Results: ArtifactRow[] = [];
 
-    const sql = `SELECT * FROM artifacts
-       WHERE ${projectWhere} (${conditions})
-       ORDER BY ${orderPrefixLike}
-         importance DESC, timestamp_epoch DESC
-       LIMIT ?`;
+    // Try artifacts_fts first (fast path)
+    try {
+      const ftsQuery2 = keywords.join(' OR ');
+      const projectWhere2 = globalScope ? '' : 'AND a.project = ?';
+      const orderPrefix2 = globalScope
+        ? 'CASE WHEN a.project = ? THEN 0 ELSE 1 END,'
+        : '';
+      // bm25() returns negative values (more negative = better match)
+      const sql2 = `SELECT a.* FROM artifacts a
+         JOIN artifacts_fts fts ON fts.rowid = a.id
+         WHERE artifacts_fts MATCH ?
+           ${projectWhere2}
+         ORDER BY ${orderPrefix2}
+           CASE a.artifact_type
+             WHEN 'decision' THEN 0 WHEN 'learning' THEN 1
+             WHEN 'memory_file' THEN 2 WHEN 'observation' THEN 3 ELSE 4
+           END,
+           bm25(artifacts_fts, 2.0, 1.0),
+           a.importance DESC
+         LIMIT ?`;
+      const params2 = globalScope
+        ? [ftsQuery2, currentProject, limit]
+        : [ftsQuery2, currentProject, limit];
+      stage2Results = cachedPrepare(db, sql2).all(...params2) as ArtifactRow[];
+    } catch {
+      // artifacts_fts may not exist (pre-migration) — fall back to LIKE
+      const conditions = keywords.map(() => '(LOWER(summary) LIKE ? OR LOWER(content) LIKE ?)').join(' OR ');
+      const likeParams = keywords.flatMap(k => [`%${k}%`, `%${k}%`]);
+      const projectWhere = globalScope ? '' : 'project = ? AND';
+      const orderPrefixLike = globalScope
+        ? 'CASE WHEN project = ? THEN 0 ELSE 1 END,'
+        : '';
+      const sql = `SELECT * FROM artifacts
+         WHERE ${projectWhere} (${conditions})
+         ORDER BY ${orderPrefixLike}
+           importance DESC, timestamp_epoch DESC
+         LIMIT ?`;
+      const params = globalScope
+        ? [...likeParams, currentProject, limit]
+        : [currentProject, ...likeParams, limit];
+      stage2Results = cachedPrepare(db, sql).all(...params) as ArtifactRow[];
+    }
 
-    const params = globalScope
-      ? [...likeParams, currentProject, limit]
-      : [currentProject, ...likeParams, limit];
-    const likeResults = cachedPrepare(db, sql).all(...params) as ArtifactRow[];
+    const likeResults = stage2Results;
 
     // Merge FTS1 + LIKE results, deduplicate by id, cap at limit
     if (ftsResults.length === 0) return likeResults;

@@ -243,6 +243,7 @@ CREATE TABLE IF NOT EXISTS artifacts (
     CHECK (state IN ('fresh', 'packed', 'materialized')),
   ttl INTEGER NOT NULL DEFAULT 3,
   importance INTEGER NOT NULL DEFAULT 3 CHECK (importance BETWEEN 1 AND 5),
+  retrieval_score REAL NOT NULL DEFAULT 1.0,
   timestamp_epoch INTEGER NOT NULL DEFAULT (unixepoch()),
   last_materialized_epoch INTEGER
 );
@@ -253,6 +254,57 @@ CREATE INDEX IF NOT EXISTS idx_artifacts_type_importance
   ON artifacts(project, artifact_type, importance DESC, timestamp_epoch DESC);
 CREATE INDEX IF NOT EXISTS idx_artifacts_session
   ON artifacts(session_id, timestamp_epoch DESC);
+
+-- artifacts_fts: full-text search on artifact summary + content (Claudex Recall)
+-- bm25() returns negative values (more negative = better match).
+CREATE VIRTUAL TABLE IF NOT EXISTS artifacts_fts USING fts5(
+  summary,
+  content,
+  content=artifacts,
+  content_rowid=id,
+  tokenize='porter unicode61'
+);
+
+CREATE TRIGGER IF NOT EXISTS artifacts_fts_insert AFTER INSERT ON artifacts BEGIN
+  INSERT INTO artifacts_fts(rowid, summary, content)
+  VALUES (new.id, new.summary, COALESCE(new.content, ''));
+END;
+CREATE TRIGGER IF NOT EXISTS artifacts_fts_update AFTER UPDATE OF summary, content ON artifacts BEGIN
+  INSERT INTO artifacts_fts(artifacts_fts, rowid, summary, content)
+  VALUES ('delete', old.id, old.summary, COALESCE(old.content, ''));
+  INSERT INTO artifacts_fts(rowid, summary, content)
+  VALUES (new.id, new.summary, COALESCE(new.content, ''));
+END;
+CREATE TRIGGER IF NOT EXISTS artifacts_fts_delete AFTER DELETE ON artifacts BEGIN
+  INSERT INTO artifacts_fts(artifacts_fts, rowid, summary, content)
+  VALUES ('delete', old.id, old.summary, COALESCE(old.content, ''));
+END;
+
+-- context_triggers: maps file globs and command patterns to knowledge domains
+CREATE TABLE IF NOT EXISTS context_triggers (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  glob_pattern TEXT,
+  command_pattern TEXT,
+  knowledge_domain TEXT NOT NULL,
+  priority INTEGER NOT NULL DEFAULT 5,
+  project TEXT NOT NULL DEFAULT '__global__'
+);
+
+-- session_events: structured events for cross-session thread reconstruction
+CREATE TABLE IF NOT EXISTS session_events (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  session_id TEXT NOT NULL,
+  project TEXT NOT NULL,
+  event_type TEXT NOT NULL,
+  entity TEXT NOT NULL,
+  action TEXT NOT NULL,
+  detail TEXT,
+  timestamp_epoch INTEGER NOT NULL DEFAULT (unixepoch())
+);
+CREATE INDEX IF NOT EXISTS idx_session_events_session
+  ON session_events(session_id);
+CREATE INDEX IF NOT EXISTS idx_session_events_project
+  ON session_events(project, timestamp_epoch);
 
 -- verified_facts: session-scoped facts for checkpoint inclusion
 CREATE TABLE IF NOT EXISTS verified_facts (
@@ -279,7 +331,9 @@ CREATE TABLE IF NOT EXISTS experience_patterns (
   source_session TEXT,
   source_project TEXT NOT NULL,
   created_at_epoch INTEGER NOT NULL,
-  last_triggered_epoch INTEGER
+  last_triggered_epoch INTEGER,
+  trigger_glob TEXT,
+  trigger_command TEXT
 );
 
 CREATE INDEX IF NOT EXISTS idx_expat_project_score
@@ -636,13 +690,20 @@ export function runMigrations(db: Database): void {
   const row = db.pragma('user_version') as Array<{ user_version: number }>;
   const version = row[0]?.user_version ?? 0;
 
-  if (version >= 3) {
+  if (version >= 4) {
     return; // Already current — no-op
+  }
+
+  if (version === 3) {
+    migrateV3toV4(db);
+    db.pragma('user_version = 4');
+    return;
   }
 
   if (version === 2) {
     if (migrateV2toV3(db)) {
-      db.pragma('user_version = 3');
+      migrateV3toV4(db);
+      db.pragma('user_version = 4');
     }
     return;
   }
@@ -655,20 +716,20 @@ export function runMigrations(db: Database): void {
       // Legacy DB — run all migrations from V1
       migrateV1toV2(db);
       if (migrateV2toV3(db)) {
-        db.pragma('user_version = 3');
+        migrateV3toV4(db);
+        db.pragma('user_version = 4');
       } else {
         db.pragma('user_version = 2');
       }
     }
-    // Fresh DB — no tables yet; initializeSchema() will create them and set version.
-    // Don't run CREATE TABLE here — that's initializeSchema()'s job.
     return;
   }
 
   if (version === 1) {
     migrateV1toV2(db);
     if (migrateV2toV3(db)) {
-      db.pragma('user_version = 3');
+      migrateV3toV4(db);
+      db.pragma('user_version = 4');
     } else {
       db.pragma('user_version = 2');
     }
@@ -736,6 +797,101 @@ function migrateV2toV3(db: Database): boolean {
     }
   } catch {
     return false;
+  }
+}
+
+/**
+ * Adds artifacts_fts, context_triggers, session_events tables,
+ * retrieval_score column, and trigger_glob/trigger_command columns.
+ * Backfills artifacts_fts from existing artifacts.
+ * Idempotent — safe to call on DBs that already have these.
+ */
+function migrateV3toV4(db: Database): void {
+  try {
+    // artifacts_fts virtual table
+    const tables = (db.prepare("SELECT name FROM sqlite_master WHERE type IN ('table','view')").all() as Array<{ name: string }>).map(t => t.name);
+
+    if (!tables.includes('artifacts_fts')) {
+      db.exec(`
+        CREATE VIRTUAL TABLE artifacts_fts USING fts5(
+          summary, content, content=artifacts, content_rowid=id,
+          tokenize='porter unicode61'
+        );
+        CREATE TRIGGER IF NOT EXISTS artifacts_fts_insert AFTER INSERT ON artifacts BEGIN
+          INSERT INTO artifacts_fts(rowid, summary, content)
+          VALUES (new.id, new.summary, COALESCE(new.content, ''));
+        END;
+        CREATE TRIGGER IF NOT EXISTS artifacts_fts_update AFTER UPDATE OF summary, content ON artifacts BEGIN
+          INSERT INTO artifacts_fts(artifacts_fts, rowid, summary, content)
+          VALUES ('delete', old.id, old.summary, COALESCE(old.content, ''));
+          INSERT INTO artifacts_fts(rowid, summary, content)
+          VALUES (new.id, new.summary, COALESCE(new.content, ''));
+        END;
+        CREATE TRIGGER IF NOT EXISTS artifacts_fts_delete AFTER DELETE ON artifacts BEGIN
+          INSERT INTO artifacts_fts(artifacts_fts, rowid, summary, content)
+          VALUES ('delete', old.id, old.summary, COALESCE(old.content, ''));
+        END;
+      `);
+      // Backfill existing artifacts
+      db.exec(`INSERT INTO artifacts_fts(rowid, summary, content) SELECT id, summary, COALESCE(content, '') FROM artifacts`);
+    }
+
+    // context_triggers table
+    if (!tables.includes('context_triggers')) {
+      db.exec(`
+        CREATE TABLE context_triggers (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          glob_pattern TEXT,
+          command_pattern TEXT,
+          knowledge_domain TEXT NOT NULL,
+          priority INTEGER NOT NULL DEFAULT 5,
+          project TEXT NOT NULL DEFAULT '__global__'
+        );
+      `);
+    }
+
+    // session_events table
+    if (!tables.includes('session_events')) {
+      db.exec(`
+        CREATE TABLE session_events (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          session_id TEXT NOT NULL,
+          project TEXT NOT NULL,
+          event_type TEXT NOT NULL,
+          entity TEXT NOT NULL,
+          action TEXT NOT NULL,
+          detail TEXT,
+          timestamp_epoch INTEGER NOT NULL DEFAULT (unixepoch())
+        );
+        CREATE INDEX IF NOT EXISTS idx_session_events_session ON session_events(session_id);
+        CREATE INDEX IF NOT EXISTS idx_session_events_project ON session_events(project, timestamp_epoch);
+      `);
+    }
+
+    // retrieval_score column on artifacts
+    const artCols = (db.pragma('table_info(artifacts)') as Array<{ name: string }>).map(c => c.name);
+    if (!artCols.includes('retrieval_score')) {
+      db.exec("ALTER TABLE artifacts ADD COLUMN retrieval_score REAL NOT NULL DEFAULT 1.0");
+    }
+
+    // trigger_glob and trigger_command columns on experience_patterns
+    if (tables.includes('experience_patterns')) {
+      const epCols = (db.pragma('table_info(experience_patterns)') as Array<{ name: string }>).map(c => c.name);
+      if (!epCols.includes('trigger_glob')) {
+        db.exec("ALTER TABLE experience_patterns ADD COLUMN trigger_glob TEXT");
+      }
+      if (!epCols.includes('trigger_command')) {
+        db.exec("ALTER TABLE experience_patterns ADD COLUMN trigger_command TEXT");
+      }
+    }
+
+    // session_summary column on sessions
+    const sessCols = (db.pragma('table_info(sessions)') as Array<{ name: string }>).map(c => c.name);
+    if (!sessCols.includes('session_summary')) {
+      db.exec("ALTER TABLE sessions ADD COLUMN session_summary TEXT");
+    }
+  } catch {
+    // Non-throwing — partial migration is acceptable
   }
 }
 
@@ -810,7 +966,7 @@ export function initializeSchema(db: Database): void {
   } else {
     db.prepare('INSERT OR IGNORE INTO schema_versions (version) VALUES (?)').run(SCHEMA_VERSION);
   }
-  db.pragma('user_version = 3');
+  db.pragma('user_version = 4');
 }
 
 /**

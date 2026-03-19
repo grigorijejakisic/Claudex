@@ -15,6 +15,7 @@ import {
 } from '../shared/lifecycle.js';
 import { routeByContent, buildProjectIndex } from '../../shared/content-router.js';
 import { applyExperienceFeedback } from '../../intelligence/experience-scoring.js';
+import { getSessionEvents, synthesizeSessionSummary, saveSessionSummary } from '../../core/session-events.js';
 import type { Database } from 'better-sqlite3';
 
 // ---------------------------------------------------------------------------
@@ -108,6 +109,17 @@ const main = wrapHook('Stop', async (input, ctx) => {
     routedProject,
     ctx.config,
   );
+
+  // Pre-compute session summary from events (for next session's reconstruction)
+  try {
+    const events = getSessionEvents(ctx.db, input.session_id);
+    const summary = synthesizeSessionSummary(events);
+    if (summary) {
+      saveSessionSummary(ctx.db, input.session_id, summary);
+    }
+  } catch (e) {
+    emitErrorTelemetry(ctx.db, input.session_id, 'stop/session_summary', e);
+  }
 
   return {};
 });

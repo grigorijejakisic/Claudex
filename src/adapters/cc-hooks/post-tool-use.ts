@@ -16,6 +16,9 @@ import {
 import { routeByContent, extractRoutingContent, buildProjectIndex } from '../../shared/content-router.js';
 import { withBehavioralBatch, applyFileEditIncrement, applyToolCallPattern } from '../../intelligence/experience-flags.js';
 import { buildToolSignature } from '../../intelligence/behavioral-signals.js';
+import { matchTriggers } from '../../intelligence/trigger-engine.js';
+import { setExperienceFlags, getExperienceFlags } from '../../intelligence/experience-flags.js';
+import { extractEventsFromToolUse, recordEvent } from '../../core/session-events.js';
 
 // ---------------------------------------------------------------------------
 // Behavioral signal thresholds (spec-defined)
@@ -139,6 +142,38 @@ const main = wrapHook('PostToolUse', async (input, ctx) => {
     });
   } catch (e) {
     emitErrorTelemetry(ctx.db, input.session_id, 'post_tool_use/behavioral_signals', e);
+  }
+
+  // ---------------------------------------------------------------------------
+  // Trigger engine — match tool input against context triggers and
+  // predictive experience patterns (file globs, command patterns)
+  // ---------------------------------------------------------------------------
+  try {
+    const triggerMatch = matchTriggers(ctx.db, routedProject, toolName, toolInput);
+    if (triggerMatch.patternIds.length > 0) {
+      // Persist matched predictive pattern IDs for injection at next assembly
+      const flags = getExperienceFlags(ctx.db, input.session_id);
+      const merged = [...new Set([...flags.injected_pattern_ids, ...triggerMatch.patternIds])];
+      setExperienceFlags(ctx.db, input.session_id, {
+        injected_pattern_ids: merged,
+      }, flags);
+    }
+    // Domain matches are stored for assembly lookup (via thread_state)
+    // TODO: persist triggerMatch.domains for UserPromptSubmit to use as FTS5 queries
+  } catch (e) {
+    emitErrorTelemetry(ctx.db, input.session_id, 'post_tool_use/trigger_engine', e);
+  }
+
+  // ---------------------------------------------------------------------------
+  // Session events — lightweight structured event capture
+  // ---------------------------------------------------------------------------
+  try {
+    const events = extractEventsFromToolUse(toolName, toolInput, toolOutput);
+    for (const ev of events) {
+      recordEvent(ctx.db, input.session_id, routedProject, ev.type, ev.entity, ev.action, ev.detail);
+    }
+  } catch (e) {
+    emitErrorTelemetry(ctx.db, input.session_id, 'post_tool_use/session_events', e);
   }
 
   return {};
