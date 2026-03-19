@@ -7,11 +7,14 @@
  *
  * Runs at session-start and compaction boundaries (500ms-3000ms budget),
  * never per-turn. Uses mtime + content hash for incremental updates.
+ * All file I/O is async (fs.promises) to avoid blocking the event loop
+ * at production scale (hundreds of files).
  *
  * All functions are non-throwing with safe defaults.
  */
 
 import * as fs from 'fs';
+import * as fsp from 'fs/promises';
 import * as path from 'path';
 import * as os from 'os';
 import * as crypto from 'crypto';
@@ -70,40 +73,43 @@ function deriveClaudeProjectKey(dir: string): string {
 }
 
 // ---------------------------------------------------------------------------
-// File scanning
+// File scanning (async)
 // ---------------------------------------------------------------------------
 
 /**
  * Scans all file-based context sources for a project.
  * Uses mtime comparison against existing artifact timestamps to skip
  * unmodified files (avoids reading + hashing unchanged content).
- * Non-throwing — skips unreadable files.
+ * All file I/O is async. Non-throwing — skips unreadable files.
  */
-function scanSources(
+async function scanSources(
   db: Database,
   projectDir: string,
   project: string,
-): FileSource[] {
-  const sources: FileSource[] = [];
+): Promise<FileSource[]> {
   const home = os.homedir();
 
-  // Load existing artifact timestamps for mtime comparison
+  // Load existing artifact timestamps for mtime comparison (DB query — sync, fast)
   const existingTimestamps = loadExistingTimestamps(db, project);
 
   // 1. Memory files from Claude auto-memory
   const projectKey = deriveClaudeProjectKey(projectDir);
   const memoryDir = path.join(home, '.claude', 'projects', projectKey, 'memory');
-  scanDirectory(memoryDir, 'memory_file', sources, existingTimestamps);
 
   // 2. Session logs
   const sessionsDir = path.join(projectDir, 'context', 'sessions');
-  scanDirectory(sessionsDir, 'session_log', sources, existingTimestamps);
 
   // 3. Handoffs (top-level only)
   const handoffsDir = path.join(projectDir, 'context', 'handoffs');
-  scanDirectory(handoffsDir, 'handoff', sources, existingTimestamps);
 
-  return sources;
+  // Scan all three directories concurrently
+  const [memorySources, sessionSources, handoffSources] = await Promise.all([
+    scanDirectory(memoryDir, 'memory_file', existingTimestamps),
+    scanDirectory(sessionsDir, 'session_log', existingTimestamps),
+    scanDirectory(handoffsDir, 'handoff', existingTimestamps),
+  ]);
+
+  return [...memorySources, ...sessionSources, ...handoffSources];
 }
 
 /**
@@ -130,70 +136,92 @@ function loadExistingTimestamps(db: Database, project: string): Map<string, numb
 
 /**
  * Scans a directory for text files. Checks mtime before reading.
- * Appends FileSource entries to the `out` array.
+ * Returns FileSource entries. All file I/O is async.
  * Non-throwing.
  */
-function scanDirectory(
+async function scanDirectory(
   dir: string,
   type: ArtifactType,
-  out: FileSource[],
   existingTimestamps: Map<string, number>,
-): void {
+): Promise<FileSource[]> {
+  const sources: FileSource[] = [];
   try {
-    if (!fs.existsSync(dir)) return;
-    const entries = fs.readdirSync(dir, { withFileTypes: true });
-    for (const entry of entries) {
-      if (!entry.isFile()) continue;
+    // Check directory exists
+    try {
+      await fsp.access(dir);
+    } catch {
+      return sources;
+    }
 
-      // Extension filter
-      const ext = path.extname(entry.name).toLowerCase();
-      if (!ALLOWED_EXTENSIONS.has(ext)) continue;
+    const entries = await fsp.readdir(dir, { withFileTypes: true });
 
-      // Skip index files
-      if (SKIP_FILES.has(entry.name)) continue;
+    // Process files concurrently with Promise.allSettled
+    const filePromises = entries
+      .filter(entry => {
+        if (!entry.isFile()) return false;
+        const ext = path.extname(entry.name).toLowerCase();
+        if (!ALLOWED_EXTENSIONS.has(ext)) return false;
+        if (SKIP_FILES.has(entry.name)) return false;
+        return true;
+      })
+      .map(entry => processFile(path.join(dir, entry.name), type, existingTimestamps));
 
-      try {
-        const filePath = path.join(dir, entry.name);
-        const stat = fs.statSync(filePath);
-
-        // Size cap
-        if (stat.size > MAX_FILE_SIZE) continue;
-        if (stat.size < MIN_CONTENT_LENGTH) continue;
-
-        // Mtime check — skip if file hasn't changed since last ingestion.
-        // Add 1000ms buffer because timestamp_epoch is second-precision (truncated)
-        // while mtimeMs has millisecond precision.
-        const existingTs = existingTimestamps.get(filePath);
-        if (existingTs !== undefined && stat.mtimeMs <= existingTs + 1000) continue;
-
-        const raw = fs.readFileSync(filePath, 'utf-8');
-
-        // Binary detection — skip files with NUL bytes
-        if (raw.includes('\0')) continue;
-
-        // Strip YAML frontmatter
-        let content = raw;
-        if (content.startsWith('---')) {
-          const endIdx = content.indexOf('---', 3);
-          if (endIdx > 0) content = content.slice(endIdx + 3).trim();
-        }
-
-        if (content.length < MIN_CONTENT_LENGTH) continue;
-
-        const summary = content.replace(/\n/g, ' ').slice(0, 200).trim();
-        const contentHash = crypto.createHash('sha256').update(raw).digest('hex').slice(0, 16);
-
-        out.push({
-          path: filePath,
-          type,
-          summary,
-          content,
-          contentHash,
-          mtimeMs: stat.mtimeMs,
-        });
-      } catch { /* skip unreadable files */ }
+    const results = await Promise.allSettled(filePromises);
+    for (const result of results) {
+      if (result.status === 'fulfilled' && result.value) {
+        sources.push(result.value);
+      }
     }
   } catch { /* non-throwing */ }
+  return sources;
+}
+
+/**
+ * Processes a single file: stat → mtime check → read → parse.
+ * Returns null if file should be skipped. Async.
+ */
+async function processFile(
+  filePath: string,
+  type: ArtifactType,
+  existingTimestamps: Map<string, number>,
+): Promise<FileSource | null> {
+  const stat = await fsp.stat(filePath);
+
+  // Size cap
+  if (stat.size > MAX_FILE_SIZE) return null;
+  if (stat.size < MIN_CONTENT_LENGTH) return null;
+
+  // Mtime check — skip if file hasn't changed since last ingestion.
+  // Add 1000ms buffer because timestamp_epoch is second-precision (truncated)
+  // while mtimeMs has millisecond precision.
+  const existingTs = existingTimestamps.get(filePath);
+  if (existingTs !== undefined && stat.mtimeMs <= existingTs + 1000) return null;
+
+  const raw = await fsp.readFile(filePath, 'utf-8');
+
+  // Binary detection — skip files with NUL bytes
+  if (raw.includes('\0')) return null;
+
+  // Strip YAML frontmatter
+  let content = raw;
+  if (content.startsWith('---')) {
+    const endIdx = content.indexOf('---', 3);
+    if (endIdx > 0) content = content.slice(endIdx + 3).trim();
+  }
+
+  if (content.length < MIN_CONTENT_LENGTH) return null;
+
+  const summary = content.replace(/\n/g, ' ').slice(0, 200).trim();
+  const contentHash = crypto.createHash('sha256').update(raw).digest('hex').slice(0, 16);
+
+  return {
+    path: filePath,
+    type,
+    summary,
+    content,
+    contentHash,
+    mtimeMs: stat.mtimeMs,
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -222,23 +250,23 @@ function ensureFileArtifactIndex(db: Database): void {
 /**
  * Ingests file-based context sources as artifacts.
  *
- * Uses INSERT ... ON CONFLICT for atomic upsert (no read-then-write race).
- * Content hash stored separately from content (no inline encoding).
+ * File scanning is async (non-blocking). DB writes are sync (better-sqlite3).
+ * Content stored directly (no inline hash encoding).
  * Ingested artifacts: state='packed', importance=3, ttl=0.
  *
  * Non-throwing. Returns counts of ingested/skipped/errors.
  */
-export function ingestFileArtifacts(
+export async function ingestFileArtifacts(
   db: Database,
   sessionId: string,
   project: string,
   projectDir: string,
-): IngestResult {
+): Promise<IngestResult> {
   const result: IngestResult = { ingested: 0, skipped: 0, errors: 0 };
 
   try {
     ensureFileArtifactIndex(db);
-    const sources = scanSources(db, projectDir, project);
+    const sources = await scanSources(db, projectDir, project);
     if (sources.length === 0) return result;
 
     const now = Math.floor(Date.now() / 1000);
@@ -246,13 +274,6 @@ export function ingestFileArtifacts(
     const ingestTx = db.transaction(() => {
       for (const src of sources) {
         try {
-          // Atomic upsert via INSERT OR REPLACE on the unique index.
-          // If artifact_ref already exists for this project+type, the row is replaced.
-          // Content hash is stored in artifact_ref alongside the path using a separator
-          // that can't appear in file paths, so consumers never need to parse content.
-          //
-          // Actually, we use a two-step approach: try INSERT, on conflict UPDATE.
-          // This preserves the row ID for existing artifacts.
           const existing = cachedPrepare(db,
             `SELECT id, summary FROM artifacts
              WHERE project = ? AND artifact_type = ? AND artifact_ref = ?
@@ -260,7 +281,6 @@ export function ingestFileArtifacts(
           ).get(project, src.type, src.path) as { id: number; summary: string } | undefined;
 
           if (existing) {
-            // Update content + timestamp
             cachedPrepare(db,
               `UPDATE artifacts SET summary = ?, content = ?, timestamp_epoch = ?
                WHERE id = ?`
@@ -288,9 +308,9 @@ export function ingestFileArtifacts(
 
 /**
  * Removes artifacts for files that no longer exist on disk.
- * Non-throwing.
+ * Uses async file existence checks. Non-throwing.
  */
-export function pruneStaleFileArtifacts(db: Database, project: string): number {
+export async function pruneStaleFileArtifacts(db: Database, project: string): Promise<number> {
   try {
     const fileTypes = ['memory_file', 'session_log', 'handoff'];
     const placeholders = fileTypes.map(() => '?').join(',');
@@ -301,15 +321,24 @@ export function pruneStaleFileArtifacts(db: Database, project: string): number {
     ).all(project, ...fileTypes) as Array<{ id: number; artifact_ref: string }>;
 
     let pruned = 0;
-    for (const row of rows) {
-      try {
-        if (!fs.existsSync(row.artifact_ref)) {
-          cachedPrepare(db,
-            `DELETE FROM artifacts WHERE id = ?`
-          ).run(row.id);
-          pruned++;
+    const checks = await Promise.allSettled(
+      rows.map(async row => {
+        try {
+          await fsp.access(row.artifact_ref);
+          return { id: row.id, exists: true };
+        } catch {
+          return { id: row.id, exists: false };
         }
-      } catch { /* skip */ }
+      })
+    );
+
+    for (const check of checks) {
+      if (check.status === 'fulfilled' && !check.value.exists) {
+        try {
+          cachedPrepare(db, `DELETE FROM artifacts WHERE id = ?`).run(check.value.id);
+          pruned++;
+        } catch { /* skip */ }
+      }
     }
     return pruned;
   } catch {

@@ -33,7 +33,7 @@ function cleanup(dir: string): void {
 }
 
 describe('ingestFileArtifacts', () => {
-  it('ingests markdown files from context/sessions/', () => {
+  it('ingests markdown files from context/sessions/', async () => {
     const db = createDb();
     const tmpDir = createTempDir();
     try {
@@ -42,7 +42,7 @@ describe('ingestFileArtifacts', () => {
       fs.mkdirSync(sessDir, { recursive: true });
       fs.writeFileSync(path.join(sessDir, 'session-1.md'), '# Session 1\nDid some work on the project.');
 
-      const result = ingestFileArtifacts(db, 'sess-1', 'test-project', tmpDir);
+      const result = await ingestFileArtifacts(db, 'sess-1', 'test-project', tmpDir);
       expect(result.ingested).toBe(1);
       expect(result.skipped).toBe(0);
 
@@ -58,7 +58,7 @@ describe('ingestFileArtifacts', () => {
     }
   });
 
-  it('skips unchanged files on re-ingestion (mtime unchanged)', () => {
+  it('skips unchanged files on re-ingestion (mtime unchanged)', async () => {
     const db = createDb();
     const tmpDir = createTempDir();
     try {
@@ -67,7 +67,7 @@ describe('ingestFileArtifacts', () => {
       fs.mkdirSync(sessDir, { recursive: true });
       fs.writeFileSync(path.join(sessDir, 'session-1.md'), '# Session 1\nDid some work on the project.');
 
-      const r1 = ingestFileArtifacts(db, 'sess-1', 'test-project', tmpDir);
+      const r1 = await ingestFileArtifacts(db, 'sess-1', 'test-project', tmpDir);
       expect(r1.ingested).toBe(1);
 
       // Bump the artifact timestamp to the future so mtime comparison sees it as fresh
@@ -75,7 +75,7 @@ describe('ingestFileArtifacts', () => {
       db.prepare(`UPDATE artifacts SET timestamp_epoch = ? WHERE artifact_type = 'session_log'`).run(futureTs);
 
       // Second ingestion: file mtime < artifact timestamp, so scanner skips it
-      const r2 = ingestFileArtifacts(db, 'sess-1', 'test-project', tmpDir);
+      const r2 = await ingestFileArtifacts(db, 'sess-1', 'test-project', tmpDir);
       expect(r2.ingested).toBe(0);
 
       // Still only 1 artifact
@@ -87,7 +87,7 @@ describe('ingestFileArtifacts', () => {
     }
   });
 
-  it('updates artifact when file content changes', () => {
+  it('updates artifact when file content changes', async () => {
     const db = createDb();
     const tmpDir = createTempDir();
     try {
@@ -97,14 +97,14 @@ describe('ingestFileArtifacts', () => {
       const filePath = path.join(sessDir, 'session-1.md');
       fs.writeFileSync(filePath, '# Session 1\nOriginal content.');
 
-      ingestFileArtifacts(db, 'sess-1', 'test-project', tmpDir);
+      await ingestFileArtifacts(db, 'sess-1', 'test-project', tmpDir);
 
       // Set artifact timestamp to the past so mtime check sees the rewrite as newer
       db.prepare(`UPDATE artifacts SET timestamp_epoch = 1000000 WHERE artifact_type = 'session_log'`).run();
 
       // Modify file — mtime will be > artifact's timestamp_epoch
       fs.writeFileSync(filePath, '# Session 1\nUpdated content with new info.');
-      const r2 = ingestFileArtifacts(db, 'sess-1', 'test-project', tmpDir);
+      const r2 = await ingestFileArtifacts(db, 'sess-1', 'test-project', tmpDir);
       expect(r2.ingested).toBe(1);
 
       // Still only 1 artifact (updated, not duplicated)
@@ -116,7 +116,7 @@ describe('ingestFileArtifacts', () => {
     }
   });
 
-  it('ingests handoff files', () => {
+  it('ingests handoff files', async () => {
     const db = createDb();
     const tmpDir = createTempDir();
     try {
@@ -125,14 +125,13 @@ describe('ingestFileArtifacts', () => {
       fs.mkdirSync(handoffDir, { recursive: true });
       fs.writeFileSync(path.join(handoffDir, 'ACTIVE.md'), '---\nstatus: active\n---\n# Handoff\nSome unfinished work.');
 
-      const result = ingestFileArtifacts(db, 'sess-1', 'test-project', tmpDir);
+      const result = await ingestFileArtifacts(db, 'sess-1', 'test-project', tmpDir);
       expect(result.ingested).toBe(1);
 
       const artifacts = db.prepare(
         `SELECT * FROM artifacts WHERE artifact_type = 'handoff'`
       ).all() as Array<{ summary: string }>;
       expect(artifacts.length).toBe(1);
-      // YAML frontmatter should be stripped from summary
       expect(artifacts[0].summary).toContain('Handoff');
       expect(artifacts[0].summary).not.toContain('status: active');
     } finally {
@@ -141,7 +140,7 @@ describe('ingestFileArtifacts', () => {
     }
   });
 
-  it('skips tiny files (<20 chars)', () => {
+  it('skips tiny files (<20 chars)', async () => {
     const db = createDb();
     const tmpDir = createTempDir();
     try {
@@ -150,7 +149,7 @@ describe('ingestFileArtifacts', () => {
       fs.mkdirSync(sessDir, { recursive: true });
       fs.writeFileSync(path.join(sessDir, 'tiny.md'), 'short');
 
-      const result = ingestFileArtifacts(db, 'sess-1', 'test-project', tmpDir);
+      const result = await ingestFileArtifacts(db, 'sess-1', 'test-project', tmpDir);
       expect(result.ingested).toBe(0);
     } finally {
       db.close();
@@ -158,12 +157,12 @@ describe('ingestFileArtifacts', () => {
     }
   });
 
-  it('returns zero counts when no files exist', () => {
+  it('returns zero counts when no files exist', async () => {
     const db = createDb();
     const tmpDir = createTempDir();
     try {
       insertSession(db, 'sess-1');
-      const result = ingestFileArtifacts(db, 'sess-1', 'test-project', tmpDir);
+      const result = await ingestFileArtifacts(db, 'sess-1', 'test-project', tmpDir);
       expect(result.ingested).toBe(0);
       expect(result.skipped).toBe(0);
       expect(result.errors).toBe(0);
@@ -173,22 +172,19 @@ describe('ingestFileArtifacts', () => {
     }
   });
 
-  it('skips MEMORY.md index file but ingests other .md files', () => {
+  it('skips MEMORY.md index file but ingests other .md files', async () => {
     const db = createDb();
     const tmpDir = createTempDir();
     try {
       insertSession(db, 'sess-1');
       const sessDir = path.join(tmpDir, 'context', 'sessions');
       fs.mkdirSync(sessDir, { recursive: true });
-      // MEMORY.md should be skipped
       fs.writeFileSync(path.join(sessDir, 'MEMORY.md'), '# Memory Index\nThis is the index file and should be skipped by the ingester.');
-      // Regular session log should be ingested
       fs.writeFileSync(path.join(sessDir, 'real-session.md'), '# Real Session\nActual content here for testing.');
 
-      const result = ingestFileArtifacts(db, 'sess-1', 'test-project', tmpDir);
+      const result = await ingestFileArtifacts(db, 'sess-1', 'test-project', tmpDir);
       expect(result.ingested).toBe(1);
 
-      // Verify only the real session was ingested, not MEMORY.md
       const artifacts = db.prepare(
         `SELECT artifact_ref FROM artifacts WHERE artifact_type = 'session_log'`
       ).all() as Array<{ artifact_ref: string }>;
@@ -200,7 +196,7 @@ describe('ingestFileArtifacts', () => {
     }
   });
 
-  it('skips binary files and non-text extensions', () => {
+  it('skips binary files and non-text extensions', async () => {
     const db = createDb();
     const tmpDir = createTempDir();
     try {
@@ -210,7 +206,7 @@ describe('ingestFileArtifacts', () => {
       fs.writeFileSync(path.join(sessDir, 'image.png'), Buffer.from([0x89, 0x50, 0x4E, 0x47, 0x00]));
       fs.writeFileSync(path.join(sessDir, 'valid.md'), '# Valid Session\nThis is a valid markdown file for testing.');
 
-      const result = ingestFileArtifacts(db, 'sess-1', 'test-project', tmpDir);
+      const result = await ingestFileArtifacts(db, 'sess-1', 'test-project', tmpDir);
       expect(result.ingested).toBe(1);
     } finally {
       db.close();
@@ -220,7 +216,7 @@ describe('ingestFileArtifacts', () => {
 });
 
 describe('pruneStaleFileArtifacts', () => {
-  it('removes artifacts whose files no longer exist', () => {
+  it('removes artifacts whose files no longer exist', async () => {
     const db = createDb();
     const tmpDir = createTempDir();
     try {
@@ -230,12 +226,11 @@ describe('pruneStaleFileArtifacts', () => {
       const filePath = path.join(sessDir, 'session-1.md');
       fs.writeFileSync(filePath, '# Session 1\nContent for ingestion testing.');
 
-      ingestFileArtifacts(db, 'sess-1', 'test-project', tmpDir);
+      await ingestFileArtifacts(db, 'sess-1', 'test-project', tmpDir);
 
-      // Delete the file
       fs.unlinkSync(filePath);
 
-      const pruned = pruneStaleFileArtifacts(db, 'test-project');
+      const pruned = await pruneStaleFileArtifacts(db, 'test-project');
       expect(pruned).toBe(1);
 
       const count = db.prepare(`SELECT COUNT(*) as c FROM artifacts WHERE artifact_type = 'session_log'`).get() as { c: number };
@@ -246,7 +241,7 @@ describe('pruneStaleFileArtifacts', () => {
     }
   });
 
-  it('does not prune artifacts whose files still exist', () => {
+  it('does not prune artifacts whose files still exist', async () => {
     const db = createDb();
     const tmpDir = createTempDir();
     try {
@@ -255,9 +250,9 @@ describe('pruneStaleFileArtifacts', () => {
       fs.mkdirSync(sessDir, { recursive: true });
       fs.writeFileSync(path.join(sessDir, 'session-1.md'), '# Session 1\nContent for ingestion testing.');
 
-      ingestFileArtifacts(db, 'sess-1', 'test-project', tmpDir);
+      await ingestFileArtifacts(db, 'sess-1', 'test-project', tmpDir);
 
-      const pruned = pruneStaleFileArtifacts(db, 'test-project');
+      const pruned = await pruneStaleFileArtifacts(db, 'test-project');
       expect(pruned).toBe(0);
     } finally {
       db.close();
