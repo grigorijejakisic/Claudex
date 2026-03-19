@@ -25,6 +25,7 @@
 
 import Database from 'better-sqlite3';
 import { getDbPath } from '../shared/paths.js';
+import { cachedPrepare } from '../core/stmt-cache.js';
 
 // ── Types ────────────────────────────────────────────────────────────
 
@@ -48,8 +49,8 @@ export interface ProjectsTouchedResult {
  */
 export function findLatestSessionId(db: Database.Database): string | null {
   try {
-    const row = db
-      .prepare('SELECT session_id FROM sessions ORDER BY created_at_epoch DESC LIMIT 1')
+    const row = cachedPrepare(db,
+      'SELECT session_id FROM sessions ORDER BY created_at_epoch DESC LIMIT 1')
       .get() as { session_id: string } | undefined;
     return row ? row.session_id : null;
   } catch (err) {
@@ -65,8 +66,8 @@ export function findLatestSessionId(db: Database.Database): string | null {
  */
 export function sessionExists(db: Database.Database, sessionId: string): boolean {
   try {
-    const row = db
-      .prepare('SELECT 1 FROM sessions WHERE session_id = ? LIMIT 1')
+    const row = cachedPrepare(db,
+      'SELECT 1 FROM sessions WHERE session_id = ? LIMIT 1')
       .get(sessionId) as { 1: number } | undefined;
     return row !== undefined;
   } catch {
@@ -82,10 +83,8 @@ export function queryObservationsByProject(
   db: Database.Database,
   sessionId: string
 ): Map<string, number> {
-  const rows = db
-    .prepare(
-      'SELECT project, COUNT(*) as count FROM observations WHERE session_id = ? GROUP BY project'
-    )
+  const rows = cachedPrepare(db,
+      'SELECT project, COUNT(*) as count FROM observations WHERE session_id = ? GROUP BY project')
     .all(sessionId) as Array<{ project: string | null; count: number }>;
 
   const map = new Map<string, number>();
@@ -104,10 +103,8 @@ export function queryDecisionsByProject(
   db: Database.Database,
   sessionId: string
 ): Map<string, number> {
-  const rows = db
-    .prepare(
-      'SELECT project, COUNT(*) as count FROM decisions WHERE session_id = ? GROUP BY project'
-    )
+  const rows = cachedPrepare(db,
+      'SELECT project, COUNT(*) as count FROM decisions WHERE session_id = ? GROUP BY project')
     .all(sessionId) as Array<{ project: string | null; count: number }>;
 
   const map = new Map<string, number>();
@@ -128,10 +125,8 @@ export function queryFilesForProject(
   sessionId: string,
   project: string
 ): string[] {
-  const rows = db
-    .prepare(
-      'SELECT files_modified FROM observations WHERE session_id = ? AND project = ? AND files_modified IS NOT NULL'
-    )
+  const rows = cachedPrepare(db,
+      'SELECT files_modified FROM observations WHERE session_id = ? AND project = ? AND files_modified IS NOT NULL')
     .all(sessionId, project) as Array<{ files_modified: string }>;
 
   const fileSet = new Set<string>();

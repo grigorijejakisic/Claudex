@@ -58,7 +58,7 @@ describe('ingestFileArtifacts', () => {
     }
   });
 
-  it('skips unchanged files on re-ingestion (mtime unchanged)', async () => {
+  it('skips unchanged files on re-ingestion (mtime stored accurately)', async () => {
     const db = createDb();
     const tmpDir = createTempDir();
     try {
@@ -70,11 +70,8 @@ describe('ingestFileArtifacts', () => {
       const r1 = await ingestFileArtifacts(db, 'sess-1', 'test-project', tmpDir);
       expect(r1.ingested).toBe(1);
 
-      // Bump the artifact timestamp to the future so mtime comparison sees it as fresh
-      const futureTs = Math.floor(Date.now() / 1000) + 60;
-      db.prepare(`UPDATE artifacts SET timestamp_epoch = ? WHERE artifact_type = 'session_log'`).run(futureTs);
-
-      // Second ingestion: file mtime < artifact timestamp, so scanner skips it
+      // Artifact timestamp_epoch stores the file's mtime (not Date.now())
+      // So re-ingestion with unchanged file should skip it
       const r2 = await ingestFileArtifacts(db, 'sess-1', 'test-project', tmpDir);
       expect(r2.ingested).toBe(0);
 
@@ -87,7 +84,7 @@ describe('ingestFileArtifacts', () => {
     }
   });
 
-  it('updates artifact when file content changes', async () => {
+  it('updates artifact when file content changes (new mtime > stored mtime)', async () => {
     const db = createDb();
     const tmpDir = createTempDir();
     try {
@@ -99,10 +96,9 @@ describe('ingestFileArtifacts', () => {
 
       await ingestFileArtifacts(db, 'sess-1', 'test-project', tmpDir);
 
-      // Set artifact timestamp to the past so mtime check sees the rewrite as newer
-      db.prepare(`UPDATE artifacts SET timestamp_epoch = 1000000 WHERE artifact_type = 'session_log'`).run();
-
-      // Modify file — mtime will be > artifact's timestamp_epoch
+      // Wait >1 second then modify — mtime comparison has 1-second precision
+      // (timestamp_epoch stores floor(mtimeMs/1000))
+      await new Promise(r => setTimeout(r, 1100));
       fs.writeFileSync(filePath, '# Session 1\nUpdated content with new info.');
       const r2 = await ingestFileArtifacts(db, 'sess-1', 'test-project', tmpDir);
       expect(r2.ingested).toBe(1);
@@ -110,6 +106,10 @@ describe('ingestFileArtifacts', () => {
       // Still only 1 artifact (updated, not duplicated)
       const count = db.prepare(`SELECT COUNT(*) as c FROM artifacts WHERE artifact_type = 'session_log'`).get() as { c: number };
       expect(count.c).toBe(1);
+
+      // Verify content was actually updated
+      const artifact = db.prepare(`SELECT summary FROM artifacts WHERE artifact_type = 'session_log'`).get() as { summary: string };
+      expect(artifact.summary).toContain('Updated');
     } finally {
       db.close();
       cleanup(tmpDir);

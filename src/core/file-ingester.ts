@@ -191,10 +191,12 @@ async function processFile(
   if (stat.size < MIN_CONTENT_LENGTH) return null;
 
   // Mtime check — skip if file hasn't changed since last ingestion.
-  // Add 1000ms buffer because timestamp_epoch is second-precision (truncated)
-  // while mtimeMs has millisecond precision.
+  // timestamp_epoch stores floor(file_mtime_ms / 1000) — second precision.
+  // existingTs = timestamp_epoch * 1000 — back to ms but truncated to second boundary.
+  // File mtimeMs has full ms precision, so we compare with +1000 to cover the
+  // truncation gap (same second = unchanged).
   const existingTs = existingTimestamps.get(filePath);
-  if (existingTs !== undefined && stat.mtimeMs <= existingTs + 1000) return null;
+  if (existingTs !== undefined && stat.mtimeMs < existingTs + 1000) return null;
 
   const raw = await fsp.readFile(filePath, 'utf-8');
 
@@ -266,11 +268,14 @@ export async function ingestFileArtifacts(
     const sources = await scanSources(db, projectDir, project);
     if (sources.length === 0) return result;
 
-    const now = Math.floor(Date.now() / 1000);
-
     const ingestTx = db.transaction(() => {
       for (const src of sources) {
         try {
+          // Store file's actual mtime as timestamp_epoch (not Date.now()).
+          // This makes the mtime comparison in scanDirectory accurate:
+          // file.mtimeMs vs artifact.timestamp_epoch*1000 is apples-to-apples.
+          const fileMtimeEpoch = Math.floor(src.mtimeMs / 1000);
+
           const existing = cachedPrepare(db,
             `SELECT id, summary FROM artifacts
              WHERE project = ? AND artifact_type = ? AND artifact_ref = ?
@@ -281,12 +286,12 @@ export async function ingestFileArtifacts(
             cachedPrepare(db,
               `UPDATE artifacts SET summary = ?, content = ?, timestamp_epoch = ?
                WHERE id = ?`
-            ).run(src.summary, src.content, now, existing.id);
+            ).run(src.summary, src.content, fileMtimeEpoch, existing.id);
           } else {
             cachedPrepare(db,
               `INSERT INTO artifacts (session_id, project, artifact_type, artifact_ref, summary, content, state, ttl, importance, timestamp_epoch)
                VALUES (?, ?, ?, ?, ?, ?, 'packed', 0, 3, ?)`
-            ).run(sessionId, project, src.type, src.path, src.summary, src.content, now);
+            ).run(sessionId, project, src.type, src.path, src.summary, src.content, fileMtimeEpoch);
           }
           result.ingested++;
         } catch {
