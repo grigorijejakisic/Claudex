@@ -33,6 +33,18 @@ export const CORRECTION_PATTERNS = [
   /\b(?:that's\s+(?:not|wrong)|no[,.]?\s+(?:actually|not\s+that))/i,
   /\b(?:should\s+be\s+remembered|learn\s+from\s+(?:experience|this))/i,
   /\b(?:you\s+keep|stop\s+doing|don't\s+(?:do\s+that|repeat))/i,
+  // Contraction-agnostic: "that is wrong", "this is not right", "this is incorrect"
+  /\b(?:that\s+is\s+(?:not|wrong)|this\s+is\s+(?:not|wrong|incorrect))/i,
+  // "incorrect" variants with contractions
+  /\b(?:that(?:'s|\s+is)\s+incorrect)/i,
+  // Soft corrections: "no, do X instead", "no, use Y"
+  /\b(?:no[,.]?\s+(?:do|use|try)\s)/i,
+  // "actually, do X" without "no" prefix
+  /\b(?:actually[,.]?\s+(?:do|use|try|it\s+should))\b/i,
+  // Contraction gap: "that is not what I asked/wanted"
+  /\b(?:that\s+is\s+not\s+what\s+I\s+(?:asked|wanted|meant|said))/i,
+  // Standalone line-ending correction: "wrong" / "incorrect"
+  /\b(?:wrong|incorrect)[.!]*$/im,
 ];
 
 /** Patterns indicating escalated severity — user has corrected this before. */

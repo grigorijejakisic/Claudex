@@ -286,7 +286,7 @@ function searchArtifactsInternal(
            ${projectFilter}
            AND observations_fts MATCH ?
          ORDER BY ${orderPrefix}
-           a.importance DESC, a.timestamp_epoch DESC
+           a.importance DESC, a.retrieval_score DESC, a.timestamp_epoch DESC
          LIMIT ?`;
 
       const params = globalScope
@@ -325,7 +325,7 @@ function searchArtifactsInternal(
              WHEN 'memory_file' THEN 2 WHEN 'observation' THEN 3 ELSE 4
            END,
            bm25(artifacts_fts, 2.0, 1.0),
-           a.importance DESC
+           a.importance DESC, a.retrieval_score DESC
          LIMIT ?`;
       const params2 = globalScope
         ? [ftsQuery2, currentProject, limit]
@@ -342,7 +342,7 @@ function searchArtifactsInternal(
       const sql = `SELECT * FROM artifacts
          WHERE ${projectWhere} (${conditions})
          ORDER BY ${orderPrefixLike}
-           importance DESC, timestamp_epoch DESC
+           importance DESC, retrieval_score DESC, timestamp_epoch DESC
          LIMIT ?`;
       const params = globalScope
         ? [...likeParams, currentProject, limit]

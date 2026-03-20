@@ -17,7 +17,7 @@ import { routeByContent, buildProjectIndex } from '../../shared/content-router.j
 import { applyExperienceFeedback } from '../../intelligence/experience-scoring.js';
 import * as fs from 'fs';
 import * as path from 'path';
-import { getSessionEvents, synthesizeSessionSummary, saveSessionSummary } from '../../core/session-events.js';
+import { getSessionEvents, synthesizeSessionSummary, saveSessionSummary, recordEvent } from '../../core/session-events.js';
 import { processRetrievalFeedback } from '../../intelligence/retrieval-feedback.js';
 import { getExperienceFlags } from '../../intelligence/experience-flags.js';
 import { cachedPrepare } from '../../core/stmt-cache.js';
@@ -60,6 +60,7 @@ const main = wrapHook('Stop', async (input, ctx) => {
   // Each operation isolated — if A fails, B and C still run
 
   // Decision capture with optional embedding classifier (built fresh each invocation)
+  const turnStartEpoch = Math.floor(Date.now() / 1000) - 2;
   try {
     await captureDecisionsWithClassifier({
       db: ctx.db,
@@ -72,6 +73,18 @@ const main = wrapHook('Stop', async (input, ctx) => {
   } catch (e) {
     emitErrorTelemetry(ctx.db, input.session_id, 'stop/decision_capture', e);
   }
+
+  // Record captured decisions as session events (for summary synthesis)
+  runHookStep('decision_events', () => {
+    const newDecisions = cachedPrepare(ctx.db,
+      `SELECT content, source FROM decisions
+       WHERE session_id = ? AND timestamp_epoch >= ?
+       ORDER BY timestamp_epoch DESC LIMIT 10`
+    ).all(input.session_id, turnStartEpoch) as Array<{ content: string; source: string }>;
+    for (const d of newDecisions) {
+      recordEvent(ctx.db, input.session_id, routedProject, 'decision', d.source, 'decided', d.content.slice(0, 200));
+    }
+  }, ctx.db, input.session_id);
 
   // Insight extraction — analytical conclusions from assistant response
   runHookStep('insight_extraction', () => {

@@ -20,6 +20,7 @@ import { getCooldownState, setCooldownState } from '../../core/thread.js';
 import { routeByContent, buildProjectIndex } from '../../shared/content-router.js';
 import { setExperienceFlags, getExperienceFlags } from '../../intelligence/experience-flags.js';
 import { detectCorrectionSignal } from '../../intelligence/correction-detection.js';
+import { recordEvent } from '../../core/session-events.js';
 
 const main = wrapHook('UserPromptSubmit', async (input, ctx) => {
   const prompt = (input.prompt as string) || (input.user_prompt as string) || '';
@@ -71,6 +72,13 @@ const main = wrapHook('UserPromptSubmit', async (input, ctx) => {
 
   // Persist topic update to thread_state when a shift is detected
   persistTopicIfShifted(ctx.db, input.session_id, topicShift);
+
+  // Record topic shift as a session event for summary synthesis
+  if (topicShift?.shifted && topicShift.newTopic) {
+    try {
+      recordEvent(ctx.db, input.session_id, ctx.project, 'topic_shift', topicShift.newTopic, 'shifted');
+    } catch { /* non-throwing */ }
+  }
 
   // Set initial topic from user prompt if none exists yet
   if (prompt && !topicShift?.shifted) {

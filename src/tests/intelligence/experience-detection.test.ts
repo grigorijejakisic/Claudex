@@ -93,6 +93,55 @@ describe('correction detection', () => {
       expect(detectCorrectionSignal('I TOLD YOU before')).toBe(true);
       expect(detectCorrectionSignal('YOU KEEP making this mistake')).toBe(true);
     });
+
+    // Contraction-agnostic and expanded coverage
+    it('detects "this is wrong"', () => {
+      expect(detectCorrectionSignal('this is wrong, fix it please')).toBe(true);
+    });
+
+    it('detects "that is wrong"', () => {
+      expect(detectCorrectionSignal('that is wrong, it should be X')).toBe(true);
+    });
+
+    it('detects "this is not what I wanted"', () => {
+      expect(detectCorrectionSignal('this is not what I wanted at all')).toBe(true);
+    });
+
+    it('detects "this is incorrect"', () => {
+      expect(detectCorrectionSignal('this is incorrect, check the config')).toBe(true);
+    });
+
+    it('detects "that is incorrect"', () => {
+      expect(detectCorrectionSignal('that is incorrect, use the shared module')).toBe(true);
+    });
+
+    it('detects "no, do X instead"', () => {
+      expect(detectCorrectionSignal('no, do it differently this time')).toBe(true);
+    });
+
+    it('detects "no, use Y"', () => {
+      expect(detectCorrectionSignal('no, use the other approach')).toBe(true);
+    });
+
+    it('detects "actually, use X"', () => {
+      expect(detectCorrectionSignal('actually, use the shared config')).toBe(true);
+    });
+
+    it('detects "actually, try Y"', () => {
+      expect(detectCorrectionSignal('actually, try the alternative method')).toBe(true);
+    });
+
+    it('detects "that is not what I asked"', () => {
+      expect(detectCorrectionSignal('that is not what I asked for')).toBe(true);
+    });
+
+    it('detects standalone "wrong" at end of input', () => {
+      expect(detectCorrectionSignal('wrong')).toBe(true);
+    });
+
+    it('detects standalone "incorrect" at end of input', () => {
+      expect(detectCorrectionSignal('incorrect')).toBe(true);
+    });
   });
 
   describe('negative cases — should NOT detect as corrections', () => {
@@ -122,6 +171,18 @@ describe('correction detection', () => {
 
     it('does NOT detect unrelated "no" usage', () => {
       expect(detectCorrectionSignal('no new features needed right now')).toBe(false);
+    });
+
+    it('does NOT detect "actually" without action verb', () => {
+      expect(detectCorrectionSignal('actually, I was wondering about the API')).toBe(false);
+    });
+
+    it('does NOT detect "wrong" mid-sentence as a question', () => {
+      expect(detectCorrectionSignal('is this the wrong file to edit?')).toBe(false);
+    });
+
+    it('does NOT detect "no" without action verb following', () => {
+      expect(detectCorrectionSignal("no, I don't think we need that feature")).toBe(false);
     });
   });
 });

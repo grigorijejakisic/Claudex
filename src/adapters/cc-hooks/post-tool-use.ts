@@ -17,7 +17,7 @@ import { routeByContent, extractRoutingContent, buildProjectIndex } from '../../
 import { withBehavioralBatch, applyFileEditIncrement, applyToolCallPattern, setExperienceFlags, getExperienceFlags } from '../../intelligence/experience-flags.js';
 import { buildToolSignature } from '../../intelligence/behavioral-signals.js';
 import { matchTriggers } from '../../intelligence/trigger-engine.js';
-import { extractEventsFromToolUse, recordEvent } from '../../core/session-events.js';
+import { extractEventsFromToolUse, recordEvent, recordEventDeduped } from '../../core/session-events.js';
 
 // ---------------------------------------------------------------------------
 // Behavioral signal thresholds (spec-defined)
@@ -170,15 +170,17 @@ const main = wrapHook('PostToolUse', async (input, ctx) => {
   // Session events — lightweight structured event capture
   // Only for mutative tools (Edit, Write, Bash) — skip reads to avoid DB bloat
   // ---------------------------------------------------------------------------
-  if (toolName === 'Edit' || toolName === 'Write' || toolName === 'Bash') {
-    try {
-      const events = extractEventsFromToolUse(toolName, toolInput, toolOutput);
-      for (const ev of events) {
+  try {
+    const events = extractEventsFromToolUse(toolName, toolInput, toolOutput);
+    for (const ev of events) {
+      if (ev.deduped) {
+        recordEventDeduped(ctx.db, input.session_id, routedProject, ev.type, ev.entity, ev.action, ev.detail);
+      } else {
         recordEvent(ctx.db, input.session_id, routedProject, ev.type, ev.entity, ev.action, ev.detail);
       }
-    } catch (e) {
-      emitErrorTelemetry(ctx.db, input.session_id, 'post_tool_use/session_events', e);
     }
+  } catch (e) {
+    emitErrorTelemetry(ctx.db, input.session_id, 'post_tool_use/session_events', e);
   }
 
   return {};

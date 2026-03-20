@@ -523,6 +523,31 @@ export function formatTopicPivotSection(params: {
 }
 
 /**
+ * Cross-session learnings — knowledge distilled from past sessions.
+ * Ordered by promotion count (most reinforced first). Max 5.
+ */
+export function formatLearningsSection(learnings: LearningRow[]): string | null {
+  try {
+    if (!learnings || learnings.length === 0) return null;
+
+    const lines: string[] = [
+      '## Learnings',
+      '[Cross-session knowledge — distilled from past experience]',
+      '',
+    ];
+
+    for (const l of learnings.slice(0, 5)) {
+      const promoted = l.promotion_count > 1 ? ` (×${l.promotion_count})` : '';
+      lines.push(`- ${l.content}${promoted}`);
+    }
+
+    return lines.join('\n');
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Formats session flow entries as a narrative spine for the structural layer.
  * Each entry rendered as a timestamped bullet.
  */

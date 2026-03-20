@@ -30,7 +30,7 @@ import { addJournalEntry, getJournalBySession, getSessionMilestones } from '../.
 import { cachedPrepare } from '../../core/stmt-cache.js';
 import { getThreadState } from '../../core/thread.js';
 import { getDecisionsBySession } from '../../core/decisions.js';
-import { getObservationsByProject, getObservationById } from '../../core/observations.js';
+import { getObservationById } from '../../core/observations.js';
 import { createArtifact, tickArtifactTTL, packAllArtifacts } from '../../core/artifacts.js';
 import { getLearningsByProject } from '../../core/learnings.js';
 import { extractInsights } from '../../intelligence/insight-extractor.js';

@@ -4,7 +4,7 @@
 
 Claudex v3 is a unified context management system that gives LLMs persistent memory across sessions and compaction events. It replaces two predecessors (Claudex v2 + OpenClaw's Context Manager) with a single codebase that runs on both Claude Code (as lifecycle hooks) and OpenClaw (as a bridge plugin). One core, two swappable runtime adapters, standalone install.
 
-**Status**: All phases + 6 brain upgrades implemented. Session 18: Claudex Recall (file-to-artifact ingester), unified FTS5 search (`artifacts_fts`), trigger engine (task-aware context), session events (cross-session reconstruction), retrieval feedback (implicit scoring), MCP recall server (4 tools for on-demand search). 1585 tests, 86 test files. CLI: `claudex health`, `claudex projects-touched`, `claudex recall`.
+**Status**: All phases + 6 brain upgrades implemented + wiring audit fixes. Session 19: deep wiring audit verified all hooks fire within budget, trigger→FTS5→materialize→inject chain works, retrieval feedback scores. Fixed: session events expanded (Read/Grep/Glob/Bash/decisions/topics — was 90% invisible), correction detection widened (6 new patterns — was 0 patterns ever). MCP recall server configured at project level. 1613 tests, 86 test files. CLI: `claudex health`, `claudex projects-touched`, `claudex recall`.
 
 ## Core Architecture (30-second version)
 

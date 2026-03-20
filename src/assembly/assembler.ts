@@ -24,6 +24,7 @@ import {
   formatPressureResponse,
   formatTopicPivotSection,
   formatFlowSection,
+  formatLearningsSection,
   formatReferenceLayer,
   formatMaterializationLayer,
   renderSessionContinuity,
@@ -54,7 +55,6 @@ import { getHandoffsDir, getSessionsDir } from '../shared/paths.js';
 import * as path from 'path';
 import type { Database } from 'better-sqlite3';
 import type { ArtifactRow } from '../core/artifacts.js';
-import { getMaterializedArtifacts } from '../core/artifacts.js';
 import type { GaugeTimingContext } from './sections.js';
 import type { InjectPayload, TokenUsage } from '../shared/types.js';
 import type { ClaudexConfig } from '../shared/config.js';
@@ -257,6 +257,22 @@ export function assembleFullContext(params: FullAssemblyParams): InjectPayload {
         sources.push('checkpoint');
       }
     }
+
+    // Priority 4: Cross-session learnings
+    try {
+      const learnings = getTopLearnings(params.db, params.project, 5);
+      if (learnings.length > 0) {
+        const learningsSection = formatLearningsSection(learnings);
+        if (learningsSection) {
+          const cost = estimateTokens(learningsSection);
+          if (cost <= budget) {
+            sections.push(learningsSection);
+            budget -= cost;
+            sources.push('learnings');
+          }
+        }
+      }
+    } catch { /* non-fatal */ }
 
     // === LAYER 1 CONTINUED: Session Flow (from journal) ===
     try {

@@ -1,8 +1,9 @@
 /**
  * Session events — structured event capture for cross-session thread reconstruction.
  *
- * Captures lightweight events from PostToolUse (file edits, test runs, builds)
- * and synthesizes them into a session summary at session end.
+ * Captures lightweight events from PostToolUse (file edits, reads, searches,
+ * test runs, builds, commands) and from other hooks (decisions, topic shifts).
+ * Synthesizes them into a session summary at session end.
  *
  * All functions are non-throwing with safe defaults.
  */
@@ -10,7 +11,7 @@
 import type { Database } from 'better-sqlite3';
 import { cachedPrepare } from './stmt-cache.js';
 
-export type EventType = 'file_edit' | 'file_create' | 'file_delete' | 'test_run' | 'build' | 'decision' | 'error' | 'topic_shift';
+export type EventType = 'file_edit' | 'file_create' | 'file_read' | 'test_run' | 'build' | 'command' | 'search' | 'decision' | 'topic_shift';
 
 export interface SessionEvent {
   id: number;
@@ -36,6 +37,37 @@ export function recordEvent(
   detail?: string,
 ): void {
   try {
+    cachedPrepare(db,
+      `INSERT INTO session_events (session_id, project, event_type, entity, action, detail)
+       VALUES (?, ?, ?, ?, ?, ?)`
+    ).run(sessionId, project, eventType, entity, action, detail ?? null);
+  } catch {
+    // Non-throwing
+  }
+}
+
+/**
+ * Records a session event only if no matching (session_id, event_type, entity)
+ * row already exists. Used for high-frequency read-only events (file_read,
+ * search) to prevent DB bloat while still capturing the fact that a file was
+ * read or a search was performed. Non-throwing.
+ */
+export function recordEventDeduped(
+  db: Database,
+  sessionId: string,
+  project: string,
+  eventType: EventType,
+  entity: string,
+  action: string,
+  detail?: string,
+): void {
+  try {
+    const existing = cachedPrepare(db,
+      `SELECT 1 FROM session_events
+       WHERE session_id = ? AND event_type = ? AND entity = ?
+       LIMIT 1`
+    ).get(sessionId, eventType, entity);
+    if (existing) return;
     cachedPrepare(db,
       `INSERT INTO session_events (session_id, project, event_type, entity, action, detail)
        VALUES (?, ?, ?, ?, ?, ?)`
@@ -90,6 +122,9 @@ export function synthesizeSessionSummary(events: SessionEvent[]): string | null 
 
   const fileEdits = new Map<string, number>();
   const fileCreates: string[] = [];
+  const filesRead = new Set<string>();
+  const searches: string[] = [];
+  const commands = new Set<string>();
   const testRuns: { passed: number; failed: number } = { passed: 0, failed: 0 };
   const builds: { success: number; error: number } = { success: 0, error: 0 };
   const decisions: string[] = [];
@@ -102,6 +137,15 @@ export function synthesizeSessionSummary(events: SessionEvent[]): string | null 
         break;
       case 'file_create':
         fileCreates.push(e.entity);
+        break;
+      case 'file_read':
+        filesRead.add(e.entity);
+        break;
+      case 'search':
+        searches.push(e.entity);
+        break;
+      case 'command':
+        commands.add(e.entity);
         break;
       case 'test_run':
         if (e.action === 'passed') testRuns.passed++;
@@ -132,6 +176,18 @@ export function synthesizeSessionSummary(events: SessionEvent[]): string | null 
 
   if (fileCreates.length > 0) {
     parts.push(`created ${fileCreates.slice(0, 3).join(', ')}${fileCreates.length > 3 ? ` +${fileCreates.length - 3} more` : ''}`);
+  }
+
+  if (filesRead.size > 0) {
+    parts.push(`read ${filesRead.size} file${filesRead.size > 1 ? 's' : ''}`);
+  }
+
+  if (searches.length > 0) {
+    parts.push(`${searches.length} search${searches.length > 1 ? 'es' : ''}`);
+  }
+
+  if (commands.size > 0) {
+    parts.push(`${commands.size} command${commands.size > 1 ? 's' : ''}`);
   }
 
   if (testRuns.passed + testRuns.failed > 0) {
@@ -193,8 +249,8 @@ export function extractEventsFromToolUse(
   toolName: string,
   toolInput: Record<string, unknown>,
   toolOutput?: Record<string, unknown>,
-): Array<{ type: EventType; entity: string; action: string; detail?: string }> {
-  const events: Array<{ type: EventType; entity: string; action: string; detail?: string }> = [];
+): Array<{ type: EventType; entity: string; action: string; detail?: string; deduped?: boolean }> {
+  const events: Array<{ type: EventType; entity: string; action: string; detail?: string; deduped?: boolean }> = [];
 
   const filePath = String(toolInput?.file_path ?? toolInput?.path ?? '');
 
@@ -205,6 +261,19 @@ export function extractEventsFromToolUse(
     case 'Write':
       if (filePath) events.push({ type: 'file_create', entity: filePath, action: 'created' });
       break;
+    case 'Read':
+      if (filePath) events.push({ type: 'file_read', entity: filePath, action: 'read', deduped: true });
+      break;
+    case 'Grep': {
+      const pattern = String(toolInput?.pattern ?? '');
+      if (pattern) events.push({ type: 'search', entity: `grep:${pattern.slice(0, 80)}`, action: 'searched', deduped: true });
+      break;
+    }
+    case 'Glob': {
+      const pattern = String(toolInput?.pattern ?? '');
+      if (pattern) events.push({ type: 'search', entity: `glob:${pattern.slice(0, 80)}`, action: 'searched', deduped: true });
+      break;
+    }
     case 'Bash': {
       const cmd = String(toolInput?.command ?? '');
       const output = String(toolOutput?.output ?? toolOutput?.stdout ?? '');
@@ -212,16 +281,25 @@ export function extractEventsFromToolUse(
       // Extract short command label (first meaningful command, not full pipeline)
       const cmdLabel = cmd.split('&&').pop()?.trim().split(' ').slice(0, 3).join(' ').slice(0, 60) ?? 'bash';
 
+      let isTestOrBuild = false;
+
       // Test detection
       if (/\b(vitest|jest|test|spec)\b/i.test(cmd)) {
         const failed = /fail|error|FAIL/i.test(output) && !/0 failed/i.test(output);
         events.push({ type: 'test_run', entity: cmdLabel, action: failed ? 'failed' : 'passed' });
+        isTestOrBuild = true;
       }
 
       // Build detection
       if (/\b(build|compile|tsc)\b/i.test(cmd)) {
         const errored = /error|Error|ERR/i.test(output);
         events.push({ type: 'build', entity: cmdLabel, action: errored ? 'error' : 'success' });
+        isTestOrBuild = true;
+      }
+
+      // General command (only if not already categorized as test/build)
+      if (!isTestOrBuild && cmd.length > 0) {
+        events.push({ type: 'command', entity: cmdLabel, action: 'executed' });
       }
       break;
     }

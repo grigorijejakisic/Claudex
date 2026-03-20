@@ -6,6 +6,7 @@ import Database from 'better-sqlite3';
 import { initializeSchema } from '../../core/migrations.js';
 import {
   recordEvent,
+  recordEventDeduped,
   getSessionEvents,
   synthesizeSessionSummary,
   saveSessionSummary,
@@ -98,6 +99,90 @@ describe('synthesizeSessionSummary', () => {
     expect(summary).toContain('decided');
     expect(summary).toContain('async file I/O');
   });
+
+  it('summarizes file_read events', () => {
+    const events = [
+      { id: 1, session_id: 's', project: 'p', event_type: 'file_read' as const, entity: 'src/foo.ts', action: 'read', detail: null, timestamp_epoch: 1000 },
+      { id: 2, session_id: 's', project: 'p', event_type: 'file_read' as const, entity: 'src/bar.ts', action: 'read', detail: null, timestamp_epoch: 1001 },
+    ];
+    const summary = synthesizeSessionSummary(events);
+    expect(summary).toContain('read 2 files');
+  });
+
+  it('summarizes search events', () => {
+    const events = [
+      { id: 1, session_id: 's', project: 'p', event_type: 'search' as const, entity: 'grep:getExperienceFlags', action: 'searched', detail: null, timestamp_epoch: 1000 },
+      { id: 2, session_id: 's', project: 'p', event_type: 'search' as const, entity: 'glob:**/*.ts', action: 'searched', detail: null, timestamp_epoch: 1001 },
+    ];
+    const summary = synthesizeSessionSummary(events);
+    expect(summary).toContain('2 searches');
+  });
+
+  it('summarizes command events (unique count)', () => {
+    const events = [
+      { id: 1, session_id: 's', project: 'p', event_type: 'command' as const, entity: 'node -e "test"', action: 'executed', detail: null, timestamp_epoch: 1000 },
+      { id: 2, session_id: 's', project: 'p', event_type: 'command' as const, entity: 'git status', action: 'executed', detail: null, timestamp_epoch: 1001 },
+      { id: 3, session_id: 's', project: 'p', event_type: 'command' as const, entity: 'node -e "test"', action: 'executed', detail: null, timestamp_epoch: 1002 },
+    ];
+    const summary = synthesizeSessionSummary(events);
+    expect(summary).toContain('2 commands'); // "node -e test" deduped
+  });
+
+  it('handles mixed old + new event types', () => {
+    const events = [
+      { id: 1, session_id: 's', project: 'p', event_type: 'file_edit' as const, entity: 'src/foo.ts', action: 'modified', detail: null, timestamp_epoch: 1000 },
+      { id: 2, session_id: 's', project: 'p', event_type: 'file_read' as const, entity: 'src/bar.ts', action: 'read', detail: null, timestamp_epoch: 1001 },
+      { id: 3, session_id: 's', project: 'p', event_type: 'search' as const, entity: 'grep:TODO', action: 'searched', detail: null, timestamp_epoch: 1002 },
+      { id: 4, session_id: 's', project: 'p', event_type: 'test_run' as const, entity: 'vitest', action: 'passed', detail: null, timestamp_epoch: 1003 },
+    ];
+    const summary = synthesizeSessionSummary(events);
+    expect(summary).toContain('edited');
+    expect(summary).toContain('read 1 file');
+    expect(summary).toContain('1 search');
+    expect(summary).toContain('ran tests');
+  });
+});
+
+describe('recordEventDeduped', () => {
+  it('records first occurrence', () => {
+    const db = createDb();
+    try {
+      insertSession(db, 'sess-1');
+      recordEventDeduped(db, 'sess-1', 'test', 'file_read', 'src/foo.ts', 'read');
+      const events = getSessionEvents(db, 'sess-1');
+      expect(events.length).toBe(1);
+    } finally {
+      db.close();
+    }
+  });
+
+  it('skips duplicate (same session + event_type + entity)', () => {
+    const db = createDb();
+    try {
+      insertSession(db, 'sess-1');
+      recordEventDeduped(db, 'sess-1', 'test', 'file_read', 'src/foo.ts', 'read');
+      recordEventDeduped(db, 'sess-1', 'test', 'file_read', 'src/foo.ts', 'read');
+      recordEventDeduped(db, 'sess-1', 'test', 'file_read', 'src/foo.ts', 'read');
+      const events = getSessionEvents(db, 'sess-1');
+      expect(events.length).toBe(1);
+    } finally {
+      db.close();
+    }
+  });
+
+  it('allows same entity in different sessions', () => {
+    const db = createDb();
+    try {
+      insertSession(db, 'sess-1');
+      insertSession(db, 'sess-2');
+      recordEventDeduped(db, 'sess-1', 'test', 'file_read', 'src/foo.ts', 'read');
+      recordEventDeduped(db, 'sess-2', 'test', 'file_read', 'src/foo.ts', 'read');
+      expect(getSessionEvents(db, 'sess-1').length).toBe(1);
+      expect(getSessionEvents(db, 'sess-2').length).toBe(1);
+    } finally {
+      db.close();
+    }
+  });
 });
 
 describe('saveSessionSummary + getLastSessionSummary', () => {
@@ -167,8 +252,59 @@ describe('extractEventsFromToolUse', () => {
     expect(events[0].action).toBe('success');
   });
 
-  it('returns empty for unrecognized tools', () => {
+  it('extracts file_read from Read tool (deduped)', () => {
     const events = extractEventsFromToolUse('Read', { file_path: 'src/foo.ts' });
+    expect(events.length).toBe(1);
+    expect(events[0].type).toBe('file_read');
+    expect(events[0].entity).toBe('src/foo.ts');
+    expect(events[0].deduped).toBe(true);
+  });
+
+  it('extracts search from Grep tool (deduped)', () => {
+    const events = extractEventsFromToolUse('Grep', { pattern: 'getExperienceFlags' });
+    expect(events.length).toBe(1);
+    expect(events[0].type).toBe('search');
+    expect(events[0].entity).toBe('grep:getExperienceFlags');
+    expect(events[0].deduped).toBe(true);
+  });
+
+  it('extracts search from Glob tool (deduped)', () => {
+    const events = extractEventsFromToolUse('Glob', { pattern: '**/*.ts' });
+    expect(events.length).toBe(1);
+    expect(events[0].type).toBe('search');
+    expect(events[0].entity).toBe('glob:**/*.ts');
+    expect(events[0].deduped).toBe(true);
+  });
+
+  it('extracts command from general Bash (not test/build)', () => {
+    const events = extractEventsFromToolUse('Bash',
+      { command: 'node -e "console.log(1)"' },
+      { output: '1' }
+    );
+    expect(events.length).toBe(1);
+    expect(events[0].type).toBe('command');
+    expect(events[0].action).toBe('executed');
+  });
+
+  it('does not emit command when Bash is already test or build', () => {
+    const events = extractEventsFromToolUse('Bash',
+      { command: 'bun run test && bun run build' },
+      { output: 'Done' }
+    );
+    // Should have test_run + build, but NOT command
+    expect(events.some(e => e.type === 'test_run')).toBe(true);
+    expect(events.some(e => e.type === 'build')).toBe(true);
+    expect(events.some(e => e.type === 'command')).toBe(false);
+  });
+
+  it('returns empty for truly unrecognized tools', () => {
+    const events = extractEventsFromToolUse('TodoWrite', { text: 'hello' });
     expect(events.length).toBe(0);
+  });
+
+  it('caps Grep pattern at 80 chars', () => {
+    const longPattern = 'a'.repeat(200);
+    const events = extractEventsFromToolUse('Grep', { pattern: longPattern });
+    expect(events[0].entity.length).toBeLessThanOrEqual(85); // "grep:" + 80
   });
 });
