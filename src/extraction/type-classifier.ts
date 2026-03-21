@@ -3,6 +3,8 @@
  * No LLM calls. Used by the extraction pipeline to apply importance multipliers.
  */
 
+import { READ_ONLY_TOOLS } from '../shared/tool-catalog.js';
+
 /** Observation semantic types with importance multipliers. */
 export const OBSERVATION_TYPES = {
   decision: { multiplier: 1.5, description: 'Architectural choices, trade-offs, explicit decisions' },
@@ -30,12 +32,15 @@ const DISCOVERY_PATTERNS = /\b(found|discovered|unexpected|noticed|turns out|int
 /** Configuration signal patterns. */
 const CONFIG_PATTERNS = /\b(config|configuration|\.env|setting|environment|variable|tsconfig|package\.json|webpack|vite\.config|eslint|prettier)\b/i;
 
-/** Routine tool names that produce standard output. */
-const ROUTINE_TOOLS = new Set(['Read', 'Glob', 'Grep']);
+// READ_ONLY_TOOLS imported from tool-catalog.ts — canonical set of read-only tools.
 
 /**
  * Classifies an observation into a semantic type using cheap keyword/pattern matching.
  * Classification priority: error > decision > discovery > configuration > acknowledgment > routine.
+ *
+ * Read-only tools (Read, Grep, Glob) always classify as 'routine' — their output
+ * is file content, not tool errors. Scanning source code for error keywords produces
+ * false positives (e.g. try/catch blocks classified as "error" observations).
  *
  * @param content The observation content
  * @param toolName The tool that produced this observation
@@ -48,6 +53,12 @@ export function classifyObservationType(
   exitCode?: number | undefined,
 ): ObservationType {
   try {
+    // Read-only tools always produce routine output — skip keyword scanning
+    // to avoid false positives from file content (e.g. "error" in try/catch).
+    if (READ_ONLY_TOOLS.has(toolName)) {
+      return 'routine';
+    }
+
     // Bash with non-zero exit code -> error
     if (toolName === 'Bash' && exitCode !== undefined && exitCode !== 0) {
       return 'error';
@@ -77,11 +88,6 @@ export function classifyObservationType(
     // so concise error messages are not misclassified)
     if (content.length < 50) {
       return 'acknowledgment';
-    }
-
-    // Routine tools with standard output
-    if (ROUTINE_TOOLS.has(toolName)) {
-      return 'routine';
     }
 
     // Default: routine for most things

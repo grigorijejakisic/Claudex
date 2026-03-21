@@ -45,7 +45,7 @@ export const DEFAULT_CONFIG = {
   schema: 'claudex/config' as const,
   version: 3,
   injection: {
-    budget_tokens: 4000,
+    budget_tokens: 8000,
     topic_shift_budget: 800,
   },
   observations: {

@@ -34,7 +34,7 @@ describe('config', () => {
       expect(config.version).toBe(3);
 
       // Verify nested sections
-      expect(config.injection.budget_tokens).toBe(4000);
+      expect(config.injection.budget_tokens).toBe(8000);
       expect(config.injection.topic_shift_budget).toBe(800);
 
       expect(config.observations.retention_days).toBe(90);
@@ -61,7 +61,7 @@ describe('config', () => {
       expect(a).toEqual(b);
       expect(a).not.toBe(b);
       a.injection.budget_tokens = 9999;
-      expect(b.injection.budget_tokens).toBe(4000);
+      expect(b.injection.budget_tokens).toBe(8000);
     });
   });
 

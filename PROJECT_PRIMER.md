@@ -4,7 +4,7 @@
 
 Claudex v3 is a unified context management system that gives LLMs persistent memory across sessions and compaction events. It replaces two predecessors (Claudex v2 + OpenClaw's Context Manager) with a single codebase that runs on both Claude Code (as lifecycle hooks) and OpenClaw (as a bridge plugin). One core, two swappable runtime adapters, standalone install.
 
-**Status**: All phases + 6 brain upgrades implemented + wiring audit fixes. Session 19: deep wiring audit verified all hooks fire within budget, trigger→FTS5→materialize→inject chain works, retrieval feedback scores. Fixed: session events expanded (Read/Grep/Glob/Bash/decisions/topics — was 90% invisible), correction detection widened (6 new patterns — was 0 patterns ever). MCP recall server configured at project level. 1613 tests, 86 test files. CLI: `claudex health`, `claudex projects-touched`, `claudex recall`.
+**Status**: All phases + 6 brain upgrades + session 21 audit fixes + Evolved Flow (session 22). DB schema V8. Evolved Flow adds FTS5-indexed recall metadata on session_journal — bridges human associative recall and LLM lexical search. User framings captured at UserPromptSubmit (redacted), recall aliases generated at session boundaries. MCP search queries both artifacts_fts and session_journal_fts. Orphan recovery generates recall metadata before closing. Health: all checks pass. 1623 tests, 86 test files. CLI: `claudex health`, `claudex projects-touched`, `claudex recall`.
 
 ## Core Architecture (30-second version)
 
@@ -93,6 +93,9 @@ Informed by IAM project artifact patterns (Teneral Agent Platform).
 - **Ollama may not be running**: All embedding/enrichment code must have graceful fallback (Jaccard for detection, heuristic-only for enrichment).
 - **84% of auto-captured observations are never accessed**: Quality gates matter more than capture volume.
 - **Checkpoint recovery is two-layer**: DB-first (re-mirror committed rows at sessionInit), file fallback (latest.yaml → dir scan → hop chain).
+- **Table rebuild before CHECK**: v2 data may have categories not in the CHECK constraint list ('change', 'discovery', 'feature'). Always UPDATE non-standard values BEFORE table rebuild or the INSERT INTO new_table will fail.
+- **MCP server is long-lived**: Code changes require CC restart. The running MCP process uses the old dist until respawned.
+- **Read extractor false positives**: Read/Grep/Glob content is file content, not errors. Keyword scanning on content produces false positives (try/catch = "error"). Title-only scan for these tools.
 - **better-sqlite3 on OpenClaw's jiti loader**: Pre-compile to `.cjs` with `createRequire()`. Proven pattern from mem0 plugin.
 - **Fix regressions are common**: Bulk fix rounds (83 fixes, session 6) produced 5/7 new criticals as regressions. Always write fix-specific test cases BEFORE applying fixes (TDD for fixes). The cycle "fix → build → existing tests pass" is insufficient — existing tests don't cover the fix's own edge cases.
 - **POSIX quoting doesn't work on Windows**: Shell command construction must use platform-aware quoting. POSIX `'\''` escaping is invalid in PowerShell/cmd.exe — characters like `&`/`|` are interpreted.

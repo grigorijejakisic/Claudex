@@ -9,7 +9,7 @@ import type { ClaudexConfig } from '../../shared/config.js';
 import type { TokenUsage } from '../../shared/types.js';
 import { processToolObservation } from '../../extraction/extractor.js';
 import { updatePressureScore } from '../../core/pressure.js';
-import { sanitizePath } from '../../extraction/redaction.js';
+import { sanitizePath, redactContent } from '../../extraction/redaction.js';
 import { ThreadTracker, persistTopicUpdate, extractTopic } from '../../intelligence/thread-tracker.js';
 import type { TopicShiftResult } from '../../intelligence/topic-shift.js';
 import { shouldTriggerCheckpoint, writeCheckpoint } from '../../checkpoint/writer.js';
@@ -27,6 +27,9 @@ import { endSession } from '../../core/sessions.js';
 import { pruneTelemetry, emitTelemetry } from '../../observability/telemetry.js';
 import { emitErrorTelemetry } from '../../observability/error-telemetry.js';
 import { addJournalEntry, getJournalBySession, getSessionMilestones } from '../../core/journal.js';
+import type { RecallMetadata } from '../../core/journal.js';
+import { getSessionEvents } from '../../core/session-events.js';
+import { recordEvent } from '../../core/session-events.js';
 import { cachedPrepare } from '../../core/stmt-cache.js';
 import { getThreadState } from '../../core/thread.js';
 import { getDecisionsBySession } from '../../core/decisions.js';
@@ -276,45 +279,55 @@ export function processToolAndPressure(params: ToolObservationParams): void {
   }
 }
 
+/** Result of milestone detection — text description + structured metadata. */
+export interface MilestoneResult {
+  text: string;
+  metadata: Record<string, unknown>;
+}
+
 /**
  * Detect milestone events from tool execution results.
- * Returns a concise milestone string, or null if no milestone detected.
+ * Returns a concise milestone string with structured metadata, or null if no milestone detected.
  * Pure function — no side effects.
  */
-export function detectMilestone(toolName: string, toolOutput: string): string | null {
+export function detectMilestone(toolName: string, toolOutput: string): MilestoneResult | null {
   if (!toolOutput) return null;
 
   // Test suite results
   const testMatch = toolOutput.match(/(\d+)\s+(?:tests?\s+)?pass(?:ed|ing)?/i);
   const testFail = toolOutput.match(/(\d+)\s+(?:tests?\s+)?fail(?:ed|ing|ure)?/i);
   if (testMatch || testFail) {
-    const passed = testMatch ? testMatch[1] : '0';
-    const failed = testFail ? testFail[1] : '0';
-    if (testFail && parseInt(failed) > 0) {
-      return `Tests: ${passed} passed, ${failed} failed`;
+    const passed = testMatch ? parseInt(testMatch[1]) : 0;
+    const failed = testFail ? parseInt(testFail[1]) : 0;
+    const fileMatch = toolOutput.match(/(\d+)\s+(?:test\s+)?files?/i);
+    const files = fileMatch ? parseInt(fileMatch[1]) : undefined;
+    if (failed > 0) {
+      return { text: `Tests: ${passed} passed, ${failed} failed`, metadata: { test_count: passed + failed, pass_count: passed, fail_count: failed, ...(files !== undefined ? { file_count: files } : {}) } };
     }
-    if (testMatch) {
-      return `Tests: ${passed} passing`;
+    if (passed > 0) {
+      return { text: `Tests: ${passed} passing`, metadata: { test_count: passed, pass_count: passed, fail_count: 0, ...(files !== undefined ? { file_count: files } : {}) } };
     }
   }
 
   // Build results
   if (/build/i.test(toolOutput) && /success|clean|complete/i.test(toolOutput)) {
-    return 'Build succeeded';
+    const durationMatch = toolOutput.match(/(\d+)\s*ms/);
+    return { text: 'Build succeeded', metadata: { build_tool: toolName, ...(durationMatch ? { build_duration_ms: parseInt(durationMatch[1]) } : {}) } };
   }
 
   // Git commits (match [branch abc1234] pattern)
   if (toolName === 'Bash') {
     const commitMatch = toolOutput.match(/\[\S+\s+([a-f0-9]{7,})\]/);
     if (commitMatch) {
-      return `Committed ${commitMatch[1].slice(0, 7)}`;
+      const hash = commitMatch[1].slice(0, 7);
+      return { text: `Committed ${hash}`, metadata: { commit_hash: hash } };
     }
   }
 
   // Deployment/team events
   if (/workers?\s+(?:deployed|spawned|started)/i.test(toolOutput) ||
       /agents?\s+(?:deployed|spawned|started)/i.test(toolOutput)) {
-    return 'Team agents deployed';
+    return { text: 'Team agents deployed', metadata: { event: 'team_deploy' } };
   }
 
   return null;
@@ -342,8 +355,8 @@ function captureMilestone(
     const milestone = detectMilestone(toolName, outputText);
     if (milestone) {
       // Truncate to 100 chars
-      const content = milestone.length > 100 ? milestone.slice(0, 97) + '...' : milestone;
-      addJournalEntry(db, sessionId, project, 'milestone', content);
+      const content = milestone.text.length > 100 ? milestone.text.slice(0, 97) + '...' : milestone.text;
+      addJournalEntry(db, sessionId, project, 'milestone', content, milestone.metadata);
     }
   } catch {
     // Non-throwing — milestone capture must not break tool processing
@@ -639,12 +652,230 @@ export function captureFlowEntry(
 }
 
 /**
+ * Builds recall metadata from accumulated DB signals (heuristic tier).
+ * Generates recall aliases in the user's voice by extracting:
+ * - User framings (verbatim first descriptions stored at UserPromptSubmit)
+ * - High-frequency concepts from topic shifts
+ * - Thread topic evolution chain
+ * - Situational tags from correction/frustration signals
+ * Non-throwing.
+ */
+export function buildRecallMetadata(
+  db: Database.Database,
+  sessionId: string,
+  project: string,
+  preloadedEvents?: import('../../core/session-events.js').SessionEvent[],
+): { recallText: string; metadata: RecallMetadata } | null {
+  try {
+    const aliases: string[] = [];
+    const situationalTags: string[] = [];
+    const relatedConcepts: string[] = [];
+
+    // 1. User framings — verbatim user descriptions stored at UserPromptSubmit
+    const events = preloadedEvents ?? getSessionEvents(db, sessionId);
+    const framings = events
+      .filter(e => e.event_type === 'user_framing')
+      .map(e => e.detail ?? e.entity);
+    if (framings.length > 0) {
+      // First framing = primary alias (user's exact words)
+      aliases.push(framings[0]);
+      // Additional framings as secondary aliases
+      for (const f of framings.slice(1, 3)) {
+        if (f && !aliases.includes(f)) aliases.push(f);
+      }
+    }
+
+    // 2. Topic evolution chain — all topic shifts in this session
+    const topicShifts = events
+      .filter(e => e.event_type === 'topic_shift')
+      .map(e => e.entity);
+    for (const topic of topicShifts) {
+      if (topic && !relatedConcepts.includes(topic)) {
+        relatedConcepts.push(topic);
+      }
+      // Topic names also become aliases
+      if (topic && !aliases.includes(topic)) {
+        aliases.push(topic);
+      }
+    }
+
+    // 3. Thread topic (current)
+    const thread = getThreadState(db, sessionId);
+    if (thread?.topic && !aliases.includes(thread.topic)) {
+      aliases.push(thread.topic);
+    }
+
+    // 4. Decisions — extract key phrases
+    const decisions = getDecisionsBySession(db, sessionId, { limit: 5 });
+    for (const d of decisions.slice(0, 3)) {
+      const snippet = d.content.slice(0, 80);
+      if (!relatedConcepts.includes(snippet)) {
+        relatedConcepts.push(snippet);
+      }
+    }
+
+    // 5. Situational tags from signals
+    const corrections = events.filter(e =>
+      e.event_type === 'decision' && e.action === 'decided' &&
+      e.detail && /correct|fix|wrong|mistake|actually|no,?\s/i.test(e.detail)
+    );
+    if (corrections.length > 0) situationalTags.push('correction');
+
+    const hasUnresolved = events.filter(e => e.event_type === 'topic_shift').length > 2;
+    if (hasUnresolved) situationalTags.push('multi-topic');
+
+    const testEvents = events.filter(e => e.event_type === 'test_run');
+    const hasTestFailures = testEvents.some(e => e.action === 'failed');
+    if (hasTestFailures) situationalTags.push('test-failures');
+
+    const buildEvents = events.filter(e => e.event_type === 'build');
+    if (buildEvents.some(e => e.action === 'error')) situationalTags.push('build-errors');
+
+    if (events.filter(e => e.event_type === 'file_edit').length === 0 &&
+        events.filter(e => e.event_type === 'file_create').length === 0) {
+      situationalTags.push('design-discussion');
+    }
+
+    // 6. Build narrative from what we have
+    const narrativeParts: string[] = [];
+    if (framings.length > 0) narrativeParts.push(framings[0]);
+    if (thread?.topic) narrativeParts.push(`Topic: ${thread.topic}`);
+    if (decisions.length > 0) narrativeParts.push(`${decisions.length} decisions`);
+    const narrative = narrativeParts.join(' — ') || undefined;
+
+    if (aliases.length === 0 && relatedConcepts.length === 0) return null;
+
+    // Build FTS5-searchable recall_text from aliases
+    const recallText = aliases.join(' | ');
+
+    const metadata: RecallMetadata = {
+      recall_aliases: aliases.length > 0 ? aliases : undefined,
+      narrative,
+      situational_tags: situationalTags.length > 0 ? situationalTags : undefined,
+      related_concepts: relatedConcepts.length > 0 ? relatedConcepts : undefined,
+    };
+
+    return { recallText, metadata };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Captures an enriched recall flow entry with recall metadata.
+ * Called at session boundaries (Stop hook after summary, compaction).
+ * Non-throwing.
+ */
+export function captureRecallFlowEntry(
+  db: Database.Database,
+  sessionId: string,
+  project: string,
+  preloadedEvents?: import('../../core/session-events.js').SessionEvent[],
+): void {
+  try {
+    const recall = buildRecallMetadata(db, sessionId, project, preloadedEvents);
+
+    // Build content from flow + recall narrative
+    const flowContent = buildFlowEntry(db, sessionId, project);
+
+    if (!recall) {
+      // Fall back to plain flow entry when recall metadata is unavailable
+      if (flowContent) {
+        addJournalEntry(db, sessionId, project, 'flow', flowContent.slice(0, 500));
+      }
+      return;
+    }
+
+    const content = flowContent
+      ? `${flowContent} — Recall: ${recall.metadata.narrative ?? ''}`
+      : `Recall: ${recall.metadata.narrative ?? 'session boundary'}`;
+
+    addJournalEntry(db, sessionId, project, 'flow', content.slice(0, 500), recall.metadata, recall.recallText);
+  } catch {
+    // Non-throwing
+  }
+}
+
+/**
+ * Records a user framing — the user's verbatim description of what they're working on.
+ * Called from UserPromptSubmit when a meaningful user prompt is detected.
+ * Stores the first N framings per session as recall signal data.
+ * Non-throwing.
+ */
+export function captureUserFraming(
+  db: Database.Database,
+  sessionId: string,
+  project: string,
+  prompt: string,
+): void {
+  try {
+    // Only capture first 3 framings per session to avoid noise
+    const existing = cachedPrepare(db,
+      `SELECT COUNT(*) as cnt FROM session_events
+       WHERE session_id = ? AND event_type = 'user_framing'`
+    ).get(sessionId) as { cnt: number };
+    if (existing.cnt >= 3) return;
+
+    // Extract a clean framing from the prompt (first meaningful sentence, max 150 chars)
+    const cleaned = prompt
+      .replace(/^\/\w+\s*/, '')           // Strip /commands
+      .replace(/```[\s\S]*?```/g, '')     // Strip code blocks
+      .replace(/<[^>]+>/g, '')            // Strip tags
+      .trim();
+    if (cleaned.length < 10) return;      // Too short to be meaningful
+
+    const truncated = cleaned.length > 150 ? cleaned.slice(0, 147) + '...' : cleaned;
+    const framing = redactContent(truncated);
+    recordEvent(db, sessionId, project, 'user_framing', 'prompt', 'framed', framing);
+  } catch {
+    // Non-throwing
+  }
+}
+
+/**
+ * Checks for back-to-back compaction with minimal work between.
+ * Returns true if auto-endsession should be suggested.
+ * Non-throwing.
+ */
+export function detectIdleSession(
+  db: Database.Database,
+  sessionId: string,
+  preloadedEvents?: import('../../core/session-events.js').SessionEvent[],
+): boolean {
+  try {
+    const events = preloadedEvents ?? getSessionEvents(db, sessionId);
+    const compactions = events.filter(e => e.event_type === 'compaction');
+    if (compactions.length < 2) return false;
+
+    // Count tool-producing events between last two compactions
+    const lastCompaction = compactions[compactions.length - 1];
+    const prevCompaction = compactions[compactions.length - 2];
+    const workBetween = events.filter(e =>
+      e.timestamp_epoch > prevCompaction.timestamp_epoch &&
+      e.timestamp_epoch < lastCompaction.timestamp_epoch &&
+      e.event_type !== 'compaction' &&
+      e.event_type !== 'user_framing' &&
+      e.event_type !== 'topic_shift'
+    );
+
+    return workBetween.length < 3;
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Run the compaction sequence: write checkpoint, promote learnings, mark post-compact.
  * Used by PreCompact (CC) and onCompact (bridge).
  */
 export async function runCompactionSequence(params: CompactionParams): Promise<void> {
-  // Capture flow entry BEFORE observations are marked consumed
-  captureFlowEntry(params.db, params.sessionId, params.project);
+  // Record compaction event for idle detection
+  try {
+    recordEvent(params.db, params.sessionId, params.project, 'compaction', 'context', 'compacted');
+  } catch { /* non-throwing */ }
+
+  // Capture enriched recall flow entry BEFORE observations are marked consumed
+  captureRecallFlowEntry(params.db, params.sessionId, params.project);
 
   let checkpointSucceeded = false;
   try {

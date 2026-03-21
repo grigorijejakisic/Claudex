@@ -14,7 +14,7 @@ import { EmbeddingProvider } from '../../embeddings/embedding-provider.js';
 import { getIdentityDir } from '../../shared/paths.js';
 import { emitTelemetry } from '../../observability/telemetry.js';
 import { emitErrorTelemetry } from '../../observability/error-telemetry.js';
-import { persistTopicIfShifted, ensureInitialTopic, captureFlowEntry, captureExplicitDecisions } from '../shared/lifecycle.js';
+import { persistTopicIfShifted, ensureInitialTopic, captureFlowEntry, captureExplicitDecisions, captureUserFraming } from '../shared/lifecycle.js';
 import { searchArtifactsGlobal, materializeArtifacts } from '../../core/artifacts.js';
 import { getCooldownState, setCooldownState } from '../../core/thread.js';
 import { routeByContent, buildProjectIndex } from '../../shared/content-router.js';
@@ -83,6 +83,13 @@ const main = wrapHook('UserPromptSubmit', async (input, ctx) => {
   // Set initial topic from user prompt if none exists yet
   if (prompt && !topicShift?.shifted) {
     ensureInitialTopic(ctx.db, input.session_id, prompt);
+  }
+
+  // Capture user framing for recall metadata (user's verbatim description)
+  if (prompt && prompt.length >= 15) {
+    try {
+      captureUserFraming(ctx.db, input.session_id, ctx.project, prompt);
+    } catch { /* non-throwing */ }
   }
 
   // Content-aware routing — route decisions/artifacts to the correct project

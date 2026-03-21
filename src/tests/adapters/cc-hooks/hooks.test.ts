@@ -369,23 +369,32 @@ describe('SessionEnd hook logic', () => {
 
 describe('detectMilestone (pure function)', () => {
   it('detects test pass results', () => {
-    expect(detectMilestone('Bash', '42 tests passed')).toBe('Tests: 42 passing');
+    const r = detectMilestone('Bash', '42 tests passed');
+    expect(r?.text).toBe('Tests: 42 passing');
+    expect(r?.metadata).toEqual({ test_count: 42, pass_count: 42, fail_count: 0 });
   });
 
   it('detects test pass/fail results', () => {
-    expect(detectMilestone('Bash', '40 passed, 2 failed')).toBe('Tests: 40 passed, 2 failed');
+    const r = detectMilestone('Bash', '40 passed, 2 failed');
+    expect(r?.text).toBe('Tests: 40 passed, 2 failed');
+    expect(r?.metadata.pass_count).toBe(40);
+    expect(r?.metadata.fail_count).toBe(2);
   });
 
   it('detects build success', () => {
-    expect(detectMilestone('Bash', 'Build complete successfully')).toBe('Build succeeded');
+    const r = detectMilestone('Bash', 'Build complete successfully');
+    expect(r?.text).toBe('Build succeeded');
+    expect(r?.metadata.build_tool).toBe('Bash');
   });
 
   it('detects git commits', () => {
-    expect(detectMilestone('Bash', '[main abc1234] fix: something')).toBe('Committed abc1234');
+    const r = detectMilestone('Bash', '[main abc1234] fix: something');
+    expect(r?.text).toBe('Committed abc1234');
+    expect(r?.metadata.commit_hash).toBe('abc1234');
   });
 
   it('detects longer commit hashes', () => {
-    expect(detectMilestone('Bash', '[feature/x abc1234def] feat: thing')).toBe('Committed abc1234');
+    expect(detectMilestone('Bash', '[feature/x abc1234def] feat: thing')?.text).toBe('Committed abc1234');
   });
 
   it('does not detect git commits from non-Bash tools', () => {
@@ -393,8 +402,8 @@ describe('detectMilestone (pure function)', () => {
   });
 
   it('detects team deployment', () => {
-    expect(detectMilestone('Bash', '3 workers deployed')).toBe('Team agents deployed');
-    expect(detectMilestone('Bash', 'agent spawned successfully')).toBe('Team agents deployed');
+    expect(detectMilestone('Bash', '3 workers deployed')?.text).toBe('Team agents deployed');
+    expect(detectMilestone('Bash', 'agent spawned successfully')?.text).toBe('Team agents deployed');
   });
 
   it('returns null for no milestone', () => {

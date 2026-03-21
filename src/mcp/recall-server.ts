@@ -18,6 +18,7 @@ import type { ArtifactRow } from '../core/artifacts.js';
 import { getSessionEvents } from '../core/session-events.js';
 import { cachedPrepare } from '../core/stmt-cache.js';
 import { initializeSchema, runMigrations } from '../core/migrations.js';
+import { searchJournalFTS } from '../core/journal.js';
 
 // ---------------------------------------------------------------------------
 // DB connection
@@ -70,14 +71,31 @@ server.tool(
     }
 
     const artifacts = searchArtifactsGlobal(getDb(), proj, query, limit);
-    const results = artifacts.map(a => ({
+    const artifactResults = artifacts.map(a => ({
       id: a.id,
       type: a.artifact_type,
       summary: a.summary,
       provenance: a.artifact_ref ?? `artifact #${a.id}`,
       importance: a.importance,
       project: a.project,
+      source: 'artifacts' as const,
     }));
+
+    // Also search session journal (Evolved Flow recall metadata)
+    const journalHits = searchJournalFTS(getDb(), query, proj, Math.min(limit, 5));
+    const journalResults = journalHits.map(j => ({
+      id: j.id,
+      type: 'journal_flow' as const,
+      summary: j.content.slice(0, 200),
+      provenance: `session:${j.session_id}`,
+      importance: 4,
+      project: j.project,
+      source: 'journal' as const,
+      recall_text: j.recall_text ?? undefined,
+    }));
+
+    // Merge: journal results first (recall-optimized), then artifacts
+    const results = [...journalResults, ...artifactResults].slice(0, limit);
 
     return { content: [{ type: 'text', text: JSON.stringify(results, null, 2) }] };
   },
@@ -167,16 +185,24 @@ server.tool(
     session_id: z.string().optional().describe('Specific session ID (defaults to latest)'),
   },
   async ({ project, session_id }) => {
-    const proj = project ?? defaultProject;
-
     if (session_id) {
       const events = getSessionEvents(getDb(), session_id);
       return { content: [{ type: 'text', text: JSON.stringify(events, null, 2) }] };
     }
 
-    const session = cachedPrepare(getDb(),
+    // When no session_id given, find latest active session.
+    // Try project-scoped first, then fall back to latest across all projects.
+    const proj = project ?? defaultProject;
+    let session = cachedPrepare(getDb(),
       `SELECT session_id FROM sessions WHERE project = ? ORDER BY created_at_epoch DESC LIMIT 1`
     ).get(proj) as { session_id: string } | undefined;
+
+    if (!session) {
+      // Fallback: latest active session across ALL projects
+      session = cachedPrepare(getDb(),
+        `SELECT session_id FROM sessions WHERE status = 'active' ORDER BY created_at_epoch DESC LIMIT 1`
+      ).get() as { session_id: string } | undefined;
+    }
 
     if (!session) {
       return { content: [{ type: 'text', text: JSON.stringify([]) }] };

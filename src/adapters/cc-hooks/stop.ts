@@ -12,6 +12,7 @@ import {
   captureInsightsAsLearnings,
   trackAfterTurn,
   checkpointIfThresholdMet,
+  captureRecallFlowEntry,
 } from '../shared/lifecycle.js';
 import { routeByContent, buildProjectIndex } from '../../shared/content-router.js';
 import { applyExperienceFeedback } from '../../intelligence/experience-scoring.js';
@@ -155,15 +156,35 @@ const main = wrapHook('Stop', async (input, ctx) => {
     emitErrorTelemetry(ctx.db, input.session_id, 'stop/retrieval_feedback', e);
   }
 
+  // Load session events ONCE — shared across summary, recall, and idle detection
+  let sessionEvents: import('../../core/session-events.js').SessionEvent[] = [];
+  try {
+    sessionEvents = getSessionEvents(ctx.db, input.session_id);
+  } catch (e) {
+    emitErrorTelemetry(ctx.db, input.session_id, 'stop/load_events', e);
+  }
+
   // Pre-compute session summary from events (for next session's reconstruction)
   try {
-    const events = getSessionEvents(ctx.db, input.session_id);
-    const summary = synthesizeSessionSummary(events);
+    const summary = synthesizeSessionSummary(sessionEvents);
     if (summary) {
       saveSessionSummary(ctx.db, input.session_id, summary);
     }
   } catch (e) {
     emitErrorTelemetry(ctx.db, input.session_id, 'stop/session_summary', e);
+  }
+
+  // Capture enriched recall flow entry (heuristic tier) — only at boundaries
+  // (topic shifts or compaction), not every turn, to avoid write amplification
+  const hasRecentTopicShift = sessionEvents.some(e =>
+    e.event_type === 'topic_shift' &&
+    e.timestamp_epoch > Math.floor(Date.now() / 1000) - 120
+  );
+  const hasCompaction = sessionEvents.some(e => e.event_type === 'compaction');
+  if (hasRecentTopicShift || hasCompaction) {
+    runHookStep('recall_flow', () => {
+      captureRecallFlowEntry(ctx.db, input.session_id, routedProject, sessionEvents);
+    }, ctx.db, input.session_id);
   }
 
   // Behavioral gate: check if hook source is newer than dist (edited but not rebuilt)

@@ -11,7 +11,7 @@
 import type { Database } from 'better-sqlite3';
 import { cachedPrepare } from './stmt-cache.js';
 
-export type EventType = 'file_edit' | 'file_create' | 'file_read' | 'test_run' | 'build' | 'command' | 'search' | 'decision' | 'topic_shift';
+export type EventType = 'file_edit' | 'file_create' | 'file_read' | 'test_run' | 'build' | 'command' | 'search' | 'decision' | 'topic_shift' | 'user_framing' | 'compaction';
 
 export interface SessionEvent {
   id: number;
@@ -278,8 +278,8 @@ export function extractEventsFromToolUse(
       const cmd = String(toolInput?.command ?? '');
       const output = String(toolOutput?.output ?? toolOutput?.stdout ?? '');
 
-      // Extract short command label (first meaningful command, not full pipeline)
-      const cmdLabel = cmd.split('&&').pop()?.trim().split(' ').slice(0, 3).join(' ').slice(0, 60) ?? 'bash';
+      // Extract clean command label: strip node -e inline scripts, simplify paths
+      const cmdLabel = summarizeBashCommand(cmd);
 
       let isTestOrBuild = false;
 
@@ -306,4 +306,37 @@ export function extractEventsFromToolUse(
   }
 
   return events;
+}
+
+/**
+ * Produces a clean, human-readable label for a Bash command.
+ * Handles: inline node -e scripts, piped commands, long paths, chained commands.
+ * Goal: the label should be immediately understandable in a session event timeline.
+ */
+function summarizeBashCommand(cmd: string): string {
+  try {
+    // Take the last command in a chain (after && or ;)
+    const lastCmd = cmd.split(/&&|;/).pop()?.trim() ?? cmd.trim();
+
+    // node -e "..." → "node: inline script" (the script content is noise)
+    if (/^node\s+-e\s/i.test(lastCmd)) return 'node: inline script';
+
+    // bun run / npx / npm run → keep the subcommand
+    const runMatch = lastCmd.match(/^(?:bun run|npx|npm run)\s+(.+)/i);
+    if (runMatch) return runMatch[0].slice(0, 60);
+
+    // git commands → keep full (they're always meaningful)
+    if (/^git\s/.test(lastCmd)) return lastCmd.slice(0, 60);
+
+    // Simplify absolute paths: /c/Users/Grigorije/Desktop/Projects/CLAUDEXv3/... → <project>/...
+    let simplified = lastCmd
+      .replace(/[A-Z]:\\Users\\[^\\]+\\[^\\]+\\[^\\]+\\[^\\]+\\/gi, '<project>/')
+      .replace(/\/[a-z]\/Users\/[^/]+\/[^/]+\/[^/]+\/[^/]+\//gi, '<project>/');
+
+    // Take first 3 meaningful tokens, cap at 60 chars
+    const tokens = simplified.split(/\s+/).slice(0, 4).join(' ');
+    return tokens.slice(0, 60) || 'bash';
+  } catch {
+    return 'bash';
+  }
 }

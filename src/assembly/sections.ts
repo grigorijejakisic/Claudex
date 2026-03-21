@@ -11,6 +11,7 @@ import type { CheckpointV3 } from '../checkpoint/types.js';
 import type { ArtifactRow } from '../core/artifacts.js';
 import type { LearningRow } from '../core/learnings.js';
 import type { PressureRow } from '../core/pressure.js';
+import { parseJournalMetadata } from '../core/journal.js';
 import type { JournalEntry } from '../core/journal.js';
 import type { GsdState } from '../gsd/types.js';
 import type { TokenUsage } from '../shared/types.js';
@@ -548,6 +549,89 @@ export function formatLearningsSection(learnings: LearningRow[]): string | null 
 }
 
 /**
+ * Formats CLAUDE.md rules as a behavioral reminder for post-compaction assembly.
+ * Reads both global (~/.claude/CLAUDE.md) and project CLAUDE.md, extracts
+ * numbered rules and quality standards, and renders a condensed section.
+ * Non-throwing.
+ */
+export function formatRulesReminderSection(projectDir: string): string | null {
+  try {
+    const home = require('os').homedir();
+    const rules: string[] = [];
+
+    // 1. Global CLAUDE.md rules
+    const globalPath = path.join(home, '.claude', 'CLAUDE.md');
+    if (fs.existsSync(globalPath)) {
+      const content = fs.readFileSync(globalPath, 'utf-8');
+      const extracted = extractNumberedRules(content);
+      if (extracted.length > 0) rules.push('**Global rules:**', ...extracted);
+    }
+
+    // 2. Project CLAUDE.md rules (may add project-specific rules)
+    const projectPath = path.join(projectDir, 'CLAUDE.md');
+    if (fs.existsSync(projectPath)) {
+      const content = fs.readFileSync(projectPath, 'utf-8');
+      const extracted = extractNumberedRules(content);
+      if (extracted.length > 0) {
+        if (rules.length > 0) rules.push('');
+        rules.push('**Project rules:**', ...extracted);
+      }
+    }
+
+    if (rules.length === 0) return null;
+
+    return [
+      '## Active Rules',
+      '[Behavioral rules from CLAUDE.md — re-injected after compaction to prevent drift]',
+      '',
+      ...rules,
+    ].join('\n');
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Extracts numbered rules (1. ..., 2. ...) from CLAUDE.md content.
+ * Also extracts bullet rules from ## Rules, ## Quality Standard sections.
+ * Returns condensed one-line rules suitable for injection.
+ */
+function extractNumberedRules(content: string): string[] {
+  const rules: string[] = [];
+  const seen = new Set<string>();
+
+  // Extract numbered rules: "1. **Rule text** — details"
+  const numberedPattern = /^\d+\.\s+\*\*(.+?)\*\*\s*[—–-]\s*(.+)/gm;
+  let match;
+  while ((match = numberedPattern.exec(content)) !== null) {
+    const rule = `- **${match[1].trim()}**: ${match[2].trim().slice(0, 120)}`;
+    const key = match[1].trim().toLowerCase();
+    if (!seen.has(key)) {
+      seen.add(key);
+      rules.push(rule);
+    }
+  }
+
+  // Extract key section bullets (## Quality Standard, ## Working Identity)
+  const sectionPattern = /^##\s+(Quality Standard|Working Identity|Engineering Method)\s*\n([\s\S]*?)(?=\n##|\n$)/gm;
+  while ((match = sectionPattern.exec(content)) !== null) {
+    const bullets = match[2].match(/^-\s+.+/gm);
+    if (bullets) {
+      for (const b of bullets.slice(0, 3)) {
+        const text = b.trim().slice(0, 120);
+        const key = text.toLowerCase().slice(0, 40);
+        if (!seen.has(key)) {
+          seen.add(key);
+          rules.push(text);
+        }
+      }
+    }
+  }
+
+  return rules.slice(0, 15); // Cap at 15 rules to control token cost
+}
+
+/**
  * Formats session flow entries as a narrative spine for the structural layer.
  * Each entry rendered as a timestamped bullet.
  */
@@ -563,7 +647,24 @@ export function formatFlowSection(entries: JournalEntry[]): string | null {
       const hh = String(date.getHours()).padStart(2, '0');
       const mm = String(date.getMinutes()).padStart(2, '0');
       const prefix = e.entry_type !== 'flow' ? `[${e.entry_type}] ` : '';
-      return `- [${hh}:${mm}] ${prefix}${e.content}`;
+
+      // Append structured metadata hints when available
+      let metaHint = '';
+      if (e.metadata) {
+        try {
+          const meta = parseJournalMetadata(e).metadata;
+          if (meta) {
+            const hints: string[] = [];
+            if (meta.test_count !== undefined) hints.push(`${meta.pass_count}/${meta.test_count} tests`);
+            if ((meta as Record<string, unknown>).file_count !== undefined) hints.push(`${(meta as Record<string, unknown>).file_count} files`);
+            if (meta.commit_hash) hints.push(`#${meta.commit_hash}`);
+            if (meta.build_duration_ms) hints.push(`${meta.build_duration_ms}ms`);
+            if (hints.length > 0) metaHint = ` (${hints.join(', ')})`;
+          }
+        } catch { /* ignore parse errors */ }
+      }
+
+      return `- [${hh}:${mm}] ${prefix}${e.content}${metaHint}`;
     });
 
     return `### Session Flow\n${bullets.join('\n')}`;

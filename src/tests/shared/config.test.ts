@@ -48,7 +48,7 @@ describe('loadConfig', () => {
       injection: { budget_tokens: 'lots' }, // string instead of number
     });
     const config = loadConfig();
-    expect(config.injection.budget_tokens).toBe(4000); // default
+    expect(config.injection.budget_tokens).toBe(8000); // default
   });
 
   it('falls back to default when string field has wrong type (number)', () => {

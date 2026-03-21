@@ -1,4 +1,5 @@
 import { Readable, Writable } from 'stream';
+import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import Database from 'better-sqlite3';
@@ -244,13 +245,30 @@ describe('getTranscriptPath', () => {
 
 describe('wrapHook', () => {
   let originalStdin: NodeJS.ReadStream;
+  let originalDbPath: string | undefined;
 
   beforeEach(() => {
     originalStdin = process.stdin;
+    // Isolate tests from production DB — use temp path so wrapHook's bootstrapHook
+    // doesn't pollute ~/.claudex/db/claudex.db with TestHook telemetry entries.
+    originalDbPath = process.env.CLAUDEX_DB_PATH;
+    process.env.CLAUDEX_DB_PATH = path.join(os.tmpdir(), `claudex-test-${Date.now()}.db`);
   });
 
   afterEach(() => {
     Object.defineProperty(process, 'stdin', { value: originalStdin, writable: true });
+    // Restore original DB path and clean up temp DB
+    const tempDb = process.env.CLAUDEX_DB_PATH;
+    if (originalDbPath !== undefined) {
+      process.env.CLAUDEX_DB_PATH = originalDbPath;
+    } else {
+      delete process.env.CLAUDEX_DB_PATH;
+    }
+    if (tempDb) {
+      try { fs.unlinkSync(tempDb); } catch { /* may not exist */ }
+      try { fs.unlinkSync(tempDb + '-wal'); } catch { /* WAL file */ }
+      try { fs.unlinkSync(tempDb + '-shm'); } catch { /* SHM file */ }
+    }
   });
 
   function mockStdinWithData(data: string) {

@@ -220,6 +220,8 @@ CREATE TABLE IF NOT EXISTS session_journal (
   project TEXT NOT NULL,
   entry_type TEXT NOT NULL CHECK (entry_type IN ('flow', 'milestone', 'summary')),
   content TEXT NOT NULL,
+  metadata TEXT,
+  recall_text TEXT,
   timestamp_epoch INTEGER NOT NULL DEFAULT (unixepoch())
 );
 
@@ -227,6 +229,31 @@ CREATE INDEX IF NOT EXISTS idx_journal_session
   ON session_journal(session_id, timestamp_epoch DESC);
 CREATE INDEX IF NOT EXISTS idx_journal_project_type
   ON session_journal(project, entry_type, timestamp_epoch DESC);
+
+-- FTS5 for session_journal — enables associative recall search
+CREATE VIRTUAL TABLE IF NOT EXISTS session_journal_fts USING fts5(
+  content, recall_text,
+  content='session_journal',
+  content_rowid=id,
+  tokenize='porter unicode61'
+);
+
+CREATE TRIGGER IF NOT EXISTS journal_fts_ai AFTER INSERT ON session_journal BEGIN
+  INSERT INTO session_journal_fts(rowid, content, recall_text)
+  VALUES (new.id, new.content, COALESCE(new.recall_text, ''));
+END;
+
+CREATE TRIGGER IF NOT EXISTS journal_fts_ad AFTER DELETE ON session_journal BEGIN
+  INSERT INTO session_journal_fts(session_journal_fts, rowid, content, recall_text)
+  VALUES ('delete', old.id, old.content, COALESCE(old.recall_text, ''));
+END;
+
+CREATE TRIGGER IF NOT EXISTS journal_fts_au AFTER UPDATE ON session_journal BEGIN
+  INSERT INTO session_journal_fts(session_journal_fts, rowid, content, recall_text)
+  VALUES ('delete', old.id, old.content, COALESCE(old.recall_text, ''));
+  INSERT INTO session_journal_fts(rowid, content, recall_text)
+  VALUES (new.id, new.content, COALESCE(new.recall_text, ''));
+END;
 
 -- artifacts: reference + materialization context model
 CREATE TABLE IF NOT EXISTS artifacts (
@@ -677,11 +704,13 @@ function migrateSchemaFixes(db: Database): void {
  * Version map:
  *   0 — fresh DB (no tables) or legacy DB (pre-versioning, has tables)
  *   1 — reserved (unused currently)
- *   2 — current (all migrations applied)
+ *   2 — v2 schema (pre-v3 migration)
+ *   3–7 — incremental migrations (v3→v4, v4→v5, ..., v7→v8)
+ *   8 — current (all migrations applied)
  *
  * Dual version tracking:
  * Both `PRAGMA user_version` and `schema_versions` table are needed:
- *   - `PRAGMA user_version = 3` — fast O(1) check on every DB open (runMigrations hot path)
+ *   - `PRAGMA user_version = 8` — fast O(1) check on every DB open (runMigrations hot path)
  *   - `schema_versions.version = 300` — semantic version for cross-version detection
  *     (detectV2Database, verifyMigration, migrateFromV2)
  * user_version gates incremental ALTER migrations; schema_versions gates data migrations
@@ -689,51 +718,102 @@ function migrateSchemaFixes(db: Database): void {
  */
 export function runMigrations(db: Database): void {
   const row = db.pragma('user_version') as Array<{ user_version: number }>;
-  const version = row[0]?.user_version ?? 0;
+  let version = row[0]?.user_version ?? 0;
 
-  if (version >= 4) {
-    return; // Already current — no-op
-  }
+  const TARGET_VERSION = 8;
 
-  if (version === 3) {
-    migrateV3toV4(db);
-    db.pragma('user_version = 4');
-    return;
-  }
+  if (version >= TARGET_VERSION) return;
 
-  if (version === 2) {
-    if (migrateV2toV3(db)) {
-      migrateV3toV4(db);
-      db.pragma('user_version = 4');
-    }
-    return;
-  }
+  // Run all migrations from current version to target
+  const migrations: Array<[number, () => void]> = [
+    [2, () => { /* v2→v3 handled by migrateV2toV3 below */ }],
+    [3, () => migrateV3toV4(db)],
+    [4, () => migrateV4toV5(db)],
+    [5, () => migrateV5toV6(db)],
+    [6, () => migrateV6toV7(db)],
+    [7, () => migrateV7toV8(db)],
+  ];
 
+  // Handle special cases for version 0 and 1
   if (version === 0) {
-    // Could be fresh DB or legacy DB created before versioning
     const tables = (db.prepare("SELECT name FROM sqlite_master WHERE type='table'").all() as Array<{ name: string }>).map(t => t.name);
-
-    if (tables.includes('observations')) {
-      // Legacy DB — run all migrations from V1
-      migrateV1toV2(db);
-      if (migrateV2toV3(db)) {
-        migrateV3toV4(db);
-        db.pragma('user_version = 4');
-      } else {
-        db.pragma('user_version = 2');
-      }
-    }
-    return;
+    if (!tables.includes('observations')) return; // Fresh DB — no migrations needed
+    migrateV1toV2(db);
+    if (!migrateV2toV3(db)) { db.pragma('user_version = 2'); return; }
+    version = 3;
+  } else if (version === 1) {
+    migrateV1toV2(db);
+    if (!migrateV2toV3(db)) { db.pragma('user_version = 2'); return; }
+    version = 3;
+  } else if (version === 2) {
+    if (!migrateV2toV3(db)) return;
+    version = 3;
   }
 
-  if (version === 1) {
-    migrateV1toV2(db);
-    if (migrateV2toV3(db)) {
-      migrateV3toV4(db);
-      db.pragma('user_version = 4');
-    } else {
-      db.pragma('user_version = 2');
+  // Run remaining migrations sequentially
+  for (const [fromVersion, migrate] of migrations) {
+    if (version <= fromVersion && fromVersion >= 3) {
+      migrate();
     }
+  }
+
+  db.pragma(`user_version = ${TARGET_VERSION}`);
+}
+
+/**
+ * V7 → V8: Evolved Flow — recall_text column + FTS5 index on session_journal.
+ *
+ * Adds a `recall_text` column for FTS5-searchable recall aliases (how a human
+ * would ask about this session later). Creates an FTS5 index on content + recall_text
+ * to enable associative retrieval that bridges human recall cues and stored content.
+ *
+ * Also adds `user_framing` and `concept_mention` to session_events for signal
+ * accumulation across hooks.
+ *
+ * Idempotent — checks column existence before ALTER.
+ */
+function migrateV7toV8(db: Database): void {
+  try {
+    // 1. Add recall_text column to session_journal
+    if (hasTable(db, 'session_journal') && !hasColumn(db, 'session_journal', 'recall_text')) {
+      db.exec("ALTER TABLE session_journal ADD COLUMN recall_text TEXT");
+    }
+
+    // 2. Create FTS5 index on session_journal (content + recall_text)
+    if (hasTable(db, 'session_journal') && !hasTable(db, 'session_journal_fts')) {
+      db.exec(`
+        CREATE VIRTUAL TABLE session_journal_fts USING fts5(
+          content, recall_text,
+          content='session_journal',
+          content_rowid=id,
+          tokenize='porter unicode61'
+        );
+
+        CREATE TRIGGER IF NOT EXISTS journal_fts_ai AFTER INSERT ON session_journal BEGIN
+          INSERT INTO session_journal_fts(rowid, content, recall_text)
+          VALUES (new.id, new.content, COALESCE(new.recall_text, ''));
+        END;
+
+        CREATE TRIGGER IF NOT EXISTS journal_fts_ad AFTER DELETE ON session_journal BEGIN
+          INSERT INTO session_journal_fts(session_journal_fts, rowid, content, recall_text)
+          VALUES ('delete', old.id, old.content, COALESCE(old.recall_text, ''));
+        END;
+
+        CREATE TRIGGER IF NOT EXISTS journal_fts_au AFTER UPDATE ON session_journal BEGIN
+          INSERT INTO session_journal_fts(session_journal_fts, rowid, content, recall_text)
+          VALUES ('delete', old.id, old.content, COALESCE(old.recall_text, ''));
+          INSERT INTO session_journal_fts(rowid, content, recall_text)
+          VALUES (new.id, new.content, COALESCE(new.recall_text, ''));
+        END;
+      `);
+
+      // Rebuild FTS5 from existing rows
+      try {
+        db.exec("INSERT INTO session_journal_fts(session_journal_fts) VALUES('rebuild')");
+      } catch { /* non-fatal */ }
+    }
+  } catch {
+    // Non-throwing — partial migration acceptable
   }
 }
 
@@ -909,6 +989,386 @@ function migrateV3toV4(db: Database): void {
 }
 
 /**
+ * V4 → V5: retrieval_feedback table + v2 legacy cleanup.
+ * - Creates retrieval_feedback for scoring FTS5 search relevance
+ * - Fixes reasoning_chains timestamp_epoch overflow (ms → seconds)
+ * - Drops stale v2 legacy tables that are no longer used
+ * Idempotent.
+ */
+function migrateV4toV5(db: Database): void {
+  try {
+    const tables = (db.prepare("SELECT name FROM sqlite_master WHERE type='table'").all() as Array<{ name: string }>).map(t => t.name);
+
+    // Create retrieval_feedback table for tracking search result relevance
+    if (!tables.includes('retrieval_feedback')) {
+      db.exec(`
+        CREATE TABLE retrieval_feedback (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          session_id TEXT NOT NULL,
+          artifact_id INTEGER NOT NULL,
+          query_text TEXT NOT NULL,
+          was_useful INTEGER NOT NULL DEFAULT 0,
+          created_at_epoch INTEGER NOT NULL DEFAULT (unixepoch())
+        );
+        CREATE INDEX IF NOT EXISTS idx_retrieval_feedback_artifact
+          ON retrieval_feedback(artifact_id);
+        CREATE INDEX IF NOT EXISTS idx_retrieval_feedback_session
+          ON retrieval_feedback(session_id);
+      `);
+    }
+
+    // Fix reasoning_chains timestamp_epoch: stored as milliseconds (>10^12) instead of seconds
+    if (tables.includes('reasoning_chains')) {
+      try {
+        db.exec(`UPDATE reasoning_chains SET timestamp_epoch = timestamp_epoch / 1000
+          WHERE timestamp_epoch > 10000000000`);
+        db.exec(`UPDATE reasoning_chains SET created_at_epoch = created_at_epoch / 1000
+          WHERE created_at_epoch > 10000000000`);
+      } catch { /* non-fatal — table may have different schema */ }
+    }
+
+    // Fix NOT NULL constraints on columns that v2 migration created without them.
+    // SQLite doesn't support ALTER COLUMN — must set defaults on NULL rows so
+    // the data is consistent even though the schema constraint can't be added.
+    try {
+      db.exec(`UPDATE observations SET content = '' WHERE content IS NULL`);
+      db.exec(`UPDATE observations SET access_count = 0 WHERE access_count IS NULL`);
+      db.exec(`UPDATE sessions SET status = 'completed' WHERE status IS NULL`);
+      db.exec(`UPDATE sessions SET observation_count = 0 WHERE observation_count IS NULL`);
+      db.exec(`UPDATE pressure_scores SET temperature = 'COLD' WHERE temperature IS NULL`);
+      db.exec(`UPDATE pressure_scores SET last_touched_epoch = 0 WHERE last_touched_epoch IS NULL`);
+      db.exec(`UPDATE pressure_scores SET decay_rate = 0.1 WHERE decay_rate IS NULL`);
+      db.exec(`UPDATE session_journal SET timestamp_epoch = 0 WHERE timestamp_epoch IS NULL`);
+    } catch { /* non-fatal */ }
+  } catch {
+    // Non-throwing — partial migration is acceptable
+  }
+}
+
+/**
+ * V5 → V6: Full table rebuild for NOT NULL constraints + journal metadata column.
+ *
+ * SQLite doesn't support ALTER COLUMN to add NOT NULL. The v2 migration
+ * created several columns without NOT NULL constraints. V5 filled NULL values
+ * but couldn't fix the DDL. V6 rebuilds the affected tables properly.
+ *
+ * Also adds `metadata` TEXT column to session_journal for structured flow data.
+ * Idempotent.
+ */
+function migrateV5toV6(db: Database): void {
+  try {
+    // 1. Add metadata column to session_journal (simple ALTER, not a rebuild)
+    if (hasTable(db, 'session_journal') && !hasColumn(db, 'session_journal', 'metadata')) {
+      db.exec("ALTER TABLE session_journal ADD COLUMN metadata TEXT");
+    }
+
+    // 2. Rebuild session_journal with NOT NULL on timestamp_epoch
+    if (hasTable(db, 'session_journal')) {
+      try {
+        // Check if constraint already exists by probing
+        db.exec("SAVEPOINT v6_sj_probe");
+        db.exec("INSERT INTO session_journal (session_id, project, entry_type, content, timestamp_epoch) VALUES ('__probe__', '__probe__', 'flow', '__probe__', NULL)");
+        // If we get here, NULL is allowed — need rebuild
+        db.exec("ROLLBACK TO v6_sj_probe");
+        db.exec("RELEASE v6_sj_probe");
+
+        db.exec("BEGIN");
+        db.exec(`CREATE TABLE session_journal_new (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          session_id TEXT NOT NULL,
+          project TEXT NOT NULL,
+          entry_type TEXT NOT NULL CHECK (entry_type IN ('flow', 'milestone', 'summary')),
+          content TEXT NOT NULL,
+          metadata TEXT,
+          timestamp_epoch INTEGER NOT NULL DEFAULT (unixepoch())
+        )`);
+        db.exec(`INSERT INTO session_journal_new (id, session_id, project, entry_type, content, metadata, timestamp_epoch)
+          SELECT id, session_id, project, entry_type, content, metadata, COALESCE(timestamp_epoch, 0) FROM session_journal`);
+        db.exec("DROP TABLE session_journal");
+        db.exec("ALTER TABLE session_journal_new RENAME TO session_journal");
+        db.exec("COMMIT");
+      } catch {
+        try { db.exec("ROLLBACK"); } catch { /* */ }
+        try { db.exec("ROLLBACK TO v6_sj_probe"); } catch { /* */ }
+        try { db.exec("RELEASE v6_sj_probe"); } catch { /* */ }
+      }
+    }
+
+    // 3. Rebuild sessions with NOT NULL constraints
+    if (hasTable(db, 'sessions')) {
+      try {
+        db.exec("SAVEPOINT v6_sess_probe");
+        db.exec("INSERT INTO sessions (session_id, status) VALUES ('__v6_probe__', NULL)");
+        db.exec("ROLLBACK TO v6_sess_probe");
+        db.exec("RELEASE v6_sess_probe");
+
+        db.exec("BEGIN");
+        db.exec(`CREATE TABLE sessions_new (
+          session_id TEXT PRIMARY KEY,
+          scope TEXT NOT NULL DEFAULT 'unknown',
+          project TEXT NOT NULL DEFAULT '__global__',
+          cwd TEXT NOT NULL DEFAULT '.',
+          source TEXT,
+          status TEXT NOT NULL DEFAULT 'active'
+            CHECK (status IN ('active', 'completed', 'failed')),
+          observation_count INTEGER NOT NULL DEFAULT 0,
+          created_at_epoch INTEGER NOT NULL DEFAULT (unixepoch()),
+          ended_at_epoch INTEGER,
+          adapter TEXT DEFAULT 'unknown',
+          session_summary TEXT
+        )`);
+        db.exec(`INSERT INTO sessions_new
+          SELECT session_id, COALESCE(scope, 'unknown'), COALESCE(project, '__global__'), COALESCE(cwd, '.'), source,
+                 COALESCE(status, 'completed'), COALESCE(observation_count, 0), created_at_epoch, ended_at_epoch, adapter, session_summary
+          FROM sessions`);
+        db.exec("DROP TABLE sessions");
+        db.exec("ALTER TABLE sessions_new RENAME TO sessions");
+        db.exec("CREATE INDEX IF NOT EXISTS idx_sessions_project ON sessions(project, created_at_epoch DESC)");
+        db.exec("CREATE INDEX IF NOT EXISTS idx_sessions_status ON sessions(status, created_at_epoch DESC)");
+        db.exec("COMMIT");
+      } catch {
+        try { db.exec("ROLLBACK"); } catch { /* */ }
+        try { db.exec("ROLLBACK TO v6_sess_probe"); } catch { /* */ }
+        try { db.exec("RELEASE v6_sess_probe"); } catch { /* */ }
+      }
+    }
+
+    // 4. Rebuild observations with NOT NULL constraints (most complex — has FTS5 triggers)
+    if (hasTable(db, 'observations')) {
+      try {
+        db.exec("SAVEPOINT v6_obs_probe");
+        db.exec("INSERT INTO observations (session_id, tool_name, category, title, content, importance) VALUES ('__v6__', 'Test', 'code', 'test', NULL, 1)");
+        db.exec("ROLLBACK TO v6_obs_probe");
+        db.exec("RELEASE v6_obs_probe");
+
+        db.exec("BEGIN");
+        // Drop FTS triggers first
+        db.exec("DROP TRIGGER IF EXISTS observations_ai");
+        db.exec("DROP TRIGGER IF EXISTS observations_ad");
+        db.exec("DROP TRIGGER IF EXISTS observations_au");
+
+        db.exec(`CREATE TABLE observations_new (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          session_id TEXT NOT NULL,
+          project TEXT,
+          tool_name TEXT NOT NULL,
+          category TEXT NOT NULL CHECK (category IN (
+            'code', 'architecture', 'decision', 'error', 'test',
+            'config', 'dependency', 'documentation', 'performance',
+            'security', 'other'
+          )),
+          title TEXT NOT NULL,
+          content TEXT NOT NULL DEFAULT '',
+          importance INTEGER NOT NULL CHECK (importance BETWEEN 1 AND 5),
+          files_modified TEXT NOT NULL DEFAULT '[]' CHECK (json_valid(files_modified)),
+          timestamp_epoch INTEGER NOT NULL DEFAULT (unixepoch()),
+          access_count INTEGER NOT NULL DEFAULT 0,
+          last_accessed_at_epoch INTEGER,
+          deleted_at_epoch INTEGER DEFAULT NULL,
+          consumed INTEGER NOT NULL DEFAULT 0,
+          obs_type TEXT
+        )`);
+        db.exec(`INSERT INTO observations_new
+          SELECT id, session_id, project, tool_name, category, title,
+                 COALESCE(content, ''), importance, files_modified, timestamp_epoch,
+                 COALESCE(access_count, 0), last_accessed_at_epoch, deleted_at_epoch, consumed, obs_type
+          FROM observations`);
+        db.exec("DROP TABLE observations");
+        db.exec("ALTER TABLE observations_new RENAME TO observations");
+
+        // Recreate indexes
+        db.exec("CREATE INDEX IF NOT EXISTS idx_obs_session ON observations(session_id)");
+        db.exec("CREATE INDEX IF NOT EXISTS idx_obs_project ON observations(project)");
+        db.exec("CREATE INDEX IF NOT EXISTS idx_obs_timestamp ON observations(timestamp_epoch DESC)");
+        db.exec("CREATE INDEX IF NOT EXISTS idx_obs_importance ON observations(importance DESC)");
+        db.exec("CREATE INDEX IF NOT EXISTS idx_obs_composite ON observations(tool_name, category, project, session_id, timestamp_epoch DESC)");
+        db.exec("CREATE INDEX IF NOT EXISTS idx_obs_project_active ON observations(project, deleted_at_epoch, timestamp_epoch DESC)");
+        db.exec("CREATE INDEX IF NOT EXISTS idx_obs_project_importance ON observations(project, deleted_at_epoch, importance)");
+        db.exec("CREATE INDEX IF NOT EXISTS idx_obs_consumed ON observations(project, consumed, timestamp_epoch DESC)");
+
+        // Recreate FTS triggers
+        db.exec(`CREATE TRIGGER IF NOT EXISTS observations_ai AFTER INSERT ON observations BEGIN
+          INSERT INTO observations_fts(rowid, title, content) VALUES (new.id, new.title, new.content);
+        END`);
+        db.exec(`CREATE TRIGGER IF NOT EXISTS observations_ad AFTER DELETE ON observations BEGIN
+          INSERT INTO observations_fts(observations_fts, rowid, title, content) VALUES ('delete', old.id, old.title, old.content);
+        END`);
+        db.exec(`CREATE TRIGGER IF NOT EXISTS observations_au AFTER UPDATE ON observations BEGIN
+          INSERT INTO observations_fts(observations_fts, rowid, title, content) VALUES ('delete', old.id, old.title, old.content);
+          INSERT INTO observations_fts(rowid, title, content) VALUES (new.id, new.title, new.content);
+        END`);
+
+        // Rebuild FTS index from new table
+        db.exec("INSERT INTO observations_fts(observations_fts) VALUES('rebuild')");
+
+        db.exec("COMMIT");
+      } catch {
+        try { db.exec("ROLLBACK"); } catch { /* */ }
+        try { db.exec("ROLLBACK TO v6_obs_probe"); } catch { /* */ }
+        try { db.exec("RELEASE v6_obs_probe"); } catch { /* */ }
+      }
+    }
+
+    // 5. Rebuild pressure_scores with NOT NULL constraints
+    if (hasTable(db, 'pressure_scores')) {
+      try {
+        db.exec("SAVEPOINT v6_ps_probe");
+        db.exec("INSERT INTO pressure_scores (file_path, project, raw_pressure, temperature) VALUES ('__probe__', '__probe__', 0, NULL)");
+        db.exec("ROLLBACK TO v6_ps_probe");
+        db.exec("RELEASE v6_ps_probe");
+
+        db.exec("BEGIN");
+        db.exec(`CREATE TABLE pressure_scores_new (
+          file_path TEXT NOT NULL,
+          project TEXT NOT NULL,
+          raw_pressure REAL NOT NULL DEFAULT 0,
+          temperature TEXT NOT NULL DEFAULT 'COLD',
+          last_touched_epoch INTEGER NOT NULL DEFAULT 0,
+          decay_rate REAL NOT NULL DEFAULT 0.1,
+          PRIMARY KEY (file_path, project)
+        )`);
+        db.exec(`INSERT OR IGNORE INTO pressure_scores_new (file_path, project, raw_pressure, temperature, last_touched_epoch, decay_rate)
+          SELECT file_path, project, raw_pressure, COALESCE(temperature, 'COLD'), COALESCE(last_touched_epoch, 0), COALESCE(decay_rate, 0.1) FROM pressure_scores`);
+        db.exec("DROP TABLE pressure_scores");
+        db.exec("ALTER TABLE pressure_scores_new RENAME TO pressure_scores");
+        db.exec("COMMIT");
+      } catch {
+        try { db.exec("ROLLBACK"); } catch { /* */ }
+        try { db.exec("ROLLBACK TO v6_ps_probe"); } catch { /* */ }
+        try { db.exec("RELEASE v6_ps_probe"); } catch { /* */ }
+      }
+    }
+  } catch {
+    // Non-throwing — partial migration is acceptable
+  }
+}
+
+/**
+ * V6 → V7: Rebuild observations + sessions tables for NOT NULL constraints.
+ * V6 rebuilt pressure_scores and session_journal. V7 completes the remaining
+ * two tables that still had v2-era columns without NOT NULL.
+ * Idempotent (probe-based: only rebuilds if NULL is insertable).
+ */
+function migrateV6toV7(db: Database): void {
+  try {
+    // Rebuild sessions
+    if (hasTable(db, 'sessions')) {
+      try {
+        db.exec("SAVEPOINT v7_sess_probe");
+        db.exec("INSERT INTO sessions (session_id, status) VALUES ('__v7_probe__', NULL)");
+        db.exec("ROLLBACK TO v7_sess_probe");
+        db.exec("RELEASE v7_sess_probe");
+
+        db.exec("BEGIN");
+        db.exec(`CREATE TABLE sessions_new (
+          session_id TEXT PRIMARY KEY,
+          scope TEXT NOT NULL DEFAULT 'unknown',
+          project TEXT NOT NULL DEFAULT '__global__',
+          cwd TEXT NOT NULL DEFAULT '.',
+          source TEXT,
+          status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'completed', 'failed')),
+          observation_count INTEGER NOT NULL DEFAULT 0,
+          created_at_epoch INTEGER NOT NULL DEFAULT (unixepoch()),
+          ended_at_epoch INTEGER,
+          adapter TEXT DEFAULT 'unknown',
+          session_summary TEXT
+        )`);
+        db.exec(`INSERT INTO sessions_new
+          SELECT session_id, COALESCE(scope, 'unknown'), COALESCE(project, '__global__'), COALESCE(cwd, '.'), source,
+                 COALESCE(status, 'completed'), COALESCE(observation_count, 0), created_at_epoch, ended_at_epoch, adapter, session_summary
+          FROM sessions`);
+        db.exec("DROP TABLE sessions");
+        db.exec("ALTER TABLE sessions_new RENAME TO sessions");
+        db.exec("CREATE INDEX IF NOT EXISTS idx_sessions_project ON sessions(project, created_at_epoch DESC)");
+        db.exec("CREATE INDEX IF NOT EXISTS idx_sessions_status ON sessions(status, created_at_epoch DESC)");
+        db.exec("COMMIT");
+      } catch {
+        try { db.exec("ROLLBACK"); } catch { /* */ }
+        try { db.exec("ROLLBACK TO v7_sess_probe"); } catch { /* */ }
+        try { db.exec("RELEASE v7_sess_probe"); } catch { /* */ }
+      }
+    }
+
+    // Rebuild observations (20K rows + FTS5 triggers)
+    if (hasTable(db, 'observations')) {
+      try {
+        db.exec("SAVEPOINT v7_obs_probe");
+        db.exec("INSERT INTO observations (session_id, tool_name, category, title, content, importance) VALUES ('__v7__', 'Test', 'code', 'test', NULL, 1)");
+        db.exec("ROLLBACK TO v7_obs_probe");
+        db.exec("RELEASE v7_obs_probe");
+
+        // Fix non-standard category values before rebuild (v2 migration artifacts)
+        try {
+          db.exec("UPDATE observations SET category = 'code' WHERE category NOT IN ('code','architecture','decision','error','test','config','dependency','documentation','performance','security','other')");
+        } catch { /* non-fatal */ }
+
+        db.exec("BEGIN");
+        db.exec("DROP TRIGGER IF EXISTS observations_ai");
+        db.exec("DROP TRIGGER IF EXISTS observations_ad");
+        db.exec("DROP TRIGGER IF EXISTS observations_au");
+
+        db.exec(`CREATE TABLE observations_new (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          session_id TEXT NOT NULL,
+          project TEXT,
+          tool_name TEXT NOT NULL,
+          category TEXT NOT NULL CHECK (category IN (
+            'code', 'architecture', 'decision', 'error', 'test',
+            'config', 'dependency', 'documentation', 'performance', 'security', 'other'
+          )),
+          title TEXT NOT NULL,
+          content TEXT NOT NULL DEFAULT '',
+          importance INTEGER NOT NULL CHECK (importance BETWEEN 1 AND 5),
+          files_modified TEXT NOT NULL DEFAULT '[]' CHECK (json_valid(files_modified)),
+          timestamp_epoch INTEGER NOT NULL DEFAULT (unixepoch()),
+          access_count INTEGER NOT NULL DEFAULT 0,
+          last_accessed_at_epoch INTEGER,
+          deleted_at_epoch INTEGER DEFAULT NULL,
+          consumed INTEGER NOT NULL DEFAULT 0,
+          obs_type TEXT
+        )`);
+        db.exec(`INSERT INTO observations_new
+          SELECT id, session_id, project, tool_name, category, title,
+                 COALESCE(content, ''), importance, files_modified, timestamp_epoch,
+                 COALESCE(access_count, 0), last_accessed_at_epoch, deleted_at_epoch, consumed, obs_type
+          FROM observations`);
+        db.exec("DROP TABLE observations");
+        db.exec("ALTER TABLE observations_new RENAME TO observations");
+
+        db.exec("CREATE INDEX IF NOT EXISTS idx_obs_session ON observations(session_id)");
+        db.exec("CREATE INDEX IF NOT EXISTS idx_obs_project ON observations(project)");
+        db.exec("CREATE INDEX IF NOT EXISTS idx_obs_timestamp ON observations(timestamp_epoch DESC)");
+        db.exec("CREATE INDEX IF NOT EXISTS idx_obs_importance ON observations(importance DESC)");
+        db.exec("CREATE INDEX IF NOT EXISTS idx_obs_composite ON observations(tool_name, category, project, session_id, timestamp_epoch DESC)");
+        db.exec("CREATE INDEX IF NOT EXISTS idx_obs_project_active ON observations(project, deleted_at_epoch, timestamp_epoch DESC)");
+        db.exec("CREATE INDEX IF NOT EXISTS idx_obs_project_importance ON observations(project, deleted_at_epoch, importance)");
+        db.exec("CREATE INDEX IF NOT EXISTS idx_obs_consumed ON observations(project, consumed, timestamp_epoch DESC)");
+
+        db.exec(`CREATE TRIGGER IF NOT EXISTS observations_ai AFTER INSERT ON observations BEGIN
+          INSERT INTO observations_fts(rowid, title, content) VALUES (new.id, new.title, new.content);
+        END`);
+        db.exec(`CREATE TRIGGER IF NOT EXISTS observations_ad AFTER DELETE ON observations BEGIN
+          INSERT INTO observations_fts(observations_fts, rowid, title, content) VALUES ('delete', old.id, old.title, old.content);
+        END`);
+        db.exec(`CREATE TRIGGER IF NOT EXISTS observations_au AFTER UPDATE ON observations BEGIN
+          INSERT INTO observations_fts(observations_fts, rowid, title, content) VALUES ('delete', old.id, old.title, old.content);
+          INSERT INTO observations_fts(rowid, title, content) VALUES (new.id, new.title, new.content);
+        END`);
+
+        db.exec("INSERT INTO observations_fts(observations_fts) VALUES('rebuild')");
+        db.exec("COMMIT");
+      } catch {
+        try { db.exec("ROLLBACK"); } catch { /* */ }
+        try { db.exec("ROLLBACK TO v7_obs_probe"); } catch { /* */ }
+        try { db.exec("RELEASE v7_obs_probe"); } catch { /* */ }
+      }
+    }
+  } catch {
+    // Non-throwing
+  }
+}
+
+/**
  * Upgrades v2 tables in-place when v3 opens the same database file.
  * Adds missing columns and renames changed ones so CREATE INDEX succeeds.
  * Idempotent — safe to call on a fresh or already-upgraded DB.
@@ -979,7 +1439,7 @@ export function initializeSchema(db: Database): void {
   } else {
     db.prepare('INSERT OR IGNORE INTO schema_versions (version) VALUES (?)').run(SCHEMA_VERSION);
   }
-  db.pragma('user_version = 4');
+  db.pragma('user_version = 8');
 }
 
 /**

@@ -4,7 +4,7 @@
  */
 
 import type { ObservationCategory } from '../core/observations.js';
-import { FILE_TOOL_NAMES } from '../shared/tool-catalog.js';
+import { FILE_TOOL_NAMES, READ_ONLY_TOOLS } from '../shared/tool-catalog.js';
 
 // --- Category Classification ---
 
@@ -21,9 +21,14 @@ const CATEGORY_KEYWORDS: Array<[RegExp, ObservationCategory]> = [
   [/decide|chose|agreed|confirmed/i, 'decision'],
 ];
 
+// READ_ONLY_TOOLS imported from tool-catalog.ts — canonical set of tools whose
+// output is file content (not tool errors). Classify by title only.
+
 /**
  * Classifies an observation into a category using keyword-first-match.
  * Scans title + content (case-insensitive) against keyword map in order.
+ * For read-only tools (Read, Grep, Glob), scans title only — file content
+ * keywords (e.g. "error" in try/catch code) are not classification signals.
  * Default: 'code' for file-related tools, 'other' otherwise.
  */
 export function classifyCategory(
@@ -32,9 +37,12 @@ export function classifyCategory(
   content: string
 ): ObservationCategory {
   try {
-    const combined = `${title} ${content}`.replace(/\[REDACTED_\w+\]/g, '');
+    // Read-only tools: classify by title only to avoid false positives from file content
+    const scanText = READ_ONLY_TOOLS.has(toolName)
+      ? title.replace(/\[REDACTED_\w+\]/g, '')
+      : `${title} ${content}`.replace(/\[REDACTED_\w+\]/g, '');
     for (const [pattern, category] of CATEGORY_KEYWORDS) {
-      if (pattern.test(combined)) {
+      if (pattern.test(scanText)) {
         return category;
       }
     }

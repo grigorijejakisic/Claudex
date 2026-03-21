@@ -95,3 +95,11 @@ export const FILE_TOOL_NAMES: ReadonlySet<string> = new Set(
     .map((def) => def.name)
 );
 
+/**
+ * Read-only tools whose output is file content, not tool errors.
+ * Keyword scanning on these produces false positives (source code containing
+ * "error" in try/catch is not an error observation).
+ * Used by scoring.ts (classifyCategory) and type-classifier.ts (classifyObservationType).
+ */
+export const READ_ONLY_TOOLS: ReadonlySet<string> = new Set(['Read', 'Grep', 'Glob']);
+

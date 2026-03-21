@@ -11,7 +11,9 @@ import { emitErrorTelemetry } from '../../observability/error-telemetry.js';
 import { assembleFullContext } from '../../assembly/assembler.js';
 import { getIdentityDir } from '../../shared/paths.js';
 import { ingestFileArtifacts, pruneStaleFileArtifacts } from '../../core/file-ingester.js';
-import { getLastSessionSummary } from '../../core/session-events.js';
+import { getLastSessionSummary, synthesizeSessionSummary, getSessionEvents, saveSessionSummary } from '../../core/session-events.js';
+import { cachedPrepare } from '../../core/stmt-cache.js';
+import { captureRecallFlowEntry } from '../shared/lifecycle.js';
 
 const main = wrapHook('SessionStart', async (input, ctx) => {
   // Each operation isolated — if A fails, B and C still run
@@ -26,6 +28,41 @@ const main = wrapHook('SessionStart', async (input, ctx) => {
     });
   } catch (e) {
     emitErrorTelemetry(ctx.db, input.session_id, 'session_start/create', e);
+  }
+
+  // Close orphaned sessions: any session still 'active' but older than 1 hour
+  // is a crash/disconnect victim. Retroactively close it with a summary so the
+  // data isn't lost. Runs before checkpoint recovery to avoid stale state.
+  try {
+    const now = Math.floor(Date.now() / 1000);
+    const cutoff = now - 3600;
+    const orphans = cachedPrepare(ctx.db,
+      `SELECT session_id FROM sessions WHERE status = 'active' AND created_at_epoch < ? AND session_id != ? AND project = ?`
+    ).all(cutoff, input.session_id, ctx.project) as Array<{ session_id: string }>;
+
+    for (const orphan of orphans) {
+      // Generate recall metadata BEFORE closing — captures user framings,
+      // topic chain, decisions as searchable recall aliases
+      try {
+        const events = getSessionEvents(ctx.db, orphan.session_id);
+        captureRecallFlowEntry(ctx.db, orphan.session_id, ctx.project, events);
+        const summary = synthesizeSessionSummary(events);
+        if (summary) saveSessionSummary(ctx.db, orphan.session_id, summary);
+      } catch { /* non-fatal per orphan */ }
+
+      cachedPrepare(ctx.db,
+        `UPDATE sessions SET status = 'completed', ended_at_epoch = ? WHERE session_id = ?`
+      ).run(now, orphan.session_id);
+    }
+
+    if (orphans.length > 0) {
+      emitTelemetry(ctx.db, input.session_id, 'decay_prune', {
+        action: 'orphan_session_recovery',
+        count: orphans.length,
+      });
+    }
+  } catch (e) {
+    emitErrorTelemetry(ctx.db, input.session_id, 'session_start/orphan_recovery', e);
   }
 
   try {

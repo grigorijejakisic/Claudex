@@ -4,8 +4,9 @@
 
 import Database from 'better-sqlite3';
 import { initializeSchema, runMigrations } from '../../core/migrations.js';
-import { createArtifact } from '../../core/artifacts.js';
+import { createArtifact, searchArtifactsGlobal } from '../../core/artifacts.js';
 import { cachedPrepare } from '../../core/stmt-cache.js';
+import { addJournalEntry, searchJournalFTS } from '../../core/journal.js';
 
 // We test the handler logic directly rather than spawning the server process.
 // The server's tool handlers are not exported, so we replicate their core logic
@@ -164,7 +165,85 @@ describe('fresh DB initialization', () => {
 
       // Verify user_version is current
       const row = db.pragma('user_version') as Array<{ user_version: number }>;
-      expect(row[0].user_version).toBe(4);
+      expect(row[0].user_version).toBe(8);
+    } finally {
+      db.close();
+    }
+  });
+});
+
+describe('claudex_search journal FTS integration', () => {
+  it('searchJournalFTS returns results alongside artifact search', () => {
+    const db = createDb();
+    try {
+      insertSession(db, 'sess1', 'test-project');
+
+      // Create an artifact
+      createArtifact(db, 'sess1', 'test-project', 'observation', null, 'Fixed VBS startup script', 'Replaced CLIProxyAPI.vbs with .bat', 4);
+
+      // Create a journal entry with recall_text
+      addJournalEntry(db, 'sess1', 'test-project', 'flow',
+        'Analyzed VBS deprecation issue on Windows boot',
+        undefined,
+        'openclaw script problem | startup popup fix | vbs deprecation',
+      );
+
+      // Artifact search finds the artifact
+      const artifactResults = searchArtifactsGlobal(db, 'test-project', 'VBS startup', 10);
+      expect(artifactResults.length).toBeGreaterThanOrEqual(1);
+
+      // Journal FTS finds the flow entry by recall_text
+      const journalResults = searchJournalFTS(db, 'openclaw script problem');
+      expect(journalResults.length).toBe(1);
+      expect(journalResults[0].recall_text).toContain('openclaw script problem');
+
+      // Journal FTS finds by content too
+      const contentResults = searchJournalFTS(db, 'VBS deprecation Windows');
+      expect(contentResults.length).toBe(1);
+    } finally {
+      db.close();
+    }
+  });
+
+  it('journal results include recall_text in output', () => {
+    const db = createDb();
+    try {
+      insertSession(db, 'sess1', 'test-project');
+      addJournalEntry(db, 'sess1', 'test-project', 'flow',
+        'Redesigned memory retrieval system',
+        { recall_aliases: ['how I remember vs how you remember'] },
+        'how I remember vs how you remember | upgrade flow | recall aliases concept',
+      );
+
+      const results = searchJournalFTS(db, 'remember');
+      expect(results.length).toBe(1);
+      expect(results[0].recall_text).toContain('how I remember');
+      expect(results[0].metadata).toContain('recall_aliases');
+    } finally {
+      db.close();
+    }
+  });
+
+  it('merged search prioritizes journal recall matches over artifact content matches', () => {
+    const db = createDb();
+    try {
+      insertSession(db, 'sess1', 'test-project');
+
+      // Artifact mentions "flow" in content
+      createArtifact(db, 'sess1', 'test-project', 'observation', null, 'Updated flow logic', 'Changed flow entry generation', 3);
+
+      // Journal has "flow" in recall_text (human recall cue)
+      addJournalEntry(db, 'sess1', 'test-project', 'flow',
+        'Session about upgrading flow system',
+        undefined,
+        'upgrade flow | redesign flow entries | flow recall metadata',
+      );
+
+      // Both should be findable
+      const journalHits = searchJournalFTS(db, 'upgrade flow');
+      const artifactHits = searchArtifactsGlobal(db, 'test-project', 'flow', 10);
+      expect(journalHits.length).toBeGreaterThanOrEqual(1);
+      expect(artifactHits.length).toBeGreaterThanOrEqual(1);
     } finally {
       db.close();
     }

@@ -27,6 +27,7 @@ import {
   formatLearningsSection,
   formatReferenceLayer,
   formatMaterializationLayer,
+  formatRulesReminderSection,
   renderSessionContinuity,
   renderExperienceWarnings as formatExperienceWarningsSection,
 } from './sections.js';
@@ -273,6 +274,22 @@ export function assembleFullContext(params: FullAssemblyParams): InjectPayload {
         }
       }
     } catch { /* non-fatal */ }
+
+    // Priority 4.5: CLAUDE.md rules reminder — re-injected after compaction to prevent drift.
+    // Only included in post-compaction assembly (identity/project already in context from CLAUDE.md).
+    if (params.isPostCompaction) {
+      try {
+        const rulesSection = formatRulesReminderSection(params.projectDir);
+        if (rulesSection) {
+          const cost = estimateTokens(rulesSection);
+          if (cost <= budget) {
+            sections.push(rulesSection);
+            budget -= cost;
+            sources.push('rules_reminder');
+          }
+        }
+      } catch { /* non-fatal */ }
+    }
 
     // === LAYER 1 CONTINUED: Session Flow (from journal) ===
     try {

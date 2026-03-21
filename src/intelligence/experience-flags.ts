@@ -122,6 +122,8 @@ export interface BehavioralCounters {
   file_edit_counts: Record<string, number>;
   /** Recent tool call signatures for loop detection: [{tool, sig}] */
   tool_call_patterns: Array<{ tool: string; sig: string }>;
+  /** Epoch (seconds) of last loop signal emission — 30s cooldown between signals. */
+  last_loop_signal_epoch?: number;
 }
 
 // ---------------------------------------------------------------------------
@@ -233,6 +235,9 @@ export function getBehavioralCounters(
       tool_call_patterns: Array.isArray(parsed.tool_call_patterns)
         ? (parsed.tool_call_patterns as Array<{ tool: string; sig: string }>).slice(-20)
         : [],
+      last_loop_signal_epoch: typeof parsed.last_loop_signal_epoch === 'number'
+        ? parsed.last_loop_signal_epoch
+        : undefined,
     };
   } catch {
     return defaults;
@@ -306,10 +311,14 @@ export function applyFileEditIncrement(
   return next;
 }
 
+/** Minimum seconds between loop signal emissions to prevent telemetry flooding. */
+const LOOP_SIGNAL_COOLDOWN_SECONDS = 30;
+
 /**
  * Appends a tool call signature in an already-loaded counters object and checks
  * for a loop (3+ identical consecutive patterns). Mutates `counters` in place.
- * Returns true when a loop is detected.
+ * Returns true when a loop is detected AND the 30s cooldown has elapsed since
+ * the last signal. Prevents telemetry flooding from rapid parallel tool calls.
  *
  * Use inside `withBehavioralBatch` to avoid extra DB round-trips.
  */
@@ -323,6 +332,15 @@ export function applyToolCallPattern(
   const patterns = counters.tool_call_patterns;
   if (patterns.length < 3) return false;
   const last3 = patterns.slice(-3);
-  return last3.every(p => p.tool === tool && p.sig === sig);
+  const isLoop = last3.every(p => p.tool === tool && p.sig === sig);
+  if (!isLoop) return false;
+
+  // Enforce 30s cooldown between loop signals
+  const now = Math.floor(Date.now() / 1000);
+  const lastSignal = counters.last_loop_signal_epoch ?? 0;
+  if (now - lastSignal < LOOP_SIGNAL_COOLDOWN_SECONDS) return false;
+
+  counters.last_loop_signal_epoch = now;
+  return true;
 }
 

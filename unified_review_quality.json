@@ -1,34 +1,61 @@
 {
   "assessments": {
     "naming_quality": 82,
-    "error_consistency": 58,
-    "abstraction_fitness": 70,
-    "logic_clarity": 62,
-    "ai_generated_debt": 59,
-    "type_safety": 64,
-    "contract_coherence": 55
+    "error_consistency": 54,
+    "abstraction_fitness": 60,
+    "logic_clarity": 57,
+    "ai_generated_debt": 46,
+    "type_safety": 68,
+    "contract_coherence": 50
   },
   "findings": [
-    { "id": "quality-001", "dimension": "contract_coherence", "file": "src/assembly/sections.ts", "line": 29, "severity": "high", "description": "wrapFileContent() sentinel not escaped — prompt injection via </file-content> in wrapped content." },
-    { "id": "quality-002", "dimension": "contract_coherence", "file": "src/adapters/cc-hooks/infrastructure.ts", "line": 200, "severity": "high", "description": "cwd validation accepts UNC/device paths on Windows despite fail-closed intent." },
-    { "id": "quality-003", "dimension": "contract_coherence", "file": "src/cli/setup.ts", "line": 71, "severity": "high", "description": "Hook command POSIX quoting invalid on Windows shells — injection via path metacharacters." },
-    { "id": "quality-004", "dimension": "error_consistency", "file": "src/core/migrations.ts", "line": 470, "severity": "high", "description": "Narrowed catch rejects valid SQLite FTS shadow table and rename-conflict error messages." },
-    { "id": "quality-005", "dimension": "contract_coherence", "file": "src/shared/fetch-utils.ts", "line": 50, "severity": "high", "description": "maxResponseBytes relies on content-length header only — chunked/compressed responses bypass." },
-    { "id": "quality-006", "dimension": "logic_clarity", "file": "src/extraction/quality-gate.ts", "line": 82, "severity": "high", "description": "Grep gate requires output.content but grep payloads use matchCount/matches fields." },
-    { "id": "quality-007", "dimension": "logic_clarity", "file": "src/intelligence/topic-shift.ts", "line": 203, "severity": "high", "description": "computeAvgRecent returns 1.0 on empty history — always fails shift gate threshold." },
-    { "id": "quality-008", "dimension": "contract_coherence", "file": "src/adapters/cc-hooks/user-prompt-submit.ts", "line": 41, "severity": "medium", "description": "Checkpoint tracking updated even when writeCheckpoint fails (returns null)." },
-    { "id": "quality-009", "dimension": "type_safety", "file": "src/intelligence/enrichment.ts", "line": 159, "severity": "medium", "description": "Array sanitization doesn't filter non-string elements or cap array length." },
-    { "id": "quality-010", "dimension": "contract_coherence", "file": "src/intelligence/decision-capture.ts", "line": 188, "severity": "medium", "description": "Decision dedup window of 100 allows old duplicates to re-insert." },
-    { "id": "quality-011", "dimension": "error_consistency", "file": "src/adapters/openclaw-bridge/bridge-adapter.ts", "line": 241, "severity": "medium", "description": "Bridge adapter persists raw error strings unlike sanitized CC hooks path." },
-    { "id": "quality-012", "dimension": "contract_coherence", "file": "src/intelligence/thread-tracker.ts", "line": 260, "severity": "medium", "description": "updateTopic() method added but has no callers — topic shifts never persisted." },
-    { "id": "quality-013", "dimension": "error_consistency", "file": "src/core/migrations.ts", "line": 359, "severity": "medium", "description": "Error matching depends on brittle err.message.includes() — fragile across SQLite versions." },
-    { "id": "quality-014", "dimension": "contract_coherence", "file": "src/core/migrations.ts", "line": 528, "severity": "medium", "description": "Adapter-column migration logic duplicated between migrateFromV2 and migrateV1toV2." },
-    { "id": "quality-015", "dimension": "contract_coherence", "file": "src/core/migrations.ts", "line": 388, "severity": "medium", "description": "Dual version tracking (PRAGMA user_version vs schema_versions table) without explicit mapping." },
-    { "id": "quality-016", "dimension": "contract_coherence", "file": "src/core/decisions.ts", "line": 44, "severity": "medium", "description": "Decision fingerprint generated from unredacted text — sensitive tokens recoverable." },
-    { "id": "quality-017", "dimension": "logic_clarity", "file": "src/assembly/assembler.ts", "line": 283, "severity": "medium", "description": "Reclaim loop breaks after first candidate regardless of re-validation success." },
-    { "id": "quality-018", "dimension": "type_safety", "file": "src/checkpoint/writer.ts", "line": 302, "severity": "medium", "description": "key_exchanges filter throws on null entry or non-string role." },
-    { "id": "quality-019", "dimension": "logic_clarity", "file": "src/shared/scope-detector.ts", "line": 96, "severity": "medium", "description": "Trailing-separator stripping collapses root paths to empty string." },
-    { "id": "quality-020", "dimension": "type_safety", "file": "src/shared/config.ts", "line": 164, "severity": "medium", "description": "posInt validator accepts fractional values — downstream expects integers." },
-    { "id": "quality-021", "dimension": "contract_coherence", "file": "src/shared/fs-helpers.ts", "line": 33, "severity": "medium", "description": "Functions changed from async to sync but callers still await them." }
+    {
+      "id": "quality-001",
+      "dimension": "error_consistency",
+      "file": "src/core/migrations.ts",
+      "line": 758,
+      "severity": "high",
+      "description": "runMigrations unconditionally sets user_version=8 even though individual migration steps are broadly non-throwing and may partially fail; this can mark a partially migrated DB as current and suppress future repair attempts."
+    },
+    {
+      "id": "quality-002",
+      "dimension": "contract_coherence",
+      "file": "src/intelligence/experience-flags.ts",
+      "line": 227,
+      "severity": "high",
+      "description": "BehavioralCounters now includes last_loop_signal_epoch, but getBehavioralCounters does not deserialize it. applyToolCallPattern writes/reads this field, so cooldown state is not reliably persisted across turns."
+    },
+    {
+      "id": "quality-003",
+      "dimension": "contract_coherence",
+      "file": "src/mcp/recall-server.ts",
+      "line": 197,
+      "severity": "medium",
+      "description": "The claudex_events path claims to fetch the latest active session, but project-scoped lookup does not filter by status='active', so it can return completed sessions and bypass the active-session fallback."
+    },
+    {
+      "id": "quality-004",
+      "dimension": "logic_clarity",
+      "file": "src/adapters/cc-hooks/session-start.ts",
+      "line": 38,
+      "severity": "medium",
+      "description": "Orphan recovery closes every active session older than 1 hour globally (no project/adapter scope), which can terminate legitimate long-lived concurrent sessions. It also stamps ended_at_epoch to cutoff rather than actual close time."
+    },
+    {
+      "id": "quality-005",
+      "dimension": "abstraction_fitness",
+      "file": "src/core/migrations.ts",
+      "line": 1250,
+      "severity": "medium",
+      "description": "Migration responsibilities are duplicated/conflicting: V5-V6 already rebuilds sessions/observations, while V6-V7 repeats those rebuilds. This increases migration complexity and maintenance risk without a clear single-owner boundary."
+    },
+    {
+      "id": "quality-006",
+      "dimension": "ai_generated_debt",
+      "file": "src/assembly/sections.ts",
+      "line": 558,
+      "severity": "low",
+      "description": "formatRulesReminderSection introduces require('os') inside an otherwise import-based module, which breaks local style consistency and suggests patch-style insertion rather than cohesive module design."
+    }
   ]
 }
