@@ -34,6 +34,8 @@ const SECRET_CONTENT_PATTERNS_RE = new RegExp(SECRET_CONTENT_PATTERNS.source, 'g
 export type PatternType = 'correction' | 'behavioral' | 'discovery';
 export type Severity = 'critical' | 'important' | 'minor';
 
+export type AbstractionLevel = 'tip' | 'strategy';
+
 export interface ExperiencePattern {
   id: string;
   pattern_type: PatternType;
@@ -48,6 +50,9 @@ export interface ExperiencePattern {
   source_project: string;
   created_at_epoch: number;
   last_triggered_epoch: number | null;
+  abstraction_level: AbstractionLevel;
+  verified: number;
+  verification_count: number;
 }
 
 export interface ExtractionInput {
@@ -56,6 +61,7 @@ export interface ExtractionInput {
   lesson: string;
   anti_pattern?: string;
   severity?: Severity;
+  abstraction_level?: AbstractionLevel;
 }
 
 // ---------------------------------------------------------------------------
@@ -315,12 +321,17 @@ export function createPattern(
         ? 'unknown'
         : project;
 
+      // Extract trigger_glob and trigger_command from trigger_context
+      const triggerGlob = extractTriggerGlob(sanitized.trigger_context);
+      const triggerCommand = extractTriggerCommand(sanitized.trigger_context);
+
       cachedPrepare(db,
         `INSERT INTO experience_patterns
            (id, pattern_type, trigger_context, lesson, anti_pattern, severity,
             score, times_triggered, times_useful, source_session, source_project,
-            created_at_epoch, last_triggered_epoch)
-         VALUES (?, ?, ?, ?, ?, ?, 2, 0, 0, ?, ?, ?, NULL)`
+            created_at_epoch, last_triggered_epoch, trigger_glob, trigger_command,
+            abstraction_level)
+         VALUES (?, ?, ?, ?, ?, ?, 2, 0, 0, ?, ?, ?, NULL, ?, ?, ?)`
       ).run(
         id,
         sanitized.pattern_type,
@@ -331,12 +342,30 @@ export function createPattern(
         sessionId,
         effectiveProject,
         now,
+        triggerGlob,
+        triggerCommand,
+        sanitized.abstraction_level ?? 'tip',
       );
 
       return id;
     });
 
-    return doCreate();
+    const resultId = doCreate();
+
+    // Embed pattern async (fire-and-forget — SQLite is source of truth).
+    // Non-blocking: embedding failure must never delay pattern creation.
+    if (resultId) {
+      import('../../embeddings/embed-pipeline.js').then(({ embedPattern: ep }) => {
+        ep(db, resultId, sanitized.trigger_context, sanitized.lesson, {
+          project,
+          pattern_type: sanitized.pattern_type,
+          severity: sanitized.severity ?? 'important',
+          score: 2,
+        }).catch(() => {}); // swallow — non-critical
+      }).catch(() => {}); // dynamic import failure — non-critical
+    }
+
+    return resultId;
   } catch (e) {
     emitErrorTelemetry(db, sessionId, 'create_pattern', e);
     return '';
@@ -572,5 +601,229 @@ export function deduplicateCheck(
     return pattern as ExperiencePattern;
   } catch {
     return null;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// trigger_glob / trigger_command extraction (spec 0.3)
+// ---------------------------------------------------------------------------
+
+/**
+ * Extracts a file glob pattern from trigger_context text.
+ * Looks for file paths and generalizes them to globs.
+ * Returns null if no file path found.
+ */
+function extractTriggerGlob(triggerContext: string): string | null {
+  // Match file paths like src/core/migrations.ts, adapters/cc-hooks/stop.ts
+  const pathMatch = triggerContext.match(
+    /(?:^|\s|['"`])((?:src|adapters|tests?|lib|dist)\/[\w./-]+\.(?:ts|js|tsx|jsx|json|yaml|yml|md|sql|css|html))/i
+  );
+  if (pathMatch) {
+    const filePath = pathMatch[1];
+    // Extract the filename and generalize: src/core/migrations.ts → **/migrations.ts
+    const parts = filePath.split('/');
+    const fileName = parts[parts.length - 1];
+    return `**/${fileName}`;
+  }
+
+  // Match bare filenames like migrations.ts, stop.ts
+  const fileMatch = triggerContext.match(
+    /\b([\w-]+\.(?:ts|js|tsx|jsx|json|yaml|yml|md|sql|css|html))\b/i
+  );
+  if (fileMatch) {
+    return `**/${fileMatch[1]}`;
+  }
+
+  return null;
+}
+
+/**
+ * Extracts a command pattern from trigger_context text.
+ * Looks for Bash/CLI command references.
+ * Returns null if no command found.
+ */
+function extractTriggerCommand(triggerContext: string): string | null {
+  // Match common CLI commands referenced in trigger text
+  const cmdMatch = triggerContext.match(
+    /\b((?:npm|npx|bun|node|vitest|tsc|git|claudex|curl)\s+[\w:.-]+)/i
+  );
+  if (cmdMatch) {
+    return cmdMatch[1].trim();
+  }
+
+  // Match `command` backtick-quoted commands
+  const backtickMatch = triggerContext.match(/`([^`]{3,60})`/);
+  if (backtickMatch && /^[a-z]/.test(backtickMatch[1])) {
+    return backtickMatch[1];
+  }
+
+  return null;
+}
+
+// ---------------------------------------------------------------------------
+// 3.2 Tips/Strategies Dual-Level Storage (ExperienceWeaver)
+// ---------------------------------------------------------------------------
+
+/**
+ * Generalizes a tip-level lesson to a strategy by stripping file names,
+ * class names, and project-specific references, replacing with generic patterns.
+ *
+ * Example:
+ *   tip: "In lifecycle.ts, the session_events query returns stale data after checkpoint"
+ *   strategy: "Always reload data from DB after write operations, don't cache across hook boundaries"
+ *
+ * Heuristic: when LLM is unavailable.
+ * Non-throwing.
+ */
+export function generalizeLessonToStrategy(lesson: string): string {
+  try {
+    if (!lesson || lesson.length < 10) return lesson;
+
+    let generalized = lesson;
+
+    // Remove file path references: "In lifecycle.ts," → ""
+    generalized = generalized.replace(/\bIn\s+[\w./-]+\.[a-z]{2,4}[,:]?\s*/gi, '');
+
+    // Remove filename references: "lifecycle.ts" → "the module"
+    generalized = generalized.replace(/\b[\w-]+\.(?:ts|js|tsx|jsx|json|yaml|yml|md|sql|css|html)\b/gi, 'the module');
+
+    // Remove function name references: "createPattern()" → "the function"
+    generalized = generalized.replace(/\b[a-z]\w+\(\)/g, 'the function');
+
+    // Remove specific variable/table names with underscores: session_events → "the data"
+    generalized = generalized.replace(/\b[a-z]+_[a-z_]+\b/g, 'the data');
+
+    // Remove path-like references: src/core/ → ""
+    generalized = generalized.replace(/\b(?:src|lib|dist|adapters|tests?)\/[\w./-]+/gi, '');
+
+    // Clean up artifacts
+    generalized = generalized.replace(/\s+/g, ' ').trim();
+
+    // If generalization reduced the text too much, return original
+    if (generalized.length < 10) return lesson;
+
+    return generalized;
+  } catch {
+    return lesson;
+  }
+}
+
+/**
+ * Creates BOTH a tip (specific) and a strategy (abstract) pattern from a correction.
+ * Tip = literal correction context. Strategy = generalized.
+ *
+ * Returns array of created pattern IDs (0-2 entries). Non-throwing.
+ */
+export function createTipAndStrategy(
+  db: Database,
+  pattern: ExtractionInput,
+  sessionId: string,
+  project: string,
+): string[] {
+  const ids: string[] = [];
+
+  try {
+    // 1. Create the tip (specific)
+    const tipInput: ExtractionInput = {
+      ...pattern,
+      abstraction_level: 'tip',
+    };
+    const tipId = createPattern(db, tipInput, sessionId, project);
+    if (tipId) ids.push(tipId);
+
+    // 2. Create the strategy (abstract)
+    const generalizedLesson = generalizeLessonToStrategy(pattern.lesson);
+    // Only create strategy if it's meaningfully different from the tip
+    if (generalizedLesson !== pattern.lesson && generalizedLesson.length >= 10) {
+      const strategyInput: ExtractionInput = {
+        ...pattern,
+        lesson: generalizedLesson,
+        abstraction_level: 'strategy',
+        // Strategies are less severe — they're general guidance
+        severity: pattern.severity === 'critical' ? 'important' : pattern.severity,
+      };
+      const strategyId = createPattern(db, strategyInput, sessionId, project);
+      if (strategyId) ids.push(strategyId);
+    }
+  } catch {
+    // Non-throwing — return whatever was created
+  }
+
+  return ids;
+}
+
+// ---------------------------------------------------------------------------
+// 3.3 Outcome Verification Gate (Voyager)
+// ---------------------------------------------------------------------------
+
+/**
+ * Increments the verification count for a pattern.
+ * Called at Stop hook when a pattern was injected AND no correction detected.
+ * When verification_count reaches 2, marks the pattern as verified.
+ * Non-throwing.
+ */
+export function incrementVerificationCount(db: Database, id: string): void {
+  try {
+    cachedPrepare(db,
+      `UPDATE experience_patterns
+       SET verification_count = verification_count + 1,
+           verified = CASE WHEN verification_count + 1 >= 2 THEN 1 ELSE verified END
+       WHERE id = ?`
+    ).run(id);
+  } catch {
+    // Non-throwing
+  }
+}
+
+/**
+ * Returns whether a pattern is verified.
+ * Non-throwing.
+ */
+export function isPatternVerified(db: Database, id: string): boolean {
+  try {
+    const row = cachedPrepare(db,
+      `SELECT verified FROM experience_patterns WHERE id = ?`
+    ).get(id) as { verified: number } | undefined;
+    return row?.verified === 1;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Returns patterns that have been triggered 3+ times without verification.
+ * These are candidates for review — may be noise.
+ * Non-throwing.
+ */
+export function getUnverifiedFrequentPatterns(
+  db: Database,
+  project: string,
+  limit: number = 10,
+): ExperiencePattern[] {
+  try {
+    return cachedPrepare(db,
+      `SELECT * FROM experience_patterns
+       WHERE verified = 0
+         AND times_triggered >= 3
+         AND verification_count < 2
+         AND (source_project = ? OR source_project = ?)
+       ORDER BY times_triggered DESC
+       LIMIT ?`
+    ).all(project, GLOBAL_PROJECT_SCOPE, limit) as ExperiencePattern[];
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Applies the 1.5x verification boost to a retrieval score.
+ * Verified patterns get boosted, unverified patterns unchanged.
+ * Non-throwing — returns original score on error.
+ */
+export function applyVerificationBoost(score: number, verified: number | boolean): number {
+  try {
+    return verified ? score * 1.5 : score;
+  } catch {
+    return score;
   }
 }

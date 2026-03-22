@@ -174,7 +174,8 @@ CREATE TABLE IF NOT EXISTS thread_state (
   summary TEXT,
   key_exchanges TEXT NOT NULL DEFAULT '[]'
     CHECK (json_valid(key_exchanges)),
-  updated_at_epoch INTEGER NOT NULL DEFAULT (unixepoch())
+  updated_at_epoch INTEGER NOT NULL DEFAULT (unixepoch()),
+  summary_embedding BLOB
 );
 
 -- checkpoint_tracking
@@ -222,7 +223,8 @@ CREATE TABLE IF NOT EXISTS session_journal (
   content TEXT NOT NULL,
   metadata TEXT,
   recall_text TEXT,
-  timestamp_epoch INTEGER NOT NULL DEFAULT (unixepoch())
+  timestamp_epoch INTEGER NOT NULL DEFAULT (unixepoch()),
+  embedding BLOB
 );
 
 CREATE INDEX IF NOT EXISTS idx_journal_session
@@ -273,7 +275,13 @@ CREATE TABLE IF NOT EXISTS artifacts (
   importance INTEGER NOT NULL DEFAULT 3 CHECK (importance BETWEEN 1 AND 5),
   retrieval_score REAL NOT NULL DEFAULT 1.0,
   timestamp_epoch INTEGER NOT NULL DEFAULT (unixepoch()),
-  last_materialized_epoch INTEGER
+  last_materialized_epoch INTEGER,
+  embedding BLOB,
+  activation_score REAL NOT NULL DEFAULT 1.0,
+  superseded_by INTEGER,
+  valid_until INTEGER,
+  confidence REAL NOT NULL DEFAULT 1.0,
+  novelty_score REAL NOT NULL DEFAULT 0.5
 );
 
 CREATE INDEX IF NOT EXISTS idx_artifacts_project_state
@@ -361,7 +369,15 @@ CREATE TABLE IF NOT EXISTS experience_patterns (
   created_at_epoch INTEGER NOT NULL,
   last_triggered_epoch INTEGER,
   trigger_glob TEXT,
-  trigger_command TEXT
+  trigger_command TEXT,
+  embedding BLOB,
+  assumption TEXT,
+  reality TEXT,
+  root_cause TEXT,
+  generalized_rule TEXT,
+  abstraction_level TEXT DEFAULT 'tip',
+  verified INTEGER NOT NULL DEFAULT 0,
+  verification_count INTEGER NOT NULL DEFAULT 0
 );
 
 CREATE INDEX IF NOT EXISTS idx_expat_project_score
@@ -395,6 +411,40 @@ CREATE TRIGGER IF NOT EXISTS experience_patterns_au AFTER UPDATE ON experience_p
   INSERT INTO experience_patterns_fts(rowid, trigger_context, lesson, anti_pattern)
   VALUES (new.rowid, new.trigger_context, new.lesson, new.anti_pattern);
 END;
+
+-- V9: artifact_links — Zettelkasten-style linking between artifacts
+CREATE TABLE IF NOT EXISTS artifact_links (
+  source_id INTEGER NOT NULL,
+  target_id INTEGER NOT NULL,
+  link_type TEXT NOT NULL CHECK (link_type IN ('related', 'supports', 'contradicts', 'supersedes', 'caused_by')),
+  strength REAL NOT NULL DEFAULT 0.5,
+  created_at_epoch INTEGER NOT NULL DEFAULT (unixepoch()),
+  PRIMARY KEY (source_id, target_id)
+);
+
+-- V9: retrieval_events — feedback loop tracking for materialized artifacts
+CREATE TABLE IF NOT EXISTS retrieval_events (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  artifact_id INTEGER NOT NULL,
+  session_id TEXT NOT NULL,
+  query_text TEXT,
+  was_referenced INTEGER,
+  correction_followed INTEGER,
+  timestamp_epoch INTEGER NOT NULL DEFAULT (unixepoch())
+);
+CREATE INDEX IF NOT EXISTS idx_retrieval_artifact ON retrieval_events(artifact_id);
+CREATE INDEX IF NOT EXISTS idx_retrieval_session ON retrieval_events(session_id);
+
+-- V9: capability_boundaries — correction rate tracking by domain
+CREATE TABLE IF NOT EXISTS capability_boundaries (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  project TEXT NOT NULL,
+  domain TEXT NOT NULL,
+  total_interactions INTEGER NOT NULL DEFAULT 0,
+  corrections INTEGER NOT NULL DEFAULT 0,
+  last_updated_epoch INTEGER NOT NULL DEFAULT (unixepoch()),
+  UNIQUE(project, domain)
+);
 `;
 
 /**
@@ -445,7 +495,7 @@ CREATE INDEX IF NOT EXISTS idx_telemetry_kind ON telemetry(event_kind, timestamp
  * Checks if an SQLite error message matches a known benign pattern.
  * Used in catch blocks to distinguish expected schema-evolution errors from real failures.
  */
-export function isSqliteExpectedError(msg: string): boolean {
+function isSqliteExpectedError(msg: string): boolean {
   const BENIGN_PATTERNS = [
     'already exists',
     'no such table',
@@ -720,7 +770,7 @@ export function runMigrations(db: Database): void {
   const row = db.pragma('user_version') as Array<{ user_version: number }>;
   let version = row[0]?.user_version ?? 0;
 
-  const TARGET_VERSION = 8;
+  const TARGET_VERSION = 9;
 
   if (version >= TARGET_VERSION) return;
 
@@ -732,6 +782,7 @@ export function runMigrations(db: Database): void {
     [5, () => migrateV5toV6(db)],
     [6, () => migrateV6toV7(db)],
     [7, () => migrateV7toV8(db)],
+    [8, () => migrateV8toV9(db)],
   ];
 
   // Handle special cases for version 0 and 1
@@ -812,6 +863,139 @@ function migrateV7toV8(db: Database): void {
         db.exec("INSERT INTO session_journal_fts(session_journal_fts) VALUES('rebuild')");
       } catch { /* non-fatal */ }
     }
+  } catch {
+    // Non-throwing — partial migration acceptable
+  }
+}
+
+/**
+ * V8 → V9: Semantic Intelligence — vector embeddings, activation scores,
+ * superseded-artifact flagging, confidence scoring, novelty scoring.
+ *
+ * Adds columns for the vector/semantic upgrade (Qdrant + Ollama pipeline):
+ * - `embedding BLOB` on artifacts, experience_patterns, thread_state, session_journal
+ * - `activation_score REAL` on artifacts (replaces flat TTL with ACT-R activation)
+ * - `superseded_by INTEGER` on artifacts (bi-temporal stale artifact flagging)
+ * - `valid_until INTEGER` on artifacts (bi-temporal validity window)
+ * - `confidence REAL` on artifacts (factual confidence at write time)
+ * - `novelty_score REAL` on artifacts (prediction error / semantic novelty)
+ * - `verified BOOLEAN` and `verification_count INTEGER` on experience_patterns
+ * - `assumption`, `reality`, `root_cause`, `generalized_rule` on experience_patterns
+ * - `abstraction_level TEXT` on experience_patterns (tip vs strategy)
+ *
+ * Also creates:
+ * - `artifact_links` junction table for Zettelkasten-style linking
+ * - `retrieval_events` table for feedback loop tracking
+ * - `capability_boundaries` table for correction rate by domain
+ *
+ * All ALTERs are idempotent (check column existence before ALTER).
+ * New tables use IF NOT EXISTS. Non-throwing.
+ */
+function migrateV8toV9(db: Database): void {
+  try {
+    // --- Artifacts: vector + activation + superseded + confidence + novelty ---
+    if (hasTable(db, 'artifacts')) {
+      if (!hasColumn(db, 'artifacts', 'embedding'))
+        db.exec("ALTER TABLE artifacts ADD COLUMN embedding BLOB");
+      if (!hasColumn(db, 'artifacts', 'activation_score'))
+        db.exec("ALTER TABLE artifacts ADD COLUMN activation_score REAL NOT NULL DEFAULT 1.0");
+      if (!hasColumn(db, 'artifacts', 'superseded_by'))
+        db.exec("ALTER TABLE artifacts ADD COLUMN superseded_by INTEGER");
+      if (!hasColumn(db, 'artifacts', 'valid_until'))
+        db.exec("ALTER TABLE artifacts ADD COLUMN valid_until INTEGER");
+      if (!hasColumn(db, 'artifacts', 'confidence'))
+        db.exec("ALTER TABLE artifacts ADD COLUMN confidence REAL NOT NULL DEFAULT 1.0");
+      if (!hasColumn(db, 'artifacts', 'novelty_score'))
+        db.exec("ALTER TABLE artifacts ADD COLUMN novelty_score REAL NOT NULL DEFAULT 0.5");
+    }
+
+    // --- Experience patterns: embedding + structured analysis + verification ---
+    if (hasTable(db, 'experience_patterns')) {
+      if (!hasColumn(db, 'experience_patterns', 'embedding'))
+        db.exec("ALTER TABLE experience_patterns ADD COLUMN embedding BLOB");
+      if (!hasColumn(db, 'experience_patterns', 'assumption'))
+        db.exec("ALTER TABLE experience_patterns ADD COLUMN assumption TEXT");
+      if (!hasColumn(db, 'experience_patterns', 'reality'))
+        db.exec("ALTER TABLE experience_patterns ADD COLUMN reality TEXT");
+      if (!hasColumn(db, 'experience_patterns', 'root_cause'))
+        db.exec("ALTER TABLE experience_patterns ADD COLUMN root_cause TEXT");
+      if (!hasColumn(db, 'experience_patterns', 'generalized_rule'))
+        db.exec("ALTER TABLE experience_patterns ADD COLUMN generalized_rule TEXT");
+      if (!hasColumn(db, 'experience_patterns', 'abstraction_level'))
+        db.exec("ALTER TABLE experience_patterns ADD COLUMN abstraction_level TEXT DEFAULT 'tip'");
+      if (!hasColumn(db, 'experience_patterns', 'verified'))
+        db.exec("ALTER TABLE experience_patterns ADD COLUMN verified INTEGER NOT NULL DEFAULT 0");
+      if (!hasColumn(db, 'experience_patterns', 'verification_count'))
+        db.exec("ALTER TABLE experience_patterns ADD COLUMN verification_count INTEGER NOT NULL DEFAULT 0");
+    }
+
+    // --- Thread state: embedding for cross-session linking ---
+    if (hasTable(db, 'thread_state')) {
+      if (!hasColumn(db, 'thread_state', 'summary_embedding'))
+        db.exec("ALTER TABLE thread_state ADD COLUMN summary_embedding BLOB");
+    }
+
+    // --- Session journal: embedding for semantic recall ---
+    if (hasTable(db, 'session_journal')) {
+      if (!hasColumn(db, 'session_journal', 'embedding'))
+        db.exec("ALTER TABLE session_journal ADD COLUMN embedding BLOB");
+    }
+
+    // --- Artifact links (Zettelkasten-style) ---
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS artifact_links (
+        source_id INTEGER NOT NULL,
+        target_id INTEGER NOT NULL,
+        link_type TEXT NOT NULL CHECK (link_type IN ('related', 'supports', 'contradicts', 'supersedes', 'caused_by')),
+        strength REAL NOT NULL DEFAULT 0.5,
+        created_at_epoch INTEGER NOT NULL DEFAULT (unixepoch()),
+        PRIMARY KEY (source_id, target_id)
+      );
+    `);
+
+    // --- Retrieval events (feedback loop tracking) ---
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS retrieval_events (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        artifact_id INTEGER NOT NULL,
+        session_id TEXT NOT NULL,
+        query_text TEXT,
+        was_referenced INTEGER,
+        correction_followed INTEGER,
+        timestamp_epoch INTEGER NOT NULL DEFAULT (unixepoch())
+      );
+      CREATE INDEX IF NOT EXISTS idx_retrieval_artifact ON retrieval_events(artifact_id);
+      CREATE INDEX IF NOT EXISTS idx_retrieval_session ON retrieval_events(session_id);
+    `);
+
+    // --- Capability boundaries (correction rate by domain) ---
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS capability_boundaries (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        project TEXT NOT NULL,
+        domain TEXT NOT NULL,
+        total_interactions INTEGER NOT NULL DEFAULT 0,
+        corrections INTEGER NOT NULL DEFAULT 0,
+        last_updated_epoch INTEGER NOT NULL DEFAULT (unixepoch()),
+        UNIQUE(project, domain)
+      );
+    `);
+
+    // --- Backfill activation scores for existing artifacts ---
+    // activation = ln(access_count + 1) + (importance - 3) * 0.3
+    try {
+      db.exec(`
+        UPDATE artifacts
+        SET activation_score = MAX(0.1,
+          CASE
+            WHEN access_count > 0 THEN 0.6931 + (importance - 3) * 0.3
+            ELSE 0.0 + (importance - 3) * 0.3 + 1.0
+          END
+        )
+        WHERE activation_score = 1.0 AND id > 0
+      `);
+    } catch { /* non-fatal — backfill is best-effort */ }
+
   } catch {
     // Non-throwing — partial migration acceptable
   }
@@ -1439,7 +1623,7 @@ export function initializeSchema(db: Database): void {
   } else {
     db.prepare('INSERT OR IGNORE INTO schema_versions (version) VALUES (?)').run(SCHEMA_VERSION);
   }
-  db.pragma('user_version = 8');
+  db.pragma('user_version = 9');
 }
 
 /**

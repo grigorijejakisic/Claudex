@@ -21,6 +21,10 @@ import { routeByContent, buildProjectIndex } from '../../shared/content-router.j
 import { setExperienceFlags, getExperienceFlags } from '../../intelligence/experience-flags.js';
 import { detectCorrectionSignal } from '../../intelligence/correction-detection.js';
 import { recordEvent } from '../../core/session-events.js';
+import { findSimilarThreads } from '../../intelligence/thread-tracker.js';
+import { shouldRunReflection, runBatchReflection } from '../../intelligence/batch-reflection.js';
+import { getDomainBoundary, extractDomain, generateDomainAdvisory } from '../../intelligence/capability-tracker.js';
+import { getThreadState } from '../../core/thread.js';
 
 const main = wrapHook('UserPromptSubmit', async (input, ctx) => {
   const prompt = (input.prompt as string) || (input.user_prompt as string) || '';
@@ -190,6 +194,80 @@ const main = wrapHook('UserPromptSubmit', async (input, ctx) => {
     }
   }
 
+  // ---------------------------------------------------------------------------
+  // Cross-session thread linking (4.3)
+  // Detect if this prompt continues a thread from a previous session.
+  // Only runs on first prompt of a session (no existing topic in thread_state).
+  // ---------------------------------------------------------------------------
+  let crossSessionContext = '';
+  if (prompt && !topicShift?.shifted) {
+    try {
+      const { getThreadState: getTS } = await import('../../core/thread.js');
+      const existingThread = getTS(ctx.db, input.session_id);
+      const isFirstPrompt = !existingThread?.topic;
+
+      if (isFirstPrompt) {
+        const { embedText } = await import('../../embeddings/embed-pipeline.js');
+        const promptEmbedding = await embedText(prompt);
+        if (promptEmbedding) {
+          // 4.5: Check pre-assembly match first (faster session start)
+          try {
+            const { matchPreAssembly } = await import('../shared/lifecycle.js');
+            const preAssembled = await matchPreAssembly(ctx.db, ctx.project, promptEmbedding);
+            if (preAssembled) {
+              crossSessionContext = preAssembled;
+            }
+          } catch { /* non-fatal */ }
+
+          // 4.3: Cross-session thread linking
+          if (!crossSessionContext) {
+            const similarThreads = findSimilarThreads(
+              ctx.db, promptEmbedding, ctx.project, 0.8, input.session_id
+            );
+            if (similarThreads.length > 0) {
+              const best = similarThreads[0];
+              const parts: string[] = [];
+              parts.push(`[Thread Continuity] This looks like a continuation of "${best.topic ?? 'previous work'}" from session ${best.session_id}.`);
+              if (best.summary) {
+                parts.push(`Previous summary: ${best.summary}`);
+              }
+              // Include last 3 key exchanges from the matched thread
+              const recentExchanges = best.key_exchanges.slice(-3);
+              if (recentExchanges.length > 0) {
+                parts.push('Recent exchanges: ' + recentExchanges.map(e => `[${e.role}] ${e.gist}`).join(' | '));
+              }
+              crossSessionContext = parts.join('\n');
+            }
+          }
+        }
+      }
+    } catch (e) {
+      emitErrorTelemetry(ctx.db, input.session_id, 'cross_session_thread', e);
+    }
+  }
+
+  // 4.4 Batch reflection — every 10 sessions, synthesize cross-session insights
+  try {
+    if (shouldRunReflection(ctx.db, ctx.project)) {
+      runBatchReflection(ctx.db, ctx.project, input.session_id);
+    }
+  } catch { /* non-fatal */ }
+
+  // 3.6 Domain advisory — inject warning when correction rate is high for current topic
+  let domainAdvisory = '';
+  try {
+    const thread = getThreadState(ctx.db, input.session_id);
+    if (thread?.topic) {
+      const domain = extractDomain(thread.topic);
+      if (domain) {
+        const advisory = generateDomainAdvisory(ctx.db, ctx.project, domain);
+        if (advisory) {
+          domainAdvisory = advisory;
+        }
+      }
+    }
+  } catch { /* non-fatal */ }
+
   const payload = assembleRegularPrompt({
     isPostCompaction,
     prompt,
@@ -224,11 +302,15 @@ const main = wrapHook('UserPromptSubmit', async (input, ctx) => {
     } catch { /* non-fatal */ }
   }
 
-  if (payload.content) {
+  // Combine cross-session context + domain advisory + assembly output
+  const contextParts = [crossSessionContext, domainAdvisory, payload.content].filter(Boolean);
+  const combinedContent = contextParts.length > 0 ? contextParts.join('\n\n') : '';
+
+  if (combinedContent) {
     return {
       hookSpecificOutput: {
         hookEventName: 'UserPromptSubmit',
-        additionalContext: payload.content,
+        additionalContext: combinedContent,
       },
     };
   }

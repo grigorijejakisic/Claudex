@@ -37,7 +37,7 @@ const main = wrapHook('PostToolUse', async (input, ctx) => {
   // Each operation isolated — if A fails, B and C still run
 
   try {
-    processToolAndPressure({
+    await processToolAndPressure({
       db: ctx.db,
       sessionId: input.session_id,
       project: routedProject,

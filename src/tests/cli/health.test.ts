@@ -55,7 +55,7 @@ describe('checkTables', () => {
     try {
       const result = checkTables(db);
       expect(result.status).toBe('pass');
-      expect(result.message).toContain('13/13');
+      expect(result.message).toContain('21/21');
     } finally {
       db.close();
     }
@@ -79,7 +79,7 @@ describe('checkTables', () => {
       // Empty DB — no tables
       const result = checkTables(db);
       expect(result.status).toBe('fail');
-      expect(result.message).toContain('0/13');
+      expect(result.message).toContain('0/21');
     } finally {
       db.close();
     }
@@ -374,7 +374,7 @@ describe('formatReport', () => {
   it('formats a healthy report', () => {
     const output = formatReport({
       checks: [
-        { label: 'Schema', status: 'pass', message: '13/13 tables present' },
+        { label: 'Schema', status: 'pass', message: '21/21 tables present' },
         { label: 'Write test', status: 'pass', message: 'All tables accept v3 inserts' },
       ],
       failures: 0,

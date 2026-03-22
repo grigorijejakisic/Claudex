@@ -19,6 +19,47 @@ import type { ExperiencePattern } from './experience-patterns.js';
 /** Hard cap on predictive patterns evaluated per hook invocation. */
 const MAX_PREDICTIVE_PATTERNS = 50;
 
+/**
+ * Module-level cache for empty-table fast path.
+ * Avoids querying context_triggers (always empty) and experience_patterns
+ * (trigger_glob/trigger_command always null) on every PostToolUse call.
+ * Cache is invalidated conservatively: set to null on first call per process,
+ * refreshed every 60 seconds. In CC hooks (fresh process per call), this
+ * means one check per invocation.
+ */
+let _triggerDataExists: boolean | null = null;
+let _triggerDataCheckedAt = 0;
+let _triggerDataCacheDb: Database | null = null;
+
+function hasTriggerData(db: Database, project: string): boolean {
+  const now = Date.now();
+  // Invalidate cache when DB instance changes (different test fixture or process)
+  if (_triggerDataCacheDb !== db) {
+    _triggerDataExists = null;
+    _triggerDataCacheDb = db;
+  }
+  if (_triggerDataExists !== null && now - _triggerDataCheckedAt < 60_000) {
+    return _triggerDataExists;
+  }
+  try {
+    const ctCount = (cachedPrepare(db,
+      `SELECT COUNT(*) as cnt FROM context_triggers WHERE project = ? OR project = '__global__'`
+    ).get(project) as { cnt: number })?.cnt ?? 0;
+
+    const epCount = (cachedPrepare(db,
+      `SELECT COUNT(*) as cnt FROM experience_patterns
+       WHERE (source_project = ? OR source_project = '__global__')
+         AND (trigger_glob IS NOT NULL OR trigger_command IS NOT NULL)`
+    ).get(project) as { cnt: number })?.cnt ?? 0;
+
+    _triggerDataExists = ctCount > 0 || epCount > 0;
+    _triggerDataCheckedAt = now;
+    return _triggerDataExists;
+  } catch {
+    return true; // Fail open — allow queries if check fails
+  }
+}
+
 export interface TriggerMatch {
   /** Knowledge domains matched by context_triggers */
   domains: string[];
@@ -40,6 +81,10 @@ export function matchTriggers(
   const result: TriggerMatch = { domains: [], patternIds: [] };
 
   try {
+    // Fast-path: skip both queries if no trigger data exists in either table.
+    // Eliminates 2 SQL queries per PostToolUse call when tables are empty (the common case).
+    if (!hasTriggerData(db, project)) return result;
+
     const filePath = String(toolInput?.file_path ?? toolInput?.path ?? '');
     const command = toolName === 'Bash' ? String(toolInput?.command ?? '') : '';
 
@@ -129,7 +174,8 @@ export function matchGlob(filePath: string, pattern: string): boolean {
  * Loads full experience patterns by their IDs.
  * Used to render matched predictive patterns for injection.
  */
-export function loadPatternsByIds(db: Database, ids: string[]): ExperiencePattern[] {
+/** @internal Retained for future predictive pattern rendering. */
+function loadPatternsByIds(db: Database, ids: string[]): ExperiencePattern[] {
   if (!ids || ids.length === 0) return [];
   try {
     const placeholders = ids.map(() => '?').join(',');

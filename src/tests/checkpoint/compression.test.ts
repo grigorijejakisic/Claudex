@@ -10,7 +10,8 @@ import * as os from 'os';
 import * as zlib from 'zlib';
 import * as yaml from 'js-yaml';
 import { createTestDb, type TestDatabase } from '../helpers/test-db.js';
-import { writeCheckpoint, writeCompressedFile } from '../../checkpoint/writer.js';
+import { writeCheckpoint } from '../../checkpoint/writer.js';
+import { writeCompressedFile } from '../../shared/fs-helpers.js';
 import { loadFromFile, loadCheckpoint } from '../../checkpoint/loader.js';
 import type { CheckpointV3 } from '../../checkpoint/types.js';
 

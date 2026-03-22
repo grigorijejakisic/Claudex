@@ -96,7 +96,8 @@ export function getSessionEvents(
 /**
  * Retrieves the most recent session's events for a project.
  */
-export function getLastSessionEvents(
+/** @internal Not called in production — retained for potential future use. */
+function getLastSessionEvents(
   db: Database,
   project: string,
 ): SessionEvent[] {

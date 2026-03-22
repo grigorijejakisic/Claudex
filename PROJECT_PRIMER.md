@@ -4,7 +4,7 @@
 
 Claudex v3 is a unified context management system that gives LLMs persistent memory across sessions and compaction events. It replaces two predecessors (Claudex v2 + OpenClaw's Context Manager) with a single codebase that runs on both Claude Code (as lifecycle hooks) and OpenClaw (as a bridge plugin). One core, two swappable runtime adapters, standalone install.
 
-**Status**: All phases + 6 brain upgrades + session 21 audit fixes + Evolved Flow (session 22). DB schema V8. Evolved Flow adds FTS5-indexed recall metadata on session_journal — bridges human associative recall and LLM lexical search. User framings captured at UserPromptSubmit (redacted), recall aliases generated at session boundaries. MCP search queries both artifacts_fts and session_journal_fts. Orphan recovery generates recall metadata before closing. Health: all checks pass. 1623 tests, 86 test files. CLI: `claudex health`, `claudex projects-touched`, `claudex recall`.
+**Status**: All phases + 6 brain upgrades + Evolved Flow (session 22) + Semantic Intelligence Upgrade in progress (session 24). DB schema V9. Qdrant vector DB added as semantic search acceleration layer alongside SQLite FTS5. V9 adds: embedding BLOBs on artifacts/patterns/threads/journal, activation scores (ACT-R replacement for flat TTL), superseded-artifact flagging, confidence scoring, novelty scoring, artifact links table, retrieval events tracking, capability boundaries. Spec at `context/specs/SEMANTIC_INTELLIGENCE_UPGRADE.md`. 3 dead modules removed, applySessionSuccessBonus + detectIdleSession wired, trigger engine fast-path added. Health: all checks pass. 1535 tests, 83 test files. CLI: `claudex health`, `claudex projects-touched`, `claudex recall`.
 
 ## Core Architecture (30-second version)
 

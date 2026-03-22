@@ -48,6 +48,8 @@ import {
   searchArtifactsGlobal,
   getMaterializedArtifacts,
 } from '../core/artifacts.js';
+import { hybridSearchSync, spreadActivation } from '../core/hybrid-retrieval.js';
+import { recordRetrievalEvent } from '../intelligence/retrieval-feedback.js';
 import { getRecentFlow } from '../core/journal.js';
 import { getCheckpointTracking } from '../core/checkpoint-tracking.js';
 import { readGsdState } from '../gsd/state-reader.js';
@@ -322,14 +324,26 @@ export function assembleFullContext(params: FullAssemblyParams): InjectPayload {
     } catch { /* non-fatal */ }
 
     // === LAYER 3: Materialization (query-driven full content) ===
+    // Uses hybrid search (FTS5 + recency + three-factor scoring) for better
+    // retrieval quality. Falls back to FTS5-only via hybridSearchSync.
     try {
       const query = params.searchQuery ?? checkpoint?.thread?.topic ?? null;
       let materializedArtifacts: ArtifactRow[] = [];
 
       if (query) {
-        const searchResults = searchArtifactsGlobal(params.db, params.project, query, 10);
+        const searchResults = hybridSearchSync(params.db, query, params.project, {
+          limit: 10,
+          globalScope: true,
+          excludeSuperseded: true,
+        });
         if (searchResults.length > 0) {
           materializedArtifacts = searchResults;
+        } else {
+          // Fallback to legacy FTS5-only search if hybrid returns nothing
+          const legacyResults = searchArtifactsGlobal(params.db, params.project, query, 10);
+          if (legacyResults.length > 0) {
+            materializedArtifacts = legacyResults;
+          }
         }
       }
 
@@ -339,7 +353,7 @@ export function assembleFullContext(params: FullAssemblyParams): InjectPayload {
         if (!seen.has(a.id)) { materializedArtifacts.push(a); seen.add(a.id); }
       }
 
-      const rationale = query ? `FTS5 match on "${query}"` : undefined;
+      const rationale = query ? `hybrid search on "${query}"` : undefined;
       const matSection = formatMaterializationLayer(materializedArtifacts, rationale, params.sessionId);
       if (matSection) {
         const cost = estimateTokens(matSection);
@@ -347,6 +361,15 @@ export function assembleFullContext(params: FullAssemblyParams): InjectPayload {
           sections.push(matSection);
           budget -= cost;
           sources.push('materialized');
+
+          // 5.1: Record retrieval events for all materialized artifacts
+          // 5.3: Spread activation to linked artifacts
+          if (params.sessionId) {
+            for (const art of materializedArtifacts) {
+              recordRetrievalEvent(params.db, art.id, params.sessionId, query ?? undefined);
+              spreadActivation(params.db, art.id);
+            }
+          }
         }
       }
     } catch { /* non-fatal */ }
@@ -524,6 +547,13 @@ export function assembleRegularPrompt(params: RegularPromptParams): InjectPayloa
         if (section) {
           const tokens = estimateTokens(section);
           if (tokens <= params.config.injection.budget_tokens) {
+            // 5.1: Record retrieval events + 5.3: spread activation
+            if (params.sessionId) {
+              for (const art of materialized) {
+                recordRetrievalEvent(params.db, art.id, params.sessionId, params.prompt);
+                spreadActivation(params.db, art.id);
+              }
+            }
             return {
               content: section,
               tokenEstimate: tokens,

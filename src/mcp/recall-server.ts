@@ -15,6 +15,8 @@ import { getDbPath } from '../shared/paths.js';
 import { getProjectId } from '../shared/scope-detector.js';
 import { searchArtifactsGlobal } from '../core/artifacts.js';
 import type { ArtifactRow } from '../core/artifacts.js';
+import { hybridSearchSync } from '../core/hybrid-retrieval.js';
+import type { ScoredArtifact } from '../core/hybrid-retrieval.js';
 import { getSessionEvents } from '../core/session-events.js';
 import { cachedPrepare } from '../core/stmt-cache.js';
 import { initializeSchema, runMigrations } from '../core/migrations.js';
@@ -54,35 +56,71 @@ const server = new McpServer(
 
 server.tool(
   'claudex_search',
-  'Search Claudex memory across all artifacts. Returns ranked results with provenance.',
+  'Search Claudex memory across all artifacts. Returns ranked results with provenance and relevance scores.',
   {
     query: z.string().describe('Search query text'),
     project: z.string().optional().describe('Project scope (defaults to CWD project)'),
     limit: z.number().optional().describe('Max results (default 10, max 50)'),
+    offset: z.number().optional().describe('Result offset for pagination (default 0)'),
   },
-  async ({ query, project, limit: rawLimit }) => {
+  async ({ query, project, limit: rawLimit, offset: rawOffset }) => {
     const proj = project ?? defaultProject;
     const limit = rawLimit != null && Number.isInteger(rawLimit) && rawLimit > 0
       ? Math.min(rawLimit, 50)
       : 10;
+    const offset = rawOffset != null && Number.isInteger(rawOffset) && rawOffset >= 0
+      ? rawOffset
+      : 0;
 
     if (!query) {
       return { content: [{ type: 'text', text: JSON.stringify({ error: 'query is required' }) }] };
     }
 
-    const artifacts = searchArtifactsGlobal(getDb(), proj, query, limit);
-    const artifactResults = artifacts.map(a => ({
-      id: a.id,
-      type: a.artifact_type,
-      summary: a.summary,
-      provenance: a.artifact_ref ?? `artifact #${a.id}`,
-      importance: a.importance,
-      project: a.project,
-      source: 'artifacts' as const,
-    }));
+    // 6.1: Hybrid search with graceful degradation to FTS5
+    let artifactResults: Array<{
+      id: number;
+      type: string;
+      summary: string;
+      provenance: string;
+      importance: number;
+      project: string;
+      source: 'artifacts';
+      score: number;
+    }>;
+
+    try {
+      // Fetch extra results to support pagination (offset + limit)
+      const hybridResults = hybridSearchSync(getDb(), query, proj, {
+        limit: offset + limit,
+      });
+
+      artifactResults = hybridResults.map(a => ({
+        id: a.id,
+        type: a.artifact_type,
+        summary: a.summary,
+        provenance: a.artifact_ref ?? `artifact #${a.id}`,
+        importance: a.importance,
+        project: a.project,
+        source: 'artifacts' as const,
+        score: a.hybrid_score,
+      }));
+    } catch {
+      // Graceful degradation: fall back to FTS5-only search
+      const ftsResults = searchArtifactsGlobal(getDb(), proj, query, offset + limit);
+      artifactResults = ftsResults.map(a => ({
+        id: a.id,
+        type: a.artifact_type,
+        summary: a.summary,
+        provenance: a.artifact_ref ?? `artifact #${a.id}`,
+        importance: a.importance,
+        project: a.project,
+        source: 'artifacts' as const,
+        score: 0,
+      }));
+    }
 
     // Also search session journal (Evolved Flow recall metadata)
-    const journalHits = searchJournalFTS(getDb(), query, proj, Math.min(limit, 5));
+    const journalHits = searchJournalFTS(getDb(), query, proj, Math.min(offset + limit, 5));
     const journalResults = journalHits.map(j => ({
       id: j.id,
       type: 'journal_flow' as const,
@@ -92,12 +130,27 @@ server.tool(
       project: j.project,
       source: 'journal' as const,
       recall_text: j.recall_text ?? undefined,
+      score: 0.5, // Journal matches get a baseline score (recall-optimized)
     }));
 
     // Merge: journal results first (recall-optimized), then artifacts
-    const results = [...journalResults, ...artifactResults].slice(0, limit);
+    const allResults = [...journalResults, ...artifactResults];
+    const total = allResults.length;
 
-    return { content: [{ type: 'text', text: JSON.stringify(results, null, 2) }] };
+    // 6.2: Apply pagination
+    const paginatedResults = allResults.slice(offset, offset + limit);
+    const has_more = offset + limit < total;
+
+    return {
+      content: [{
+        type: 'text',
+        text: JSON.stringify({
+          results: paginatedResults,
+          total,
+          has_more,
+        }, null, 2),
+      }],
+    };
   },
 );
 
@@ -151,8 +204,9 @@ server.tool(
     content: z.string().describe('Content to store'),
     type: z.enum(['decision', 'learning']).describe('Memory type'),
     project: z.string().optional().describe('Project scope (defaults to CWD project)'),
+    agent_id: z.string().optional().describe('Agent identifier for multi-agent attribution'),
   },
-  async ({ content, type, project }) => {
+  async ({ content, type, project, agent_id }) => {
     const proj = project ?? defaultProject;
 
     if (!content) {
@@ -161,18 +215,21 @@ server.tool(
 
     const fingerprint = content.toLowerCase().replace(/\s+/g, ' ').trim().slice(0, 100);
 
+    // 6.4: Agent-ID attribution — prepend agent_id to session_id for tracking
+    const sessionId = agent_id ? `${agent_id}:mcp:${proj}` : `mcp:${proj}`;
+
     if (type === 'decision') {
       const result = cachedPrepare(getDb(),
         `INSERT OR IGNORE INTO decisions (session_id, project, content, source, fingerprint)
          VALUES (?, ?, ?, 'explicit', ?)`
-      ).run(`mcp:${proj}`, proj, content, fingerprint);
-      return { content: [{ type: 'text', text: JSON.stringify({ stored: result.changes > 0, type, project: proj }) }] };
+      ).run(sessionId, proj, content, fingerprint);
+      return { content: [{ type: 'text', text: JSON.stringify({ stored: result.changes > 0, type, project: proj, agent_id: agent_id ?? null }) }] };
     } else {
       const result = cachedPrepare(getDb(),
         `INSERT OR IGNORE INTO learnings (content, project, fingerprint)
          VALUES (?, ?, ?)`
       ).run(content, proj, fingerprint);
-      return { content: [{ type: 'text', text: JSON.stringify({ stored: result.changes > 0, type, project: proj }) }] };
+      return { content: [{ type: 'text', text: JSON.stringify({ stored: result.changes > 0, type, project: proj, agent_id: agent_id ?? null }) }] };
     }
   },
 );

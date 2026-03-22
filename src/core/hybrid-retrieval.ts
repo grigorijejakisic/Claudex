@@ -1,0 +1,801 @@
+/**
+ * Hybrid Retrieval — multi-signal search combining FTS5, vector KNN, and recency.
+ *
+ * Three retrieval channels:
+ *   1. FTS5 keyword match (SQLite) → ranked list A
+ *   2. Qdrant KNN with metadata filters → ranked list B
+ *   3. Recency-sorted (newest first) → ranked list C
+ *
+ * Fusion: Reciprocal Rank Fusion (RRF): RRF_score(d) = Σ 1/(60 + rank_i(d))
+ * Scoring: Three-factor per-artifact: α·recency + β·importance + γ·relevance
+ *
+ * Graceful degradation:
+ *   Qdrant + embeddings → full RRF (3 channels)
+ *   Qdrant down → FTS5 + recency only (2 channels)
+ *   Embeddings unavailable → FTS5 only (1 channel, current behavior)
+ *
+ * All public functions are non-throwing with safe defaults.
+ */
+
+import type { Database } from 'better-sqlite3';
+import { cachedPrepare } from './stmt-cache.js';
+import { tokenizeQuery } from '../shared/search-utils.js';
+import { getRetrievalScoreMultiplier } from '../intelligence/retrieval-feedback.js';
+import type { ArtifactRow } from './artifacts.js';
+
+// ---------------------------------------------------------------------------
+// Types
+// ---------------------------------------------------------------------------
+
+export interface HybridSearchOptions {
+  /** Maximum results to return. Default: 10 */
+  limit?: number;
+  /** Minimum importance filter. Default: none */
+  minImportance?: number;
+  /** Filter by artifact types. Default: all types */
+  artifactTypes?: string[];
+  /** Exclude superseded artifacts. Default: true */
+  excludeSuperseded?: boolean;
+  /** Include cross-project results. Default: true */
+  globalScope?: boolean;
+  /** Three-factor scoring weights */
+  weights?: ScoringWeights;
+}
+
+export interface ScoringWeights {
+  /** Recency weight. Default: 1.0 */
+  alpha?: number;
+  /** Importance weight. Default: 1.0 */
+  beta?: number;
+  /** Relevance weight. Default: 1.0 */
+  gamma?: number;
+}
+
+export interface ScoredArtifact extends ArtifactRow {
+  /** Final hybrid score (RRF + three-factor) */
+  hybrid_score: number;
+  /** Individual channel contributions for debugging */
+  score_breakdown?: {
+    rrf_fts5: number;
+    rrf_vector: number;
+    rrf_recency: number;
+    three_factor: number;
+  };
+}
+
+/** Result from a single retrieval channel, pre-merge. */
+interface ChannelResult {
+  artifactId: number;
+  rank: number;
+  artifact?: ArtifactRow;
+}
+
+// ---------------------------------------------------------------------------
+// Constants
+// ---------------------------------------------------------------------------
+
+/** RRF smoothing constant (standard value from the Cormack et al. paper). */
+const RRF_K = 60;
+
+/** Default scoring weights — equal weight on all three factors. */
+const DEFAULT_WEIGHTS: Required<ScoringWeights> = {
+  alpha: 1.0,
+  beta: 1.0,
+  gamma: 1.0,
+};
+
+// ---------------------------------------------------------------------------
+// Three-factor scoring
+// ---------------------------------------------------------------------------
+
+/**
+ * Compute recency score using exponential decay.
+ * recency = exp(-0.995 * hours_since_last_access)
+ *
+ * Uses last_materialized_epoch if available, otherwise timestamp_epoch.
+ * Returns value in [0, 1] range.
+ */
+export function computeRecencyScore(artifact: ArtifactRow): number {
+  const now = Math.floor(Date.now() / 1000);
+  const lastAccess = artifact.last_materialized_epoch ?? artifact.timestamp_epoch;
+  const hoursSinceAccess = Math.max(0, (now - lastAccess) / 3600);
+  return Math.exp(-0.995 * hoursSinceAccess);
+}
+
+/**
+ * Compute importance score, normalized to [0, 1].
+ * importance_norm = artifact.importance / 5
+ */
+export function computeImportanceScore(artifact: ArtifactRow): number {
+  return Math.min(1, Math.max(0, artifact.importance / 5));
+}
+
+/**
+ * Compute three-factor score for an artifact.
+ * score = α·recency + β·importance + γ·relevance
+ *
+ * When no relevance score is available (no embedding match), uses
+ * the artifact's retrieval_score as a proxy (normalized to [0, 1]).
+ */
+export function computeThreeFactorScore(
+  artifact: ArtifactRow,
+  relevance: number,
+  weights: Required<ScoringWeights> = DEFAULT_WEIGHTS,
+): number {
+  const recency = computeRecencyScore(artifact);
+  const importance = computeImportanceScore(artifact);
+  return weights.alpha * recency + weights.beta * importance + weights.gamma * relevance;
+}
+
+// ---------------------------------------------------------------------------
+// RRF merge
+// ---------------------------------------------------------------------------
+
+/**
+ * Reciprocal Rank Fusion across multiple ranked lists.
+ * RRF_score(d) = Σ 1/(K + rank_i(d))
+ *
+ * Each channel contributes equally regardless of how many results it returns.
+ */
+function rrfMerge(
+  channels: ChannelResult[][],
+): Map<number, number> {
+  const scores = new Map<number, number>();
+
+  for (const channel of channels) {
+    for (const result of channel) {
+      const existing = scores.get(result.artifactId) ?? 0;
+      scores.set(result.artifactId, existing + 1 / (RRF_K + result.rank));
+    }
+  }
+
+  return scores;
+}
+
+// ---------------------------------------------------------------------------
+// Channel 1: FTS5 keyword search
+// ---------------------------------------------------------------------------
+
+/**
+ * FTS5 keyword search on artifacts_fts (summary + content).
+ * Returns artifacts ranked by BM25 relevance.
+ * Non-throwing — returns empty on FTS errors.
+ */
+function searchFts5Channel(
+  db: Database,
+  project: string,
+  query: string,
+  limit: number,
+  globalScope: boolean,
+  excludeSuperseded: boolean,
+): ArtifactRow[] {
+  try {
+    const keywords = tokenizeQuery(query, 5);
+    if (keywords.length === 0) return [];
+
+    const ftsQuery = keywords.join(' OR ');
+    const supersededFilter = excludeSuperseded ? 'AND a.superseded_by IS NULL' : '';
+    const projectFilter = globalScope ? '' : 'AND a.project = ?';
+    const orderPrefix = globalScope
+      ? 'CASE WHEN a.project = ? THEN 0 ELSE 1 END,'
+      : '';
+
+    const sql = `SELECT a.* FROM artifacts a
+       JOIN artifacts_fts fts ON fts.rowid = a.id
+       WHERE artifacts_fts MATCH ?
+         ${projectFilter}
+         ${supersededFilter}
+       ORDER BY ${orderPrefix}
+         bm25(artifacts_fts, 2.0, 1.0),
+         a.importance DESC
+       LIMIT ?`;
+
+    const params = globalScope
+      ? [ftsQuery, project, limit]
+      : [ftsQuery, project, limit];
+
+    return cachedPrepare(db, sql).all(...params) as ArtifactRow[];
+  } catch {
+    // FTS may fail — fall back to LIKE search
+    try {
+      return searchLikeFallback(db, project, query, limit, globalScope, excludeSuperseded);
+    } catch {
+      return [];
+    }
+  }
+}
+
+/**
+ * LIKE-based fallback when FTS5 is unavailable.
+ * Non-throwing.
+ */
+function searchLikeFallback(
+  db: Database,
+  project: string,
+  query: string,
+  limit: number,
+  globalScope: boolean,
+  excludeSuperseded: boolean,
+): ArtifactRow[] {
+  const keywords = tokenizeQuery(query, 5);
+  if (keywords.length === 0) return [];
+
+  const conditions = keywords.map(() => '(LOWER(a.summary) LIKE ? OR LOWER(a.content) LIKE ?)').join(' OR ');
+  const likeParams = keywords.flatMap(k => [`%${k}%`, `%${k}%`]);
+  const supersededFilter = excludeSuperseded ? 'AND a.superseded_by IS NULL' : '';
+  const projectFilter = globalScope ? '' : 'AND a.project = ?';
+  const orderPrefix = globalScope
+    ? 'CASE WHEN a.project = ? THEN 0 ELSE 1 END,'
+    : '';
+
+  const sql = `SELECT a.* FROM artifacts a
+     WHERE (${conditions})
+       ${projectFilter}
+       ${supersededFilter}
+     ORDER BY ${orderPrefix}
+       a.importance DESC, a.timestamp_epoch DESC
+     LIMIT ?`;
+
+  const params = globalScope
+    ? [...likeParams, project, limit]
+    : [...likeParams, project, limit];
+
+  return cachedPrepare(db, sql).all(...params) as ArtifactRow[];
+}
+
+// ---------------------------------------------------------------------------
+// Channel 2: Vector KNN (Qdrant)
+// ---------------------------------------------------------------------------
+
+/**
+ * Qdrant vector search channel.
+ * Returns artifacts with cosine similarity scores.
+ * Non-throwing — returns empty when Qdrant is unavailable.
+ *
+ * This is async because Qdrant is an external service, but the caller
+ * handles the async boundary.
+ */
+async function searchVectorChannel(
+  db: Database,
+  project: string,
+  queryEmbedding: number[],
+  limit: number,
+  options: HybridSearchOptions,
+): Promise<{ artifact: ArtifactRow; score: number }[]> {
+  try {
+    // Dynamic import to avoid circular dependencies and keep Qdrant optional
+    const { searchArtifacts } = await import('../embeddings/qdrant-client.js');
+
+    const qdrantResults = await searchArtifacts(
+      queryEmbedding,
+      project,
+      limit,
+      {
+        minImportance: options.minImportance,
+        artifactTypes: options.artifactTypes,
+        excludeSuperseded: options.excludeSuperseded ?? true,
+      },
+    );
+
+    if (qdrantResults.length === 0) return [];
+
+    // Hydrate full artifact rows from SQLite (Qdrant payload has metadata, not full row)
+    const results: { artifact: ArtifactRow; score: number }[] = [];
+    for (const r of qdrantResults) {
+      const artifactId = typeof r.id === 'number' ? r.id : (r.payload?.artifact_id as number);
+      if (!artifactId) continue;
+
+      try {
+        const row = cachedPrepare(db,
+          'SELECT * FROM artifacts WHERE id = ?'
+        ).get(artifactId) as ArtifactRow | undefined;
+
+        if (row) {
+          results.push({ artifact: row, score: r.score });
+        }
+      } catch {
+        // Individual row fetch failure — skip this result
+      }
+    }
+
+    return results;
+  } catch {
+    return [];
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Channel 3: Recency-sorted
+// ---------------------------------------------------------------------------
+
+/**
+ * Recency channel — returns the most recent non-packed artifacts.
+ * Provides temporal context regardless of query relevance.
+ * Non-throwing.
+ */
+function searchRecencyChannel(
+  db: Database,
+  project: string,
+  limit: number,
+  globalScope: boolean,
+  excludeSuperseded: boolean,
+): ArtifactRow[] {
+  try {
+    const supersededFilter = excludeSuperseded ? 'AND superseded_by IS NULL' : '';
+    const projectFilter = globalScope ? '' : 'AND project = ?';
+    const orderPrefix = globalScope
+      ? 'CASE WHEN project = ? THEN 0 ELSE 1 END,'
+      : '';
+
+    const sql = `SELECT * FROM artifacts
+       WHERE state != 'packed'
+         ${projectFilter}
+         ${supersededFilter}
+       ORDER BY ${orderPrefix}
+         timestamp_epoch DESC
+       LIMIT ?`;
+
+    const params = globalScope
+      ? [project, limit]
+      : [project, limit];
+
+    return cachedPrepare(db, sql).all(...params) as ArtifactRow[];
+  } catch {
+    return [];
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Main hybrid search (sync)
+// ---------------------------------------------------------------------------
+
+/**
+ * Synchronous hybrid search — FTS5 + recency channels only.
+ * Used when vector search is unavailable or when async is not possible.
+ *
+ * Applies RRF merge across FTS5 and recency channels, then re-scores
+ * with the three-factor formula (using FTS5 rank as relevance proxy).
+ *
+ * Non-throwing — returns empty array on any error.
+ */
+export function hybridSearchSync(
+  db: Database,
+  query: string,
+  project: string,
+  options: HybridSearchOptions = {},
+): ScoredArtifact[] {
+  try {
+    const limit = options.limit ?? 10;
+    const excludeSuperseded = options.excludeSuperseded ?? true;
+    const globalScope = options.globalScope ?? true;
+    const weights = {
+      ...DEFAULT_WEIGHTS,
+      ...options.weights,
+    } as Required<ScoringWeights>;
+
+    if (!query || query.length < 3) return [];
+
+    // Channel 1: FTS5
+    const fts5Results = searchFts5Channel(db, project, query, limit * 2, globalScope, excludeSuperseded);
+
+    // Channel 3: Recency
+    const recencyResults = searchRecencyChannel(db, project, limit, globalScope, excludeSuperseded);
+
+    // Convert to channel results for RRF
+    const fts5Channel: ChannelResult[] = fts5Results.map((a, i) => ({
+      artifactId: a.id,
+      rank: i + 1,
+      artifact: a,
+    }));
+
+    const recencyChannel: ChannelResult[] = recencyResults.map((a, i) => ({
+      artifactId: a.id,
+      rank: i + 1,
+      artifact: a,
+    }));
+
+    // RRF merge
+    const rrfScores = rrfMerge([fts5Channel, recencyChannel]);
+
+    // Build artifact map for hydration
+    const artifactMap = new Map<number, ArtifactRow>();
+    for (const a of fts5Results) artifactMap.set(a.id, a);
+    for (const a of recencyResults) artifactMap.set(a.id, a);
+
+    // Build RRF breakdown per artifact
+    const fts5RankMap = new Map<number, number>();
+    const recencyRankMap = new Map<number, number>();
+    for (const r of fts5Channel) fts5RankMap.set(r.artifactId, r.rank);
+    for (const r of recencyChannel) recencyRankMap.set(r.artifactId, r.rank);
+
+    // Score and rank
+    const scored: ScoredArtifact[] = [];
+    for (const [artifactId, rrfScore] of rrfScores) {
+      const artifact = artifactMap.get(artifactId);
+      if (!artifact) continue;
+
+      // Use FTS5 rank position as relevance proxy (normalized: 1.0 for rank 1, decaying)
+      const fts5Rank = fts5RankMap.get(artifactId);
+      const relevance = fts5Rank != null ? 1.0 / fts5Rank : 0.1;
+
+      const threeFactor = computeThreeFactorScore(artifact, Math.min(1, relevance), weights);
+
+      // 5.2: Apply retrieval_score as multiplier — artifacts that consistently help
+      // get boosted, those that don't get demoted. retrieval_score defaults to 1.0.
+      const retrievalMultiplier = getRetrievalScoreMultiplier(db, artifactId);
+
+      // Final score: base_score * retrieval_score (per spec 5.2)
+      const baseScore = rrfScore * (1 + threeFactor);
+      const hybridScore = baseScore * retrievalMultiplier;
+
+      scored.push({
+        ...artifact,
+        hybrid_score: hybridScore,
+        score_breakdown: {
+          rrf_fts5: fts5RankMap.has(artifactId) ? 1 / (RRF_K + (fts5RankMap.get(artifactId) ?? RRF_K)) : 0,
+          rrf_vector: 0,
+          rrf_recency: recencyRankMap.has(artifactId) ? 1 / (RRF_K + (recencyRankMap.get(artifactId) ?? RRF_K)) : 0,
+          three_factor: threeFactor,
+        },
+      });
+    }
+
+    // Sort by hybrid_score descending, take top-K
+    scored.sort((a, b) => b.hybrid_score - a.hybrid_score);
+    return scored.slice(0, limit);
+  } catch {
+    return [];
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Main hybrid search (async, full pipeline)
+// ---------------------------------------------------------------------------
+
+/**
+ * Full async hybrid search — FTS5 + Qdrant KNN + recency channels.
+ *
+ * This is the primary entry point. It:
+ *   1. Runs FTS5 and recency channels synchronously
+ *   2. Attempts Qdrant vector search (async, non-blocking)
+ *   3. Merges all channels via RRF
+ *   4. Re-scores with three-factor formula
+ *   5. Returns top-K results
+ *
+ * Graceful degradation: if Qdrant is unavailable, falls back to
+ * FTS5 + recency (equivalent to hybridSearchSync).
+ *
+ * Non-throwing — returns empty array on any error.
+ */
+export async function hybridSearch(
+  db: Database,
+  query: string,
+  project: string,
+  options: HybridSearchOptions = {},
+): Promise<ScoredArtifact[]> {
+  try {
+    const limit = options.limit ?? 10;
+    const excludeSuperseded = options.excludeSuperseded ?? true;
+    const globalScope = options.globalScope ?? true;
+    const weights = {
+      ...DEFAULT_WEIGHTS,
+      ...options.weights,
+    } as Required<ScoringWeights>;
+
+    if (!query || query.length < 3) return [];
+
+    // Channel 1: FTS5 (sync)
+    const fts5Results = searchFts5Channel(db, project, query, limit * 2, globalScope, excludeSuperseded);
+
+    // Channel 3: Recency (sync)
+    const recencyResults = searchRecencyChannel(db, project, limit, globalScope, excludeSuperseded);
+
+    // Channel 2: Vector KNN (async, best-effort)
+    let vectorResults: { artifact: ArtifactRow; score: number }[] = [];
+    try {
+      const { embedQuery } = await import('../embeddings/embed-pipeline.js');
+      const queryEmbedding = await embedQuery(query);
+      if (queryEmbedding) {
+        vectorResults = await searchVectorChannel(db, project, queryEmbedding, limit * 2, options);
+      }
+    } catch {
+      // Vector channel unavailable — degrade gracefully
+    }
+
+    // Convert to channel results for RRF
+    const fts5Channel: ChannelResult[] = fts5Results.map((a, i) => ({
+      artifactId: a.id,
+      rank: i + 1,
+      artifact: a,
+    }));
+
+    const vectorChannel: ChannelResult[] = vectorResults.map((r, i) => ({
+      artifactId: r.artifact.id,
+      rank: i + 1,
+      artifact: r.artifact,
+    }));
+
+    const recencyChannel: ChannelResult[] = recencyResults.map((a, i) => ({
+      artifactId: a.id,
+      rank: i + 1,
+      artifact: a,
+    }));
+
+    // RRF merge across all available channels
+    const channels = [fts5Channel, recencyChannel];
+    if (vectorChannel.length > 0) channels.push(vectorChannel);
+    const rrfScores = rrfMerge(channels);
+
+    // Build artifact map
+    const artifactMap = new Map<number, ArtifactRow>();
+    for (const a of fts5Results) artifactMap.set(a.id, a);
+    for (const a of recencyResults) artifactMap.set(a.id, a);
+    for (const r of vectorResults) artifactMap.set(r.artifact.id, r.artifact);
+
+    // Build per-channel rank maps
+    const fts5RankMap = new Map<number, number>();
+    const vectorRankMap = new Map<number, number>();
+    const recencyRankMap = new Map<number, number>();
+    for (const r of fts5Channel) fts5RankMap.set(r.artifactId, r.rank);
+    for (const r of vectorChannel) vectorRankMap.set(r.artifactId, r.rank);
+    for (const r of recencyChannel) recencyRankMap.set(r.artifactId, r.rank);
+
+    // Build vector similarity map for relevance scoring
+    const vectorSimilarityMap = new Map<number, number>();
+    for (const r of vectorResults) vectorSimilarityMap.set(r.artifact.id, r.score);
+
+    // Score and rank
+    const scored: ScoredArtifact[] = [];
+    for (const [artifactId, rrfScore] of rrfScores) {
+      const artifact = artifactMap.get(artifactId);
+      if (!artifact) continue;
+
+      // Relevance: prefer vector cosine similarity, fall back to FTS5 rank proxy
+      let relevance: number;
+      const vectorSim = vectorSimilarityMap.get(artifactId);
+      if (vectorSim != null) {
+        relevance = Math.max(0, Math.min(1, vectorSim));
+      } else {
+        const fts5Rank = fts5RankMap.get(artifactId);
+        relevance = fts5Rank != null ? 1.0 / fts5Rank : 0.1;
+        relevance = Math.min(1, relevance);
+      }
+
+      const threeFactor = computeThreeFactorScore(artifact, relevance, weights);
+
+      // 5.2: Apply retrieval_score as multiplier
+      const retrievalMultiplier = getRetrievalScoreMultiplier(db, artifactId);
+
+      // Final score: RRF * (1 + three-factor) * retrieval_score — multiplicative blend
+      const hybridScore = rrfScore * (1 + threeFactor) * retrievalMultiplier;
+
+      // Confidence adjustment: multiply by confidence for final ranking
+      const confidence = (artifact as ArtifactRow & { confidence?: number }).confidence ?? 1.0;
+      const adjustedScore = hybridScore * confidence;
+
+      scored.push({
+        ...artifact,
+        hybrid_score: adjustedScore,
+        score_breakdown: {
+          rrf_fts5: fts5RankMap.has(artifactId) ? 1 / (RRF_K + (fts5RankMap.get(artifactId) ?? RRF_K)) : 0,
+          rrf_vector: vectorRankMap.has(artifactId) ? 1 / (RRF_K + (vectorRankMap.get(artifactId) ?? RRF_K)) : 0,
+          rrf_recency: recencyRankMap.has(artifactId) ? 1 / (RRF_K + (recencyRankMap.get(artifactId) ?? RRF_K)) : 0,
+          three_factor: threeFactor,
+        },
+      });
+    }
+
+    // Sort by hybrid_score descending, take top-K
+    scored.sort((a, b) => b.hybrid_score - a.hybrid_score);
+    return scored.slice(0, limit);
+  } catch {
+    // Full pipeline failure — fall back to sync path
+    return hybridSearchSync(db, query, project, options);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// ACT-R Activation Decay
+// ---------------------------------------------------------------------------
+
+/**
+ * Compute ACT-R activation score for an artifact.
+ *
+ * activation = ln(access_count + 1) - 0.5 * ln(hours_since_last_access + 1) + importance_boost
+ * importance_boost = (importance - 3) * 0.3
+ *
+ * Since artifacts don't track access_count directly, we use materialization
+ * count as a proxy (each materialization = 1 access). The number of times
+ * an artifact has been materialized is approximated by the difference between
+ * initial TTL and current TTL plus materialization events.
+ *
+ * For simplicity and correctness, we compute activation from the available data:
+ * - Uses last_materialized_epoch or timestamp_epoch as last access time
+ * - Uses a base access count of 1 (creation = 1 access)
+ */
+export function computeActivation(artifact: ArtifactRow): number {
+  const now = Math.floor(Date.now() / 1000);
+  const lastAccess = artifact.last_materialized_epoch ?? artifact.timestamp_epoch;
+  const hoursSinceAccess = Math.max(0, (now - lastAccess) / 3600);
+
+  // Approximate access count: 1 (creation) + materializations
+  // Materialized artifacts were accessed at least once more
+  const accessBonus = artifact.state === 'materialized' ? 1 : 0;
+  const accessCount = 1 + accessBonus;
+
+  const importanceBoost = (artifact.importance - 3) * 0.3;
+
+  return Math.log(accessCount + 1) - 0.5 * Math.log(hoursSinceAccess + 1) + importanceBoost;
+}
+
+/**
+ * Decay activation scores for all non-packed artifacts in a project.
+ * Replaces tickArtifactTTL with ACT-R cognitive decay.
+ *
+ * Artifacts with activation_score < 0.1 become eligible for pruning
+ * (set to packed state).
+ *
+ * Returns count of newly packed artifacts and total updated.
+ * Non-throwing.
+ */
+export function decayActivationScores(
+  db: Database,
+  project: string,
+): { packed: number; total: number } {
+  try {
+    const now = Math.floor(Date.now() / 1000);
+
+    // Update activation scores for all non-packed artifacts
+    // activation = ln(2) - 0.5 * ln(hours_since + 1) + (importance - 3) * 0.3
+    // Using SQLite math: ln(x) approximation not available, so we compute in SQL
+    // Actually, better-sqlite3 doesn't have LN(). Use the math extension or
+    // compute per-row in JS. For efficiency, do a batch read + update.
+    const artifacts = cachedPrepare(db,
+      `SELECT id, importance, timestamp_epoch, last_materialized_epoch, state
+       FROM artifacts
+       WHERE project = ? AND state != 'packed'`
+    ).all(project) as Array<{
+      id: number;
+      importance: number;
+      timestamp_epoch: number;
+      last_materialized_epoch: number | null;
+      state: string;
+    }>;
+
+    if (artifacts.length === 0) return { packed: 0, total: 0 };
+
+    const updateStmt = cachedPrepare(db,
+      `UPDATE artifacts SET activation_score = ? WHERE id = ?`
+    );
+
+    const packStmt = cachedPrepare(db,
+      `UPDATE artifacts SET state = 'packed', activation_score = ? WHERE id = ?`
+    );
+
+    let packed = 0;
+    let total = 0;
+
+    for (const art of artifacts) {
+      const lastAccess = art.last_materialized_epoch ?? art.timestamp_epoch;
+      const hoursSinceAccess = Math.max(0, (now - lastAccess) / 3600);
+
+      // Access count approximation: materialized = 2, fresh = 1
+      const accessCount = art.state === 'materialized' ? 2 : 1;
+      const importanceBoost = (art.importance - 3) * 0.3;
+
+      const activation = Math.log(accessCount + 1) - 0.5 * Math.log(hoursSinceAccess + 1) + importanceBoost;
+
+      if (activation < 0.1) {
+        packStmt.run(activation, art.id);
+        packed++;
+      } else {
+        updateStmt.run(activation, art.id);
+      }
+      total++;
+    }
+
+    return { packed, total };
+  } catch {
+    return { packed: 0, total: 0 };
+  }
+}
+
+/**
+ * Record an access event for an artifact — increments its activation.
+ * Called when an artifact is retrieved (materialized, included in assembly, MCP recall).
+ * Updates last_materialized_epoch as access timestamp.
+ * Non-throwing.
+ */
+export function recordArtifactAccess(
+  db: Database,
+  artifactId: number,
+): void {
+  try {
+    const now = Math.floor(Date.now() / 1000);
+
+    // Re-compute activation with fresh access data
+    const art = cachedPrepare(db,
+      'SELECT importance, timestamp_epoch, last_materialized_epoch FROM artifacts WHERE id = ?'
+    ).get(artifactId) as {
+      importance: number;
+      timestamp_epoch: number;
+      last_materialized_epoch: number | null;
+    } | undefined;
+
+    if (!art) return;
+
+    // Access count gets +1, hours_since resets to 0
+    const importanceBoost = (art.importance - 3) * 0.3;
+    // Fresh access: hours_since = 0, ln(0+1) = 0, so activation = ln(accessCount+1) + boost
+    // We don't know exact access_count, but refreshing to a high value is appropriate
+    const activation = Math.log(3) + importanceBoost; // ~1.1 + boost
+
+    cachedPrepare(db,
+      `UPDATE artifacts
+       SET activation_score = ?, last_materialized_epoch = ?
+       WHERE id = ?`
+    ).run(activation, now, artifactId);
+  } catch {
+    // Non-throwing
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Part 5.3: Spreading Activation
+// ---------------------------------------------------------------------------
+
+/** Spreading activation decay factor — controls how much activation spreads. */
+const SPREAD_FACTOR = 0.3;
+
+/**
+ * After materializing artifact A, boost activation scores of linked artifacts.
+ * Formula: linked_artifact.activation += 0.3 * link_strength * source_artifact.activation
+ *
+ * This surfaces related context without explicit search — when artifact A is
+ * retrieved, its linked neighbors become more likely to surface in subsequent
+ * retrievals via their boosted activation scores.
+ *
+ * Queries artifact_links WHERE source_id = A.id, applies boost to each target.
+ * Also processes reverse links (where target_id = A.id) to support bidirectional spreading.
+ *
+ * Non-throwing.
+ */
+export function spreadActivation(
+  db: Database,
+  artifactId: number,
+): void {
+  try {
+    // Get the source artifact's activation score
+    const source = cachedPrepare(db,
+      `SELECT activation_score FROM artifacts WHERE id = ?`
+    ).get(artifactId) as { activation_score: number | null } | undefined;
+
+    if (!source) return;
+    const sourceActivation = source.activation_score ?? 1.0;
+
+    // Get all links where this artifact is the source
+    const links = cachedPrepare(db,
+      `SELECT target_id, strength FROM artifact_links WHERE source_id = ?`
+    ).all(artifactId) as Array<{ target_id: number; strength: number }>;
+
+    for (const link of links) {
+      const boost = SPREAD_FACTOR * link.strength * sourceActivation;
+      if (boost <= 0) continue;
+
+      // Read current activation, apply boost, write back
+      const target = cachedPrepare(db,
+        `SELECT activation_score FROM artifacts WHERE id = ?`
+      ).get(link.target_id) as { activation_score: number | null } | undefined;
+
+      if (!target) continue;
+      const currentActivation = target.activation_score ?? 0;
+      const newActivation = currentActivation + boost;
+
+      cachedPrepare(db,
+        `UPDATE artifacts SET activation_score = ? WHERE id = ?`
+      ).run(newActivation, link.target_id);
+    }
+  } catch {
+    // Non-throwing
+  }
+}

@@ -19,6 +19,7 @@ const requiredEntryPoints = [
   'src/cli/worker-context.ts',
   'src/cli/projects-touched.ts',
   'src/cli/recall.ts',
+  'src/cli/update-recall.ts',
 ];
 
 /** Optional/scaffolding entry points — warn-and-skip if missing. */

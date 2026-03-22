@@ -268,6 +268,8 @@ export class ThreadTracker {
         summary: this.summary ?? undefined,
         key_exchanges: this.keyExchanges,
       });
+      // Thread summary embedding moved to Stop hook (awaited there)
+      // because persist() is sync and CC hooks are ephemeral processes.
     } catch {
       // Non-throwing
     }
@@ -315,5 +317,114 @@ export function persistTopicUpdate(db: Database, sessionId: string, newTopic: st
     tracker.updateTopic(newTopic);
   } catch {
     // Non-throwing
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Cross-session thread linking (4.3)
+// ---------------------------------------------------------------------------
+
+/** A matched thread from a previous session. */
+export interface SimilarThread {
+  session_id: string;
+  topic: string | null;
+  summary: string | null;
+  key_exchanges: Array<{ role: string; gist: string }>;
+  similarity: number;
+}
+
+/**
+ * Cosine similarity between two Float32Array-like vectors.
+ * Returns 0.0 for zero-length or zero-norm vectors.
+ */
+function cosine(a: ArrayLike<number>, b: ArrayLike<number>): number {
+  if (a.length === 0 || b.length === 0 || a.length !== b.length) return 0;
+  let dot = 0, normA = 0, normB = 0;
+  for (let i = 0; i < a.length; i++) {
+    dot += a[i] * b[i];
+    normA += a[i] * a[i];
+    normB += b[i] * b[i];
+  }
+  const denom = Math.sqrt(normA) * Math.sqrt(normB);
+  return denom === 0 ? 0 : dot / denom;
+}
+
+/**
+ * Find threads from previous sessions with semantically similar summaries.
+ *
+ * Queries thread_state for stored summary_embeddings (same project, last 20 sessions).
+ * Computes cosine similarity in app code (SQLite BLOB → Float32Array → cosine).
+ * Returns threads above the given threshold, sorted by similarity descending.
+ *
+ * @param db - SQLite database
+ * @param queryEmbedding - embedding vector of the current prompt/query
+ * @param project - project scope
+ * @param threshold - cosine similarity threshold (default 0.8)
+ * @param excludeSessionId - session to exclude (typically current session)
+ * @returns matching threads sorted by similarity
+ *
+ * Non-throwing — returns empty array on any failure.
+ */
+export function findSimilarThreads(
+  db: Database,
+  queryEmbedding: number[] | Float32Array,
+  project: string,
+  threshold: number = 0.8,
+  excludeSessionId?: string,
+): SimilarThread[] {
+  try {
+    // Get recent thread_state rows with summary_embedding populated.
+    // Join with sessions to scope by project.
+    const rows = db.prepare(
+      `SELECT t.session_id, t.topic, t.summary, t.key_exchanges, t.summary_embedding
+       FROM thread_state t
+       JOIN sessions s ON s.session_id = t.session_id
+       WHERE s.project = ?
+         AND t.summary_embedding IS NOT NULL
+         ${excludeSessionId ? 'AND t.session_id != ?' : ''}
+       ORDER BY t.updated_at_epoch DESC
+       LIMIT 20`
+    ).all(...(excludeSessionId ? [project, excludeSessionId] : [project])) as Array<{
+      session_id: string;
+      topic: string | null;
+      summary: string | null;
+      key_exchanges: string;
+      summary_embedding: Buffer;
+    }>;
+
+    const results: SimilarThread[] = [];
+
+    for (const row of rows) {
+      try {
+        const vec = new Float32Array(
+          row.summary_embedding.buffer,
+          row.summary_embedding.byteOffset,
+          row.summary_embedding.byteLength / 4,
+        );
+        const sim = cosine(queryEmbedding, vec);
+        if (sim >= threshold) {
+          let parsedExchanges: Array<{ role: string; gist: string }> = [];
+          try {
+            parsedExchanges = JSON.parse(row.key_exchanges);
+          } catch { /* corrupt JSON */ }
+
+          results.push({
+            session_id: row.session_id,
+            topic: row.topic,
+            summary: row.summary,
+            key_exchanges: parsedExchanges.filter(e => e.role !== '__cooldown'),
+            similarity: sim,
+          });
+        }
+      } catch {
+        // Skip corrupted rows
+      }
+    }
+
+    // Sort by similarity descending
+    results.sort((a, b) => b.similarity - a.similarity);
+    return results.slice(0, 3); // Top 3
+  } catch {
+    return [];
   }
 }

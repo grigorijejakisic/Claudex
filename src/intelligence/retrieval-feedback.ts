@@ -8,6 +8,9 @@
  * No "Ignored" penalty — preventative patterns succeed precisely
  * when their keywords DON'T appear in the output.
  *
+ * Part 5.2: retrieval_score is now a multiplier in the three-factor formula.
+ * getRetrievalScoreMultiplier() returns the score for use in hybrid-retrieval.
+ *
  * All functions are non-throwing with safe defaults.
  */
 
@@ -19,6 +22,10 @@ import { tokenizeQuery } from '../shared/search-utils.js';
 const SCORE_REFERENCED = 0.1;
 const SCORE_CORRECTION = -0.2;
 const SCORE_SESSION_SUCCESS = 0.05;
+/** Penalty for artifacts never referenced after N retrievals. */
+const SCORE_NEVER_REFERENCED = -0.05;
+/** Number of unreferenced retrievals before penalty applies. */
+const UNREFERENCED_THRESHOLD = 3;
 
 /** Clamp bounds. */
 const MIN_SCORE = 0.1;
@@ -98,10 +105,13 @@ export function wasArtifactReferenced(
  * Processes feedback for all artifacts injected in a turn.
  * Called at Stop hook.
  *
+ * Updates retrieval_score on artifacts AND outcome fields on retrieval_events.
+ *
  * @param injectedArtifactIds - IDs of artifacts injected this turn
  * @param assistantOutput - the assistant's response text
  * @param correctionDetected - whether a user correction was detected
  * @param artifactSummaries - map of artifact ID → summary text
+ * @param sessionId - session ID for updating retrieval_events outcomes
  */
 export function processRetrievalFeedback(
   db: Database,
@@ -109,8 +119,11 @@ export function processRetrievalFeedback(
   assistantOutput: string,
   correctionDetected: boolean,
   artifactSummaries: Map<number, string>,
+  sessionId?: string,
 ): void {
   try {
+    const referencedIds = new Set<number>();
+
     for (const id of injectedArtifactIds) {
       const summary = artifactSummaries.get(id);
       if (!summary) continue;
@@ -123,8 +136,14 @@ export function processRetrievalFeedback(
         // No penalty for unrelated artifacts during correction
       } else if (wasArtifactReferenced(assistantOutput, summary)) {
         updateRetrievalScore(db, id, SCORE_REFERENCED);
+        referencedIds.add(id);
       }
       // No "Ignored" penalty — preventative patterns succeed silently
+    }
+
+    // 5.1: Update retrieval_events with outcome data
+    if (sessionId) {
+      updateRetrievalEventOutcomes(db, sessionId, referencedIds, correctionDetected);
     }
   } catch {
     // Non-throwing
@@ -143,6 +162,132 @@ export function applySessionSuccessBonus(
   try {
     for (const id of artifactIds) {
       updateRetrievalScore(db, id, SCORE_SESSION_SUCCESS);
+    }
+  } catch {
+    // Non-throwing
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Part 5.1: Retrieval Event Recording
+// ---------------------------------------------------------------------------
+
+/**
+ * Records a retrieval event when an artifact is materialized (selected for injection).
+ * Called at assembly time. The was_referenced and correction_followed fields
+ * are updated later at Stop hook via updateRetrievalEventOutcomes().
+ * Non-throwing.
+ */
+export function recordRetrievalEvent(
+  db: Database,
+  artifactId: number,
+  sessionId: string,
+  queryText?: string,
+): void {
+  try {
+    cachedPrepare(db,
+      `INSERT INTO retrieval_events (artifact_id, session_id, query_text)
+       VALUES (?, ?, ?)`
+    ).run(artifactId, sessionId, queryText ?? null);
+  } catch {
+    // Non-throwing — table may not exist on older schemas
+  }
+}
+
+/**
+ * Updates retrieval_events for the current session with outcome data.
+ * Called at Stop hook after processRetrievalFeedback determines which
+ * artifacts were referenced and whether corrections occurred.
+ * Non-throwing.
+ */
+export function updateRetrievalEventOutcomes(
+  db: Database,
+  sessionId: string,
+  referencedArtifactIds: Set<number>,
+  correctionDetected: boolean,
+): void {
+  try {
+    // Get all retrieval events for this session that haven't been scored yet
+    const events = cachedPrepare(db,
+      `SELECT id, artifact_id FROM retrieval_events
+       WHERE session_id = ? AND was_referenced IS NULL`
+    ).all(sessionId) as Array<{ id: number; artifact_id: number }>;
+
+    for (const event of events) {
+      const wasReferenced = referencedArtifactIds.has(event.artifact_id) ? 1 : 0;
+      const correctionFollowed = correctionDetected ? 1 : 0;
+
+      cachedPrepare(db,
+        `UPDATE retrieval_events
+         SET was_referenced = ?, correction_followed = ?
+         WHERE id = ?`
+      ).run(wasReferenced, correctionFollowed, event.id);
+    }
+  } catch {
+    // Non-throwing
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Part 5.2: Retrieval Score as Multiplier
+// ---------------------------------------------------------------------------
+
+/**
+ * Returns the retrieval_score for an artifact, to be used as a multiplier
+ * in the three-factor scoring formula: final_score = base_score * retrieval_score.
+ *
+ * The retrieval_score is an EMA of past retrieval outcomes:
+ * - Referenced: +0.1
+ * - Correction after retrieval: -0.2
+ * - Session success (no corrections, artifact injected): +0.05
+ * - Never referenced after 3 retrievals: -0.05
+ *
+ * Returns 1.0 (neutral) if the artifact is not found or on error.
+ * Non-throwing.
+ */
+export function getRetrievalScoreMultiplier(
+  db: Database,
+  artifactId: number,
+): number {
+  try {
+    const row = cachedPrepare(db,
+      `SELECT retrieval_score FROM artifacts WHERE id = ?`
+    ).get(artifactId) as { retrieval_score: number } | undefined;
+
+    return row?.retrieval_score ?? 1.0;
+  } catch {
+    return 1.0;
+  }
+}
+
+/**
+ * Penalizes artifacts that have been retrieved multiple times but never referenced.
+ * Queries retrieval_events for artifacts with >= UNREFERENCED_THRESHOLD retrievals
+ * where was_referenced is always 0.
+ * Non-throwing.
+ */
+export function penalizeUnreferencedArtifacts(
+  db: Database,
+  project: string,
+): void {
+  try {
+    // Find artifacts with N+ retrievals that were NEVER referenced
+    const candidates = cachedPrepare(db,
+      `SELECT re.artifact_id, COUNT(*) as total_retrievals,
+              SUM(CASE WHEN re.was_referenced = 1 THEN 1 ELSE 0 END) as referenced_count
+       FROM retrieval_events re
+       JOIN artifacts a ON a.id = re.artifact_id
+       WHERE a.project = ? AND re.was_referenced IS NOT NULL
+       GROUP BY re.artifact_id
+       HAVING total_retrievals >= ? AND referenced_count = 0`
+    ).all(project, UNREFERENCED_THRESHOLD) as Array<{
+      artifact_id: number;
+      total_retrievals: number;
+      referenced_count: number;
+    }>;
+
+    for (const c of candidates) {
+      updateRetrievalScore(db, c.artifact_id, SCORE_NEVER_REFERENCED);
     }
   } catch {
     // Non-throwing

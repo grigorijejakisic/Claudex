@@ -7,7 +7,7 @@
 import type Database from 'better-sqlite3';
 import type { ClaudexConfig } from '../../shared/config.js';
 import type { TokenUsage } from '../../shared/types.js';
-import { processToolObservation } from '../../extraction/extractor.js';
+import { processToolObservation, checkNovelty } from '../../extraction/extractor.js';
 import { updatePressureScore } from '../../core/pressure.js';
 import { sanitizePath, redactContent } from '../../extraction/redaction.js';
 import { ThreadTracker, persistTopicUpdate, extractTopic } from '../../intelligence/thread-tracker.js';
@@ -34,9 +34,10 @@ import { cachedPrepare } from '../../core/stmt-cache.js';
 import { getThreadState } from '../../core/thread.js';
 import { getDecisionsBySession } from '../../core/decisions.js';
 import { getObservationById } from '../../core/observations.js';
-import { createArtifact, tickArtifactTTL, packAllArtifacts } from '../../core/artifacts.js';
+import { createArtifact, tickArtifactTTL, packAllArtifacts, getConfidenceScore, setArtifactConfidence, setArtifactNovelty, flagSupersededArtifacts } from '../../core/artifacts.js';
 import { getLearningsByProject } from '../../core/learnings.js';
 import { extractInsights } from '../../intelligence/insight-extractor.js';
+import { embedArtifact } from '../../embeddings/embed-pipeline.js';
 
 // ---------------------------------------------------------------------------
 // Shared parameter types
@@ -204,7 +205,7 @@ function shouldTickArtifactTTL(db: Database.Database, sessionId: string, nowEpoc
  * Used by PostToolUse (CC) and onToolResult (bridge).
  * Non-throwing.
  */
-export function processToolAndPressure(params: ToolObservationParams): void {
+export async function processToolAndPressure(params: ToolObservationParams): Promise<void> {
   // Each operation isolated — one failure must not kill subsequent operations
   let observationId: number | null = null;
   try {
@@ -227,7 +228,7 @@ export function processToolAndPressure(params: ToolObservationParams): void {
     try {
       const obs = getObservationById(params.db, observationId);
       if (obs && obs.importance >= 3) {
-        createArtifact(
+        const artifactId = createArtifact(
           params.db,
           params.sessionId,
           params.project,
@@ -237,6 +238,36 @@ export function processToolAndPressure(params: ToolObservationParams): void {
           obs.content,
           obs.importance,
         );
+
+        if (artifactId > 0) {
+          // Set confidence based on tool source (2.6)
+          try {
+            const confidence = getConfidenceScore('observation', params.toolName);
+            setArtifactConfidence(params.db, artifactId, confidence);
+          } catch { /* non-fatal */ }
+
+          // Embed artifact — must be awaited because CC hooks die after return.
+          // Fire-and-forget doesn't work in ephemeral hook processes.
+          try {
+            const embedded = await embedArtifact(params.db, artifactId, obs.content, {
+              project: params.project,
+              artifact_type: 'observation',
+              importance: obs.importance,
+              session_id: params.sessionId,
+              summary: obs.title.slice(0, 150),
+            });
+
+            if (embedded) {
+              // After embedding stored, check novelty (2.5) and superseded (2.3)
+              try {
+                const novelty = await checkNovelty(params.db, obs.content, params.project);
+                setArtifactNovelty(params.db, artifactId, novelty.noveltyScore);
+              } catch { /* non-fatal */ }
+              // Flag older superseded artifacts (2.3)
+              try { flagSupersededArtifacts(params.db, artifactId, params.project, obs.title); } catch {}
+            }
+          } catch { /* embedding failure is non-fatal */ }
+        }
       }
     } catch (e) {
       emitErrorTelemetry(params.db, params.sessionId, 'tool_processing/artifact_create', e);
@@ -1128,5 +1159,167 @@ export async function runSessionEndCleanup(params: SessionEndParams): Promise<vo
     });
   } catch (e) {
     emitErrorTelemetry(params.db, params.sessionId, 'session_end/prune_telemetry', e);
+  }
+
+  // Pre-assembly: predict likely context for next session (4.5 Sleep-Time Pre-Assembly)
+  try {
+    await generatePreAssembly(params.db, params.sessionId, params.project);
+  } catch (e) {
+    emitErrorTelemetry(params.db, params.sessionId, 'session_end/pre_assembly', e);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Sleep-Time Pre-Assembly (4.5)
+// ---------------------------------------------------------------------------
+
+/**
+ * At session-end, pre-compute likely-needed context for the next session.
+ * Analyzes: active topic, hot files, relevant patterns.
+ * Stores as a 'pre_assembled' artifact. At next session-start, if the
+ * opening prompt matches (cosine > 0.7), the pre-assembled block is used.
+ *
+ * Best-effort optimization — graceful degradation if prediction misses.
+ * Non-throwing.
+ */
+export async function generatePreAssembly(
+  db: Database.Database,
+  sessionId: string,
+  project: string,
+): Promise<void> {
+  try {
+    const parts: string[] = [];
+
+    // 1. Active topic from thread state
+    const thread = getThreadState(db, sessionId);
+    if (!thread?.topic && !thread?.summary) return; // No topic = nothing to predict
+
+    if (thread.topic) {
+      parts.push(`[Predicted Context] Continuing work on: ${thread.topic}`);
+    }
+
+    // 2. Hot files (top 5 by pressure)
+    try {
+      const hotFiles = cachedPrepare(db,
+        `SELECT file_path, raw_pressure FROM pressure_scores
+         WHERE project = ? AND temperature = 'HOT'
+         ORDER BY raw_pressure DESC
+         LIMIT 5`
+      ).all(project) as Array<{ file_path: string; raw_pressure: number }>;
+      if (hotFiles.length > 0) {
+        parts.push('Hot files: ' + hotFiles.map(f => f.file_path).join(', '));
+      }
+    } catch { /* non-fatal */ }
+
+    // 3. Recent decisions (last 3)
+    try {
+      const decisions = getDecisionsBySession(db, sessionId, { limit: 3 });
+      if (decisions.length > 0) {
+        parts.push('Recent decisions: ' + decisions.map(d => d.content.slice(0, 80)).join('; '));
+      }
+    } catch { /* non-fatal */ }
+
+    // 4. Recent learnings relevant to topic
+    if (thread.topic) {
+      try {
+        const learnings = getLearningsByProject(db, project, { limit: 5 });
+        const topicKeywords = thread.topic.toLowerCase().split(/\s+/).filter(w => w.length > 3);
+        const relevant = learnings.filter(l => {
+          const lowerContent = l.content.toLowerCase();
+          return topicKeywords.some(kw => lowerContent.includes(kw));
+        }).slice(0, 3);
+        if (relevant.length > 0) {
+          parts.push('Relevant learnings: ' + relevant.map(l => l.content.slice(0, 80)).join('; '));
+        }
+      } catch { /* non-fatal */ }
+    }
+
+    // 5. Thread summary for context continuity
+    if (thread.summary) {
+      parts.push('Session summary: ' + thread.summary);
+    }
+
+    if (parts.length < 2) return; // Not enough signal to pre-assemble
+
+    const content = parts.join('\n');
+    const summary = `[Pre-assembly] ${thread.topic ?? 'continuation'} — predicted context`;
+
+    // Store as a special artifact type
+    const artifactId = createArtifact(
+      db, sessionId, project, 'flow',
+      `pre_assembly:${sessionId}`,
+      summary, content, 3,
+    );
+
+    // Embed the pre-assembly for cosine matching at next session-start
+    if (artifactId > 0) {
+      try {
+        const { embedArtifact: embedArt } = await import('../../embeddings/embed-pipeline.js');
+        await embedArt(db, artifactId, content, {
+          project,
+          artifact_type: 'flow',
+          importance: 3,
+          session_id: sessionId,
+          summary,
+        });
+      } catch { /* non-fatal */ }
+    }
+  } catch {
+    // Non-throwing
+  }
+}
+
+/**
+ * Check if a pre-assembled context block matches the current prompt.
+ * If cosine > 0.7, returns the pre-assembled content. Otherwise null.
+ *
+ * Called from UserPromptSubmit on first prompt of a session.
+ * Non-throwing.
+ */
+export async function matchPreAssembly(
+  db: Database.Database,
+  project: string,
+  promptEmbedding: number[],
+): Promise<string | null> {
+  try {
+    // Find the most recent pre_assembly artifact for this project
+    const preAssembly = cachedPrepare(db,
+      `SELECT id, content, embedding FROM artifacts
+       WHERE project = ? AND artifact_ref LIKE 'pre_assembly:%'
+       AND state != 'packed' AND embedding IS NOT NULL
+       ORDER BY timestamp_epoch DESC
+       LIMIT 1`
+    ).get(project) as {
+      id: number;
+      content: string | null;
+      embedding: Buffer;
+    } | undefined;
+
+    if (!preAssembly || !preAssembly.content) return null;
+
+    // Compute cosine similarity
+    const { cosineSimilarity } = await import('../../core/artifacts.js');
+    const vec = new Float32Array(
+      preAssembly.embedding.buffer,
+      preAssembly.embedding.byteOffset,
+      preAssembly.embedding.byteLength / 4,
+    );
+    const sim = cosineSimilarity(promptEmbedding, vec);
+
+    if (sim > 0.7) {
+      // Match! Pack the pre-assembly artifact (consumed)
+      cachedPrepare(db,
+        "UPDATE artifacts SET state = 'packed', ttl = 0 WHERE id = ?"
+      ).run(preAssembly.id);
+      return preAssembly.content;
+    }
+
+    // No match — discard pre-assembly
+    cachedPrepare(db,
+      "UPDATE artifacts SET state = 'packed', ttl = 0 WHERE id = ?"
+    ).run(preAssembly.id);
+    return null;
+  } catch {
+    return null;
   }
 }

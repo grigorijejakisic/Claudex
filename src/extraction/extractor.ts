@@ -27,6 +27,87 @@ import { insertObservation } from '../core/observations.js';
 import { CONTENT_MAX_CHARS } from '../shared/constants.js';
 import { truncateText } from '../shared/text-utils.js';
 
+// ---------------------------------------------------------------------------
+// Novelty gating (2.5 — Prediction Error Gating)
+// ---------------------------------------------------------------------------
+
+/** Result of novelty check. */
+export interface NoveltyResult {
+  /** Whether the content is novel enough to store as an artifact. */
+  isNovel: boolean;
+  /** Novelty score: 1.0 - max_cosine. Higher = more novel. */
+  noveltyScore: number;
+  /** Max cosine similarity to existing artifacts. */
+  maxSimilarity: number;
+}
+
+/** Redundancy threshold — content above this cosine is considered redundant. */
+const NOVELTY_THRESHOLD = 0.92;
+
+/**
+ * Check if candidate content is novel relative to existing artifacts.
+ *
+ * 1. Embed the candidate content
+ * 2. KNN search against existing artifact embeddings (top-3)
+ * 3. If max cosine similarity > 0.92 → redundant (isNovel=false)
+ * 4. If max cosine < 0.92 → novel, novelty_score = 1.0 - max_cosine
+ *
+ * This is async because it requires embedding generation and Qdrant search.
+ * Non-throwing — returns { isNovel: true, noveltyScore: 0.5 } on any failure
+ * (fail-open: if we can't check, assume it's novel).
+ */
+export async function checkNovelty(
+  content: string,
+  project: string,
+): Promise<NoveltyResult> {
+  try {
+    // Dynamic imports to keep embedding infrastructure optional
+    const { embedText } = await import('../embeddings/embed-pipeline.js');
+    const { searchArtifacts } = await import('../embeddings/qdrant-client.js');
+
+    const embedding = await embedText(content);
+    if (!embedding) {
+      // Embeddings unavailable — fail-open
+      return { isNovel: true, noveltyScore: 0.5, maxSimilarity: 0 };
+    }
+
+    // KNN search against existing artifacts (top-3)
+    const results = await searchArtifacts(embedding, project, 3, {
+      excludeSuperseded: true,
+    });
+
+    if (results.length === 0) {
+      // No existing artifacts to compare against — fully novel
+      return { isNovel: true, noveltyScore: 1.0, maxSimilarity: 0 };
+    }
+
+    const maxSimilarity = Math.max(...results.map(r => r.score));
+
+    if (maxSimilarity > NOVELTY_THRESHOLD) {
+      // Redundant — too similar to an existing artifact
+      return {
+        isNovel: false,
+        noveltyScore: 1.0 - maxSimilarity,
+        maxSimilarity,
+      };
+    }
+
+    // Novel content
+    return {
+      isNovel: true,
+      noveltyScore: 1.0 - maxSimilarity,
+      maxSimilarity,
+    };
+  } catch {
+    // Fail-open: if novelty check fails, assume novel
+    return { isNovel: true, noveltyScore: 0.5, maxSimilarity: 0 };
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Extraction pipeline
+// ---------------------------------------------------------------------------
+
 /** Input for processToolObservation. */
 export interface ProcessToolObservationInput {
   db: Database;

@@ -79,8 +79,6 @@ export function extractOpenItems(text: string | null | undefined): string[] {
   }
 }
 
-// writeCompressedFile moved to shared/fs-helpers.ts — re-exported for backward compatibility
-export { writeCompressedFile };
 
 /**
  * Determines whether a checkpoint should be triggered based on trigger type,
@@ -412,5 +410,3 @@ export async function writeCheckpoint(
   }
 }
 
-// addVerifiedFact moved to core/verified-facts.ts — re-exported for backward compatibility
-export { addVerifiedFact } from '../core/verified-facts.js';
