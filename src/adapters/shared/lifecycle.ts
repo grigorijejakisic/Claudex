@@ -1035,7 +1035,17 @@ export async function runCompactionSequence(params: CompactionParams): Promise<v
           "SELECT 1 FROM artifacts WHERE artifact_type = 'learning' AND artifact_ref = ? AND project = ? LIMIT 1"
         ).get(ref, params.project);
         if (!exists) {
-          createArtifact(params.db, params.sessionId, params.project, 'learning', ref, learning.content.slice(0, 150), learning.content, 4);
+          const artId = createArtifact(params.db, params.sessionId, params.project, 'learning', ref, learning.content.slice(0, 150), learning.content, 4);
+          // Embed learning artifact — awaited because hooks are ephemeral
+          if (artId > 0) {
+            try {
+              await embedArtifact(params.db, artId, learning.content, {
+                project: params.project, artifact_type: 'learning',
+                importance: 4, session_id: params.sessionId,
+                summary: learning.content.slice(0, 150),
+              });
+            } catch { /* embedding is supplementary */ }
+          }
         }
       }
     } catch (e) {

@@ -1,259 +1,132 @@
 # Codex Review Report
 
-**Scope:** All uncommitted changes (50 files, ~4200 lines changed)
+**Scope:** Uncommitted changes since 28f4f39 (8 files, ~133 lines added)
 **Date:** 2026-03-24
 **Reviewer:** Claude Opus 4.6 (1M context)
-**Grade:** B-
+**Build:** PASS (65ms) | **Tests:** 1714/1714 PASS (7.65s)
 
 ---
 
-## Executive Summary
+## Summary
 
-Large changeset implementing the Angel System (persistent guardian process), Hook/Angel responsibility split, ACE pattern scoring, conversation turn storage, and multiple retrieval quality improvements. Architecture is sound -- ephemeral hooks do mechanical work, Angel does reflective work. Code quality is generally high, with proper non-throwing patterns, good security practices (Angel spawn path hardening, CWD safety), and well-thought-out deduplication logic.
-
-One **critical runtime bug** and several moderate issues found.
+Six focused changes: per-session pattern suppression, hybrid pattern matching, importance probe on regular turns, file ingester embedding backfill, learning artifact embedding in compaction, and the experience-flags plumbing to support it all. One real bug found (ID mismatch in hybrid search). Everything else is clean.
 
 ---
 
-## Critical Issues
+## 1. Per-session pattern suppression in assembler.ts
 
-### [BUG] `relevantRows` ReferenceError in `findMatchingPatterns` (experience-patterns.ts:438)
+**Verdict: PASS (minor observation)**
 
-**Severity:** CRITICAL -- runtime crash
-**File:** `src/intelligence/experience-patterns.ts:438`
+The `renderExperienceWarnings` function reads `session_injected_ids` from experience flags, builds a `Set`, filters out already-seen patterns, then in `applyEffects()` re-reads current flags and accumulates new IDs via `[...new Set([...current, ...new])]`.
 
-The FTS5 query result is assigned to `rows` (line 434), but line 438 references `relevantRows` -- a variable that does not exist. This is a `ReferenceError` that will crash `findMatchingPatterns()` at runtime whenever the FTS5 query succeeds (i.e., whenever patterns match a user prompt).
+**Race conditions:** Not a concern. CC hooks are single-threaded Node.js processes. The `applyEffects()` callback runs synchronously within a single hook invocation. SQLite is in WAL mode with `busy_timeout`, so concurrent sessions won't corrupt each other's flags (they have different `sessionId`). The read-modify-write gap between `getExperienceFlags` and `setExperienceFlags` inside `applyEffects` is safe because no other code path modifies `session_injected_ids` for the same session within the same process tick.
 
-The function falls into the `catch` block and calls `findMatchingPatternsFallback`, so the system degrades to LIKE-based matching rather than crashing the hook. But: **the entire ACE ranking logic (verification boost, helpful ratio, escalation sorting) is dead code** -- it never executes because the ReferenceError fires before it runs.
-
-```typescript
-// Line 434: result assigned to `rows`
-).all(ftsQuery, project, GLOBAL_PROJECT_SCOPE, project, safeLimit * 2) as ExperiencePattern[];
-
-// Line 438: references `relevantRows` -- DOES NOT EXIST
-const ranked = relevantRows.map(p => {
-```
-
-**Fix:** Change `relevantRows` to `rows` on line 438.
+**Observation:** The `applyEffects` closure re-reads flags from DB (`getExperienceFlags`) even though the render phase already read them. This is intentional and correct -- the render phase read may be stale by the time effects are applied (e.g., in `assembleFullContext` where budget gating may defer application). The double-read costs one extra SELECT but guarantees correctness.
 
 ---
 
-## Major Issues
+## 2. findMatchingPatternsHybrid in experience-patterns.ts
 
-### [BUG] FTS rank filter comment/code mismatch (experience-patterns.ts:417-427)
+**Verdict: BUG -- ID type mismatch (dead code, no production impact)**
 
-Comment says "rank must be better (more negative) than -15" but the SQL filter is `fts.rank < -10`. This means the filter is MORE aggressive than documented -- it will exclude more matches than intended. Since the critical bug above prevents this code from functioning anyway, impact is deferred, but should be corrected alongside the fix.
+The async/sync boundary is clean: `findMatchingPatterns` (sync FTS5) runs first, then async Qdrant search augments results. Dynamic imports (`await import(...)`) are correct for optional dependencies.
 
-### [DESIGN] `__bonus_guard__` session_id in checkpoint_tracking (stop.ts:250-265)
+**Bug:** The function uses `String(vr.id)` to look up patterns in the DB, but `vr.id` is a **numeric hash** (from `hashStringToInt(patternId)` in `upsertPatternEmbedding`), not the original ULID string. The original ULID is stored in `payload.pattern_id_str`, not in the point ID. The SQL query `WHERE id = ?` will never match because `experience_patterns.id` is a ULID string like `01HYZ3...`, not a number like `2847193`.
 
-The session success bonus guard uses `checkpoint_tracking` table with synthetic session IDs like `__bonus_guard__<session_id>`. This pollutes the table with non-session rows, which could:
-- Inflate row counts in queries that scan `checkpoint_tracking`
-- Cause confusion during debugging
-- Interact badly with any future code that assumes `session_id` in this table references real sessions
+**Fix:** Replace `String(vr.id)` with `String(vr.payload?.pattern_id_str ?? vr.id)`.
 
-**Recommendation:** Use a dedicated guard table or a session-scoped flag (e.g., via `experience_flags`).
-
-### [QUALITY] `learnings_fts` missing from SCHEMA_V3 DDL (schema.ts)
-
-The `learnings_fts` FTS5 virtual table and its sync triggers are NOT declared in the main `SCHEMA_V3` constant in `schema.ts`. They are created by `migrateSchemaFixes()` which IS called during `initializeSchema()`, so fresh installs do get the table. However:
-- The schema DDL is incomplete as documentation -- a reader of `schema.ts` won't see `learnings_fts`
-- If `migrateSchemaFixes()` is ever refactored or its call order changes, fresh installs break
-
-**Recommendation:** Add `learnings_fts` DDL to `SCHEMA_V3` for completeness.
-
-### [TYPE] `unverified_patterns` event kind in types but not in CHECK constraint (observability/types.ts + schema.ts)
-
-`EventKind` type includes `'unverified_patterns'` and `EventKindDetailMap` maps it, but the telemetry table's CHECK constraint doesn't allow it. Any attempt to emit this event kind would cause a SQLite constraint violation. Currently no code emits it, so impact is latent.
+**Production impact: NONE.** `findMatchingPatternsHybrid` is exported but never imported or called from any production code path. It's dead code -- the assembler still calls the sync `findMatchingPatterns`. This function was presumably added for future use. The bug will bite when it's wired in.
 
 ---
 
-## Moderate Issues
+## 3. Importance probe in user-prompt-submit.ts
 
-### [QUALITY] `createTipAndStrategy` is now a dead export (experience-patterns.ts:810)
+**Verdict: PASS**
 
-The stop hook removed all calls to `createTipAndStrategy` (moved to Angel). It's still exported from `experience-patterns.ts` but has no callers outside its own module. No Angel code calls it either -- the Angel uses `createPattern` directly.
+The regular-turn materialization probe is correctly gated:
+- Only fires on `else` branch (not assembly turns)
+- Minimum prompt length: 30 chars (prevents FTS noise on short inputs)
+- Search limited to 3 results (vs. 10 on assembly turns) -- respects budget
+- Filter: `importance >= 4` -- only decisions and learnings, not ephemeral observations
+- `materializeArtifacts` sets `state = 'materialized'` which makes them visible to the assembler on the next turn -- it does NOT inject directly
 
-### [DESIGN] `hybridSearchAsync` error handling regression (hybrid-retrieval.ts:550)
+**Budget:** Materialization does not consume injection token budget. It sets a DB flag. The assembler's `formatMaterializationLayer` handles the actual rendering and budget check. This is correct.
 
-The old `hybridSearch` function fell back to `hybridSearchSync` on full pipeline failure:
-```typescript
-catch {
-    return hybridSearchSync(db, query, project, options);
-}
-```
-
-The new `hybridSearchAsync` returns an empty array on failure:
-```typescript
-catch {
-    return [];
-}
-```
-
-The recall-server's `claudex_search` tool calls `hybridSearchAsync` as its primary search, with no fallback to `hybridSearchSync` when the async version returns empty due to a non-query-related error. If Qdrant causes an exception during RRF merge (unlikely but possible), all search results are silently lost.
-
-### [DESIGN] `markMessagesDelivered` uses raw `db.prepare` instead of `cachedPrepare` (message-sender.ts:71)
-
-All other DB operations in the codebase use `cachedPrepare` for statement caching. `markMessagesDelivered` uses `db.prepare` directly, likely because the dynamic `IN (?,?,...?)` clause changes shape per call. This is functionally correct but creates a new prepared statement per invocation, which could leak if called frequently. Since delivery happens at most once per prompt, impact is minimal.
-
-### [QUALITY] `os` import added but unused in worker-context.ts
-
-Line 1 adds `import * as os from 'os';` but no `os.*` call is used in the changed code. The `readProjectPrimer` function changes only use `path` and `process.cwd()`.
+**Concern (minor):** If a user sends many 30+ char prompts about the same topic, the same high-importance artifacts will be re-materialized every turn. `materializeArtifacts` is idempotent (sets `state = 'materialized'` which is already set), so this is wasteful but not harmful. Could add a check for `state != 'materialized'` in the query, but that's an optimization, not a bug.
 
 ---
 
-## Minor Issues
+## 4. File ingester embedding backfill
 
-### Comment accuracy issues
+**Verdict: PASS (misleading comment)**
 
-1. `stop.ts`: The doc comment still says "captures decisions, extracts insights, tracks thread, checks checkpoint threshold" -- the updated version lists more operations (conversation turn storage, pattern verification, etc.) but misses the new ones added below (artifact linking, activation decay).
+`Promise.allSettled` is correct: individual embedding failures don't reject the batch, and `allSettled` always resolves (never rejects). The batch is capped at 10 artifacts (`slice(0, 10)`) to limit latency.
 
-2. `hybrid-retrieval.ts:756`: Spread activation docstring says "Unidirectional: source -> targets only" but the code below it only processes `source_id = A.id` queries, which is correct. The old comment mentioning "bidirectional" was wrong.
+**Blocking question:** Yes, it blocks session-start. `ingestFileArtifacts` is `await`ed in session-start (line 188), and the embedding backfill inside it is also `await`ed via `Promise.allSettled`. The comment says "fire-and-forget" but the code awaits. This is a **comment/code mismatch**, not a logic bug. Since hooks are ephemeral, awaiting is the correct behavior -- fire-and-forget would lose the work. The comment should say "awaited, capped to 10 for latency."
 
-### Test coverage gaps
+**Latency impact:** With Ollama running locally, embedding 10 short texts takes ~1-2 seconds. This is within acceptable bounds for session-start (which already does checkpoint loading, assembly, etc). If Ollama is down, the try/catch returns immediately.
 
-1. No tests for `ensureQdrantRunning()` or `ensureAngelRunning()` in session-start.
-2. No tests for `storeConversationTurn()` in lifecycle.ts.
-3. No tests for the ACE escalation logic (`escalatePattern`, `getHelpfulRatio`).
-4. No tests for `getWeakDomains` or `getDomainPredictability`.
-5. No tests for `upsertConversationEmbedding` or `searchConversations` in qdrant-client.
-
-### `resetReferenceEmbeddings` removed from insight-extractor.ts
-
-The test helper `resetReferenceEmbeddings()` was removed. No tests reference it (checked), so no breakage.
+**Query correctness:** `WHERE embedding IS NULL AND artifact_type IN (...)` correctly targets only artifacts that haven't been embedded yet. The `ORDER BY importance DESC LIMIT 20` ensures highest-value artifacts get embedded first, and the `slice(0, 10)` further caps concurrency.
 
 ---
 
-## Angel System Review (Requested)
+## 5. Learning artifact embedding in lifecycle.ts
 
-### pattern-extractor.ts: callClaudeCli removed, callOllama added
+**Verdict: PASS**
 
-**Correct.** The old `callClaudeCli` (Claude CLI subprocess) would trigger CC hooks and create phantom sessions -- the exact problem the Angel spec warns against. The new `callOllama` uses the HTTP API directly (localhost:11434), no hooks involved. The Anthropic API (Priority 1) + Ollama fallback (Priority 2) cascade is properly implemented.
+`embedArtifact` is properly `await`ed (line 1042). The comment explicitly says "awaited because hooks are ephemeral." The try/catch with empty catch block is consistent with the project pattern of non-throwing embedding operations.
 
-The `callOllama` function correctly uses `stream: false` for synchronous response collection. The extraction prompt is well-structured with conservative guardrails ("only extract patterns you're confident represent real corrections").
+The `artId > 0` check is valid -- `createArtifact` returns `Number(result.lastInsertRowid)` which is always positive for successful inserts.
 
-### types.ts: model -> cloudModel + localModel
-
-**Correct.** Clean split: `cloudModel` (default `claude-sonnet-4-6`) for complex reasoning via API, `localModel` (default `llama3.2`) for trivial classification via Ollama. The `model` field no longer exists.
-
-### heartbeat.ts: updated config refs
-
-**Correct.** All references use `ctx.config.cloudModel` and `ctx.config.localModel` appropriately. The heartbeat tick structure is clean: 5 phases with clear separation of concerns.
-
-**Concern:** Phase 4b deletes patterns where `harmful_count > helpful_count` after 5+ triggers. This is aggressive -- a pattern with 3 helpful + 4 harmful (57% harmful) gets deleted. Consider a higher threshold or a minimum harmful_count floor.
-
-### index.ts: updated auth logic
-
-**Correct.** Auth priority is:
-1. CliProxy on localhost:8317 (MAX subscription OAuth) -- checked via HTTP health
-2. ANTHROPIC_API_KEY env var
-3. No auth -- Angel runs Ollama-only
-
-The fallback client (`new Anthropic({ apiKey: 'no-auth-ollama-only', baseURL: 'http://127.0.0.1:0' })`) is clever: it creates a valid SDK object that will fail on any API call, forcing the pattern-extractor to fall through to the Ollama path. The `baseURL: 'http://127.0.0.1:0'` ensures connection refused rather than hitting a real endpoint.
-
-PID file management is correct: write on start, remove on SIGTERM/SIGINT/uncaughtException. Race condition between PID check and PID write is theoretically possible but benign (worst case: two Angels run briefly, both doing idempotent work).
+Static import at line 40 (`import { embedArtifact } from '../../embeddings/embed-pipeline.js'`) is correct and avoids the overhead of dynamic import on every compaction.
 
 ---
 
-## checkpoint/loader.ts: observation_count filter
+## 6. experience-flags.ts -- session_injected_ids merge
 
-**Correct.** The `AND s.observation_count > 0` filter in `loadCheckpoint` prevents phantom sessions (Angel CLI invocations that triggered session-start hooks but had no real user interaction) from being selected as the "last checkpoint." Without this filter, an Angel-spawned session with 0 observations could mask the real user's last checkpoint.
+**Verdict: PASS**
 
-The change applies to both the project-scoped and unscoped queries, which is correct. Tests were updated to use `ensureSession(db, sessionId, project, obsCount=5)` to create valid session rows.
+Three changes, all correct:
 
----
+1. **Interface**: `session_injected_ids: string[]` added to `ExperienceFlags` with docs.
+2. **getExperienceFlags**: Default value `[]`, parsed with `Array.isArray()` guard. Falls through to default on parse failure.
+3. **setExperienceFlags**: Uses `updates.session_injected_ids ?? current.session_injected_ids` for merge. This means if the caller doesn't include `session_injected_ids` in updates, the existing value is preserved.
 
-## Hook Return Value Compliance
-
-| Hook | Return Value | CC Expected Schema | Status |
-|------|-------------|-------------------|--------|
-| SessionStart | `{}` | Empty object | PASS |
-| UserPromptSubmit | `{ hookSpecificOutput: { hookEventName, additionalContext } }` or `{}` | hookSpecificOutput with hookEventName + additionalContext | PASS |
-| Stop | `{ systemMessage }` or `{}` | systemMessage string (top-level) | PASS |
-| SessionEnd | `{}` | Empty object | PASS |
-
-All hook return values conform to CC's expected JSON schema.
+**Correctness of merge in assembler:** The assembler calls `setExperienceFlags` with all three fields (`injected_pattern_ids`, `injected_topic_keys`, `session_injected_ids`). The `session_injected_ids` value is the deduplicated accumulation of current + new. The `injected_pattern_ids` and `injected_topic_keys` are the **current turn's** IDs (not accumulated) -- this is correct because the Stop hook needs to know which patterns were injected on this specific turn for scoring.
 
 ---
 
-## Async Operations in Ephemeral Contexts
+## 7. Import and call-site verification
 
-| Operation | Hook | Awaited? | Status |
-|-----------|------|----------|--------|
-| `ensureQdrantRunning()` | session-start | Yes | PASS |
-| `ensureAngelRunning()` | session-start | Yes | PASS |
-| `captureDecisionsWithClassifier()` | stop | Yes | PASS |
-| `captureInsightsAsLearnings()` | stop | Yes (newly async) | PASS |
-| `embedText()` (conversation turn) | stop | Yes | PASS |
-| `upsertConversationEmbedding()` | stop | Yes | PASS |
-| `embedJournalEntry()` | stop | Yes | PASS |
-| `linkArtifactToRelated()` | stop | Yes | PASS |
-| Cross-session coordination import | user-prompt-submit | Yes (dynamic import) | PASS |
-| `hybridSearchAsync()` | recall-server | Yes | PASS |
+| Import | Source | Real? | Called from production? |
+|---|---|---|---|
+| `getExperienceFlags` | experience-flags.ts:142 | YES | YES (assembler.ts:153, :186) |
+| `setExperienceFlags` | experience-flags.ts:195 | YES | YES (assembler.ts:188) |
+| `findMatchingPatternsHybrid` | experience-patterns.ts:481 | YES | **NO -- dead code** |
+| `embedArtifact` (static) | embed-pipeline.ts:136 | YES | YES (lifecycle.ts:260, :1042) |
+| `embedArtifact` (dynamic) | embed-pipeline.ts:136 | YES | YES (file-ingester.ts:322) |
+| `searchArtifactsGlobal` | artifacts.ts:476 | YES | YES (user-prompt-submit.ts:179) |
+| `materializeArtifacts` | artifacts.ts (existing) | YES | YES (user-prompt-submit.ts:182) |
+| `searchPatterns` | qdrant-client.ts:433 | YES | NO (only used inside dead `findMatchingPatternsHybrid`) |
+| `embedQuery` | embed-pipeline.ts:284 | YES | NO (only used inside dead `findMatchingPatternsHybrid`) |
 
-All async operations in ephemeral hook processes are properly awaited. No fire-and-forget patterns in hooks.
-
----
-
-## New Export Wiring Check
-
-| Export | Module | Imported & Called? | Status |
-|--------|--------|-------------------|--------|
-| `storeConversationTurn` | lifecycle.ts | Yes (stop.ts) | PASS |
-| `consumeInjectedArtifacts` | artifacts.ts | Yes (assembler.ts) | PASS |
-| `upsertConversationEmbedding` | qdrant-client.ts | Yes (stop.ts) | PASS |
-| `searchConversations` | qdrant-client.ts | **No** -- exported but unused | WARN |
-| `hybridSearchAsync` | hybrid-retrieval.ts | Yes (recall-server.ts) | PASS |
-| `extractInsightsCombined` | insight-extractor.ts | Yes (lifecycle.ts) | PASS |
-| `getWeakDomains` | capability-tracker.ts | Yes (user-prompt-submit.ts) | PASS |
-| `getDomainPredictability` | capability-tracker.ts | **No** -- exported but only used internally | WARN |
-| `getPredictabilityGuidance` | capability-tracker.ts | Used internally via `generateDomainAdvisory` | PASS |
-| `escalatePattern` | experience-patterns.ts | Yes (experience-scoring.ts) | PASS |
-| `getHelpfulRatio` | experience-patterns.ts | Used internally in `findMatchingPatterns` | PASS |
-| `createTipAndStrategy` | experience-patterns.ts | **No** -- dead export | WARN |
-| `getCrossSessionActivity` | cross-session-coordination.ts | Yes (user-prompt-submit.ts, dynamic) | PASS |
-| `detectFileConflicts` | cross-session-coordination.ts | Yes (user-prompt-submit.ts, dynamic) | PASS |
-| `formatCrossSessionAwareness` | cross-session-coordination.ts | Yes (user-prompt-submit.ts, dynamic) | PASS |
-| `getPendingMessages` | message-sender.ts | Yes (user-prompt-submit.ts) | PASS |
-| `markMessagesDelivered` | message-sender.ts | Yes (user-prompt-submit.ts) | PASS |
-| `commitEffects` | InjectPayload type | Set in assembler, called in user-prompt-submit | PASS |
+All imports resolve to real exported functions. Two functions (`searchPatterns`, `embedQuery`) are only reachable through the dead `findMatchingPatternsHybrid` code path.
 
 ---
 
-## Build & Test Results
+## Findings Summary
 
-- **Build:** PASS (61ms, all hooks smoke-tested)
-- **Tests:** 92 files, 1714 tests, ALL PASSING
-- **New test files:** 3 (angel/message-sender, angel/pattern-extractor, angel/session-monitor)
-
----
-
-## Summary of Required Fixes
-
-| Priority | Issue | File | Fix |
-|----------|-------|------|-----|
-| **P0** | `relevantRows` ReferenceError | experience-patterns.ts:438 | Change `relevantRows` to `rows` |
-| P1 | FTS rank filter comment mismatch | experience-patterns.ts:417 | Update comment to match code (`-10` not `-15`) |
-| P2 | `learnings_fts` missing from SCHEMA_V3 | schema.ts | Add DDL to maintain schema completeness |
-| P2 | `__bonus_guard__` table pollution | stop.ts | Consider dedicated guard mechanism |
-| P3 | `unverified_patterns` type/constraint mismatch | observability/types.ts + schema.ts | Add to CHECK or remove from types |
-| P3 | Dead export `createTipAndStrategy` | experience-patterns.ts | Remove or mark @deprecated |
-| P3 | Unused `os` import | worker-context.ts | Remove |
-| P3 | `searchConversations` exported but unused | qdrant-client.ts | Keep (future use) or remove |
+| # | Severity | File | Finding |
+|---|---|---|---|
+| 1 | **BUG** | experience-patterns.ts:499 | `String(vr.id)` uses numeric hash instead of ULID from `payload.pattern_id_str`. Pattern DB lookups will always miss. Dead code -- no production impact yet. |
+| 2 | **WARN** | file-ingester.ts:306 | Comment says "fire-and-forget" but code awaits `Promise.allSettled`. Comment/code mismatch. |
+| 3 | **INFO** | experience-patterns.ts:481 | `findMatchingPatternsHybrid` is exported but never called. Dead code awaiting wiring. |
+| 4 | **INFO** | user-prompt-submit.ts:179 | Importance probe re-materializes already-materialized artifacts. Idempotent but wasteful on repeated same-topic prompts. |
 
 ---
 
-## Grade Rationale: B-
+## Grade: **A-**
 
-**Strengths:**
-- Architectural clarity: Hook/Angel split is well-designed and correctly implemented
-- Security: Angel spawn uses absolute paths, safe CWD, hardened against PATH hijacking
-- Robustness: Comprehensive non-throwing patterns, proper async await in ephemeral contexts
-- Data integrity: conversation_turns dual-write (SQLite + Qdrant), dedup guards, staleness filters
-- Test discipline: all 1714 tests pass, new Angel modules have test coverage
+One real bug in dead code, one misleading comment, zero production-path defects. All 1714 tests pass. Build clean. The suppression accumulation logic is correct and race-free. The importance probe respects budget boundaries. Embedding in lifecycle.ts is properly awaited. Experience flags merge is sound.
 
-**Weaknesses:**
-- P0 bug: `relevantRows` ReferenceError makes the entire ACE ranking system dead code
-- ACE ranking never executes in production (masked by fallback, but the feature is silently broken)
-- Schema completeness gap (`learnings_fts` not in DDL)
-- Some dead exports left behind from the Hook->Angel migration
-- Test coverage gaps for new Angel spawn logic and ACE escalation paths
+The A- (not A) is for shipping dead code with a latent bug. The `findMatchingPatternsHybrid` function will silently return FTS-only results when wired in (Qdrant matches will never resolve from DB). Fix the ID lookup before connecting it to the assembler.

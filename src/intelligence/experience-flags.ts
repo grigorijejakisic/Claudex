@@ -115,6 +115,11 @@ export interface ExperienceFlags {
    * Cleared after consumption.
    */
   pending_trigger_domains: string[];
+  /**
+   * ALL pattern IDs injected during this session (accumulated, never cleared).
+   * Used for per-session suppression — don't re-inject a pattern already shown.
+   */
+  session_injected_ids: string[];
 }
 
 export interface BehavioralCounters {
@@ -146,6 +151,7 @@ export function getExperienceFlags(
     awaiting_topic_keys: [],
     correction_prompt: '',
     pending_trigger_domains: [],
+    session_injected_ids: [],
   };
   try {
     const parsed = readRoleExchange<Record<string, unknown>>(db, sessionId, EXP_FLAGS_ROLE, {});
@@ -168,6 +174,9 @@ export function getExperienceFlags(
         : '',
       pending_trigger_domains: Array.isArray(parsed.pending_trigger_domains)
         ? parsed.pending_trigger_domains as string[]
+        : [],
+      session_injected_ids: Array.isArray(parsed.session_injected_ids)
+        ? parsed.session_injected_ids as string[]
         : [],
     };
   } catch {
@@ -199,6 +208,7 @@ export function setExperienceFlags(
       awaiting_topic_keys: updates.awaiting_topic_keys ?? current.awaiting_topic_keys,
       correction_prompt: updates.correction_prompt ?? current.correction_prompt,
       pending_trigger_domains: updates.pending_trigger_domains ?? current.pending_trigger_domains,
+      session_injected_ids: updates.session_injected_ids ?? current.session_injected_ids,
     };
     writeRoleExchange(db, sessionId, EXP_FLAGS_ROLE, merged);
   } catch (e) {

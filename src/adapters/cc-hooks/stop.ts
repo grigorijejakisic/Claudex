@@ -152,7 +152,9 @@ const main = wrapHook('Stop', async (input, ctx) => {
         }
       }
     }
-  } catch { /* non-fatal */ }
+  } catch (e) {
+    emitErrorTelemetry(ctx.db, input.session_id, 'stop/conversation_embedding', e);
+  }
 
   // Embed thread summary
   try {
@@ -338,7 +340,9 @@ const main = wrapHook('Stop', async (input, ctx) => {
         entry_type: entry.entry_type,
       });
     }
-  } catch { /* non-fatal */ }
+  } catch (e) {
+    emitErrorTelemetry(ctx.db, input.session_id, 'stop/journal_embedding', e);
+  }
 
   // Artifact linking — link recent unlinked artifacts to related ones
   try {

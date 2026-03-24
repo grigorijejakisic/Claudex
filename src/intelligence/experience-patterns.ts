@@ -472,6 +472,50 @@ export function findMatchingPatterns(
   }
 }
 
+/**
+ * Async hybrid pattern matching: FTS5 + Qdrant vector search.
+ * Merges keyword matches (FTS5) with semantic matches (vector similarity).
+ * Falls back gracefully when Qdrant or embeddings are unavailable.
+ * Non-throwing.
+ */
+export async function findMatchingPatternsHybrid(
+  db: Database,
+  prompt: string,
+  project: string,
+  limit: number = 3,
+): Promise<ExperiencePattern[]> {
+  // Start with FTS5 results (sync, always available)
+  const ftsResults = findMatchingPatterns(db, prompt, project, limit);
+  const seenIds = new Set(ftsResults.map(p => p.id));
+
+  // Augment with Qdrant vector search (async, optional)
+  try {
+    const { embedQuery } = await import('../embeddings/embed-pipeline.js');
+    const embedding = await embedQuery(prompt);
+    if (embedding) {
+      const { searchPatterns } = await import('../embeddings/qdrant-client.js');
+      const vectorResults = await searchPatterns(embedding, project, limit);
+      for (const vr of vectorResults) {
+        // Qdrant point ID is a hashed int — the actual DB pattern ID is in the payload
+        const patternId = (vr.payload?.pattern_id as string) ?? String(vr.id);
+        if (seenIds.has(patternId)) continue;
+        // Load the full pattern from DB
+        try {
+          const pattern = cachedPrepare(db,
+            `SELECT * FROM experience_patterns WHERE id = ? AND score >= 2`
+          ).get(patternId) as ExperiencePattern | undefined;
+          if (pattern) {
+            ftsResults.push(pattern);
+            seenIds.add(pattern.id);
+          }
+        } catch { /* individual lookup failure */ }
+      }
+    }
+  } catch { /* Qdrant/embeddings unavailable — FTS5 results are sufficient */ }
+
+  return ftsResults.slice(0, limit);
+}
+
 /** LIKE-based fallback when FTS5 query fails (e.g. special characters in prompt). */
 function findMatchingPatternsFallback(
   db: Database,

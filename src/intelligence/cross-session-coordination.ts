@@ -120,43 +120,42 @@ export function detectFileConflicts(
   try {
     const fiveMinAgo = Math.floor(Date.now() / 1000) - 300;
 
-    // Get files this session has edited recently
-    const myFiles = cachedPrepare(db,
-      `SELECT DISTINCT json_each.value as file_path
-       FROM observations, json_each(observations.files_modified)
-       WHERE observations.session_id = ?
-         AND observations.tool_name IN ('Edit', 'Write')
-         AND observations.timestamp_epoch > ?
-         AND json_each.value != ''`
-    ).all(currentSessionId, fiveMinAgo) as Array<{ file_path: string }>;
-
-    if (myFiles.length === 0) return [];
-
-    const conflicts: Array<{ file_path: string; sessions: string[] }> = [];
-
-    for (const { file_path } of myFiles) {
-      // Check if any OTHER active session also edited this file recently
-      const others = cachedPrepare(db,
-        `SELECT DISTINCT o.session_id
+    // Single query: find files edited by BOTH the current session AND other active sessions.
+    // Replaces per-file N+1 queries with one JOIN-based query.
+    const rows = db.prepare(
+      `SELECT my.file_path, other.session_id
+       FROM (
+         SELECT DISTINCT jf.value AS file_path
          FROM observations o, json_each(o.files_modified) jf
-         JOIN sessions s ON s.session_id = o.session_id
-         WHERE jf.value = ?
-           AND o.session_id != ?
-           AND s.status = 'active'
-           AND s.project = ?
+         WHERE o.session_id = ?
            AND o.tool_name IN ('Edit', 'Write')
-           AND o.timestamp_epoch > ?`
-      ).all(file_path, currentSessionId, project, fiveMinAgo) as Array<{ session_id: string }>;
+           AND o.timestamp_epoch > ?
+           AND jf.value != ''
+       ) my
+       JOIN observations o2 ON 1=1
+       JOIN json_each(o2.files_modified) jf2 ON jf2.value = my.file_path
+       JOIN sessions s ON s.session_id = o2.session_id
+       WHERE o2.session_id != ?
+         AND s.status = 'active'
+         AND s.project = ?
+         AND o2.tool_name IN ('Edit', 'Write')
+         AND o2.timestamp_epoch > ?`
+    ).all(currentSessionId, fiveMinAgo, currentSessionId, project, fiveMinAgo) as Array<{
+      file_path: string; session_id: string;
+    }>;
 
-      if (others.length > 0) {
-        conflicts.push({
-          file_path,
-          sessions: [currentSessionId, ...others.map(o => o.session_id)],
-        });
-      }
+    // Group by file path
+    const conflictMap = new Map<string, Set<string>>();
+    for (const r of rows) {
+      const sessions = conflictMap.get(r.file_path) ?? new Set([currentSessionId]);
+      sessions.add(r.session_id);
+      conflictMap.set(r.file_path, sessions);
     }
 
-    return conflicts;
+    return Array.from(conflictMap.entries()).map(([file_path, sessions]) => ({
+      file_path,
+      sessions: [...sessions],
+    }));
   } catch {
     return [];
   }

@@ -16,6 +16,7 @@ import { emitTelemetry } from '../../observability/telemetry.js';
 import { emitErrorTelemetry } from '../../observability/error-telemetry.js';
 import { persistTopicIfShifted, ensureInitialTopic, captureFlowEntry, captureExplicitDecisions, captureUserFraming } from '../shared/lifecycle.js';
 import { searchArtifactsGlobal, materializeArtifacts } from '../../core/artifacts.js';
+import { findMatchingPatternsHybrid } from '../../intelligence/experience-patterns.js';
 import { getCooldownState, setCooldownState } from '../../core/thread.js';
 import { routeByContent, buildProjectIndex } from '../../shared/content-router.js';
 import { setExperienceFlags, getExperienceFlags } from '../../intelligence/experience-flags.js';
@@ -155,29 +156,48 @@ const main = wrapHook('UserPromptSubmit', async (input, ctx) => {
     }
   }
 
-  // Materialize artifacts for assembly turns only (post-compaction and topic shift).
-  // Regular turns don't render materialized artifacts — no point searching every prompt.
-  // Global search: artifacts are the cross-project knowledge layer. routedProject is
-  // used as the priority bias so content-routed project results surface first.
+  // Materialize artifacts on assembly turns (post-compaction, topic shift) and
+  // on regular turns when the prompt strongly matches high-importance artifacts.
   if (isPostCompaction || topicShift?.shifted) {
+    // Full materialization on assembly turns
     try {
       const query = prompt || topicShift?.newTopic;
       if (query) {
         const matches = searchArtifactsGlobal(ctx.db, routedProject, query, 10);
         if (matches.length > 0) {
-          // Only materialize same-project artifacts — cross-project ones surface
-          // via global search without contaminating their home project's state
           materializeArtifacts(ctx.db, matches.map(a => a.id), ctx.project);
         }
       }
     } catch (e) {
       emitErrorTelemetry(ctx.db, input.session_id, 'artifact_materialize', e);
     }
+  } else if (prompt && prompt.length >= 30) {
+    // Lightweight importance probe on regular turns — only materialize
+    // high-importance artifacts (decisions, learnings) that strongly match.
+    // This catches cases where the user mentions a topic with existing artifacts
+    // but the topic-shift detector didn't fire.
+    try {
+      const probeResults = searchArtifactsGlobal(ctx.db, routedProject, prompt, 3);
+      const highImportance = probeResults.filter(a => a.importance >= 4);
+      if (highImportance.length > 0) {
+        materializeArtifacts(ctx.db, highImportance.map(a => a.id), ctx.project);
+      }
+    } catch { /* non-fatal — regular turn materialization is supplementary */ }
   }
 
   // ---------------------------------------------------------------------------
   // Experience pattern detection
   // ---------------------------------------------------------------------------
+
+  // On assembly turns, run hybrid pattern search (FTS5 + Qdrant vector)
+  // to find semantically similar patterns that keyword matching misses.
+  // Results are available to the assembler via findMatchingPatterns (FTS5 handles
+  // the sync path; this async call pre-warms Qdrant-only matches into the DB cache).
+  if ((isPostCompaction || topicShift?.shifted) && prompt) {
+    try {
+      await findMatchingPatternsHybrid(ctx.db, prompt, routedProject, 3);
+    } catch { /* non-fatal — FTS5 path is the safety net */ }
+  }
 
   // Reset correction flags at turn start — stale flags from a previous turn
   // must not leak into this turn's Stop hook processing (R6).

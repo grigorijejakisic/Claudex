@@ -39,7 +39,7 @@ import {
   generateTopicKey,
   promoteToGlobalIfCrossProject,
 } from '../intelligence/experience-patterns.js';
-import { setExperienceFlags } from '../intelligence/experience-flags.js';
+import { setExperienceFlags, getExperienceFlags } from '../intelligence/experience-flags.js';
 import { redactContent } from '../extraction/redaction.js';
 import { loadCheckpoint, loadFromFile } from '../checkpoint/loader.js';
 import { renderCheckpointMarkdown } from '../checkpoint/inject.js';
@@ -143,8 +143,22 @@ function renderExperienceWarnings(
 ): ExperienceWarningResult | null {
   try {
     if (!query) return null;
-    const patterns = findMatchingPatterns(db, query, project, 3);
+    let patterns = findMatchingPatterns(db, query, project, 3);
     if (patterns.length === 0) return null;
+
+    // Per-session suppression: don't re-inject patterns already shown this session.
+    // This prevents the same warning from appearing on every prompt.
+    if (sessionId) {
+      try {
+        const flags = getExperienceFlags(db, sessionId);
+        const seen = new Set(flags.session_injected_ids);
+        if (seen.size > 0) {
+          patterns = patterns.filter(p => !seen.has(p.id));
+          if (patterns.length === 0) return null;
+        }
+      } catch { /* non-fatal — skip suppression */ }
+    }
+
     const section = formatExperienceWarningsSection(patterns);
     if (!section) return null;
 
@@ -163,18 +177,18 @@ function renderExperienceWarnings(
       applyEffects: () => {
         for (const p of patterns) {
           incrementTriggerCount(db, p.id);
-          // Auto-promote cross-project patterns: if a pattern was stored under a
-          // different project but matched here, it proved global relevance.
           if (p.source_project !== project && p.source_project !== GLOBAL_PROJECT_SCOPE) {
             promoteToGlobalIfCrossProject(db, p.id, project);
           }
         }
         if (injectedIds.length > 0 && sessionId) {
+          // Accumulate into session_injected_ids (never cleared during session)
+          const currentFlags = getExperienceFlags(db, sessionId);
+          const accumulated = [...new Set([...currentFlags.session_injected_ids, ...injectedIds])];
           setExperienceFlags(db, sessionId, {
             injected_pattern_ids: injectedIds,
-            // Persist topic keys alongside IDs so Stop hook can do per-pattern
-            // topic-aware scoring without an extra DB read of each pattern.
             injected_topic_keys: topicKeys,
+            session_injected_ids: accumulated,
           });
         }
       },

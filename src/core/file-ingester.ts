@@ -302,6 +302,40 @@ export async function ingestFileArtifacts(
     });
 
     ingestTx();
+
+    // Embed newly ingested artifacts (awaited — must complete before session-start returns).
+    // Batch-embeds up to 10 artifacts in parallel via Promise.allSettled.
+    // Adds ~2-5s on first run, subsequent starts find most artifacts already embedded.
+    try {
+      const unembedded = cachedPrepare(db,
+        `SELECT id, summary, content, artifact_type, importance, session_id
+         FROM artifacts
+         WHERE project = ? AND embedding IS NULL
+           AND artifact_type IN ('session_log', 'decision', 'learning', 'handoff', 'memory_file')
+         ORDER BY importance DESC
+         LIMIT 20`
+      ).all(project) as Array<{
+        id: number; summary: string; content: string;
+        artifact_type: string; importance: number; session_id: string;
+      }>;
+
+      if (unembedded.length > 0) {
+        const { embedArtifact } = await import('../embeddings/embed-pipeline.js');
+        // Process in parallel with a concurrency cap
+        const batch = unembedded.slice(0, 10);
+        await Promise.allSettled(batch.map(a =>
+          embedArtifact(db, a.id, [a.summary, a.content].filter(Boolean).join(' '), {
+            project,
+            artifact_type: a.artifact_type,
+            importance: a.importance,
+            session_id: a.session_id,
+            summary: a.summary,
+          })
+        ));
+      }
+    } catch {
+      // Embedding is supplementary — never blocks ingestion
+    }
   } catch {
     // Non-throwing
   }
