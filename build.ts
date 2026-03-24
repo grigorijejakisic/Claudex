@@ -27,6 +27,7 @@ const optionalEntryPoints = [
   'src/adapters/openclaw-bridge/plugin-entry.ts',
   'src/mcp/recall-server.ts',
   'src/angel/index.ts',
+  'src/benchmark/locomo-harness.ts',
 ];
 
 /** Hook entry points to smoke test after build.
