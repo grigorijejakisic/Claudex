@@ -26,6 +26,7 @@ import { cachedPrepare } from './stmt-cache.js';
 import { tokenizeQuery } from '../shared/search-utils.js';
 import { getRetrievalScoreMultiplier } from '../intelligence/retrieval-feedback.js';
 import { graphWalkFromSeeds } from './graph-walk.js';
+import { getPolicy } from '../intelligence/policy-registry.js';
 import type { ArtifactRow } from './artifacts.js';
 
 // ---------------------------------------------------------------------------
@@ -366,8 +367,9 @@ const RIF_DECREMENT = 0.03;
 
 /** Minimum RRF score for a candidate to be subject to RIF.
  * With RRF_K=60 and 4 channels, max possible score is 4*(1/60)=0.067.
- * Threshold must be below this to be reachable. */
-const RIF_MIN_RRF = 0.01;
+ * Threshold must be below this to be reachable.
+ * @deprecated Use getPolicy().shouldSuppressCandidate() instead. Kept for reference. */
+export const RIF_MIN_RRF = 0.01;
 
 /** Minimum activation score floor after RIF. */
 const RIF_ACTIVATION_FLOOR = 0.1;
@@ -377,8 +379,7 @@ const RIF_ACTIVATION_FLOOR = 0.1;
  *
  * Candidates that scored above RIF_MIN_RRF in RRF but were not selected
  * (below the top-K cutoff) get a small activation_score decrement.
- * This is lightweight per query but accumulates over many queries for
- * consistently-not-selected artifacts.
+ * Suppression decision delegated to MemoryPolicy.shouldSuppressCandidate().
  *
  * Based on psychology's retrieval-induced forgetting: non-selected
  * candidates are actively suppressed when competitors are retrieved.
@@ -391,9 +392,11 @@ export function applyRetrievalInducedSuppression(
   selectedIds: Set<number>,
 ): void {
   try {
+    const policy = getPolicy();
+
     for (const [artifactId, rrfScore] of rrfScores) {
-      // Only suppress candidates that scored above threshold but weren't selected
-      if (rrfScore >= RIF_MIN_RRF && !selectedIds.has(artifactId)) {
+      // Delegate suppression decision to memory policy
+      if (policy.shouldSuppressCandidate(rrfScore) && !selectedIds.has(artifactId)) {
         cachedPrepare(db,
           `UPDATE artifacts SET activation_score = MAX(?, activation_score - ?)
            WHERE id = ? AND activation_score IS NOT NULL`

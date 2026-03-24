@@ -19,6 +19,7 @@
 import type { Database } from 'better-sqlite3';
 import type { IntentType } from './intent-classifier.js';
 import { cachedPrepare } from '../core/stmt-cache.js';
+import { getPolicy } from './policy-registry.js';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -43,8 +44,24 @@ export interface PredictionResult {
 // Constants
 // ---------------------------------------------------------------------------
 
-/** Minimum confidence for auto-injection into assembly. */
+/** Minimum confidence for auto-injection into assembly.
+ * @deprecated Use getPolicy().getPredictionThreshold() instead. Kept for test/import compatibility. */
 export const CONFIDENCE_THRESHOLD = 0.4;
+
+/**
+ * Returns the prediction confidence threshold from the active memory policy.
+ * Use this for runtime threshold checks instead of the static CONFIDENCE_THRESHOLD.
+ */
+export function getPredictionThreshold(): number {
+  const now = new Date();
+  return getPolicy().getPredictionThreshold({
+    sessionId: '',
+    project: '',
+    hourOfDay: now.getHours(),
+    dayOfWeek: now.getDay(),
+    hoursSinceLastSession: 0,
+  });
+}
 
 /** Maximum tokens allocated for predicted context in assembly. */
 export const PREDICTED_CONTEXT_BUDGET = 2000;

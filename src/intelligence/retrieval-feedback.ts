@@ -17,6 +17,7 @@
 import type { Database } from 'better-sqlite3';
 import { cachedPrepare } from '../core/stmt-cache.js';
 import { tokenizeQuery } from '../shared/search-utils.js';
+import { getPolicy } from './policy-registry.js';
 
 /** Score deltas for each signal type (additive). */
 const SCORE_REFERENCED = 0.1;
@@ -232,21 +233,27 @@ export function updateRetrievalEventOutcomes(
 // Part 5.2: Retrieval Score as Multiplier (with negative learning)
 // ---------------------------------------------------------------------------
 
-/** Minimum unreferenced retrievals before suppression kicks in. */
-const NEGATIVE_LEARNING_THRESHOLD = 3;
+/** Minimum unreferenced retrievals before suppression kicks in.
+ * @deprecated Use getPolicy().scoreForRetrieval() instead. Kept for test compatibility. */
+export const NEGATIVE_LEARNING_THRESHOLD = 3;
 
-/** Maximum suppression magnitude (never suppress more than 50%). */
-const MAX_SUPPRESSION = -0.5;
+/** Maximum suppression magnitude (never suppress more than 50%).
+ * @deprecated Use getPolicy().scoreForRetrieval() instead. Kept for test compatibility. */
+export const MAX_SUPPRESSION = -0.5;
 
-/** Per-unreferenced suppression step beyond threshold. */
-const SUPPRESSION_STEP = -0.1;
+/** Per-unreferenced suppression step beyond threshold.
+ * @deprecated Use getPolicy().scoreForRetrieval() instead. Kept for test compatibility. */
+export const SUPPRESSION_STEP = -0.1;
 
-/** Floor multiplier — never fully suppress an artifact. */
-const MULTIPLIER_FLOOR = 0.5;
+/** Floor multiplier — never fully suppress an artifact.
+ * @deprecated Use getPolicy().scoreForRetrieval() instead. Kept for test compatibility. */
+export const MULTIPLIER_FLOOR = 0.5;
 
 /**
  * Returns the retrieval score multiplier for an artifact, incorporating
  * negative learning from unreferenced retrievals.
+ *
+ * Delegates to MemoryPolicy.scoreForRetrieval() for the suppression logic.
  *
  * Base multiplier: retrieval_score from artifacts table (EMA of past outcomes).
  *
@@ -274,36 +281,19 @@ export function getRetrievalScoreMultiplier(
 
     const baseMultiplier = row.retrieval_score;
 
-    // Query unreferenced/referenced counts from retrieval_events
-    const counts = cachedPrepare(db,
-      `SELECT
-         SUM(CASE WHEN was_referenced = 0 THEN 1 ELSE 0 END) AS unreferenced,
-         SUM(CASE WHEN was_referenced = 1 THEN 1 ELSE 0 END) AS referenced
-       FROM retrieval_events
-       WHERE artifact_id = ? AND was_referenced IS NOT NULL`
-    ).get(artifactId) as { unreferenced: number | null; referenced: number | null } | undefined;
+    const policy = getPolicy();
 
-    const unreferenced = counts?.unreferenced ?? 0;
-    const referenced = counts?.referenced ?? 0;
+    // Delegate to policy — passes db so policy can query retrieval_events
+    const now = new Date();
+    const context = {
+      sessionId: '',
+      project: '',
+      hourOfDay: now.getHours(),
+      dayOfWeek: now.getDay(),
+      hoursSinceLastSession: 0,
+    };
 
-    // No suppression if below threshold
-    if (unreferenced < NEGATIVE_LEARNING_THRESHOLD) {
-      return baseMultiplier;
-    }
-
-    // Compute raw suppression: -0.1 per unreferenced beyond 2, capped at -0.5
-    let suppression = Math.max(MAX_SUPPRESSION, SUPPRESSION_STEP * (unreferenced - 2));
-
-    // Scale by unreferenced ratio — positive signals reduce suppression
-    if (referenced > 0) {
-      suppression *= unreferenced / (unreferenced + referenced);
-    }
-
-    // Apply suppression to base multiplier
-    const multiplier = baseMultiplier * (1.0 + suppression);
-
-    // Floor: never below 0.5×
-    return Math.max(MULTIPLIER_FLOOR, multiplier);
+    return policy.scoreForRetrieval(artifactId, baseMultiplier, context, db);
   } catch {
     return 1.0;
   }

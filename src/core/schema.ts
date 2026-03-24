@@ -576,6 +576,18 @@ CREATE TABLE IF NOT EXISTS action_transitions (
   last_epoch INTEGER NOT NULL DEFAULT (unixepoch()),
   PRIMARY KEY (project, from_action, to_action)
 );
+
+-- V11: policy_weights — persisted RL model weights for memory policy training
+CREATE TABLE IF NOT EXISTS policy_weights (
+  id INTEGER PRIMARY KEY,
+  project TEXT NOT NULL,
+  model_name TEXT NOT NULL DEFAULT 'default',
+  weights BLOB NOT NULL,
+  training_episodes INTEGER NOT NULL DEFAULT 0,
+  avg_reward REAL,
+  created_at_epoch INTEGER NOT NULL DEFAULT (unixepoch()),
+  UNIQUE(project, model_name)
+);
 `;
 
 /**

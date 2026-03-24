@@ -51,6 +51,7 @@ import {
   recordPredictionAccuracy,
   determineActualIntent,
 } from '../../intelligence/intent-predictor.js';
+import { getPolicy } from '../../intelligence/policy-registry.js';
 import type { Database } from 'better-sqlite3';
 
 // ---------------------------------------------------------------------------
@@ -246,14 +247,15 @@ const main = wrapHook('Stop', async (input, ctx) => {
 
   // Pattern verification + helpful scoring — MECHANICAL feedback loop.
   // If patterns were injected this turn and no correction followed:
-  //   1. Increment verification_count (→ verified at 2, gets 1.5x boost)
-  //   2. Increment helpful_count via updatePatternScore(+1) (→ ACE ranking)
+  //   1. Increment verification_count (-> verified at 2, gets 1.5x boost)
+  //   2. Increment helpful_count via updatePatternScore(+1) (-> ACE ranking)
   //   3. Update confidence (Laplace smoothing) and check maturity promotion (Phase 15)
   // If correction WAS flagged:
-  //   4. Apply 4× harmful multiplier to score (Phase 15)
+  //   4. Apply 4x harmful multiplier to score (Phase 15) — via policy.evaluatePattern()
   //   5. Check anti-pattern inversion for persistently harmful patterns (Phase 15)
   // This teaches the system which patterns are useful.
   runHookStep('pattern_verification', () => {
+    const policy = getPolicy();
     const flags = getExperienceFlags(ctx.db, input.session_id);
     const triggeredIds: string[] = [];
 
@@ -262,15 +264,15 @@ const main = wrapHook('Stop', async (input, ctx) => {
         triggeredIds.push(pid);
 
         if (!flags.correction_flagged) {
-          // Helpful path: no correction → pattern was useful
+          // Helpful path: no correction -> pattern was useful
           incrementVerificationCount(ctx.db, pid);
           updatePatternScore(ctx.db, pid, 1); // +1 score, +1 helpful_count
         } else {
-          // Harmful path: correction detected → 4× harmful multiplier
+          // Harmful path: correction detected -> 4x harmful multiplier (via policy)
           updatePatternScore(ctx.db, pid, -4); // -4 score, +1 harmful_count
         }
 
-        // Recompute confidence and check maturity promotion
+        // Recompute confidence and check maturity promotion via policy
         const row = cachedPrepare(ctx.db,
           `SELECT helpful_count, harmful_count, times_triggered, verification_count,
                   maturity, confidence FROM experience_patterns WHERE id = ?`
@@ -281,21 +283,29 @@ const main = wrapHook('Stop', async (input, ctx) => {
           const newConfidence = computeConfidence(row.helpful_count, row.harmful_count);
           updatePatternConfidence(ctx.db, pid, newConfidence);
 
-          // Check maturity promotion
-          const promotion = checkMaturityPromotion(row as ExperiencePattern);
-          if (promotion) {
-            promotePatternMaturity(ctx.db, pid, promotion);
-          }
+          // Delegate promotion/inversion decision to memory policy
+          const patternAction = policy.evaluatePattern(
+            row.helpful_count,
+            row.harmful_count,
+            row.times_triggered,
+            row.verification_count,
+            row.maturity || 'candidate',
+          );
 
-          // Check anti-pattern inversion for persistently harmful patterns
-          if (shouldInvertToWarning(row as ExperiencePattern)) {
+          if (patternAction === 'promote') {
+            // Determine promotion target from current maturity
+            const promotion = checkMaturityPromotion(row as ExperiencePattern);
+            if (promotion) {
+              promotePatternMaturity(ctx.db, pid, promotion);
+            }
+          } else if (patternAction === 'invert') {
             invertToWarning(ctx.db, pid);
           }
         }
       }
     }
 
-    // Slow confidence decay for non-triggered patterns (0.995× per turn)
+    // Slow confidence decay for non-triggered patterns (0.995x per turn)
     decayPatternConfidence(ctx.db, triggeredIds);
   }, ctx.db, input.session_id);
 

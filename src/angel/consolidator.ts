@@ -34,8 +34,9 @@ let _lastConsolidationEpoch = 0;
 /** Minimum interval between consolidation runs (seconds). */
 const CONSOLIDATION_INTERVAL_SEC = 5 * 60; // 5 minutes
 
-/** Cosine similarity threshold for clustering. */
-const CLUSTER_COSINE_THRESHOLD = 0.8;
+/** Cosine similarity threshold for clustering.
+ * @deprecated Use getPolicy().shouldConsolidate() for cluster decisions. Kept for clustering logic. */
+export const CLUSTER_COSINE_THRESHOLD = 0.8;
 
 /**
  * Check if consolidation should run this tick (rate limiting).
@@ -414,19 +415,26 @@ export async function consolidateObservationBatch(
       return result; // No similar observations found
     }
 
-    // 4-6. Process each cluster
+    // 4-6. Process each cluster — delegate decision to memory policy
+    const { getPolicy } = await import('../intelligence/policy-registry.js');
+    const policy = getPolicy();
+
     for (const cluster of clusters) {
       try {
-        if (cluster.length >= 3) {
-          // LLM consolidation for larger clusters
-          const newId = await consolidateCluster(db, cluster, localModel);
-          if (newId > 0) result.consolidated++;
-        } else if (cluster.length === 2) {
-          // Direct merge for pairs
-          const newId = await mergePair(db, cluster);
-          if (newId > 0) result.consolidated++;
+        const decision = policy.shouldConsolidate(cluster.length, CLUSTER_COSINE_THRESHOLD);
+
+        if (decision === 'merge') {
+          if (cluster.length >= 3) {
+            // LLM consolidation for larger clusters
+            const newId = await consolidateCluster(db, cluster, localModel);
+            if (newId > 0) result.consolidated++;
+          } else if (cluster.length === 2) {
+            // Direct merge for pairs
+            const newId = await mergePair(db, cluster);
+            if (newId > 0) result.consolidated++;
+          }
         }
-        // Singletons (length 1) are skipped — buildClusters already filters them out
+        // 'skip' or 'keep' — do not consolidate
       } catch {
         // Individual cluster failure — continue with others
       }

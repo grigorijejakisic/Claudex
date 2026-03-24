@@ -117,8 +117,9 @@ export function insertObservation(
   return Number(result.lastInsertRowid);
 }
 
-/** Cosine similarity threshold for observation dedup. Above this = duplicate. */
-const DEDUP_COSINE_THRESHOLD = 0.85;
+/** Cosine similarity threshold for observation dedup. Above this = duplicate.
+ * @deprecated Use getPolicy().shouldStore() instead. Kept for test compatibility. */
+export const DEDUP_COSINE_THRESHOLD = 0.85;
 
 /**
  * Async dedup-aware observation insert.
@@ -126,7 +127,7 @@ const DEDUP_COSINE_THRESHOLD = 0.85;
  * Before inserting, embeds `title + ' ' + content` and searches Qdrant
  * `claudex_artifacts` (artifact_type='observation') for cosine > 0.85 matches.
  *
- * Decision logic:
+ * Decision logic delegated to MemoryPolicy.shouldStore():
  * - No match → normal insert
  * - Match in same session → skip (return existing observation ID)
  * - Match in different session → update existing: increment access_count, refresh last_accessed_at_epoch
@@ -158,49 +159,69 @@ export async function insertObservationWithDedup(
         excludeSuperseded: true,
       });
 
-      // Find matches above the dedup threshold
-      const matches = results.filter(r => r.score > DEDUP_COSINE_THRESHOLD);
+      // Find the best match
+      const best = results.length > 0 ? results[0] : null;
+      const bestScore = best?.score ?? 0;
+      const matchSessionId = best?.payload?.session_id as string | undefined;
+      const artifactId = best
+        ? ((best.payload?.artifact_id as number | undefined)
+          ?? (typeof best.id === 'number' ? best.id : 0))
+        : 0;
 
-      if (matches.length > 0) {
-        const best = matches[0];
-        const matchSessionId = best.payload?.session_id as string | undefined;
-        const artifactId = best.payload?.artifact_id as number | undefined
-          ?? (typeof best.id === 'number' ? best.id : 0);
+      // Look up observation ID from artifact
+      let existingObsId = 0;
+      if (artifactId > 0) {
+        const artifact = cachedPrepare(db,
+          `SELECT artifact_ref FROM artifacts WHERE id = ? AND artifact_type = 'observation'`
+        ).get(artifactId) as { artifact_ref: string | null } | undefined;
+        existingObsId = artifact?.artifact_ref ? Number(artifact.artifact_ref) : 0;
 
-        if (artifactId > 0) {
-          // Look up the artifact in SQLite to get artifact_ref (= observation ID)
-          const artifact = cachedPrepare(db,
-            `SELECT artifact_ref FROM artifacts WHERE id = ? AND artifact_type = 'observation'`
-          ).get(artifactId) as { artifact_ref: string | null } | undefined;
-
-          const existingObsId = artifact?.artifact_ref ? Number(artifact.artifact_ref) : 0;
-
-          if (existingObsId > 0) {
-            // Verify the observation still exists in SQLite
-            const existingObs = getObservationById(db, existingObsId);
-
-            if (existingObs) {
-              if (matchSessionId === obs.session_id) {
-                // Same session duplicate → skip entirely
-                return { id: existingObsId, action: 'skipped' };
-              }
-
-              // Different session, semantically identical → update existing
-              try {
-                cachedPrepare(db,
-                  `UPDATE observations
-                   SET access_count = access_count + 1,
-                       last_accessed_at_epoch = unixepoch()
-                   WHERE id = ?`
-                ).run(existingObsId);
-              } catch { /* non-fatal — we still return the existing ID */ }
-
-              return { id: existingObsId, action: 'updated' };
-            }
-            // Observation was deleted from SQLite but still in Qdrant — fall through to insert
-          }
+        // Verify the observation still exists in SQLite
+        if (existingObsId > 0) {
+          const existingObs = getObservationById(db, existingObsId);
+          if (!existingObs) existingObsId = 0; // Deleted from SQLite — fall through
         }
       }
+
+      // Delegate decision to memory policy
+      const { getPolicy } = await import('../intelligence/policy-registry.js');
+      const policy = getPolicy();
+      const candidate = {
+        textToEmbed,
+        sessionId: obs.session_id,
+        project: obs.project,
+        bestMatchScore: bestScore,
+        bestMatchSessionId: matchSessionId,
+        bestMatchObsId: existingObsId,
+      };
+      const now = new Date();
+      const policyContext = {
+        sessionId: obs.session_id,
+        project: obs.project,
+        hourOfDay: now.getHours(),
+        dayOfWeek: now.getDay(),
+        hoursSinceLastSession: 0,
+      };
+
+      const decision = policy.shouldStore(candidate, policyContext);
+
+      if (decision.action === 'skip') {
+        return { id: existingObsId, action: 'skipped' };
+      }
+
+      if (decision.action === 'update' && decision.targetId > 0) {
+        try {
+          cachedPrepare(db,
+            `UPDATE observations
+             SET access_count = access_count + 1,
+                 last_accessed_at_epoch = unixepoch()
+             WHERE id = ?`
+          ).run(decision.targetId);
+        } catch { /* non-fatal — we still return the existing ID */ }
+        return { id: decision.targetId, action: 'updated' };
+      }
+
+      // action === 'add' — fall through to normal insert
     }
     // No embedding or no match — fall through to normal insert
   } catch {

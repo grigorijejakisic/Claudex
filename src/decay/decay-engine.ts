@@ -5,6 +5,7 @@
 
 import type { Database } from 'better-sqlite3';
 import { cachedPrepare } from '../core/stmt-cache.js';
+import { getPolicy } from '../intelligence/policy-registry.js';
 
 import type { StabilityClass } from '../core/observations.js';
 
@@ -52,9 +53,9 @@ export function computeEI(obs: {
   const ageDays = Math.max(0, (Date.now() / 1000 - obs.timestampEpoch) / 86400);
 
   // Resolve stability class with backward-compatible fallback
+  // Delegate to memory policy for half-life lookup
   const stability = obs.stabilityClass ?? 'standard';
-  const hlTable = STABILITY_HALF_LIVES[stability] ?? STABILITY_HALF_LIVES['standard'];
-  const halfLife = hlTable[obs.importance] ?? HALF_LIVES[obs.importance] ?? 7;
+  const halfLife = getPolicy().getHalfLife('', obs.importance, String(stability));
 
   // Permanent/stable importance-5: Infinity half-life → no decay
   if (!isFinite(halfLife)) {
