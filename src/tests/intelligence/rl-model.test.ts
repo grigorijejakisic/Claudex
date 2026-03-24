@@ -340,34 +340,30 @@ describe('Reward signal extraction', () => {
 // ---------------------------------------------------------------------------
 
 describe('RLMemoryPolicy', () => {
-  it('shouldStore returns valid action', () => {
+  it('shouldStore returns valid action (canonical signature)', () => {
     const policy = new RLMemoryPolicy();
     const result = policy.shouldStore(
-      { title: 'test', content: 'test content', category: 'code', importance: 4, tool_name: 'Edit' },
+      { textToEmbed: 'test content', sessionId: 's1', project: 'p1', bestMatchScore: 0 },
       { sessionId: 's1', project: 'p1', hourOfDay: 14, dayOfWeek: 3, hoursSinceLastSession: 2 },
     );
     expect(['add', 'skip', 'update']).toContain(result.action);
   });
 
-  it('scoreForRetrieval returns value in [0, 1]', () => {
+  it('scoreForRetrieval returns value in [0.5, 1] (canonical signature)', () => {
+    const db = createDb();
     const policy = new RLMemoryPolicy();
     const score = policy.scoreForRetrieval(
-      { id: 1, importance: 4, timestamp_epoch: Math.floor(Date.now() / 1000) - 3600 },
-      'test query',
+      1, 1.0,
       { sessionId: 's1', project: 'p1', hourOfDay: 14, dayOfWeek: 3, hoursSinceLastSession: 2 },
+      db,
     );
     expect(score).toBeGreaterThanOrEqual(0);
     expect(score).toBeLessThanOrEqual(1);
   });
 
-  it('shouldConsolidate returns valid action', () => {
+  it('shouldConsolidate returns valid action (canonical signature)', () => {
     const policy = new RLMemoryPolicy();
-    const result = policy.shouldConsolidate({
-      ids: [1, 2, 3],
-      category: 'code',
-      averageImportance: 3,
-      size: 3,
-    });
+    const result = policy.shouldConsolidate(3, 0.85);
     expect(['merge', 'keep', 'skip']).toContain(result);
   });
 
@@ -380,30 +376,23 @@ describe('RLMemoryPolicy', () => {
     expect(threshold).toBeLessThanOrEqual(0.5);
   });
 
-  it('evaluatePattern returns valid action', () => {
+  it('evaluatePattern returns valid action (canonical signature)', () => {
     const policy = new RLMemoryPolicy();
-    const result = policy.evaluatePattern({
-      patternId: 'p1',
-      helpfulCount: 5,
-      harmfulCount: 1,
-      timesTriggered: 10,
-      score: 4,
-    });
+    const result = policy.evaluatePattern(5, 1, 10, 3, 'established');
     expect(['promote', 'demote', 'invert', 'keep']).toContain(result);
   });
 
-  it('getHalfLife returns positive seconds', () => {
+  it('getHalfLife returns positive days (not seconds)', () => {
     const policy = new RLMemoryPolicy();
     const hl = policy.getHalfLife('code', 3, 'standard');
     expect(hl).toBeGreaterThan(0);
+    // Must return days, not seconds. Max possible from model is 90 days.
+    expect(hl).toBeLessThanOrEqual(90);
   });
 
-  it('shouldSuppressCandidate returns boolean', () => {
+  it('shouldSuppressCandidate returns boolean (canonical signature)', () => {
     const policy = new RLMemoryPolicy();
-    const result = policy.shouldSuppressCandidate(
-      { id: 1, importance: 2, timestamp_epoch: Math.floor(Date.now() / 1000) - 86400 },
-      0.005,
-    );
+    const result = policy.shouldSuppressCandidate(0.005);
     expect(typeof result).toBe('boolean');
   });
 });
@@ -454,11 +443,11 @@ describe('RL Trainer', () => {
 
   it('loadRLPolicy returns a usable policy', () => {
     const policy = loadRLPolicy(db, 'test-project');
-    // Should work even with no persisted weights
+    // Should work even with no persisted weights — canonical signature
     const score = policy.scoreForRetrieval(
-      { id: 1, importance: 3, timestamp_epoch: Math.floor(Date.now() / 1000) },
-      'test',
+      1, 1.0,
       { sessionId: 's1', project: 'p1', hourOfDay: 12, dayOfWeek: 1, hoursSinceLastSession: 0 },
+      db,
     );
     expect(score).toBeGreaterThanOrEqual(0);
     expect(score).toBeLessThanOrEqual(1);
@@ -494,12 +483,12 @@ describe('RL Trainer', () => {
     expect(row).toBeDefined();
     expect(row!.training_episodes).toBeGreaterThan(0);
 
-    // Load into a new policy and verify it works
+    // Load into a new policy and verify it works — canonical signature
     const policy = loadRLPolicy(db, 'test-project');
     const score = policy.scoreForRetrieval(
-      { id: 1, importance: 4, timestamp_epoch: now },
-      'test',
+      1, 1.0,
       { sessionId: 's1', project: 'test-project', hourOfDay: 12, dayOfWeek: 1, hoursSinceLastSession: 0 },
+      db,
     );
     expect(score).toBeGreaterThanOrEqual(0);
   });

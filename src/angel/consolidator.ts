@@ -421,6 +421,10 @@ export async function consolidateObservationBatch(
 
     for (const cluster of clusters) {
       try {
+        // Note: CLUSTER_COSINE_THRESHOLD (0.8) is a correct lower bound for average
+        // pairwise similarity within a cluster, since all pairs in the cluster were
+        // formed by requiring cosine > 0.8 during buildClusters(). The actual average
+        // similarity is >= 0.8 for all clusters.
         const decision = policy.shouldConsolidate(cluster.length, CLUSTER_COSINE_THRESHOLD);
 
         if (decision === 'merge') {

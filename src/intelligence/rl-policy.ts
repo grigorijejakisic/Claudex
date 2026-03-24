@@ -5,8 +5,7 @@
  * as a feature vector, running a forward pass, and returning the action
  * with the highest probability.
  *
- * Implements the MemoryPolicy interface (defined locally since the canonical
- * interface is being created by another worker — shapes are compatible).
+ * Implements the canonical MemoryPolicy interface from memory-policy.ts.
  *
  * The RL policy is NOT activated by default — it must prove itself vs the
  * default policy on holdout data before the caller switches to it.
@@ -14,76 +13,17 @@
  * All methods are non-throwing with safe defaults.
  */
 
+import type { Database } from 'better-sqlite3';
 import { SimpleMLP } from './rl-model.js';
 import { buildFeatureVector, FEATURE_DIM } from './rl-reward.js';
-
-// ---------------------------------------------------------------------------
-// Local MemoryPolicy interface (compatible with memory-policy.ts when it exists)
-// ---------------------------------------------------------------------------
-
-export interface ObservationCandidate {
-  title: string;
-  content: string;
-  category: string;
-  importance: number;
-  tool_name: string;
-}
-
-export interface PolicyContext {
-  sessionId: string;
-  project: string;
-  hourOfDay: number;
-  dayOfWeek: number;
-  hoursSinceLastSession: number;
-  activeThreadTopic?: string;
-  recentIntentType?: string;
-}
-
-export type StoreAction =
-  | { action: 'add' }
-  | { action: 'update'; targetId: number }
-  | { action: 'skip'; reason: string };
-
-export type ConsolidateAction = 'merge' | 'keep' | 'skip';
-export type PatternAction = 'promote' | 'demote' | 'invert' | 'keep';
-
-export interface ArtifactForPolicy {
-  id: number;
-  importance: number;
-  timestamp_epoch: number;
-  activation_score?: number;
-  confidence?: number;
-  retrieval_score?: number;
-  novelty_score?: number;
-  stability_class?: string;
-  artifact_type?: string;
-  access_count?: number;
-}
-
-export interface ObservationCluster {
-  ids: number[];
-  category: string;
-  averageImportance: number;
-  size: number;
-}
-
-export interface PatternFeedback {
-  patternId: string;
-  helpfulCount: number;
-  harmfulCount: number;
-  timesTriggered: number;
-  score: number;
-}
-
-export interface MemoryPolicy {
-  shouldStore(obs: ObservationCandidate, context: PolicyContext): StoreAction;
-  scoreForRetrieval(artifact: ArtifactForPolicy, query: string, context: PolicyContext): number;
-  shouldConsolidate(cluster: ObservationCluster): ConsolidateAction;
-  getPredictionThreshold(context: PolicyContext): number;
-  evaluatePattern(pattern: PatternFeedback): PatternAction;
-  getHalfLife(category: string, importance: number, stabilityClass: string): number;
-  shouldSuppressCandidate(artifact: ArtifactForPolicy, rrfScore: number): boolean;
-}
+import type {
+  MemoryPolicy,
+  ObservationCandidate,
+  PolicyContext,
+  StoreAction,
+  ConsolidateAction,
+  PatternAction,
+} from './memory-policy.js';
 
 // ---------------------------------------------------------------------------
 // Action space definitions
@@ -161,10 +101,11 @@ export class RLMemoryPolicy implements MemoryPolicy {
       const now = Math.floor(Date.now() / 1000);
       const features = buildFeatureVector(
         {
-          importance: obs.importance,
+          importance: 3, // default importance for new observations
           timestamp_epoch: now,
           stability_class: 'standard',
           artifact_type: 'observation',
+          confidence: obs.bestMatchScore,
         },
         {
           now,
@@ -188,23 +129,18 @@ export class RLMemoryPolicy implements MemoryPolicy {
 
   /**
    * Score an artifact for retrieval.
-   * Returns a score in [0, 1] range.
+   * Matches canonical signature: (artifactId, baseScore, context, db).
+   * Returns a score in [0.5, baseScore] range (matching DefaultMemoryPolicy floor).
    * 3 bins: action=0 → 0.3 (low), action=1 → 0.6 (medium), action=2 → 1.0 (high).
    */
-  scoreForRetrieval(artifact: ArtifactForPolicy, _query: string, context: PolicyContext): number {
+  scoreForRetrieval(artifactId: number, baseScore: number, context: PolicyContext, _db: Database): number {
     try {
       const now = Math.floor(Date.now() / 1000);
       const features = buildFeatureVector(
         {
-          importance: artifact.importance,
-          timestamp_epoch: artifact.timestamp_epoch,
-          access_count: artifact.access_count,
-          activation_score: artifact.activation_score,
-          confidence: artifact.confidence,
-          retrieval_score: artifact.retrieval_score,
-          novelty_score: artifact.novelty_score,
-          stability_class: artifact.stability_class,
-          artifact_type: artifact.artifact_type,
+          importance: 3, // neutral importance as default
+          timestamp_epoch: now,
+          retrieval_score: baseScore,
         },
         {
           now,
@@ -216,24 +152,28 @@ export class RLMemoryPolicy implements MemoryPolicy {
 
       const probs = this.retrievalModel.forward(features);
       // Weighted sum of bin scores: 0.3, 0.6, 1.0
-      return probs[0] * 0.3 + probs[1] * 0.6 + probs[2] * 1.0;
+      const rlScore = probs[0] * 0.3 + probs[1] * 0.6 + probs[2] * 1.0;
+      // Apply as multiplier to baseScore, with 0.5 floor (matching DefaultMemoryPolicy)
+      return Math.max(0.5, baseScore * rlScore);
     } catch {
-      return 0.5; // neutral default
+      return baseScore; // neutral default: pass through base score
     }
   }
 
   /**
    * Should this cluster be consolidated?
+   * Matches canonical signature: (clusterSize, avgSimilarity).
    * action=0 → merge, action=1 → keep, action=2 → skip.
    */
-  shouldConsolidate(cluster: ObservationCluster): ConsolidateAction {
+  shouldConsolidate(clusterSize: number, avgSimilarity: number): ConsolidateAction {
     try {
       const now = Math.floor(Date.now() / 1000);
       const features = buildFeatureVector(
         {
-          importance: cluster.averageImportance,
+          importance: Math.min(5, clusterSize), // encode cluster size as importance proxy
           timestamp_epoch: now,
-          access_count: cluster.size,
+          access_count: clusterSize,
+          confidence: avgSimilarity,
         },
         { now },
       );
@@ -284,17 +224,28 @@ export class RLMemoryPolicy implements MemoryPolicy {
 
   /**
    * Evaluate pattern feedback.
+   * Matches canonical signature: (helpful, harmful, triggered, verified, maturity).
    * action=0 → promote, action=1 → demote, action=2 → invert, action=3 → keep.
    */
-  evaluatePattern(pattern: PatternFeedback): PatternAction {
+  evaluatePattern(
+    helpful: number,
+    harmful: number,
+    triggered: number,
+    verified: number,
+    maturity: string,
+  ): PatternAction {
     try {
       const now = Math.floor(Date.now() / 1000);
+      const total = helpful + harmful;
+      const helpfulRatio = total > 0 ? helpful / total : 0.5;
       const features = buildFeatureVector(
         {
-          importance: Math.max(1, Math.min(5, pattern.score)),
+          importance: Math.max(1, Math.min(5, Math.round(helpfulRatio * 5))),
           timestamp_epoch: now,
-          access_count: pattern.timesTriggered,
-          confidence: pattern.helpfulCount / Math.max(1, pattern.helpfulCount + pattern.harmfulCount),
+          access_count: triggered,
+          confidence: helpfulRatio,
+          activation_score: verified,
+          stability_class: maturity === 'proven' ? 'stable' : maturity === 'established' ? 'standard' : 'transient',
         },
         { now },
       );
@@ -314,6 +265,7 @@ export class RLMemoryPolicy implements MemoryPolicy {
   /**
    * Half-life for observation decay.
    * Uses category + importance + stability as features, maps to discrete buckets.
+   * Returns DAYS (not seconds) — callers use this in Math.pow(2, -ageDays / halfLife).
    */
   getHalfLife(category: string, importance: number, stabilityClass: string): number {
     try {
@@ -331,36 +283,32 @@ export class RLMemoryPolicy implements MemoryPolicy {
       const probs = this.model.forward(features);
       // Map probability to half-life range: [1 day, 90 days]
       const baseDays = 1 + probs[0] * 89;
-      return baseDays * 86400; // convert to seconds
+      return baseDays; // return days, NOT seconds
     } catch {
-      // Default half-lives by stability class
+      // Default half-lives by stability class (in DAYS)
       const defaults: Record<string, number> = {
-        transient: 86400,    // 1 day
-        standard: 604800,    // 7 days
-        stable: 2592000,     // 30 days
-        permanent: 7776000,  // 90 days
+        transient: 1,     // 1 day
+        standard: 7,      // 7 days
+        stable: 30,       // 30 days
+        permanent: 90,    // 90 days
       };
-      return defaults[stabilityClass] ?? 604800;
+      return defaults[stabilityClass] ?? 7;
     }
   }
 
   /**
    * Should this candidate be suppressed via RIF?
+   * Matches canonical signature: (rrfScore).
    * action=0 → keep, action=1 → suppress.
    */
-  shouldSuppressCandidate(artifact: ArtifactForPolicy, rrfScore: number): boolean {
+  shouldSuppressCandidate(rrfScore: number): boolean {
     try {
       const now = Math.floor(Date.now() / 1000);
       const features = buildFeatureVector(
         {
-          importance: artifact.importance,
-          timestamp_epoch: artifact.timestamp_epoch,
-          activation_score: artifact.activation_score,
-          confidence: artifact.confidence,
+          importance: 3,
+          timestamp_epoch: now,
           retrieval_score: rrfScore, // use RRF score as retrieval_score feature
-          novelty_score: artifact.novelty_score,
-          stability_class: artifact.stability_class,
-          artifact_type: artifact.artifact_type,
         },
         { now },
       );

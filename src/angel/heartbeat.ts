@@ -9,6 +9,7 @@
  *   5. Memory monitor (CC auto-memory migration)
  *   6. Bulk artifact linking (Qdrant similarity)
  *   7. Observation consolidation (merge similar obs, rate-limited)
+ *   8. RL policy training (lowest priority — only when idle)
  *
  * The heartbeat only runs meaningful work — no busy loops.
  * Design: easy, fast, purposeful. Every piece earns its place.
@@ -45,6 +46,8 @@ export interface TickResult {
   artifacts_linked?: number;
   observations_consolidated?: number;
   consolidation_clusters?: number;
+  rl_training_episodes?: number;
+  rl_avg_reward?: number;
   duration_ms: number;
   error?: string;
 }
@@ -206,6 +209,30 @@ export async function heartbeatTick(ctx: HeartbeatContext): Promise<TickResult> 
       }
     } catch {
       // Non-critical — consolidation failure doesn't break the heartbeat
+    }
+
+    // Phase 8: RL policy training — learn from accumulated reward signals
+    // Lowest priority: only runs when no other heavy work happened this tick.
+    // Rate-limited internally by trainPolicyBatch (needs 100+ reward signals).
+    try {
+      const heavyWorkRan = result.sessions_processed > 0
+        || (result.observations_consolidated ?? 0) > 0
+        || (result.artifacts_linked ?? 0) > 0;
+      if (!heavyWorkRan) {
+        const { trainPolicyBatch } = await import('../intelligence/rl-trainer.js');
+        const project = cachedPrepare(ctx.db,
+          `SELECT project FROM sessions WHERE status = 'active' ORDER BY created_at_epoch DESC LIMIT 1`
+        ).get() as { project: string } | undefined;
+        if (project?.project) {
+          const trainResult = await trainPolicyBatch(ctx.db, project.project);
+          if (trainResult.episodes > 0) {
+            result.rl_training_episodes = trainResult.episodes;
+            result.rl_avg_reward = trainResult.avgReward;
+          }
+        }
+      }
+    } catch {
+      // Non-critical — training failure doesn't break the heartbeat
     }
   } catch (e) {
     result.error = e instanceof Error ? e.message : String(e);

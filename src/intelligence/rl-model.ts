@@ -168,18 +168,9 @@ export class SimpleMLP {
       // Scale by reward * learningRate
       const scale = reward * learningRate;
 
-      // --- Update layer 3: dW3 = dz3 * a2^T, db3 = dz3 ---
-      for (let r = 0; r < this.outputDim; r++) {
-        const grad_r = dz3[r] * scale;
-        this.b3[r] += grad_r;
-        const offset = r * this.hiddenDim;
-        for (let c = 0; c < this.hiddenDim; c++) {
-          this.w3[offset + c] += grad_r * a2[c];
-        }
-      }
+      // --- Compute ALL gradients FIRST (before mutating any weights) ---
 
-      // --- Backprop to layer 2 ---
-      // da2 = W3^T * dz3
+      // Backprop through layer 3: da2 = W3^T * dz3 (using ORIGINAL w3)
       const da2 = new Float32Array(this.hiddenDim);
       for (let r = 0; r < this.outputDim; r++) {
         const offset = r * this.hiddenDim;
@@ -193,18 +184,7 @@ export class SimpleMLP {
         dz2[i] = da2[i] * relu2Mask[i];
       }
 
-      // Update layer 2: dW2 = dz2 * a1^T, db2 = dz2
-      for (let r = 0; r < this.hiddenDim; r++) {
-        const grad_r = dz2[r] * scale;
-        this.b2[r] += grad_r;
-        const offset = r * this.hiddenDim;
-        for (let c = 0; c < this.hiddenDim; c++) {
-          this.w2[offset + c] += grad_r * a1[c];
-        }
-      }
-
-      // --- Backprop to layer 1 ---
-      // da1 = W2^T * dz2
+      // Backprop through layer 2: da1 = W2^T * dz2 (using ORIGINAL w2)
       const da1 = new Float32Array(this.hiddenDim);
       for (let r = 0; r < this.hiddenDim; r++) {
         const offset = r * this.hiddenDim;
@@ -216,6 +196,28 @@ export class SimpleMLP {
       const dz1 = new Float32Array(this.hiddenDim);
       for (let i = 0; i < this.hiddenDim; i++) {
         dz1[i] = da1[i] * relu1Mask[i];
+      }
+
+      // --- Now apply ALL weight updates ---
+
+      // Update layer 3: dW3 = dz3 * a2^T, db3 = dz3
+      for (let r = 0; r < this.outputDim; r++) {
+        const grad_r = dz3[r] * scale;
+        this.b3[r] += grad_r;
+        const offset = r * this.hiddenDim;
+        for (let c = 0; c < this.hiddenDim; c++) {
+          this.w3[offset + c] += grad_r * a2[c];
+        }
+      }
+
+      // Update layer 2: dW2 = dz2 * a1^T, db2 = dz2
+      for (let r = 0; r < this.hiddenDim; r++) {
+        const grad_r = dz2[r] * scale;
+        this.b2[r] += grad_r;
+        const offset = r * this.hiddenDim;
+        for (let c = 0; c < this.hiddenDim; c++) {
+          this.w2[offset + c] += grad_r * a1[c];
+        }
       }
 
       // Update layer 1: dW1 = dz1 * state^T, db1 = dz1

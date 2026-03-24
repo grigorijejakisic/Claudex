@@ -195,12 +195,21 @@ export async function insertObservationWithDedup(
         bestMatchObsId: existingObsId,
       };
       const now = new Date();
+      let hoursSinceLastSession = 0;
+      try {
+        const prev = cachedPrepare(db,
+          `SELECT ended_at_epoch FROM sessions WHERE status != 'active' ORDER BY ended_at_epoch DESC LIMIT 1`
+        ).get() as { ended_at_epoch: number } | undefined;
+        if (prev?.ended_at_epoch) {
+          hoursSinceLastSession = (Math.floor(Date.now() / 1000) - prev.ended_at_epoch) / 3600;
+        }
+      } catch { /* non-critical */ }
       const policyContext = {
         sessionId: obs.session_id,
         project: obs.project,
         hourOfDay: now.getHours(),
         dayOfWeek: now.getDay(),
-        hoursSinceLastSession: 0,
+        hoursSinceLastSession,
       };
 
       const decision = policy.shouldStore(candidate, policyContext);
