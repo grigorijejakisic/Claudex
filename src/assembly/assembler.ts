@@ -31,6 +31,7 @@ import {
   formatProjectsOverview,
   renderSessionContinuity,
   renderExperienceWarnings as formatExperienceWarningsSection,
+  formatPredictedContextSection,
 } from './sections.js';
 import type { ProjectOverviewRow } from './sections.js';
 import {
@@ -78,6 +79,14 @@ export interface FullAssemblyParams {
   isPostCompaction?: boolean;
   /** Context window size for budget scaling. If omitted, base budget is used. */
   contextWindowTokens?: number;
+  /** Predicted context from intent predictor. Confidence-gated injection. */
+  predictedContext?: {
+    intent: string;
+    topic: string;
+    confidence: number;
+    reason: string;
+    artifacts?: ArtifactRow[];
+  };
 }
 
 export interface RegularPromptParams {
@@ -449,6 +458,24 @@ export function assembleFullContext(params: FullAssemblyParams): InjectPayload {
         }
       }
     } catch { /* non-fatal */ }
+
+    // === PREDICTED CONTEXT (Phase 19 — proactive memory) ===
+    // Only at session-start (not post-compaction), when prediction passed confidence gate.
+    if (!params.isPostCompaction && params.predictedContext) {
+      try {
+        const predSection = formatPredictedContextSection(params.predictedContext);
+        if (predSection) {
+          const cost = estimateTokens(predSection);
+          // Budget cap: max 2000 tokens for predicted context
+          const predBudget = Math.min(cost, 2000);
+          if (predBudget <= budget) {
+            sections.push(predSection);
+            budget -= predBudget;
+            sources.push('predicted_context');
+          }
+        }
+      } catch { /* non-fatal */ }
+    }
 
     // === GSD (not redundant with artifacts) ===
     try {

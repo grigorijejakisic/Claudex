@@ -42,8 +42,8 @@ describe('processToolAndPressure', () => {
     db.close();
   });
 
-  it('calls processToolObservation and updates pressure for file_path', () => {
-    processToolAndPressure({
+  it('calls processToolObservation and updates pressure for file_path', async () => {
+    await processToolAndPressure({
       db,
       sessionId: 'test-s1',
       project: 'test-proj',
@@ -59,8 +59,8 @@ describe('processToolAndPressure', () => {
     expect(allFiles.length).toBeGreaterThan(0);
   });
 
-  it('updates pressure for filePath key variant', () => {
-    processToolAndPressure({
+  it('updates pressure for filePath key variant', async () => {
+    await processToolAndPressure({
       db,
       sessionId: 'test-s1',
       project: 'test-proj',
@@ -75,8 +75,8 @@ describe('processToolAndPressure', () => {
     expect(allFiles.length).toBeGreaterThan(0);
   });
 
-  it('updates pressure for path key variant', () => {
-    processToolAndPressure({
+  it('updates pressure for path key variant', async () => {
+    await processToolAndPressure({
       db,
       sessionId: 'test-s1',
       project: 'test-proj',
@@ -91,8 +91,8 @@ describe('processToolAndPressure', () => {
     expect(allFiles.length).toBeGreaterThan(0);
   });
 
-  it('does not update pressure when no file path key exists', () => {
-    processToolAndPressure({
+  it('does not update pressure when no file path key exists', async () => {
+    await processToolAndPressure({
       db,
       sessionId: 'test-s1',
       project: 'test-proj',
@@ -110,8 +110,8 @@ describe('processToolAndPressure', () => {
     expect(allFiles.length).toBe(0);
   });
 
-  it('only updates pressure for the first matching key', () => {
-    processToolAndPressure({
+  it('only updates pressure for the first matching key', async () => {
+    await processToolAndPressure({
       db,
       sessionId: 'test-s1',
       project: 'test-proj',
@@ -129,8 +129,8 @@ describe('processToolAndPressure', () => {
     expect(paths).toContain('<project>/first.ts');
   });
 
-  it('stores sanitized (project-relative) paths in pressure_scores', () => {
-    processToolAndPressure({
+  it('stores sanitized (project-relative) paths in pressure_scores', async () => {
+    await processToolAndPressure({
       db,
       sessionId: 'test-s1',
       project: 'test-proj',
@@ -149,8 +149,8 @@ describe('processToolAndPressure', () => {
     expect(paths).not.toContain('/tmp/test/src/index.ts');
   });
 
-  it('preserves paths outside project root after sanitization', () => {
-    processToolAndPressure({
+  it('preserves paths outside project root after sanitization', async () => {
+    await processToolAndPressure({
       db,
       sessionId: 'test-s1',
       project: 'test-proj',
@@ -168,9 +168,9 @@ describe('processToolAndPressure', () => {
     expect(paths).toContain('/other/dir/file.ts');
   });
 
-  it('creates an artifact when a high-importance observation is stored', () => {
+  it('creates an artifact when a high-importance observation is stored', async () => {
     // Edit/Write get importance 3 — above the artifact creation threshold
-    processToolAndPressure({
+    await processToolAndPressure({
       db,
       sessionId: 'test-s1',
       project: 'test-proj',
@@ -192,10 +192,10 @@ describe('processToolAndPressure', () => {
     expect(artifacts[0].artifact_ref).toBeTruthy();
   });
 
-  it('does not create an artifact for low-importance observations', () => {
+  it('does not create an artifact for low-importance observations', async () => {
     // Read gets importance 2 — below threshold
     const fileContent = 'export function main() {\n  const result = computeValue();\n  return result;\n}\n\nexport function computeValue() {\n  return 42;\n}\n';
-    processToolAndPressure({
+    await processToolAndPressure({
       db,
       sessionId: 'test-s1',
       project: 'test-proj',
@@ -209,8 +209,8 @@ describe('processToolAndPressure', () => {
     expect(artifacts).toHaveLength(0);
   });
 
-  it('does not create an artifact when no observation is stored', () => {
-    processToolAndPressure({
+  it('does not create an artifact when no observation is stored', async () => {
+    await processToolAndPressure({
       db,
       sessionId: 'test-s1',
       project: 'test-proj',

@@ -6,11 +6,24 @@
 import type { Database } from 'better-sqlite3';
 import { cachedPrepare } from '../core/stmt-cache.js';
 
+import type { StabilityClass } from '../core/observations.js';
+
 /** Base weights by importance level. */
 export const BASE_WEIGHTS: Record<number, number> = { 1: 0.2, 2: 0.4, 3: 0.6, 4: 0.8, 5: 1.0 };
 
-/** Half-lives in days by importance level. */
+/** Half-lives in days by importance level (flat — legacy, used as fallback for 'standard'). */
 export const HALF_LIVES: Record<number, number> = { 1: 7, 2: 14, 3: 60, 4: 90, 5: 365 };
+
+/**
+ * Stability-aware half-lives in days, keyed by stability class and importance level.
+ * Infinity means the observation never auto-decays.
+ */
+export const STABILITY_HALF_LIVES: Record<string, Record<number, number>> = {
+  transient:  { 1: 3,        2: 7,        3: 14,       4: 30,       5: 90 },
+  standard:   { 1: 7,        2: 14,       3: 30,       4: 60,       5: 365 },
+  stable:     { 1: 14,       2: 30,       3: 90,       4: 180,      5: Infinity },
+  permanent:  { 1: Infinity, 2: Infinity, 3: Infinity, 4: Infinity, 5: Infinity },
+};
 
 /** Minimum access count for immunity. */
 export const IMMUNITY_ACCESS_COUNT = 3;
@@ -22,6 +35,9 @@ export const IMMUNITY_ACCESS_DAYS = 180;
  * Computes the Effective Importance (EI) score for an observation.
  * Pure function, no DB access.
  * EI = baseWeight * accessFactor * decayFactor * connectivityBonus
+ *
+ * When stabilityClass is provided, uses stability-aware half-lives.
+ * When omitted or null, falls back to 'standard' (backward compatible).
  */
 export function computeEI(obs: {
   importance: number;
@@ -29,11 +45,23 @@ export function computeEI(obs: {
   lastAccessedAtEpoch: number | null;
   timestampEpoch: number;
   coOccurrences: number;
+  stabilityClass?: StabilityClass | string | null;
 }): number {
   const baseWeight = BASE_WEIGHTS[obs.importance] ?? 0.2;
   const accessFactor = 1 + Math.log2(1 + obs.accessCount);
   const ageDays = Math.max(0, (Date.now() / 1000 - obs.timestampEpoch) / 86400);
-  const halfLife = HALF_LIVES[obs.importance] ?? 7;
+
+  // Resolve stability class with backward-compatible fallback
+  const stability = obs.stabilityClass ?? 'standard';
+  const hlTable = STABILITY_HALF_LIVES[stability] ?? STABILITY_HALF_LIVES['standard'];
+  const halfLife = hlTable[obs.importance] ?? HALF_LIVES[obs.importance] ?? 7;
+
+  // Permanent/stable importance-5: Infinity half-life → no decay
+  if (!isFinite(halfLife)) {
+    const connectivityBonus = 1.0 + 0.1 * Math.min(obs.coOccurrences, 5);
+    return baseWeight * accessFactor * connectivityBonus;
+  }
+
   const effectiveHL = halfLife * (1 + 0.15 * obs.accessCount);
   const decayFactor = Math.pow(2, -ageDays / effectiveHL);
   const connectivityBonus = 1.0 + 0.1 * Math.min(obs.coOccurrences, 5);
@@ -126,7 +154,7 @@ export function pruneObservations(
     const immunityEpoch = Math.floor(Date.now() / 1000) - IMMUNITY_ACCESS_DAYS * 86400;
 
     const candidates = cachedPrepare(db,
-        `SELECT id, importance, access_count, last_accessed_at_epoch, timestamp_epoch, files_modified
+        `SELECT id, importance, access_count, last_accessed_at_epoch, timestamp_epoch, files_modified, stability_class
          FROM observations
          WHERE project = ? AND deleted_at_epoch IS NULL
            AND importance < 5
@@ -139,6 +167,7 @@ export function pruneObservations(
         last_accessed_at_epoch: number | null;
         timestamp_epoch: number;
         files_modified: string;
+        stability_class: string | null;
       }>;
 
     // Cap candidates to avoid N+1 query explosion
@@ -147,7 +176,7 @@ export function pruneObservations(
       ? candidates.slice(0, MAX_PRUNE_CANDIDATES)
       : candidates;
 
-    // Compute EI for each candidate
+    // Compute EI for each candidate (stability-aware)
     const scored = cappedCandidates.map((c) => ({
       id: c.id,
       ei: computeEI({
@@ -156,6 +185,7 @@ export function pruneObservations(
         lastAccessedAtEpoch: c.last_accessed_at_epoch,
         timestampEpoch: c.timestamp_epoch,
         coOccurrences: getCoOccurrences(db, c.id, c.files_modified, project),
+        stabilityClass: c.stability_class ?? 'standard',
       }),
     }));
 

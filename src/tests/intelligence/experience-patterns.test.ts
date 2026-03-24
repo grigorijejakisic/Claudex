@@ -16,6 +16,15 @@ import {
   classifyPatternScope,
   promoteToGlobalIfCrossProject,
   generateTopicKey,
+  computeConfidence,
+  checkMaturityPromotion,
+  shouldInvertToWarning,
+  getMaturityWeight,
+  updatePatternConfidence,
+  promotePatternMaturity,
+  invertToWarning,
+  decayPatternConfidence,
+  incrementVerificationCount,
   type ExtractionInput,
   type ExperiencePattern,
 } from '../../intelligence/experience-patterns.js';
@@ -888,5 +897,405 @@ describe('topic-aware scoring', () => {
 
     expect(getById(db, idA)!.score).toBe(1);
     expect(getById(db, idB)!.score).toBe(1);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Phase 15: Pattern Maturity Lifecycle
+// ---------------------------------------------------------------------------
+
+describe('computeConfidence (Laplace smoothing)', () => {
+  it('returns 0.5 for a new pattern (0 helpful, 0 harmful)', () => {
+    expect(computeConfidence(0, 0)).toBe(0.5);
+  });
+
+  it('increases with helpful feedback', () => {
+    // (3+1)/(3+0+2) = 4/5 = 0.8
+    expect(computeConfidence(3, 0)).toBeCloseTo(0.8, 5);
+  });
+
+  it('decreases with harmful feedback', () => {
+    // (0+1)/(0+3+2) = 1/5 = 0.2
+    expect(computeConfidence(0, 3)).toBeCloseTo(0.2, 5);
+  });
+
+  it('is symmetric: (1,1) = 0.5', () => {
+    // (1+1)/(1+1+2) = 2/4 = 0.5
+    expect(computeConfidence(1, 1)).toBe(0.5);
+  });
+
+  it('never reaches 0 or 1', () => {
+    expect(computeConfidence(100, 0)).toBeLessThan(1);
+    expect(computeConfidence(0, 100)).toBeGreaterThan(0);
+  });
+
+  it('handles large values correctly', () => {
+    // (1000+1)/(1000+0+2) = 1001/1002 ≈ 0.999
+    expect(computeConfidence(1000, 0)).toBeCloseTo(0.999, 2);
+  });
+});
+
+describe('checkMaturityPromotion', () => {
+  function makeFullPattern(overrides: Partial<ExperiencePattern> = {}): ExperiencePattern {
+    return {
+      id: 'test-id',
+      pattern_type: 'correction',
+      trigger_context: 'test context',
+      lesson: 'test lesson',
+      anti_pattern: null,
+      severity: 'important',
+      score: 2,
+      times_triggered: 0,
+      times_useful: 0,
+      source_session: 'sess-1',
+      source_project: 'proj-a',
+      created_at_epoch: 0,
+      last_triggered_epoch: null,
+      abstraction_level: 'tip',
+      verified: 0,
+      verification_count: 0,
+      helpful_count: 0,
+      harmful_count: 0,
+      escalation_level: 'pattern',
+      maturity: 'candidate',
+      confidence: 0.5,
+      ...overrides,
+    };
+  }
+
+  it('returns null for a fresh candidate pattern', () => {
+    expect(checkMaturityPromotion(makeFullPattern())).toBeNull();
+  });
+
+  it('promotes candidate → established when times_triggered >= 2', () => {
+    expect(checkMaturityPromotion(makeFullPattern({ times_triggered: 2 }))).toBe('established');
+    expect(checkMaturityPromotion(makeFullPattern({ times_triggered: 5 }))).toBe('established');
+  });
+
+  it('does NOT promote candidate with times_triggered = 1', () => {
+    expect(checkMaturityPromotion(makeFullPattern({ times_triggered: 1 }))).toBeNull();
+  });
+
+  it('promotes established → proven when helpful >= 3 AND verification >= 2', () => {
+    expect(checkMaturityPromotion(makeFullPattern({
+      maturity: 'established',
+      helpful_count: 3,
+      verification_count: 2,
+    }))).toBe('proven');
+  });
+
+  it('does NOT promote established → proven when helpful < 3', () => {
+    expect(checkMaturityPromotion(makeFullPattern({
+      maturity: 'established',
+      helpful_count: 2,
+      verification_count: 2,
+    }))).toBeNull();
+  });
+
+  it('does NOT promote established → proven when verification < 2', () => {
+    expect(checkMaturityPromotion(makeFullPattern({
+      maturity: 'established',
+      helpful_count: 5,
+      verification_count: 1,
+    }))).toBeNull();
+  });
+
+  it('returns null for already-proven patterns', () => {
+    expect(checkMaturityPromotion(makeFullPattern({
+      maturity: 'proven',
+      times_triggered: 100,
+      helpful_count: 50,
+      verification_count: 20,
+    }))).toBeNull();
+  });
+
+  it('handles null maturity gracefully (treats as candidate)', () => {
+    expect(checkMaturityPromotion(makeFullPattern({
+      maturity: null,
+      times_triggered: 3,
+    }))).toBe('established');
+  });
+});
+
+describe('shouldInvertToWarning', () => {
+  function makeFullPattern(overrides: Partial<ExperiencePattern> = {}): ExperiencePattern {
+    return {
+      id: 'test-id',
+      pattern_type: 'correction',
+      trigger_context: 'test context',
+      lesson: 'test lesson',
+      anti_pattern: null,
+      severity: 'important',
+      score: 2,
+      times_triggered: 0,
+      times_useful: 0,
+      source_session: 'sess-1',
+      source_project: 'proj-a',
+      created_at_epoch: 0,
+      last_triggered_epoch: null,
+      abstraction_level: 'tip',
+      verified: 0,
+      verification_count: 0,
+      helpful_count: 0,
+      harmful_count: 0,
+      escalation_level: 'pattern',
+      maturity: 'candidate',
+      confidence: 0.5,
+      ...overrides,
+    };
+  }
+
+  it('returns false when harmful <= helpful + 3', () => {
+    expect(shouldInvertToWarning(makeFullPattern({ helpful_count: 0, harmful_count: 3 }))).toBe(false);
+    expect(shouldInvertToWarning(makeFullPattern({ helpful_count: 2, harmful_count: 5 }))).toBe(false);
+  });
+
+  it('returns true when harmful > helpful + 3', () => {
+    expect(shouldInvertToWarning(makeFullPattern({ helpful_count: 0, harmful_count: 4 }))).toBe(true);
+    expect(shouldInvertToWarning(makeFullPattern({ helpful_count: 1, harmful_count: 5 }))).toBe(true);
+  });
+
+  it('returns false for equal counts', () => {
+    expect(shouldInvertToWarning(makeFullPattern({ helpful_count: 5, harmful_count: 5 }))).toBe(false);
+  });
+});
+
+describe('getMaturityWeight', () => {
+  it('returns 0.5 for candidate', () => {
+    expect(getMaturityWeight('candidate')).toBe(0.5);
+  });
+
+  it('returns 1.0 for established', () => {
+    expect(getMaturityWeight('established')).toBe(1.0);
+  });
+
+  it('returns 1.5 for proven', () => {
+    expect(getMaturityWeight('proven')).toBe(1.5);
+  });
+
+  it('returns 0.5 for null (default to candidate)', () => {
+    expect(getMaturityWeight(null)).toBe(0.5);
+  });
+
+  it('returns 0.5 for undefined', () => {
+    expect(getMaturityWeight(undefined)).toBe(0.5);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Phase 15: DB-backed maturity operations
+// ---------------------------------------------------------------------------
+
+describe('updatePatternConfidence', () => {
+  let db: TestDatabase;
+
+  beforeEach(() => { db = createTestDb(); });
+  afterEach(() => { db.close(); });
+
+  it('updates confidence in the database', () => {
+    const id = createPattern(db, makePattern(), 'sess-1', 'proj-a');
+    updatePatternConfidence(db, id, 0.85);
+    const row = getById(db, id)!;
+    expect(row.confidence).toBeCloseTo(0.85, 5);
+  });
+
+  it('floors confidence at 0.01', () => {
+    const id = createPattern(db, makePattern(), 'sess-1', 'proj-a');
+    updatePatternConfidence(db, id, 0.001);
+    const row = getById(db, id)!;
+    expect(row.confidence).toBeCloseTo(0.01, 5);
+  });
+
+  it('is non-throwing on missing id', () => {
+    expect(() => updatePatternConfidence(db, 'nonexistent', 0.5)).not.toThrow();
+  });
+});
+
+describe('promotePatternMaturity', () => {
+  let db: TestDatabase;
+
+  beforeEach(() => { db = createTestDb(); });
+  afterEach(() => { db.close(); });
+
+  it('promotes a pattern to established', () => {
+    const id = createPattern(db, makePattern(), 'sess-1', 'proj-a');
+    promotePatternMaturity(db, id, 'established');
+    const row = getById(db, id)!;
+    expect(row.maturity).toBe('established');
+  });
+
+  it('promotes a pattern to proven', () => {
+    const id = createPattern(db, makePattern(), 'sess-1', 'proj-a');
+    promotePatternMaturity(db, id, 'proven');
+    const row = getById(db, id)!;
+    expect(row.maturity).toBe('proven');
+  });
+
+  it('is non-throwing on missing id', () => {
+    expect(() => promotePatternMaturity(db, 'nonexistent', 'proven')).not.toThrow();
+  });
+});
+
+describe('invertToWarning', () => {
+  let db: TestDatabase;
+
+  beforeEach(() => { db = createTestDb(); });
+  afterEach(() => { db.close(); });
+
+  it('prepends WARNING prefix and changes type to behavioral', () => {
+    const id = createPattern(db, makePattern({
+      pattern_type: 'correction',
+      lesson: 'Use exact field names from CC payload',
+    }), 'sess-1', 'proj-a');
+
+    invertToWarning(db, id);
+
+    const row = getById(db, id)!;
+    expect(row.lesson).toBe('WARNING: Avoid this — Use exact field names from CC payload');
+    expect(row.pattern_type).toBe('behavioral');
+  });
+
+  it('does not double-invert a pattern already prefixed with WARNING', () => {
+    const id = createPattern(db, makePattern({
+      lesson: 'Use exact field names',
+    }), 'sess-1', 'proj-a');
+
+    invertToWarning(db, id);
+    const lessonAfterFirst = getById(db, id)!.lesson;
+
+    invertToWarning(db, id);
+    const lessonAfterSecond = getById(db, id)!.lesson;
+
+    expect(lessonAfterFirst).toBe(lessonAfterSecond);
+  });
+
+  it('is non-throwing on missing id', () => {
+    expect(() => invertToWarning(db, 'nonexistent')).not.toThrow();
+  });
+});
+
+describe('decayPatternConfidence', () => {
+  let db: TestDatabase;
+
+  beforeEach(() => { db = createTestDb(); });
+  afterEach(() => { db.close(); });
+
+  it('decays confidence for all patterns when no triggered IDs', () => {
+    const id = createPattern(db, makePattern(), 'sess-1', 'proj-a');
+    // Default confidence is 0.5
+    decayPatternConfidence(db, []);
+    const row = getById(db, id)!;
+    expect(row.confidence).toBeCloseTo(0.5 * 0.995, 5);
+  });
+
+  it('excludes triggered patterns from decay', () => {
+    const id1 = createPattern(db, makePattern({
+      trigger_context: 'server migration OAuth token transfer pattern one',
+    }), 'sess-1', 'proj-a');
+    const id2 = createPattern(db, makePattern({
+      trigger_context: 'CSS flexbox grid layout responsive design pattern two',
+    }), 'sess-2', 'proj-a');
+
+    decayPatternConfidence(db, [id1]);
+
+    // id1 should NOT decay (it was triggered)
+    expect(getById(db, id1)!.confidence).toBeCloseTo(0.5, 5);
+    // id2 should decay
+    expect(getById(db, id2)!.confidence).toBeCloseTo(0.5 * 0.995, 5);
+  });
+
+  it('does not decay below 0.01 floor', () => {
+    const id = createPattern(db, makePattern(), 'sess-1', 'proj-a');
+    updatePatternConfidence(db, id, 0.015);
+    decayPatternConfidence(db, []);
+    const row = getById(db, id)!;
+    expect(row.confidence).toBeGreaterThanOrEqual(0.01);
+  });
+
+  it('is non-throwing on DB error', () => {
+    db.close();
+    expect(() => decayPatternConfidence(db, [])).not.toThrow();
+    db = createTestDb();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Phase 15: Harmful multiplier (4×)
+// ---------------------------------------------------------------------------
+
+describe('harmful multiplier (4×)', () => {
+  let db: TestDatabase;
+
+  beforeEach(() => { db = createTestDb(); });
+  afterEach(() => { db.close(); });
+
+  it('harmful feedback drops score by 4 per increment', () => {
+    const id = createPattern(db, makePattern(), 'sess-1', 'proj-a');
+    // Initial score = 2
+    updatePatternScore(db, id, -4); // harmful: -4 score
+    const row = getById(db, id)!;
+    expect(row.score).toBe(0); // MAX(0, 2-4) = 0
+    expect(row.harmful_count).toBe(1);
+  });
+
+  it('helpful feedback increments score by 1', () => {
+    const id = createPattern(db, makePattern(), 'sess-1', 'proj-a');
+    updatePatternScore(db, id, 1); // helpful: +1
+    expect(getById(db, id)!.score).toBe(3);
+    expect(getById(db, id)!.helpful_count).toBe(1);
+  });
+
+  it('4× harmful is asymmetric — one harmful outweighs four helpful', () => {
+    const id = createPattern(db, makePattern(), 'sess-1', 'proj-a');
+    // +1 four times = score 6, helpful_count 4
+    for (let i = 0; i < 4; i++) updatePatternScore(db, id, 1);
+    expect(getById(db, id)!.score).toBe(6);
+
+    // -4 once = score 2, harmful_count 1
+    updatePatternScore(db, id, -4);
+    expect(getById(db, id)!.score).toBe(2);
+    expect(getById(db, id)!.harmful_count).toBe(1);
+    expect(getById(db, id)!.helpful_count).toBe(4);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Phase 15: Integration — maturity + confidence in pattern creation defaults
+// ---------------------------------------------------------------------------
+
+describe('pattern maturity defaults on creation', () => {
+  let db: TestDatabase;
+
+  beforeEach(() => { db = createTestDb(); });
+  afterEach(() => { db.close(); });
+
+  it('new pattern starts as candidate with confidence 0.5', () => {
+    const id = createPattern(db, makePattern(), 'sess-1', 'proj-a');
+    const row = getById(db, id)!;
+    expect(row.maturity).toBe('candidate');
+    expect(row.confidence).toBeCloseTo(0.5, 5);
+  });
+
+  it('full lifecycle: candidate → established → proven', () => {
+    const id = createPattern(db, makePattern(), 'sess-1', 'proj-a');
+
+    // Simulate 2 triggers → candidate should promote to established
+    incrementTriggerCount(db, id);
+    incrementTriggerCount(db, id);
+    let row = getById(db, id)!;
+    const promo1 = checkMaturityPromotion(row);
+    expect(promo1).toBe('established');
+    promotePatternMaturity(db, id, promo1!);
+    expect(getById(db, id)!.maturity).toBe('established');
+
+    // Simulate 3 helpful + 2 verified → established should promote to proven
+    for (let i = 0; i < 3; i++) updatePatternScore(db, id, 1);
+    incrementVerificationCount(db, id);
+    incrementVerificationCount(db, id);
+    row = getById(db, id)!;
+    const promo2 = checkMaturityPromotion(row);
+    expect(promo2).toBe('proven');
+    promotePatternMaturity(db, id, promo2!);
+    expect(getById(db, id)!.maturity).toBe('proven');
   });
 });

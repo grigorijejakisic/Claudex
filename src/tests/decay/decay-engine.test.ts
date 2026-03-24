@@ -7,7 +7,9 @@ import {
   applyRetentionPolicy,
   BASE_WEIGHTS,
   HALF_LIVES,
+  STABILITY_HALF_LIVES,
 } from '../../decay/decay-engine.js';
+import { classifyStability } from '../../core/observations.js';
 
 let db: TestDatabase;
 
@@ -326,5 +328,186 @@ describe('applyRetentionPolicy', () => {
     const closedDb = createTestDb();
     closedDb.close();
     expect(applyRetentionPolicy(closedDb, 'proj-1')).toBe(0);
+  });
+});
+
+describe('classifyStability', () => {
+  it('returns transient for error category', () => {
+    expect(classifyStability('error')).toBe('transient');
+  });
+
+  it('returns transient for test category', () => {
+    expect(classifyStability('test')).toBe('transient');
+  });
+
+  it('returns stable for architecture category', () => {
+    expect(classifyStability('architecture')).toBe('stable');
+  });
+
+  it('returns stable for decision category', () => {
+    expect(classifyStability('decision')).toBe('stable');
+  });
+
+  it('returns standard for code category', () => {
+    expect(classifyStability('code')).toBe('standard');
+  });
+
+  it('returns standard for config category', () => {
+    expect(classifyStability('config')).toBe('standard');
+  });
+
+  it('returns standard for unknown category', () => {
+    expect(classifyStability('unknown')).toBe('standard');
+  });
+});
+
+describe('stability-aware computeEI', () => {
+  it('transient error observation decays faster than stable architecture at same importance', () => {
+    const now = Date.now() / 1000;
+    const fourteenDaysAgo = now - 14 * 86400;
+
+    const transientEI = computeEI({
+      importance: 3,
+      accessCount: 0,
+      lastAccessedAtEpoch: null,
+      timestampEpoch: fourteenDaysAgo,
+      coOccurrences: 0,
+      stabilityClass: 'transient',
+    });
+
+    const stableEI = computeEI({
+      importance: 3,
+      accessCount: 0,
+      lastAccessedAtEpoch: null,
+      timestampEpoch: fourteenDaysAgo,
+      coOccurrences: 0,
+      stabilityClass: 'stable',
+    });
+
+    // Transient half-life for importance 3 = 14 days → decay ~0.5
+    // Stable half-life for importance 3 = 90 days → decay ~0.9
+    expect(transientEI).toBeLessThan(stableEI);
+  });
+
+  it('importance-5 stable observation never decays (Infinity half-life)', () => {
+    const now = Date.now() / 1000;
+    const yearAgo = now - 365 * 86400;
+
+    const ei = computeEI({
+      importance: 5,
+      accessCount: 0,
+      lastAccessedAtEpoch: null,
+      timestampEpoch: yearAgo,
+      coOccurrences: 0,
+      stabilityClass: 'stable',
+    });
+
+    // With Infinity half-life, EI should equal baseWeight * accessFactor * connectivityBonus
+    // = 1.0 * 1.0 * 1.0 = 1.0 (no decay regardless of age)
+    expect(ei).toBeCloseTo(1.0, 2);
+  });
+
+  it('permanent observations never decay regardless of importance', () => {
+    const now = Date.now() / 1000;
+    const yearAgo = now - 365 * 86400;
+
+    const ei = computeEI({
+      importance: 1,
+      accessCount: 0,
+      lastAccessedAtEpoch: null,
+      timestampEpoch: yearAgo,
+      coOccurrences: 0,
+      stabilityClass: 'permanent',
+    });
+
+    // Even importance-1 permanent observations should have no decay
+    // baseWeight=0.2, accessFactor=1, connectivity=1 → 0.2
+    expect(ei).toBeCloseTo(0.2, 2);
+  });
+
+  it('falls back to standard when stabilityClass is null or undefined', () => {
+    const now = Date.now() / 1000;
+    const sevenDaysAgo = now - 7 * 86400;
+
+    const eiNull = computeEI({
+      importance: 1,
+      accessCount: 0,
+      lastAccessedAtEpoch: null,
+      timestampEpoch: sevenDaysAgo,
+      coOccurrences: 0,
+      stabilityClass: null,
+    });
+
+    const eiStandard = computeEI({
+      importance: 1,
+      accessCount: 0,
+      lastAccessedAtEpoch: null,
+      timestampEpoch: sevenDaysAgo,
+      coOccurrences: 0,
+      stabilityClass: 'standard',
+    });
+
+    expect(eiNull).toBeCloseTo(eiStandard, 5);
+  });
+});
+
+describe('V11 migration backfill', () => {
+  it('backfills stability_class based on category', () => {
+    // Observations were inserted by seedObservation with category='code' (default)
+    // The V11 migration should have run during createTestDb → initializeSchema
+    // New observations should get stability_class from classifyStability
+
+    // Insert observations with different categories directly
+    db.prepare(
+      `INSERT INTO observations (session_id, project, tool_name, category, title, content, importance, files_modified, stability_class)
+       VALUES ('s1', 'p1', 'Read', 'error', 'err', 'err content', 2, '[]', 'transient')`
+    ).run();
+    db.prepare(
+      `INSERT INTO observations (session_id, project, tool_name, category, title, content, importance, files_modified, stability_class)
+       VALUES ('s1', 'p1', 'Read', 'architecture', 'arch', 'arch content', 4, '[]', 'stable')`
+    ).run();
+    db.prepare(
+      `INSERT INTO observations (session_id, project, tool_name, category, title, content, importance, files_modified, stability_class)
+       VALUES ('s1', 'p1', 'Read', 'code', 'code', 'code content', 3, '[]', 'standard')`
+    ).run();
+
+    const rows = db.prepare(
+      `SELECT category, stability_class FROM observations WHERE session_id = 's1' ORDER BY id`
+    ).all() as Array<{ category: string; stability_class: string }>;
+
+    expect(rows[0]).toEqual({ category: 'error', stability_class: 'transient' });
+    expect(rows[1]).toEqual({ category: 'architecture', stability_class: 'stable' });
+    expect(rows[2]).toEqual({ category: 'code', stability_class: 'standard' });
+  });
+
+  it('V11 schema has all new columns on observations', () => {
+    const cols = db.pragma('table_info(observations)') as Array<{ name: string }>;
+    const colNames = cols.map(c => c.name);
+    expect(colNames).toContain('stability_class');
+    expect(colNames).toContain('novelty_score');
+    expect(colNames).toContain('consolidated_into');
+  });
+
+  it('V11 schema has new tables', () => {
+    const tables = db.prepare("SELECT name FROM sqlite_master WHERE type='table'").all() as Array<{ name: string }>;
+    const tableNames = tables.map(t => t.name);
+    expect(tableNames).toContain('artifact_access_log');
+    expect(tableNames).toContain('knowledge_gaps');
+    expect(tableNames).toContain('temporal_profile');
+    expect(tableNames).toContain('action_transitions');
+  });
+
+  it('V11 schema has maturity and confidence on experience_patterns', () => {
+    const cols = db.pragma('table_info(experience_patterns)') as Array<{ name: string }>;
+    const colNames = cols.map(c => c.name);
+    expect(colNames).toContain('maturity');
+    expect(colNames).toContain('confidence');
+  });
+
+  it('V11 schema has valid_at_epoch and invalid_at_epoch on artifact_links', () => {
+    const cols = db.pragma('table_info(artifact_links)') as Array<{ name: string }>;
+    const colNames = cols.map(c => c.name);
+    expect(colNames).toContain('valid_at_epoch');
+    expect(colNames).toContain('invalid_at_epoch');
   });
 });

@@ -363,7 +363,7 @@ export function createBridgeCallbacks(bctx: BridgeContext): ClaudexBridge {
         const scope = detectProjectScope(cwd);
         const { toolName, toolInput, toolOutput } = ctx;
 
-        processToolAndPressure({
+        await processToolAndPressure({
           db: bctx.db,
           sessionId,
           project,

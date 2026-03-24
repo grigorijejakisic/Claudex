@@ -8,6 +8,29 @@ import { cachedPrepare } from './stmt-cache.js';
 import { CONTENT_MAX_CHARS } from '../shared/constants.js';
 import { truncateText } from '../shared/text-utils.js';
 
+/** Result of dedup check, returned by insertObservationWithDedup. */
+export interface DedupResult {
+  /** The observation ID (new or existing). */
+  id: number;
+  /** Whether this was a new insert, a skip (same-session dup), or an update (cross-session dup). */
+  action: 'inserted' | 'skipped' | 'updated';
+}
+
+/** Stability classes for decay engine. */
+export type StabilityClass = 'transient' | 'standard' | 'stable' | 'permanent';
+
+/**
+ * Classifies observation stability based on category.
+ * Transient categories (error, test) decay fastest.
+ * Stable categories (architecture, decision) decay slowest.
+ * All others get 'standard' decay rates.
+ */
+export function classifyStability(category: string): StabilityClass {
+  if (['error', 'test'].includes(category)) return 'transient';
+  if (['architecture', 'decision'].includes(category)) return 'stable';
+  return 'standard';
+}
+
 /** Valid observation categories. */
 const VALID_CATEGORIES = [
   'code', 'architecture', 'decision', 'error', 'test',
@@ -65,9 +88,11 @@ export function insertObservation(
   // Defense-in-depth content cap (backstop for extractors)
   const cappedContent = truncateText(ftsCleanContent, CONTENT_MAX_CHARS);
 
+  const stabilityClass = classifyStability(obs.category);
+
   const result = cachedPrepare(db,
-      `INSERT INTO observations (session_id, project, tool_name, category, title, content, importance, files_modified, obs_type)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      `INSERT INTO observations (session_id, project, tool_name, category, title, content, importance, files_modified, obs_type, stability_class)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     )
     .run(
       obs.session_id,
@@ -78,7 +103,8 @@ export function insertObservation(
       cappedContent,
       obs.importance,
       JSON.stringify(obs.files_modified),
-      obs.obs_type ?? null
+      obs.obs_type ?? null,
+      stabilityClass
     );
 
   // Keep session observation_count in sync
@@ -89,6 +115,100 @@ export function insertObservation(
   } catch { /* non-fatal — observation was stored successfully */ }
 
   return Number(result.lastInsertRowid);
+}
+
+/** Cosine similarity threshold for observation dedup. Above this = duplicate. */
+const DEDUP_COSINE_THRESHOLD = 0.85;
+
+/**
+ * Async dedup-aware observation insert.
+ *
+ * Before inserting, embeds `title + ' ' + content` and searches Qdrant
+ * `claudex_artifacts` (artifact_type='observation') for cosine > 0.85 matches.
+ *
+ * Decision logic:
+ * - No match → normal insert
+ * - Match in same session → skip (return existing observation ID)
+ * - Match in different session → update existing: increment access_count, refresh last_accessed_at_epoch
+ * - Qdrant unavailable or any error → fall through to normal insert
+ *
+ * NEVER blocks writes. The entire dedup path is wrapped in try/catch.
+ *
+ * @param db - SQLite database
+ * @param obs - observation input (same as insertObservation)
+ * @returns DedupResult with the observation id and the action taken
+ */
+export async function insertObservationWithDedup(
+  db: Database,
+  obs: InsertObservationInput,
+): Promise<DedupResult> {
+  // Try semantic dedup — any failure falls through to normal insert
+  try {
+    // Dynamic imports to avoid circular deps and keep sync path unaffected
+    const { embedText } = await import('../embeddings/embed-pipeline.js');
+    const { searchArtifacts } = await import('../embeddings/qdrant-client.js');
+
+    const textToEmbed = obs.title + ' ' + obs.content;
+    const embedding = await embedText(textToEmbed);
+
+    if (embedding) {
+      // Search existing observation artifacts in Qdrant
+      const results = await searchArtifacts(embedding, obs.project, 3, {
+        artifactTypes: ['observation'],
+        excludeSuperseded: true,
+      });
+
+      // Find matches above the dedup threshold
+      const matches = results.filter(r => r.score > DEDUP_COSINE_THRESHOLD);
+
+      if (matches.length > 0) {
+        const best = matches[0];
+        const matchSessionId = best.payload?.session_id as string | undefined;
+        const artifactId = best.payload?.artifact_id as number | undefined
+          ?? (typeof best.id === 'number' ? best.id : 0);
+
+        if (artifactId > 0) {
+          // Look up the artifact in SQLite to get artifact_ref (= observation ID)
+          const artifact = cachedPrepare(db,
+            `SELECT artifact_ref FROM artifacts WHERE id = ? AND artifact_type = 'observation'`
+          ).get(artifactId) as { artifact_ref: string | null } | undefined;
+
+          const existingObsId = artifact?.artifact_ref ? Number(artifact.artifact_ref) : 0;
+
+          if (existingObsId > 0) {
+            // Verify the observation still exists in SQLite
+            const existingObs = getObservationById(db, existingObsId);
+
+            if (existingObs) {
+              if (matchSessionId === obs.session_id) {
+                // Same session duplicate → skip entirely
+                return { id: existingObsId, action: 'skipped' };
+              }
+
+              // Different session, semantically identical → update existing
+              try {
+                cachedPrepare(db,
+                  `UPDATE observations
+                   SET access_count = access_count + 1,
+                       last_accessed_at_epoch = unixepoch()
+                   WHERE id = ?`
+                ).run(existingObsId);
+              } catch { /* non-fatal — we still return the existing ID */ }
+
+              return { id: existingObsId, action: 'updated' };
+            }
+            // Observation was deleted from SQLite but still in Qdrant — fall through to insert
+          }
+        }
+      }
+    }
+    // No embedding or no match — fall through to normal insert
+  } catch {
+    // Dedup check failed — fall through to normal insert (never block writes)
+  }
+
+  const id = insertObservation(db, obs);
+  return { id, action: 'inserted' };
 }
 
 /**

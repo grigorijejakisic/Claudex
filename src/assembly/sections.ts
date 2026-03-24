@@ -841,3 +841,47 @@ function getSessionAttribution(
   return `session ${artifactSessionId.slice(0, 8)}`;
 }
 
+/**
+ * Formats predicted context section for session-start assembly.
+ *
+ * Renders a confidence-annotated prediction that provides proactive context
+ * before the user's first prompt. Includes the predicted intent, topic,
+ * and any pre-materialized artifacts.
+ *
+ * Non-throwing — returns null on error or empty input.
+ */
+export function formatPredictedContextSection(prediction: {
+  intent: string;
+  topic: string;
+  confidence: number;
+  reason: string;
+  artifacts?: ArtifactRow[];
+}): string | null {
+  try {
+    if (!prediction || !prediction.topic) return null;
+
+    const pct = Math.round(prediction.confidence * 100);
+    const lines: string[] = [
+      `## Predicted Context (${pct}% confidence)`,
+      `[Proactive prediction — may not match actual session intent. Disregard if irrelevant.]`,
+      '',
+      `**Predicted intent:** ${prediction.intent}`,
+      `**Topic:** ${prediction.topic}`,
+    ];
+
+    if (prediction.artifacts && prediction.artifacts.length > 0) {
+      lines.push('');
+      lines.push('**Pre-materialized artifacts:**');
+      for (const a of prediction.artifacts.slice(0, 5)) {
+        const abbrev = ARTIFACT_TYPE_ABBREV[a.artifact_type] ?? a.artifact_type;
+        const age = a.timestamp_epoch ? formatRelativeTime(a.timestamp_epoch) : 'unknown';
+        lines.push(`- [${abbrev}] ${a.summary} — ${age}`);
+      }
+    }
+
+    return lines.join('\n');
+  } catch {
+    return null;
+  }
+}
+

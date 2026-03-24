@@ -229,18 +229,34 @@ export function updateRetrievalEventOutcomes(
 }
 
 // ---------------------------------------------------------------------------
-// Part 5.2: Retrieval Score as Multiplier
+// Part 5.2: Retrieval Score as Multiplier (with negative learning)
 // ---------------------------------------------------------------------------
 
+/** Minimum unreferenced retrievals before suppression kicks in. */
+const NEGATIVE_LEARNING_THRESHOLD = 3;
+
+/** Maximum suppression magnitude (never suppress more than 50%). */
+const MAX_SUPPRESSION = -0.5;
+
+/** Per-unreferenced suppression step beyond threshold. */
+const SUPPRESSION_STEP = -0.1;
+
+/** Floor multiplier — never fully suppress an artifact. */
+const MULTIPLIER_FLOOR = 0.5;
+
 /**
- * Returns the retrieval_score for an artifact, to be used as a multiplier
- * in the three-factor scoring formula: final_score = base_score * retrieval_score.
+ * Returns the retrieval score multiplier for an artifact, incorporating
+ * negative learning from unreferenced retrievals.
  *
- * The retrieval_score is an EMA of past retrieval outcomes:
- * - Referenced: +0.1
- * - Correction after retrieval: -0.2
- * - Session success (no corrections, artifact injected): +0.05
- * - Never referenced after 3 retrievals: -0.05
+ * Base multiplier: retrieval_score from artifacts table (EMA of past outcomes).
+ *
+ * Negative learning overlay:
+ * - Queries retrieval_events for referenced/unreferenced counts
+ * - If unreferenced_count >= 3: suppression = max(-0.5, -0.1 * (unreferenced - 2))
+ * - Positive signals reduce suppression: suppression *= unreferenced / (unreferenced + referenced)
+ * - Applied as: baseMultiplier * (1.0 + suppression)
+ * - Recovery: as referenced count grows, ratio shrinks and suppression lifts
+ * - Floor: never below 0.5×
  *
  * Returns 1.0 (neutral) if the artifact is not found or on error.
  * Non-throwing.
@@ -254,7 +270,40 @@ export function getRetrievalScoreMultiplier(
       `SELECT retrieval_score FROM artifacts WHERE id = ?`
     ).get(artifactId) as { retrieval_score: number } | undefined;
 
-    return row?.retrieval_score ?? 1.0;
+    if (!row) return 1.0;
+
+    const baseMultiplier = row.retrieval_score;
+
+    // Query unreferenced/referenced counts from retrieval_events
+    const counts = cachedPrepare(db,
+      `SELECT
+         SUM(CASE WHEN was_referenced = 0 THEN 1 ELSE 0 END) AS unreferenced,
+         SUM(CASE WHEN was_referenced = 1 THEN 1 ELSE 0 END) AS referenced
+       FROM retrieval_events
+       WHERE artifact_id = ? AND was_referenced IS NOT NULL`
+    ).get(artifactId) as { unreferenced: number | null; referenced: number | null } | undefined;
+
+    const unreferenced = counts?.unreferenced ?? 0;
+    const referenced = counts?.referenced ?? 0;
+
+    // No suppression if below threshold
+    if (unreferenced < NEGATIVE_LEARNING_THRESHOLD) {
+      return baseMultiplier;
+    }
+
+    // Compute raw suppression: -0.1 per unreferenced beyond 2, capped at -0.5
+    let suppression = Math.max(MAX_SUPPRESSION, SUPPRESSION_STEP * (unreferenced - 2));
+
+    // Scale by unreferenced ratio — positive signals reduce suppression
+    if (referenced > 0) {
+      suppression *= unreferenced / (unreferenced + referenced);
+    }
+
+    // Apply suppression to base multiplier
+    const multiplier = baseMultiplier * (1.0 + suppression);
+
+    // Floor: never below 0.5×
+    return Math.max(MULTIPLIER_FLOOR, multiplier);
   } catch {
     return 1.0;
   }
@@ -296,6 +345,93 @@ export function penalizeUnreferencedArtifacts(
       if (current && current.retrieval_score > MIN_SCORE) {
         updateRetrievalScore(db, c.artifact_id, SCORE_NEVER_REFERENCED);
       }
+    }
+  } catch {
+    // Non-throwing
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Phase 14: was_referenced recording at session end
+// ---------------------------------------------------------------------------
+
+/**
+ * Records was_referenced for retrieval_events that haven't been scored yet.
+ *
+ * For each unscored retrieval_event in this session:
+ * - Looks up the artifact's summary
+ * - Tokenizes the summary into keywords
+ * - Checks if 2+ keywords appear in the combined assistant text from this session
+ * - Sets was_referenced = 1 if matched, 0 if not
+ *
+ * Called in the stop hook after conversation turns are stored.
+ * Non-throwing.
+ */
+export function recordWasReferenced(
+  db: Database,
+  sessionId: string,
+): void {
+  try {
+    // Get unscored retrieval events for this session
+    const unscoredEvents = cachedPrepare(db,
+      `SELECT re.id, re.artifact_id
+       FROM retrieval_events re
+       WHERE re.session_id = ? AND re.was_referenced IS NULL`
+    ).all(sessionId) as Array<{ id: number; artifact_id: number }>;
+
+    if (unscoredEvents.length === 0) return;
+
+    // Collect all assistant text from this session's conversation turns
+    const turns = cachedPrepare(db,
+      `SELECT assistant_text FROM conversation_turns
+       WHERE session_id = ? AND assistant_text IS NOT NULL`
+    ).all(sessionId) as Array<{ assistant_text: string }>;
+
+    const combinedAssistantText = turns.map(t => t.assistant_text).join(' ').toLowerCase();
+
+    if (combinedAssistantText.length === 0) {
+      // No assistant text — mark all as unreferenced
+      const updateStmt = cachedPrepare(db,
+        `UPDATE retrieval_events SET was_referenced = 0 WHERE id = ?`
+      );
+      for (const event of unscoredEvents) {
+        updateStmt.run(event.id);
+      }
+      return;
+    }
+
+    // Cache artifact summaries to avoid repeated lookups
+    const artifactIds = [...new Set(unscoredEvents.map(e => e.artifact_id))];
+    const summaryMap = new Map<number, string>();
+    for (const aid of artifactIds) {
+      const row = cachedPrepare(db,
+        `SELECT summary FROM artifacts WHERE id = ?`
+      ).get(aid) as { summary: string } | undefined;
+      if (row) summaryMap.set(aid, row.summary);
+    }
+
+    const updateStmt = cachedPrepare(db,
+      `UPDATE retrieval_events SET was_referenced = ? WHERE id = ?`
+    );
+
+    for (const event of unscoredEvents) {
+      const summary = summaryMap.get(event.artifact_id);
+      if (!summary) {
+        updateStmt.run(0, event.id);
+        continue;
+      }
+
+      // Tokenize summary and check for 2+ matching tokens in assistant text
+      const summaryTokens = tokenizeQuery(summary, 20);
+      let matchCount = 0;
+      for (const token of summaryTokens) {
+        if (token.length >= 3 && combinedAssistantText.includes(token)) {
+          matchCount++;
+        }
+        if (matchCount >= 2) break; // Early exit — already matched
+      }
+
+      updateStmt.run(matchCount >= 2 ? 1 : 0, event.id);
     }
   } catch {
     // Non-throwing

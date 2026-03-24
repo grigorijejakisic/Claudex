@@ -11,9 +11,10 @@ import { emitErrorTelemetry } from '../../observability/error-telemetry.js';
 import { assembleFullContext } from '../../assembly/assembler.js';
 import { getIdentityDir } from '../../shared/paths.js';
 import { ingestFileArtifacts, pruneStaleFileArtifacts } from '../../core/file-ingester.js';
-import { getLastSessionSummary, synthesizeSessionSummary, getSessionEvents, saveSessionSummary } from '../../core/session-events.js';
+import { getLastSessionSummary, synthesizeSessionSummary, getSessionEvents, saveSessionSummary, recordEvent } from '../../core/session-events.js';
 import { cachedPrepare } from '../../core/stmt-cache.js';
 import { captureRecallFlowEntry } from '../shared/lifecycle.js';
+import { predictSessionIntent, CONFIDENCE_THRESHOLD } from '../../intelligence/intent-predictor.js';
 import * as path from 'path';
 import * as os from 'os';
 import * as fs from 'fs';
@@ -195,6 +196,38 @@ const main = wrapHook('SessionStart', async (input, ctx) => {
     emitErrorTelemetry(ctx.db, input.session_id, 'session_start/file_ingest', e);
   }
 
+  // Intent prediction — predict what user will need BEFORE their first prompt (Phase 19).
+  // Runs AFTER checkpoint recovery, BEFORE assembly. Non-throwing.
+  let predictedContext: {
+    intent: string;
+    topic: string;
+    confidence: number;
+    reason: string;
+  } | undefined;
+  try {
+    const prediction = predictSessionIntent(ctx.db, ctx.project, input.session_id);
+    if (prediction && prediction.confidence >= CONFIDENCE_THRESHOLD) {
+      predictedContext = {
+        intent: prediction.intent,
+        topic: prediction.topic,
+        confidence: prediction.confidence,
+        reason: prediction.reason,
+      };
+      // Record prediction as session event for accuracy tracking at session end
+      recordEvent(ctx.db, input.session_id, ctx.project,
+        'intent_prediction', 'predictor', prediction.intent,
+        JSON.stringify({
+          confidence: prediction.confidence,
+          layer: prediction.layer,
+          topic: prediction.topic,
+          reason: prediction.reason,
+        }),
+      );
+    }
+  } catch (e) {
+    emitErrorTelemetry(ctx.db, input.session_id, 'session_start/intent_prediction', e);
+  }
+
   const payload = assembleFullContext({
     db: ctx.db,
     project: ctx.project,
@@ -202,6 +235,7 @@ const main = wrapHook('SessionStart', async (input, ctx) => {
     config: ctx.config,
     identityDir: getIdentityDir(),
     sessionId: input.session_id,
+    predictedContext,
   });
 
   if (payload.tokenEstimate > 0) {

@@ -32,7 +32,11 @@ CREATE TABLE IF NOT EXISTS observations (
   last_accessed_at_epoch INTEGER,
   deleted_at_epoch INTEGER DEFAULT NULL,
   consumed INTEGER NOT NULL DEFAULT 0,
-  obs_type TEXT
+  obs_type TEXT,
+  stability_class TEXT DEFAULT 'standard'
+    CHECK (stability_class IN ('transient', 'standard', 'stable', 'permanent')),
+  novelty_score REAL DEFAULT 0.5,
+  consolidated_into INTEGER
 );
 
 -- FTS5 virtual table for full-text search on observations.
@@ -396,7 +400,10 @@ CREATE TABLE IF NOT EXISTS experience_patterns (
   verification_count INTEGER NOT NULL DEFAULT 0,
   helpful_count INTEGER NOT NULL DEFAULT 0,
   harmful_count INTEGER NOT NULL DEFAULT 0,
-  escalation_level TEXT NOT NULL DEFAULT 'pattern'
+  escalation_level TEXT NOT NULL DEFAULT 'pattern',
+  maturity TEXT DEFAULT 'candidate'
+    CHECK (maturity IN ('candidate', 'established', 'proven')),
+  confidence REAL DEFAULT 0.5
 );
 
 CREATE INDEX IF NOT EXISTS idx_expat_project_score
@@ -438,6 +445,8 @@ CREATE TABLE IF NOT EXISTS artifact_links (
   link_type TEXT NOT NULL CHECK (link_type IN ('related', 'supports', 'contradicts', 'supersedes', 'caused_by')),
   strength REAL NOT NULL DEFAULT 0.5,
   created_at_epoch INTEGER NOT NULL DEFAULT (unixepoch()),
+  valid_at_epoch INTEGER,
+  invalid_at_epoch INTEGER,
   PRIMARY KEY (source_id, target_id)
 );
 
@@ -517,6 +526,56 @@ CREATE INDEX IF NOT EXISTS idx_sessmsg_target
   ON session_messages(target_session, delivered_at_epoch, priority);
 CREATE INDEX IF NOT EXISTS idx_sessmsg_sender
   ON session_messages(sender, created_at_epoch DESC);
+
+-- V11: artifact_access_log — enables proper ACT-R multi-access BLL
+CREATE TABLE IF NOT EXISTS artifact_access_log (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  artifact_id INTEGER NOT NULL,
+  session_id TEXT NOT NULL,
+  access_type TEXT NOT NULL DEFAULT 'retrieval'
+    CHECK (access_type IN ('retrieval', 'materialization', 'reference', 'spread')),
+  timestamp_epoch INTEGER NOT NULL DEFAULT (unixepoch())
+);
+CREATE INDEX IF NOT EXISTS idx_aal_artifact
+  ON artifact_access_log(artifact_id, timestamp_epoch DESC);
+
+-- V11: knowledge_gaps — System 3 metacognition register
+CREATE TABLE IF NOT EXISTS knowledge_gaps (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  project TEXT NOT NULL,
+  domain TEXT NOT NULL,
+  description TEXT NOT NULL,
+  detected_by TEXT NOT NULL,
+  detected_at_epoch INTEGER NOT NULL DEFAULT (unixepoch()),
+  priority REAL NOT NULL DEFAULT 0.5,
+  resolved_at_epoch INTEGER,
+  resolution TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_kg_project
+  ON knowledge_gaps(project, resolved_at_epoch);
+
+-- V11: temporal_profile — user behavior patterns by time bucket
+CREATE TABLE IF NOT EXISTS temporal_profile (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  project TEXT NOT NULL,
+  hour_bucket INTEGER NOT NULL CHECK (hour_bucket BETWEEN 0 AND 5),
+  day_of_week INTEGER NOT NULL CHECK (day_of_week BETWEEN 0 AND 6),
+  session_count INTEGER NOT NULL DEFAULT 0,
+  avg_duration_sec REAL,
+  common_first_actions TEXT DEFAULT '[]',
+  updated_at_epoch INTEGER NOT NULL DEFAULT (unixepoch()),
+  UNIQUE(project, hour_bucket, day_of_week)
+);
+
+-- V11: action_transitions — Markov chain for next-action prediction
+CREATE TABLE IF NOT EXISTS action_transitions (
+  project TEXT NOT NULL,
+  from_action TEXT NOT NULL,
+  to_action TEXT NOT NULL,
+  count INTEGER NOT NULL DEFAULT 1,
+  last_epoch INTEGER NOT NULL DEFAULT (unixepoch()),
+  PRIMARY KEY (project, from_action, to_action)
+);
 `;
 
 /**

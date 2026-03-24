@@ -28,10 +28,15 @@ import { routeByContent, buildProjectIndex } from '../../shared/content-router.j
 import * as fs from 'fs';
 import * as path from 'path';
 import { getSessionEvents, synthesizeSessionSummary, saveSessionSummary, recordEvent } from '../../core/session-events.js';
-import { processRetrievalFeedback, applySessionSuccessBonus } from '../../intelligence/retrieval-feedback.js';
+import { processRetrievalFeedback, applySessionSuccessBonus, recordWasReferenced } from '../../intelligence/retrieval-feedback.js';
 import { getExperienceFlags } from '../../intelligence/experience-flags.js';
 import { recordDomainInteraction, extractDomain } from '../../intelligence/capability-tracker.js';
-import { incrementVerificationCount, pruneDeadPatterns, updatePatternScore } from '../../intelligence/experience-patterns.js';
+import {
+  incrementVerificationCount, pruneDeadPatterns, updatePatternScore,
+  computeConfidence, checkMaturityPromotion, shouldInvertToWarning,
+  updatePatternConfidence, promotePatternMaturity, invertToWarning,
+  decayPatternConfidence, type ExperiencePattern,
+} from '../../intelligence/experience-patterns.js';
 import { applyExperienceFeedback } from '../../intelligence/experience-scoring.js';
 import { getThreadState } from '../../core/thread.js';
 import { linkArtifactToRelated } from '../../core/artifacts.js';
@@ -40,6 +45,12 @@ import { penalizeUnreferencedArtifacts } from '../../intelligence/retrieval-feed
 import { cachedPrepare } from '../../core/stmt-cache.js';
 import { embedText, embedJournalEntry } from '../../embeddings/embed-pipeline.js';
 import { upsertConversationEmbedding } from '../../embeddings/qdrant-client.js';
+import {
+  updateTemporalProfile,
+  updateActionTransitions,
+  recordPredictionAccuracy,
+  determineActualIntent,
+} from '../../intelligence/intent-predictor.js';
 import type { Database } from 'better-sqlite3';
 
 // ---------------------------------------------------------------------------
@@ -214,6 +225,13 @@ const main = wrapHook('Stop', async (input, ctx) => {
     emitErrorTelemetry(ctx.db, input.session_id, 'stop/retrieval_feedback', e);
   }
 
+  // Record was_referenced for unscored retrieval events — Phase 14 negative learning.
+  // Checks if artifact summary tokens appear in session assistant text.
+  // Must run AFTER conversation turns are stored (above) so assistant text is available.
+  runHookStep('record_was_referenced', () => {
+    recordWasReferenced(ctx.db, input.session_id);
+  }, ctx.db, input.session_id);
+
   // Capability boundary tracking — record domain interaction
   runHookStep('capability_tracking', () => {
     const thread = getThreadState(ctx.db, input.session_id);
@@ -230,15 +248,55 @@ const main = wrapHook('Stop', async (input, ctx) => {
   // If patterns were injected this turn and no correction followed:
   //   1. Increment verification_count (→ verified at 2, gets 1.5x boost)
   //   2. Increment helpful_count via updatePatternScore(+1) (→ ACE ranking)
+  //   3. Update confidence (Laplace smoothing) and check maturity promotion (Phase 15)
+  // If correction WAS flagged:
+  //   4. Apply 4× harmful multiplier to score (Phase 15)
+  //   5. Check anti-pattern inversion for persistently harmful patterns (Phase 15)
   // This teaches the system which patterns are useful.
   runHookStep('pattern_verification', () => {
     const flags = getExperienceFlags(ctx.db, input.session_id);
-    if (!flags.correction_flagged && flags.injected_pattern_ids?.length > 0) {
+    const triggeredIds: string[] = [];
+
+    if (flags.injected_pattern_ids?.length > 0) {
       for (const pid of flags.injected_pattern_ids) {
-        incrementVerificationCount(ctx.db, pid);
-        updatePatternScore(ctx.db, pid, 1); // +1 score, +1 helpful_count
+        triggeredIds.push(pid);
+
+        if (!flags.correction_flagged) {
+          // Helpful path: no correction → pattern was useful
+          incrementVerificationCount(ctx.db, pid);
+          updatePatternScore(ctx.db, pid, 1); // +1 score, +1 helpful_count
+        } else {
+          // Harmful path: correction detected → 4× harmful multiplier
+          updatePatternScore(ctx.db, pid, -4); // -4 score, +1 harmful_count
+        }
+
+        // Recompute confidence and check maturity promotion
+        const row = cachedPrepare(ctx.db,
+          `SELECT helpful_count, harmful_count, times_triggered, verification_count,
+                  maturity, confidence FROM experience_patterns WHERE id = ?`
+        ).get(pid) as Pick<ExperiencePattern, 'helpful_count' | 'harmful_count' | 'times_triggered' | 'verification_count' | 'maturity' | 'confidence'> | undefined;
+
+        if (row) {
+          // Update confidence via Laplace smoothing
+          const newConfidence = computeConfidence(row.helpful_count, row.harmful_count);
+          updatePatternConfidence(ctx.db, pid, newConfidence);
+
+          // Check maturity promotion
+          const promotion = checkMaturityPromotion(row as ExperiencePattern);
+          if (promotion) {
+            promotePatternMaturity(ctx.db, pid, promotion);
+          }
+
+          // Check anti-pattern inversion for persistently harmful patterns
+          if (shouldInvertToWarning(row as ExperiencePattern)) {
+            invertToWarning(ctx.db, pid);
+          }
+        }
       }
     }
+
+    // Slow confidence decay for non-triggered patterns (0.995× per turn)
+    decayPatternConfidence(ctx.db, triggeredIds);
   }, ctx.db, input.session_id);
 
   // Experience scoring — full feedback loop (extraction, topic-aware scoring, flag rotation).
@@ -365,6 +423,62 @@ const main = wrapHook('Stop', async (input, ctx) => {
   // Penalize unreferenced artifacts
   runHookStep('penalize_unreferenced', () => {
     penalizeUnreferencedArtifacts(ctx.db, routedProject);
+  }, ctx.db, input.session_id);
+
+  // === Phase 19: Temporal profile + action transitions + prediction accuracy ===
+  // These run at the END after all other phases' sections.
+
+  // Update temporal profile — records session time slot for future prediction
+  runHookStep('temporal_profile', () => {
+    updateTemporalProfile(ctx.db, routedProject, input.session_id);
+  }, ctx.db, input.session_id);
+
+  // Update action transitions — Markov chain for next-action prediction
+  runHookStep('action_transitions', () => {
+    updateActionTransitions(ctx.db, routedProject, input.session_id);
+  }, ctx.db, input.session_id);
+
+  // Record prediction accuracy — compares session-start prediction with actual intent
+  runHookStep('prediction_accuracy', () => {
+    // Check if a prediction was recorded at session-start
+    const predictionEvent = cachedPrepare(ctx.db,
+      `SELECT action, detail FROM session_events
+       WHERE session_id = ? AND event_type = 'intent_prediction'
+       LIMIT 1`
+    ).get(input.session_id) as { action: string; detail: string | null } | undefined;
+
+    if (predictionEvent) {
+      const actualIntent = determineActualIntent(ctx.db, input.session_id);
+      const predictedIntent = predictionEvent.action;
+
+      // Check if predicted context was referenced in assistant responses
+      let wasReferenced = false;
+      try {
+        const detail = predictionEvent.detail ? JSON.parse(predictionEvent.detail) : {};
+        const predTopic = (detail.topic ?? '').toLowerCase();
+        if (predTopic.length > 5) {
+          const turns = cachedPrepare(ctx.db,
+            `SELECT assistant_text FROM conversation_turns
+             WHERE session_id = ? AND assistant_text IS NOT NULL
+             LIMIT 5`
+          ).all(input.session_id) as Array<{ assistant_text: string }>;
+          // Simple check: any assistant text references the predicted topic?
+          const topicWords = predTopic.split(/\s+/).filter(w => w.length > 3).slice(0, 3);
+          for (const turn of turns) {
+            const lower = turn.assistant_text.toLowerCase();
+            if (topicWords.some(w => lower.includes(w))) {
+              wasReferenced = true;
+              break;
+            }
+          }
+        }
+      } catch { /* non-fatal */ }
+
+      recordPredictionAccuracy(
+        ctx.db, input.session_id, routedProject,
+        predictedIntent, actualIntent, wasReferenced,
+      );
+    }
   }, ctx.db, input.session_id);
 
   // Build gate warning

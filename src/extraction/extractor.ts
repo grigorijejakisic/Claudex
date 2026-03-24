@@ -23,7 +23,7 @@ import { sanitizePath } from './redaction.js';
 import { classifyCategory } from './scoring.js';
 import { scoreImportance } from './scoring.js';
 import { classifyObservationType, applyTypePrior } from './type-classifier.js';
-import { insertObservation } from '../core/observations.js';
+import { insertObservation, insertObservationWithDedup, type DedupResult } from '../core/observations.js';
 import { CONTENT_MAX_CHARS } from '../shared/constants.js';
 import { truncateText } from '../shared/text-utils.js';
 
@@ -253,6 +253,118 @@ export function processToolObservation(input: ProcessToolObservationInput): numb
     return id;
   } catch (e) {
     emitErrorTelemetry(input.db, input.sessionId, 'extraction/observe', e);
+    return null;
+  }
+}
+
+/**
+ * Async version of processToolObservation with semantic dedup.
+ *
+ * Runs the same pipeline (quality gate → extract → redact → classify → score → time-dedup)
+ * then uses insertObservationWithDedup() for semantic duplicate detection via Qdrant.
+ *
+ * Falls back to sync insertObservation() if Qdrant is unavailable.
+ * Non-throwing: returns null on any error.
+ */
+export async function processToolObservationAsync(input: ProcessToolObservationInput): Promise<DedupResult | null> {
+  try {
+    const { db, sessionId, project, toolName, toolInput, toolOutput, projectRoot } = input;
+
+    // 1. Dispatch — find extractor for this tool
+    const extractor = EXTRACTOR_MAP[toolName];
+    if (!extractor) return null;
+
+    // 2. Quality gate — reject low-signal observations
+    const gate = passesQualityGate(toolName, toolInput, toolOutput);
+    if (!gate.pass) {
+      if (gate.reason === 'quality_gate_error') {
+        emitErrorTelemetry(db, sessionId, 'extraction/quality_gate_error', new Error(`gate threw for tool=${toolName}`));
+      }
+      return null;
+    }
+
+    // 3. Extract — get structured data from tool input/output
+    const result = extractor(toolInput, toolOutput);
+    if (!result) return null;
+
+    // 3b. Validate — cap files_modified to prevent heavy DB operations
+    const MAX_FILES_MODIFIED = 50;
+    const MAX_PATH_LENGTH = 500;
+    const validFiles = (Array.isArray(result.files_modified) ? result.files_modified : [])
+      .filter((f): f is string => typeof f === 'string' && f.length <= MAX_PATH_LENGTH)
+      .slice(0, MAX_FILES_MODIFIED);
+
+    // 4. Redact — apply content redaction, title redaction, and path sanitization
+    const redactedContent = redactContent(result.content);
+    const redactedTitle = redactContent(result.title);
+    const sanitizedFiles = validFiles.map((f) => sanitizePath(f, projectRoot));
+
+    // 5. Classify — determine observation category
+    const category = classifyCategory(toolName, redactedTitle, redactedContent);
+
+    // 6. Score — determine importance
+    const importance = scoreImportance(toolName, category, redactedContent);
+
+    // 6b. Type Prior classification — apply type-based importance multiplier
+    const exitCode = toolName === 'Bash' ? (toolOutput?.exitCode as number | undefined) : undefined;
+    const obsType = classifyObservationType(redactedContent, toolName, exitCode);
+    const adjustedImportance = applyTypePrior(importance, obsType);
+
+    // 7. Dedup — skip if same tool+file+category+project+session within 5 minutes (300 seconds)
+    const fiveMinutesAgo = Math.floor(Date.now() / 1000) - 300;
+
+    let existing: { id: number } | undefined;
+    if (sanitizedFiles.length > 0) {
+      existing = db
+        .prepare(
+          `SELECT id FROM observations
+           WHERE tool_name = ? AND category = ? AND project = ? AND session_id = ?
+             AND timestamp_epoch > ? AND files_modified = ?
+             AND deleted_at_epoch IS NULL
+           LIMIT 1`
+        )
+        .get(toolName, category, project, sessionId, fiveMinutesAgo, JSON.stringify(sanitizedFiles)) as { id: number } | undefined;
+    } else {
+      const canonTitle = redactedTitle.replace(/\[REDACTED_\w+\]/g, '[REDACTED]');
+      const canonContent = truncateText(
+        redactedContent.replace(/\[REDACTED_\w+\]/g, '[REDACTED]'),
+        CONTENT_MAX_CHARS,
+      );
+      existing = db
+        .prepare(
+          `SELECT id FROM observations
+           WHERE tool_name = ? AND category = ? AND project = ? AND session_id = ?
+             AND content = ? AND title = ?
+             AND timestamp_epoch > ?
+             AND files_modified = '[]'
+             AND deleted_at_epoch IS NULL
+           LIMIT 1`
+        )
+        .get(toolName, category, project, sessionId, canonContent, canonTitle, fiveMinutesAgo) as { id: number } | undefined;
+    }
+
+    if (existing) return null;
+
+    // 8. Store with semantic dedup — tag external tool observations with provenance prefix
+    const storedObsType = gate.provenance === 'external_tool'
+      ? `external:${obsType}`
+      : obsType;
+
+    const dedupResult = await insertObservationWithDedup(db, {
+      session_id: sessionId,
+      project,
+      tool_name: toolName,
+      category,
+      title: redactedTitle,
+      content: redactedContent,
+      importance: adjustedImportance,
+      files_modified: sanitizedFiles,
+      obs_type: storedObsType,
+    });
+
+    return dedupResult;
+  } catch (e) {
+    emitErrorTelemetry(input.db, input.sessionId, 'extraction/observe_async', e);
     return null;
   }
 }

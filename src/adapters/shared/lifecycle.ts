@@ -7,7 +7,7 @@
 import type Database from 'better-sqlite3';
 import type { ClaudexConfig } from '../../shared/config.js';
 import type { TokenUsage } from '../../shared/types.js';
-import { processToolObservation, checkNovelty } from '../../extraction/extractor.js';
+import { processToolObservation, processToolObservationAsync, checkNovelty } from '../../extraction/extractor.js';
 import { updatePressureScore } from '../../core/pressure.js';
 import { sanitizePath, redactContent } from '../../extraction/redaction.js';
 import { ThreadTracker, persistTopicUpdate, extractTopic } from '../../intelligence/thread-tracker.js';
@@ -217,7 +217,9 @@ export async function processToolAndPressure(params: ToolObservationParams): Pro
   // Each operation isolated — one failure must not kill subsequent operations
   let observationId: number | null = null;
   try {
-    observationId = processToolObservation({
+    // Use async dedup-aware path — semantic duplicate detection via Qdrant.
+    // Falls through to sync insertObservation() if Qdrant is unavailable.
+    const dedupResult = await processToolObservationAsync({
       db: params.db,
       sessionId: params.sessionId,
       project: params.project,
@@ -226,8 +228,27 @@ export async function processToolAndPressure(params: ToolObservationParams): Pro
       toolOutput: params.toolOutput,
       projectRoot: params.cwd,
     });
+    if (dedupResult) {
+      // Only create artifacts for newly inserted observations.
+      // Skipped (same-session dup) and updated (cross-session dup) observations
+      // already have artifacts from their original insertion.
+      observationId = dedupResult.action === 'inserted' ? dedupResult.id : null;
+    }
   } catch (e) {
-    emitErrorTelemetry(params.db, params.sessionId, 'tool_processing/observation', e);
+    // Async dedup failed entirely — fall back to sync path
+    try {
+      observationId = processToolObservation({
+        db: params.db,
+        sessionId: params.sessionId,
+        project: params.project,
+        toolName: params.toolName,
+        toolInput: params.toolInput,
+        toolOutput: params.toolOutput,
+        projectRoot: params.cwd,
+      });
+    } catch (e2) {
+      emitErrorTelemetry(params.db, params.sessionId, 'tool_processing/observation', e2);
+    }
   }
 
   // Create artifact from high-signal observations only — routine low-importance

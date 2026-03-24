@@ -764,6 +764,143 @@ export function migrateV9toV10(db: Database): void {
   }
 }
 
+// ---------------------------------------------------------------------------
+// V10 → V11
+// ---------------------------------------------------------------------------
+
+/**
+ * V10→V11: Proactive Memory — stability classification, maturity lifecycle,
+ * artifact access log, knowledge gaps, temporal profile, action transitions.
+ *
+ * 1. Add stability_class, novelty_score, consolidated_into to observations
+ * 2. Add maturity, confidence to experience_patterns
+ * 3. Add valid_at_epoch, invalid_at_epoch to artifact_links
+ * 4. Create artifact_access_log, knowledge_gaps, temporal_profile, action_transitions tables
+ * 5. Backfill stability_class based on category
+ * 6. Backfill maturity + confidence based on trigger/helpful counts
+ */
+export function migrateV10toV11(db: Database): void {
+  try {
+    // 1. Add columns to observations
+    if (hasTable(db, 'observations')) {
+      if (!hasColumn(db, 'observations', 'stability_class'))
+        db.exec("ALTER TABLE observations ADD COLUMN stability_class TEXT DEFAULT 'standard'");
+      if (!hasColumn(db, 'observations', 'novelty_score'))
+        db.exec("ALTER TABLE observations ADD COLUMN novelty_score REAL DEFAULT 0.5");
+      if (!hasColumn(db, 'observations', 'consolidated_into'))
+        db.exec("ALTER TABLE observations ADD COLUMN consolidated_into INTEGER");
+    }
+
+    // 2. Add columns to experience_patterns
+    if (hasTable(db, 'experience_patterns')) {
+      if (!hasColumn(db, 'experience_patterns', 'maturity'))
+        db.exec("ALTER TABLE experience_patterns ADD COLUMN maturity TEXT DEFAULT 'candidate'");
+      if (!hasColumn(db, 'experience_patterns', 'confidence'))
+        db.exec("ALTER TABLE experience_patterns ADD COLUMN confidence REAL DEFAULT 0.5");
+    }
+
+    // 3. Add columns to artifact_links
+    if (hasTable(db, 'artifact_links')) {
+      if (!hasColumn(db, 'artifact_links', 'valid_at_epoch'))
+        db.exec("ALTER TABLE artifact_links ADD COLUMN valid_at_epoch INTEGER");
+      if (!hasColumn(db, 'artifact_links', 'invalid_at_epoch'))
+        db.exec("ALTER TABLE artifact_links ADD COLUMN invalid_at_epoch INTEGER");
+    }
+
+    // 4. Create new tables
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS artifact_access_log (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        artifact_id INTEGER NOT NULL,
+        session_id TEXT NOT NULL,
+        access_type TEXT NOT NULL DEFAULT 'retrieval'
+          CHECK (access_type IN ('retrieval', 'materialization', 'reference', 'spread')),
+        timestamp_epoch INTEGER NOT NULL DEFAULT (unixepoch())
+      );
+      CREATE INDEX IF NOT EXISTS idx_aal_artifact
+        ON artifact_access_log(artifact_id, timestamp_epoch DESC);
+    `);
+
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS knowledge_gaps (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        project TEXT NOT NULL,
+        domain TEXT NOT NULL,
+        description TEXT NOT NULL,
+        detected_by TEXT NOT NULL,
+        detected_at_epoch INTEGER NOT NULL DEFAULT (unixepoch()),
+        priority REAL NOT NULL DEFAULT 0.5,
+        resolved_at_epoch INTEGER,
+        resolution TEXT
+      );
+      CREATE INDEX IF NOT EXISTS idx_kg_project
+        ON knowledge_gaps(project, resolved_at_epoch);
+    `);
+
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS temporal_profile (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        project TEXT NOT NULL,
+        hour_bucket INTEGER NOT NULL CHECK (hour_bucket BETWEEN 0 AND 5),
+        day_of_week INTEGER NOT NULL CHECK (day_of_week BETWEEN 0 AND 6),
+        session_count INTEGER NOT NULL DEFAULT 0,
+        avg_duration_sec REAL,
+        common_first_actions TEXT DEFAULT '[]',
+        updated_at_epoch INTEGER NOT NULL DEFAULT (unixepoch()),
+        UNIQUE(project, hour_bucket, day_of_week)
+      );
+    `);
+
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS action_transitions (
+        project TEXT NOT NULL,
+        from_action TEXT NOT NULL,
+        to_action TEXT NOT NULL,
+        count INTEGER NOT NULL DEFAULT 1,
+        last_epoch INTEGER NOT NULL DEFAULT (unixepoch()),
+        PRIMARY KEY (project, from_action, to_action)
+      );
+    `);
+
+    // 5. Backfill stability_class based on category
+    try {
+      db.exec(`
+        UPDATE observations SET stability_class = 'transient'
+        WHERE stability_class = 'standard' AND category IN ('error', 'test')
+      `);
+      db.exec(`
+        UPDATE observations SET stability_class = 'stable'
+        WHERE stability_class = 'standard' AND category IN ('architecture', 'decision')
+      `);
+    } catch { /* non-fatal */ }
+
+    // 6. Backfill experience_patterns maturity + confidence
+    if (hasTable(db, 'experience_patterns')) {
+      try {
+        // Proven: times_triggered >= 5 AND helpful_count >= 3
+        db.exec(`
+          UPDATE experience_patterns SET maturity = 'proven'
+          WHERE maturity = 'candidate' AND times_triggered >= 5 AND helpful_count >= 3
+        `);
+        // Established: times_triggered >= 2 (but not already proven)
+        db.exec(`
+          UPDATE experience_patterns SET maturity = 'established'
+          WHERE maturity = 'candidate' AND times_triggered >= 2
+        `);
+        // Confidence: Bayesian (helpful + 1) / (helpful + harmful + 2)
+        db.exec(`
+          UPDATE experience_patterns
+          SET confidence = CAST((helpful_count + 1) AS REAL) / CAST((helpful_count + harmful_count + 2) AS REAL)
+          WHERE confidence = 0.5 AND (helpful_count > 0 OR harmful_count > 0)
+        `);
+      } catch { /* non-fatal */ }
+    }
+
+  } catch {
+    // Non-throwing
+  }
+}
+
 /**
  * Upgrades v2 tables in-place when v3 opens the same database file.
  */

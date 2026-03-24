@@ -59,6 +59,8 @@ export interface ExperiencePattern {
   helpful_count: number;
   harmful_count: number;
   escalation_level: EscalationLevel;
+  maturity: 'candidate' | 'established' | 'proven' | null;
+  confidence: number | null;
 }
 
 export interface ExtractionInput {
@@ -513,7 +515,16 @@ export async function findMatchingPatternsHybrid(
     }
   } catch { /* Qdrant/embeddings unavailable — FTS5 results are sufficient */ }
 
-  return ftsResults.slice(0, limit);
+  // Re-rank by maturity weight × confidence (Phase 15)
+  const weighted = ftsResults.map(p => {
+    const maturityWeight = getMaturityWeight(p.maturity);
+    const confidence = p.confidence ?? 0.5;
+    const weight = maturityWeight * confidence;
+    return { pattern: p, weight };
+  });
+  weighted.sort((a, b) => b.weight - a.weight);
+
+  return weighted.slice(0, limit).map(w => w.pattern);
 }
 
 /** LIKE-based fallback when FTS5 query fails (e.g. special characters in prompt). */
@@ -956,5 +967,143 @@ export function applyVerificationBoost(score: number, verified: number | boolean
     return verified ? score * 1.5 : score;
   } catch {
     return score;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// 3.4 Pattern Maturity Lifecycle (Phase 15)
+// ---------------------------------------------------------------------------
+
+export type MaturityLevel = 'candidate' | 'established' | 'proven';
+
+/**
+ * Computes confidence score using Laplace smoothing.
+ * Range: always > 0 (floor ~0.33 with 0 helpful, 0 harmful → 1/2 = 0.5).
+ * Laplace smoothing ensures confidence is never 0 or 1 with finite data.
+ */
+export function computeConfidence(helpful: number, harmful: number): number {
+  return (helpful + 1) / (helpful + harmful + 2);
+}
+
+/**
+ * Checks whether a pattern should be promoted to a higher maturity level.
+ * Returns the new maturity level, or null if no promotion is warranted.
+ *
+ * Promotion rules:
+ *   candidate → established: times_triggered >= 2
+ *   established → proven: helpful_count >= 3 AND verification_count >= 2
+ *
+ * Only promotes UP, never down. Non-throwing.
+ */
+export function checkMaturityPromotion(pattern: ExperiencePattern): 'established' | 'proven' | null {
+  const maturity = pattern.maturity || 'candidate';
+  if (maturity === 'candidate' && pattern.times_triggered >= 2) return 'established';
+  if (maturity === 'established' && pattern.helpful_count >= 3 && pattern.verification_count >= 2) return 'proven';
+  return null;
+}
+
+/**
+ * Determines whether a persistently harmful pattern should be inverted to a warning.
+ * Returns true when harmful_count exceeds helpful_count by more than 3.
+ * When inverted, the caller should prepend "WARNING: Avoid this — " to the lesson
+ * and change pattern_type to 'behavioral'.
+ */
+export function shouldInvertToWarning(pattern: ExperiencePattern): boolean {
+  return pattern.harmful_count > pattern.helpful_count + 3;
+}
+
+/**
+ * Returns the maturity weight multiplier for retrieval scoring.
+ * candidate: 0.5×, established: 1.0×, proven: 1.5×.
+ */
+export function getMaturityWeight(maturity: string | null | undefined): number {
+  switch (maturity) {
+    case 'proven': return 1.5;
+    case 'established': return 1.0;
+    case 'candidate':
+    default: return 0.5;
+  }
+}
+
+/**
+ * Updates confidence and maturity columns for a pattern.
+ * Non-throwing.
+ */
+export function updatePatternConfidence(db: Database, id: string, confidence: number): void {
+  try {
+    cachedPrepare(db,
+      `UPDATE experience_patterns SET confidence = ? WHERE id = ?`
+    ).run(Math.max(0.01, confidence), id);
+  } catch {
+    // Non-throwing
+  }
+}
+
+/**
+ * Promotes a pattern's maturity level. Only promotes UP, never down.
+ * Non-throwing.
+ */
+export function promotePatternMaturity(db: Database, id: string, newMaturity: MaturityLevel): void {
+  try {
+    cachedPrepare(db,
+      `UPDATE experience_patterns SET maturity = ? WHERE id = ?`
+    ).run(newMaturity, id);
+  } catch {
+    // Non-throwing
+  }
+}
+
+/**
+ * Applies anti-pattern inversion: prepends "WARNING: Avoid this — " to the lesson
+ * and changes pattern_type to 'behavioral'. Non-throwing.
+ */
+export function invertToWarning(db: Database, id: string): void {
+  try {
+    const row = cachedPrepare(db,
+      `SELECT lesson, pattern_type FROM experience_patterns WHERE id = ?`
+    ).get(id) as { lesson: string; pattern_type: string } | undefined;
+    if (!row) return;
+
+    // Don't double-invert
+    if (row.lesson.startsWith('WARNING: Avoid this')) return;
+
+    const newLesson = `WARNING: Avoid this — ${row.lesson}`;
+    cachedPrepare(db,
+      `UPDATE experience_patterns SET lesson = ?, pattern_type = 'behavioral' WHERE id = ?`
+    ).run(newLesson, id);
+
+    // Update FTS index is handled by the AFTER UPDATE trigger
+  } catch {
+    // Non-throwing
+  }
+}
+
+/**
+ * Applies slow confidence decay to all non-triggered patterns.
+ * confidence *= 0.995 — noticeable over 100+ sessions.
+ * Floor at 0.01 to prevent zero-confidence patterns.
+ * Non-throwing.
+ */
+export function decayPatternConfidence(db: Database, triggeredPatternIds: string[]): void {
+  try {
+    if (triggeredPatternIds.length === 0) {
+      // Decay all patterns
+      cachedPrepare(db,
+        `UPDATE experience_patterns
+         SET confidence = MAX(0.01, confidence * 0.995)
+         WHERE confidence IS NOT NULL AND confidence > 0.01`
+      ).run();
+    } else {
+      // Decay all except triggered patterns
+      const placeholders = triggeredPatternIds.map(() => '?').join(',');
+      cachedPrepare(db,
+        `UPDATE experience_patterns
+         SET confidence = MAX(0.01, confidence * 0.995)
+         WHERE confidence IS NOT NULL AND confidence > 0.01
+           AND id NOT IN (${placeholders})`
+      ).run(...triggeredPatternIds);
+    }
+  } catch {
+    // Non-throwing
   }
 }

@@ -5,6 +5,10 @@
  *   1. Check for idle active sessions → send warnings
  *   2. Find completed sessions the Angel hasn't processed → extract patterns
  *   3. Classify domains for unclassified sessions
+ *   4. Guardian duties (pruning, verification, orphan cleanup)
+ *   5. Memory monitor (CC auto-memory migration)
+ *   6. Bulk artifact linking (Qdrant similarity)
+ *   7. Observation consolidation (merge similar obs, rate-limited)
  *
  * The heartbeat only runs meaningful work — no busy loops.
  * Design: easy, fast, purposeful. Every piece earns its place.
@@ -21,6 +25,7 @@ import { sendIdleWarning } from './message-sender.js';
 import { extractPatternsFromSession, classifySessionDomains } from './pattern-extractor.js';
 import { getUnverifiedFrequentPatterns, incrementVerificationCount } from '../intelligence/experience-patterns.js';
 import { monitorMemoryFiles } from './memory-monitor.js';
+import { consolidateObservationBatch, shouldConsolidate, markConsolidationRan } from './consolidator.js';
 
 export interface HeartbeatContext {
   db: Database;
@@ -37,6 +42,9 @@ export interface TickResult {
   learnings_pruned?: number;
   patterns_pruned?: number;
   memory_entries_migrated?: number;
+  artifacts_linked?: number;
+  observations_consolidated?: number;
+  consolidation_clusters?: number;
   duration_ms: number;
   error?: string;
 }
@@ -168,12 +176,156 @@ export async function heartbeatTick(ctx: HeartbeatContext): Promise<TickResult> 
     } catch {
       // Non-critical — memory monitoring failure doesn't break the heartbeat
     }
+
+    // Phase 6: Bulk artifact linking — populate artifact_links via Qdrant similarity
+    try {
+      const linked = await linkUnlinkedArtifacts(ctx.db);
+      if (linked > 0) {
+        result.artifacts_linked = linked;
+      }
+    } catch {
+      // Non-critical — linking failure doesn't break the heartbeat
+    }
+
+    // Phase 7: Observation consolidation — merge similar observations into summaries
+    // Rate-limited to once per 5 minutes. Skipped if pattern extraction ran this tick
+    // (avoid competing for resources).
+    try {
+      const patternExtractionRan = result.sessions_processed > 0;
+      if (!patternExtractionRan && shouldConsolidate()) {
+        markConsolidationRan();
+        const consResult = await consolidateObservationBatch(
+          ctx.db,
+          50,
+          ctx.config.localModel,
+        );
+        if (consResult.consolidated > 0) {
+          result.observations_consolidated = consResult.consolidated;
+          result.consolidation_clusters = consResult.clusters;
+        }
+      }
+    } catch {
+      // Non-critical — consolidation failure doesn't break the heartbeat
+    }
   } catch (e) {
     result.error = e instanceof Error ? e.message : String(e);
   }
 
   result.duration_ms = Date.now() - start;
   return result;
+}
+
+// ---------------------------------------------------------------------------
+// Phase 6: Bulk artifact linking
+// ---------------------------------------------------------------------------
+
+/** Rate limit: run bulk linking at most once per 5 minutes. */
+let _lastLinkingEpoch = 0;
+const LINKING_INTERVAL_MS = 5 * 60 * 1000;
+
+/** Max artifacts to link per tick. */
+const LINKING_BATCH_SIZE = 20;
+
+/** Minimum cosine similarity for creating a link. */
+const LINKING_THRESHOLD = 0.6;
+
+/** Max outgoing links per artifact. */
+const MAX_LINKS_PER_ARTIFACT = 5;
+
+/**
+ * Find artifacts with embeddings but no outgoing links, then create
+ * bidirectional 'related' links to their nearest Qdrant neighbors.
+ *
+ * Rate-limited to once per 5 minutes to avoid Qdrant pressure.
+ * Batch size: 20 artifacts per tick.
+ *
+ * Non-throwing — returns 0 on any failure.
+ */
+export async function linkUnlinkedArtifacts(
+  db: Database,
+  batchSize: number = LINKING_BATCH_SIZE,
+): Promise<number> {
+  try {
+    // Rate limit
+    const now = Date.now();
+    if (now - _lastLinkingEpoch < LINKING_INTERVAL_MS) return 0;
+    _lastLinkingEpoch = now;
+
+    // Find artifacts with embeddings but no outgoing links
+    const unlinked = cachedPrepare(db,
+      `SELECT a.id, a.project FROM artifacts a
+       LEFT JOIN artifact_links al ON a.id = al.source_id
+       WHERE al.source_id IS NULL
+         AND a.embedding IS NOT NULL
+         AND a.state != 'packed'
+       LIMIT ?`
+    ).all(batchSize) as Array<{ id: number; project: string }>;
+
+    if (unlinked.length === 0) return 0;
+
+    // Dynamic import — Qdrant is optional
+    const { searchArtifacts } = await import('../embeddings/qdrant-client.js');
+
+    let linksCreated = 0;
+
+    const insertStmt = cachedPrepare(db,
+      `INSERT OR IGNORE INTO artifact_links (source_id, target_id, link_type, strength, valid_at_epoch)
+       VALUES (?, ?, 'related', ?, ?)`
+    );
+
+    const nowEpoch = Math.floor(Date.now() / 1000);
+
+    for (const artifact of unlinked) {
+      try {
+        // Get the artifact's embedding BLOB from SQLite
+        const row = cachedPrepare(db,
+          'SELECT embedding FROM artifacts WHERE id = ?'
+        ).get(artifact.id) as { embedding: Buffer | null } | undefined;
+
+        if (!row?.embedding) continue;
+
+        // Decode Float32Array BLOB → number[] (inverse of Buffer.from(Float32Array.buffer))
+        const buf = row.embedding;
+        const embedding = Array.from(
+          new Float32Array(buf.buffer, buf.byteOffset, buf.byteLength / 4)
+        );
+        if (embedding.length === 0) continue;
+
+        // Search Qdrant for similar artifacts (top MAX_LINKS_PER_ARTIFACT + 1 to account for self)
+        const neighbors = await searchArtifacts(
+          embedding,
+          artifact.project,
+          MAX_LINKS_PER_ARTIFACT + 1,
+          { excludeSuperseded: true },
+        );
+
+        for (const neighbor of neighbors) {
+          const neighborId = typeof neighbor.id === 'number'
+            ? neighbor.id
+            : (neighbor.payload?.artifact_id as number);
+
+          if (!neighborId || neighborId === artifact.id) continue;
+          if (neighbor.score < LINKING_THRESHOLD) continue;
+
+          // Bidirectional: A→B and B→A
+          insertStmt.run(artifact.id, neighborId, neighbor.score, nowEpoch);
+          insertStmt.run(neighborId, artifact.id, neighbor.score, nowEpoch);
+          linksCreated++;
+        }
+      } catch {
+        // Individual artifact linking failure — continue with others
+      }
+    }
+
+    return linksCreated;
+  } catch {
+    return 0;
+  }
+}
+
+/** Reset linking rate limit (for testing). */
+export function resetLinkingRateLimit(): void {
+  _lastLinkingEpoch = 0;
 }
 
 /**

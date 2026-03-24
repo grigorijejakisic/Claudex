@@ -27,6 +27,8 @@ import { shouldRunReflection, runBatchReflection } from '../../intelligence/batc
 import { extractDomain, generateDomainAdvisory, getWeakDomains } from '../../intelligence/capability-tracker.js';
 import { getThreadState } from '../../core/thread.js';
 import { getPendingMessages, markMessagesDelivered } from '../../angel/message-sender.js';
+import { classifyIntent, getRetrievalConfigForIntent } from '../../intelligence/intent-classifier.js';
+import type { IntentType, RetrievalConfig } from '../../intelligence/intent-classifier.js';
 
 /** CC internal messages that should not trigger any context processing. */
 const CC_INTERNAL_RE = /^(tasknotification\s|outputfile)/i;
@@ -39,6 +41,21 @@ const main = wrapHook('UserPromptSubmit', async (input, ctx) => {
   // consume assembly budget. Let them pass through with zero injection.
   if (CC_INTERNAL_RE.test(prompt)) {
     return {};
+  }
+
+  // ---------------------------------------------------------------------------
+  // Intent classification (Phase 18) — pure regex, <1ms, non-throwing.
+  // Classified early so retrieval calls downstream can use intent-driven config.
+  // ---------------------------------------------------------------------------
+  let intentType: IntentType = 'continuation';
+  let intentConfig: RetrievalConfig = getRetrievalConfigForIntent('continuation');
+  if (prompt) {
+    try {
+      intentType = classifyIntent(prompt);
+      intentConfig = getRetrievalConfigForIntent(intentType);
+      // Store intent classification as session event for future analysis
+      recordEvent(ctx.db, input.session_id, ctx.project, 'intent_classification', intentType, 'classified');
+    } catch { /* non-throwing — use defaults */ }
   }
 
   const tracking = getCheckpointTracking(ctx.db, input.session_id);
@@ -158,12 +175,14 @@ const main = wrapHook('UserPromptSubmit', async (input, ctx) => {
 
   // Materialize artifacts on assembly turns (post-compaction, topic shift) and
   // on regular turns when the prompt strongly matches high-importance artifacts.
+  // Phase 18: intent-driven limit adjusts how many artifacts we materialize.
   if (isPostCompaction || topicShift?.shifted) {
     // Full materialization on assembly turns
     try {
       const query = prompt || topicShift?.newTopic;
       if (query) {
-        const matches = searchArtifactsGlobal(ctx.db, routedProject, query, 10);
+        const materializeLimit = intentConfig.limit ?? 10;
+        const matches = searchArtifactsGlobal(ctx.db, routedProject, query, materializeLimit);
         if (matches.length > 0) {
           materializeArtifacts(ctx.db, matches.map(a => a.id), ctx.project);
         }
@@ -177,7 +196,8 @@ const main = wrapHook('UserPromptSubmit', async (input, ctx) => {
     // This catches cases where the user mentions a topic with existing artifacts
     // but the topic-shift detector didn't fire.
     try {
-      const probeResults = searchArtifactsGlobal(ctx.db, routedProject, prompt, 3);
+      const probeLimit = Math.min(intentConfig.limit ?? 5, 5);
+      const probeResults = searchArtifactsGlobal(ctx.db, routedProject, prompt, probeLimit);
       const highImportance = probeResults.filter(a => a.importance >= 4);
       if (highImportance.length > 0) {
         materializeArtifacts(ctx.db, highImportance.map(a => a.id), ctx.project);

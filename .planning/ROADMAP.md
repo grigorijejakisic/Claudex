@@ -30,6 +30,26 @@ Claudex v3 is a unified context management system delivering persistent LLM memo
 - [x] **Phase 10: Integration Testing** - End-to-end flows, performance SLAs, observability validation (completed 2026-03-12)
 - [x] **Phase 11: Deployment** - Fresh install verification, optional v2 migration, monitoring (completed 2026-03-12)
 
+---
+
+**Milestone 2: Proactive Memory (V11 Schema Evolution)**
+Research: `context/research/proactive-memory-research-2026-03.md` (21 parallel research agents)
+Spec: `context/specs/PROACTIVE_MEMORY.md`
+
+**Wave Structure:**
+- Wave 5: Phase 12 + Phase 13 + Phase 14 + Phase 15 (4 parallel independent foundations)
+- Wave 6: Phase 16 + Phase 17 + Phase 18 (3 parallel, depend on Wave 5)
+- Wave 7: Phase 19 (depends on all above — the proactive capstone)
+
+- [ ] **Phase 12: Write-Time Deduplication** - Check Qdrant for semantic duplicates before inserting observations. Prevents bloat at source.
+- [ ] **Phase 13: Category-Aware Decay** - Stability classification on observations. Error traces decay fast; architecture decisions persist. Continuous decay in Angel heartbeat.
+- [ ] **Phase 14: Negative Retrieval Learning** - Track surfaced-but-unreferenced artifacts. Demote consistently-ignored items. Retrieval-induced suppression.
+- [ ] **Phase 15: Pattern Maturity + Harmful Multiplier** - candidate→established→proven lifecycle. 4× negative weight. Anti-pattern inversion. Confidence scoring.
+- [ ] **Phase 16: Observation Consolidation** - Angel heartbeat consolidation using Mem0 ADD/UPDATE/DELETE/NOOP model. Reduce 22K to ~5K. Never delete originals.
+- [ ] **Phase 17: Artifact Relationship Graph** - Two-stage linking (cosine→LLM validation). 2-hop graph walks as 4th RRF channel. Fan-effect normalization.
+- [ ] **Phase 18: Intent Classification** - Classify prompt intent (continuation/investigation/implementation/planning/recall). Route to different retrieval strategies.
+- [ ] **Phase 19: Intent Prediction** - Layered prediction at session-start (strong anticipation → weak → pattern matching). Confidence-gated injection. The proactive leap.
+
 ## Phase Details
 
 ### Phase 0: Repository Setup
@@ -238,3 +258,12 @@ Then: Phase 10 then Phase 11 (sequential)
 | 9. OpenClaw Bridge Adapter | 1/1 | Complete   | 2026-03-12 |
 | 10. Integration Testing | 2/2 | Complete   | 2026-03-12 |
 | 11. Deployment | 1/1 | Complete   | 2026-03-12 |
+| **Milestone 2: Proactive Memory** | | | |
+| 12. Write-Time Dedup | 0/1 | Not started | - |
+| 13. Category-Aware Decay | 0/1 | Not started | - |
+| 14. Negative Retrieval Learning | 0/1 | Not started | - |
+| 15. Pattern Maturity | 0/1 | Not started | - |
+| 16. Observation Consolidation | 0/1 | Not started | - |
+| 17. Artifact Graph | 0/1 | Not started | - |
+| 18. Intent Classification | 0/1 | Not started | - |
+| 19. Intent Prediction | 0/1 | Not started | - |

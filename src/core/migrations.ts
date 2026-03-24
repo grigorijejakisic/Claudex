@@ -29,6 +29,7 @@ import {
   migrateV7toV8,
   migrateV8toV9,
   migrateV9toV10,
+  migrateV10toV11,
   migrateSchemaFixes,
   upgradeV2SchemaInPlace,
 } from './migration-steps.js';
@@ -63,7 +64,7 @@ export function runMigrations(db: Database): void {
   const row = db.pragma('user_version') as Array<{ user_version: number }>;
   let version = row[0]?.user_version ?? 0;
 
-  const TARGET_VERSION = 10;
+  const TARGET_VERSION = 11;
 
   if (version >= TARGET_VERSION) return;
 
@@ -77,6 +78,7 @@ export function runMigrations(db: Database): void {
     [7, () => migrateV7toV8(db)],
     [8, () => migrateV8toV9(db)],
     [9, () => migrateV9toV10(db)],
+    [10, () => migrateV10toV11(db)],
   ];
 
   // Handle special cases for version 0 and 1
@@ -149,7 +151,7 @@ export function initializeSchema(db: Database): void {
   } else {
     db.prepare('INSERT OR IGNORE INTO schema_versions (version) VALUES (?)').run(SCHEMA_VERSION);
   }
-  db.pragma('user_version = 10');
+  db.pragma('user_version = 11');
 }
 
 // ---------------------------------------------------------------------------

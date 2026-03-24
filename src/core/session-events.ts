@@ -11,7 +11,7 @@
 import type { Database } from 'better-sqlite3';
 import { cachedPrepare } from './stmt-cache.js';
 
-export type EventType = 'file_edit' | 'file_create' | 'file_read' | 'test_run' | 'build' | 'command' | 'search' | 'decision' | 'topic_shift' | 'user_framing' | 'compaction' | 'angel_processed';
+export type EventType = 'file_edit' | 'file_create' | 'file_read' | 'test_run' | 'build' | 'command' | 'search' | 'decision' | 'topic_shift' | 'user_framing' | 'compaction' | 'angel_processed' | 'intent_classification' | 'intent_prediction' | 'intent_prediction_accuracy' | 'session_success_bonus';
 
 export interface SessionEvent {
   id: number;

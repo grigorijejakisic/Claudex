@@ -1,16 +1,20 @@
 /**
- * Hybrid Retrieval — multi-signal search combining FTS5, vector KNN, and recency.
+ * Hybrid Retrieval — multi-signal search combining FTS5, vector KNN, recency, and graph walk.
  *
- * Three retrieval channels:
+ * Four retrieval channels (async path):
  *   1. FTS5 keyword match (SQLite) → ranked list A
  *   2. Qdrant KNN with metadata filters → ranked list B
  *   3. Recency-sorted (newest first) → ranked list C
+ *   4. Graph walk via artifact_links (2-hop) → ranked list D
+ *
+ * Sync path uses channels 1+3 only (no vector, no graph walk).
  *
  * Fusion: Reciprocal Rank Fusion (RRF): RRF_score(d) = Σ 1/(60 + rank_i(d))
  * Scoring: Three-factor per-artifact: α·recency + β·importance + γ·relevance
  *
  * Graceful degradation:
- *   Qdrant + embeddings → full RRF (3 channels)
+ *   All 4 channels → full RRF (4 channels)
+ *   Graph walk fails → 3-channel RRF
  *   Qdrant down → FTS5 + recency only (2 channels)
  *   Embeddings unavailable → FTS5 only (1 channel, current behavior)
  *
@@ -21,6 +25,7 @@ import type { Database } from 'better-sqlite3';
 import { cachedPrepare } from './stmt-cache.js';
 import { tokenizeQuery } from '../shared/search-utils.js';
 import { getRetrievalScoreMultiplier } from '../intelligence/retrieval-feedback.js';
+import { graphWalkFromSeeds } from './graph-walk.js';
 import type { ArtifactRow } from './artifacts.js';
 
 // ---------------------------------------------------------------------------
@@ -40,6 +45,13 @@ export interface HybridSearchOptions {
   globalScope?: boolean;
   /** Three-factor scoring weights */
   weights?: ScoringWeights;
+  /**
+   * Intent-driven recency weight override.
+   * Applied as alpha in three-factor scoring.
+   * Higher values favor recent artifacts, 0 ignores recency.
+   * When set, overrides weights.alpha.
+   */
+  recencyWeight?: number;
 }
 
 export interface ScoringWeights {
@@ -346,6 +358,54 @@ function searchRecencyChannel(
 }
 
 // ---------------------------------------------------------------------------
+// Retrieval-Induced Suppression (RIF) — Phase 14
+// ---------------------------------------------------------------------------
+
+/** RIF activation decrement per non-selected candidate. */
+const RIF_DECREMENT = 0.03;
+
+/** Minimum RRF score for a candidate to be subject to RIF.
+ * With RRF_K=60 and 4 channels, max possible score is 4*(1/60)=0.067.
+ * Threshold must be below this to be reachable. */
+const RIF_MIN_RRF = 0.01;
+
+/** Minimum activation score floor after RIF. */
+const RIF_ACTIVATION_FLOOR = 0.1;
+
+/**
+ * Apply retrieval-induced suppression to non-selected candidates.
+ *
+ * Candidates that scored above RIF_MIN_RRF in RRF but were not selected
+ * (below the top-K cutoff) get a small activation_score decrement.
+ * This is lightweight per query but accumulates over many queries for
+ * consistently-not-selected artifacts.
+ *
+ * Based on psychology's retrieval-induced forgetting: non-selected
+ * candidates are actively suppressed when competitors are retrieved.
+ *
+ * Non-throwing.
+ */
+export function applyRetrievalInducedSuppression(
+  db: Database,
+  rrfScores: Map<number, number>,
+  selectedIds: Set<number>,
+): void {
+  try {
+    for (const [artifactId, rrfScore] of rrfScores) {
+      // Only suppress candidates that scored above threshold but weren't selected
+      if (rrfScore >= RIF_MIN_RRF && !selectedIds.has(artifactId)) {
+        cachedPrepare(db,
+          `UPDATE artifacts SET activation_score = MAX(?, activation_score - ?)
+           WHERE id = ? AND activation_score IS NOT NULL`
+        ).run(RIF_ACTIVATION_FLOOR, RIF_DECREMENT, artifactId);
+      }
+    }
+  } catch {
+    // Non-throwing — RIF is a best-effort side-effect
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Main hybrid search (sync)
 // ---------------------------------------------------------------------------
 
@@ -371,6 +431,8 @@ export function hybridSearchSync(
     const weights = {
       ...DEFAULT_WEIGHTS,
       ...options.weights,
+      // Intent-driven recency override takes precedence over weights.alpha
+      ...(options.recencyWeight != null ? { alpha: options.recencyWeight } : {}),
     } as Required<ScoringWeights>;
 
     if (!query || query.length < 3) return [];
@@ -428,9 +490,13 @@ export function hybridSearchSync(
       // redundant ones (score < 0.5) get demoted. Default 0.5 = neutral.
       const noveltyMultiplier = 0.5 + (artifact.novelty_score ?? 0.5);
 
-      // Final score: base_score * retrieval_score * novelty (per spec 5.2 + novelty)
+      // Activation factor: artifacts with decayed activation_score get demoted in ranking.
+      // This makes RIF suppression (Phase 14) affect ranking directly, not just packing.
+      const activationFactor = Math.max(0.1, artifact.activation_score ?? 1.0);
+
+      // Final score: base_score * retrieval_score * novelty * activation
       const baseScore = rrfScore * (1 + threeFactor);
-      const hybridScore = baseScore * retrievalMultiplier * noveltyMultiplier;
+      const hybridScore = baseScore * retrievalMultiplier * noveltyMultiplier * activationFactor;
 
       scored.push({
         ...artifact,
@@ -446,7 +512,13 @@ export function hybridSearchSync(
 
     // Sort by hybrid_score descending, take top-K
     scored.sort((a, b) => b.hybrid_score - a.hybrid_score);
-    return scored.slice(0, limit);
+    const selected = scored.slice(0, limit);
+
+    // Phase 14: RIF — suppress non-selected candidates that scored above threshold
+    const selectedIds = new Set(selected.map(s => s.id));
+    applyRetrievalInducedSuppression(db, rrfScores, selectedIds);
+
+    return selected;
   } catch {
     return [];
   }
@@ -457,8 +529,12 @@ export function hybridSearchSync(
 // ---------------------------------------------------------------------------
 
 /**
- * Full async hybrid search — FTS5 + Qdrant KNN + recency channels.
- * Uses all 3 channels via RRF for best retrieval quality.
+ * Full async hybrid search — FTS5 + Qdrant KNN + recency + graph walk channels.
+ * Uses up to 4 channels via RRF for best retrieval quality.
+ *
+ * Channel 4 (graph walk) uses top-K seeds from channels 1-3 to discover
+ * related artifacts via artifact_links (2-hop traversal). Non-throwing:
+ * graph walk failure falls back to 3-channel RRF.
  *
  * Graceful degradation: if Qdrant/embeddings unavailable, falls back to
  * FTS5 + recency (equivalent to hybridSearchSync).
@@ -475,7 +551,12 @@ export async function hybridSearchAsync(
     const limit = options.limit ?? 10;
     const excludeSuperseded = options.excludeSuperseded ?? true;
     const globalScope = options.globalScope ?? true;
-    const weights = { ...DEFAULT_WEIGHTS, ...options.weights } as Required<ScoringWeights>;
+    const weights = {
+      ...DEFAULT_WEIGHTS,
+      ...options.weights,
+      // Intent-driven recency override takes precedence over weights.alpha
+      ...(options.recencyWeight != null ? { alpha: options.recencyWeight } : {}),
+    } as Required<ScoringWeights>;
 
     if (!query || query.length < 3) return [];
 
@@ -500,16 +581,59 @@ export async function hybridSearchAsync(
     const vectorChannel: ChannelResult[] = vectorResults.map((r, i) => ({ artifactId: r.artifact.id, rank: i + 1, artifact: r.artifact }));
     const recencyChannel: ChannelResult[] = recencyResults.map((a, i) => ({ artifactId: a.id, rank: i + 1, artifact: a }));
 
-    // RRF merge (all available channels)
+    // Channel 4: Graph walk — discover related artifacts via artifact_links (Phase 17)
+    // Uses top-K seeds from initial 3-channel results, non-throwing
+    let graphChannel: ChannelResult[] = [];
+    try {
+      // Pre-merge to get seed IDs (top candidates from FTS5 + vector + recency)
+      const seedChannels = [fts5Channel, recencyChannel];
+      if (vectorChannel.length > 0) seedChannels.push(vectorChannel);
+      const seedScores = rrfMerge(seedChannels);
+
+      // Extract top-K artifact IDs as seeds for graph walk
+      const seedEntries = [...seedScores.entries()]
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, limit);
+      const seedIds = seedEntries.map(([id]) => id);
+
+      if (seedIds.length > 0) {
+        const walked = graphWalkFromSeeds(db, seedIds, { limit: 10 });
+
+        if (walked.length > 0) {
+          // Hydrate walked artifact rows from SQLite
+          for (let i = 0; i < walked.length; i++) {
+            try {
+              const row = cachedPrepare(db,
+                'SELECT * FROM artifacts WHERE id = ?'
+              ).get(walked[i].artifactId) as ArtifactRow | undefined;
+
+              if (row) {
+                graphChannel.push({
+                  artifactId: walked[i].artifactId,
+                  rank: i + 1,
+                  artifact: row,
+                });
+              }
+            } catch { /* individual hydration failure — skip */ }
+          }
+        }
+      }
+    } catch { /* Graph walk failure — fall back to 3-channel RRF */ }
+
+    // RRF merge (all available channels, including graph walk as 4th)
     const channels = [fts5Channel, recencyChannel];
     if (vectorChannel.length > 0) channels.push(vectorChannel);
+    if (graphChannel.length > 0) channels.push(graphChannel);
     const rrfScores = rrfMerge(channels);
 
-    // Build artifact map
+    // Build artifact map (include graph walk hydrated artifacts)
     const artifactMap = new Map<number, ArtifactRow>();
     for (const a of fts5Results) artifactMap.set(a.id, a);
     for (const r of vectorResults) artifactMap.set(r.artifact.id, r.artifact);
     for (const a of recencyResults) artifactMap.set(a.id, a);
+    for (const g of graphChannel) {
+      if (g.artifact) artifactMap.set(g.artifactId, g.artifact);
+    }
 
     // Score and rank — all lookups via O(1) maps
     const fts5RankMap = new Map(fts5Channel.map(r => [r.artifactId, r.rank]));
@@ -530,8 +654,9 @@ export async function hybridSearchAsync(
       const threeFactor = computeThreeFactorScore(artifact, Math.min(1, relevance), weights);
       const retrievalMultiplier = getRetrievalScoreMultiplier(db, artifactId);
       const noveltyMultiplier = 0.5 + (artifact.novelty_score ?? 0.5);
+      const activationFactor = Math.max(0.1, artifact.activation_score ?? 1.0);
       const baseScore = rrfScore * (1 + threeFactor);
-      const hybridScore = baseScore * retrievalMultiplier * noveltyMultiplier;
+      const hybridScore = baseScore * retrievalMultiplier * noveltyMultiplier * activationFactor;
 
       const vRank = vectorRankMap.get(artifactId);
       const rRank = recencyRankMap.get(artifactId);
@@ -548,7 +673,13 @@ export async function hybridSearchAsync(
     }
 
     scored.sort((a, b) => b.hybrid_score - a.hybrid_score);
-    return scored.slice(0, limit);
+    const selected = scored.slice(0, limit);
+
+    // Phase 14: RIF — suppress non-selected candidates that scored above threshold
+    const selectedIds = new Set(selected.map(s => s.id));
+    applyRetrievalInducedSuppression(db, rrfScores, selectedIds);
+
+    return selected;
   } catch {
     // Full async pipeline failed — fall back to sync (FTS5 + recency, no vector)
     return hybridSearchSync(db, query, project, options);
