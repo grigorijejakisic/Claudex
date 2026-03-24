@@ -28,6 +28,7 @@ const optionalEntryPoints = [
   'src/mcp/recall-server.ts',
   'src/angel/index.ts',
   'src/benchmark/locomo-harness.ts',
+  'src/benchmark/longmemeval-harness.ts',
 ];
 
 /** Hook entry points to smoke test after build.
