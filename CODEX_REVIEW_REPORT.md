@@ -1,160 +1,259 @@
-# Unified Code Review Report
+# Codex Review Report
 
-**Scope:** Uncommitted changes (Evolved Flow implementation) — `git diff HEAD`
-**Date:** 2026-03-20
-**Grade:** F
-**Perspectives:** Quality [OK], Acceptance [OK], Security [OK], General [OK], Reuse [OK], Efficiency [OK], Code-Health [FAILED: empty output on 2 attempts]
-
-## Grading Rubric
-
-| Grade | Criteria |
-|-------|----------|
-| A | No critical, <=2 recommended |
-| B | No critical, 3-5 recommended |
-| C | No critical, 6+ recommended OR 1 critical |
-| D | 2-3 critical |
-| F | 4+ critical |
-
-**Tier counts:** 5 critical, 13 recommended, 8 observations
+**Scope:** All uncommitted changes (50 files, ~4200 lines changed)
+**Date:** 2026-03-24
+**Reviewer:** Claude Opus 4.6 (1M context)
+**Grade:** B-
 
 ---
 
-## Critical
+## Executive Summary
 
-### [QUALITY][ACCEPTANCE][SECURITY][GENERAL] Migration version bump is unconditional
-**File:** src/core/migrations.ts:758
-**Issue:** `runMigrations()` always sets `user_version = 8` even though individual migration steps are broadly non-throwing and can partially fail. This can permanently mark a partially-migrated DB as current, suppressing future repair attempts and leaving missing structures (FTS tables, triggers, columns) that degrade retrieval correctness and observability.
-**Recommendation:** Make each migration return success/failure. Advance `user_version` incrementally per successful step. Only bump to target after post-checks verify required schema elements exist.
+Large changeset implementing the Angel System (persistent guardian process), Hook/Angel responsibility split, ACE pattern scoring, conversation turn storage, and multiple retrieval quality improvements. Architecture is sound -- ephemeral hooks do mechanical work, Angel does reflective work. Code quality is generally high, with proper non-throwing patterns, good security practices (Angel spawn path hardening, CWD safety), and well-thought-out deduplication logic.
 
-### [SECURITY][ACCEPTANCE][QUALITY][GENERAL] Cross-project session fallback in claudex_events
-**File:** src/mcp/recall-server.ts:193-197
-**Issue:** `claudex_events` falls back to the latest active session across all projects when no project-local session exists. The project-scoped query also does not filter by `status='active'`, so it can return completed sessions. This breaks project isolation: a caller in Project A can receive events from Project B (which may contain secrets, internal decisions, or sensitive prompts).
-**Recommendation:** Filter project-scoped query by `status='active'` first. Remove cross-project fallback by default; if needed, require an explicit `cross_project=true` flag. Enforce `session.project === requestedProject` before returning events.
-
-### [SECURITY] User prompt fragments stored without redaction
-**File:** src/adapters/shared/lifecycle.ts:810
-**Issue:** Verbatim user prompt fragments (first ~150 chars) are persisted as `user_framing` events, promoted into `recall_text` on journal entries, and returned by `claudex_search` output without redaction. If a user pastes credentials in a prompt, the sensitive text is stored and later exposed via search.
-**Recommendation:** Apply secret/PII redaction before persisting prompt-derived fields and before returning recall hits. Prefer storing normalized topic labels over verbatim prompt text. Add denylist patterns for common secret formats (API keys, tokens, connection strings).
-
-### [EFFICIENCY][GENERAL] Stop hook runs 3 full session_events reads per turn
-**File:** src/adapters/cc-hooks/stop.ts:171-172
-**Issue:** `Stop` (runs every assistant turn) now invokes `captureRecallFlowEntry` and `detectIdleSession`, both of which call `getSessionEvents` (full session load). Combined with existing summary synthesis, this yields 3 full `session_events` reads per turn. This scales with total session length and produces O(n^2)-ish behavior over long sessions.
-**Recommendation:** Load events once in `Stop` and pass them to summary/recall/idle logic, or add specialized SQL for idle detection and recall inputs to avoid full-table materialization each time.
-
-### [REUSE] FTS DDL duplicated in schema bootstrap and migration
-**File:** src/core/migrations.ts:773, src/core/migrations.ts:234
-**Issue:** `session_journal_fts` table and trigger SQL is duplicated in the fresh-schema DDL and again in the V7-to-V8 migration SQL. Changes to one will not propagate to the other, creating drift risk for a critical search feature.
-**Recommendation:** Move journal FTS DDL into one SQL constant/helper and reuse it in both schema bootstrap and migration path.
+One **critical runtime bug** and several moderate issues found.
 
 ---
 
-## Recommended
+## Critical Issues
 
-### [QUALITY][ACCEPTANCE][GENERAL][EFFICIENCY][REUSE] Orphan recovery scope and timestamp issues
-**File:** src/adapters/cc-hooks/session-start.ts:37-48
-**Issue:** Orphan recovery closes all active sessions older than 1 hour globally (no project/adapter scope), which can terminate legitimate long-running concurrent sessions. It also stamps `ended_at_epoch` to the cutoff time rather than the actual close time, skewing timelines. Per-orphan reads/writes run without an explicit transaction.
-**Recommendation:** Use last activity time (events/telemetry heartbeat) instead of creation time. Scope by adapter/project. Set `ended_at_epoch` to current time. Wrap processing in a single transaction. Skip summary synthesis when `session_summary` already exists.
+### [BUG] `relevantRows` ReferenceError in `findMatchingPatterns` (experience-patterns.ts:438)
 
-### [ACCEPTANCE] Compaction can skip flow journal entry
-**File:** src/adapters/shared/lifecycle.ts:865
-**Issue:** `runCompactionSequence()` now calls only `captureRecallFlowEntry()`, which exits early when recall metadata is unavailable (`buildRecallMetadata()` returns null). Compaction can then produce no flow entry at all.
-**Recommendation:** Keep enriched recall capture, but fall back to plain `captureFlowEntry()` when recall metadata is absent.
+**Severity:** CRITICAL -- runtime crash
+**File:** `src/intelligence/experience-patterns.ts:438`
 
-### [EFFICIENCY] captureRecallFlowEntry writes on every Stop call
-**File:** src/adapters/shared/lifecycle.ts:783
-**Issue:** A new `session_journal` flow row (plus FTS trigger write) is inserted on every assistant turn via `Stop`. This causes steady write amplification and journal growth on the hot path.
-**Recommendation:** Gate writes to compaction/session-end/topic-shift only, or dedupe by content hash or time window before inserting.
+The FTS5 query result is assigned to `rows` (line 434), but line 438 references `relevantRows` -- a variable that does not exist. This is a `ReferenceError` that will crash `findMatchingPatterns()` at runtime whenever the FTS5 query succeeds (i.e., whenever patterns match a user prompt).
 
-### [EFFICIENCY] captureUserFraming runs count query on every prompt
-**File:** src/adapters/shared/lifecycle.ts:803
-**Issue:** `captureUserFraming` executes `SELECT COUNT(*)` on every `UserPromptSubmit`, even after the 3-framing cap is reached. This is 1 extra DB read per user prompt for the rest of the session.
-**Recommendation:** Replace count with existence check (`LIMIT 1 OFFSET 2`) or persist a "framing cap reached" flag per session.
+The function falls into the `catch` block and calls `findMatchingPatternsFallback`, so the system degrades to LIKE-based matching rather than crashing the hook. But: **the entire ACE ranking logic (verification boost, helpful ratio, escalation sorting) is dead code** -- it never executes because the ReferenceError fires before it runs.
 
-### [EFFICIENCY] Missing composite index on session_events
-**File:** src/core/session-events.ts:89
-**Issue:** `getSessionEvents` orders by `timestamp_epoch`, but schema indexes are `session_id` and `(project, timestamp_epoch)` only. Repeated `WHERE session_id ... ORDER BY timestamp_epoch` calls (now amplified by new Stop-path reads) incur extra sorting work.
-**Recommendation:** Add composite index `(session_id, timestamp_epoch)` and optionally `(session_id, event_type, timestamp_epoch)` for framing queries.
+```typescript
+// Line 434: result assigned to `rows`
+).all(ftsQuery, project, GLOBAL_PROJECT_SCOPE, project, safeLimit * 2) as ExperiencePattern[];
 
-### [REUSE][QUALITY][GENERAL] Migration steps V5-V6 and V6-V7 contain duplicated rebuild logic
-**File:** src/core/migrations.ts:1056-1250
-**Issue:** `migrateV5toV6` and `migrateV6toV7` both contain near-identical sessions and observations rebuild logic (probe, BEGIN/COMMIT, DROP/RENAME, index/trigger recreation), creating high drift risk (~220 lines removable).
-**Recommendation:** Extract shared rebuild helpers (`rebuildSessionsWithNotNull`, `rebuildObservationsWithNotNull`) and call them from both migration steps with version-specific pre-steps only.
+// Line 438: references `relevantRows` -- DOES NOT EXIST
+const ranked = relevantRows.map(p => {
+```
 
-### [REUSE] searchJournalFTS reimplements query tokenization
-**File:** src/core/journal.ts:120
-**Issue:** `searchJournalFTS` re-implements query tokenization and punctuation stripping that already exists in shared search utilities.
-**Recommendation:** Reuse `tokenizeQuery(query, maxTerms)` from `src/shared/search-utils.ts` so FTS query behavior stays consistent across artifacts, experience scoring, and journal search.
-
-### [REUSE] Read-only tool sets duplicated across extractors
-**File:** src/extraction/scoring.ts:29, src/extraction/type-classifier.ts:34
-**Issue:** `READ_ONLY_TOOLS` in scoring and `ROUTINE_TOOLS` in type-classifier duplicate the same members.
-**Recommendation:** Export a canonical `READ_ONLY_FILE_TOOLS` from `src/shared/tool-catalog.ts` and import it in both classifiers.
-
-### [REUSE] Flow section metadata parse duplication
-**File:** src/assembly/sections.ts:652
-**Issue:** `formatFlowSection` re-parses `e.metadata` JSON inline, duplicating parse logic already added in `core/journal.ts`.
-**Recommendation:** Use `parseJournalMetadata()` before rendering hints to centralize JSON parsing and error handling.
-
-### [REUSE] CLAUDE.md rule extraction duplication
-**File:** src/assembly/sections.ts:556
-**Issue:** New CLAUDE.md rule extraction in `formatRulesReminderSection` duplicates existing CLAUDE.md reading/section extraction patterns from worker context assembly.
-**Recommendation:** Extract shared CLAUDE.md parsing helpers into a shared utility and reuse in both worker-context and rules-reminder formatting.
-
-### [QUALITY] BehavioralCounters last_loop_signal_epoch not deserialized
-**File:** src/intelligence/experience-flags.ts:227
-**Issue:** `BehavioralCounters` now includes `last_loop_signal_epoch`, but `getBehavioralCounters` does not deserialize it. `applyToolCallPattern` writes/reads this field, so cooldown state is not reliably persisted across turns.
-**Recommendation:** Add `last_loop_signal_epoch` to the deserialization path in `getBehavioralCounters`.
-
-### [GENERAL] Migration header docs are stale
-**File:** src/core/migrations.ts:704
-**Issue:** Migration header docs still describe old version semantics (`version 2 current`, `user_version = 3`), which no longer match v8 logic.
-**Recommendation:** Update migration docs and version map to current reality.
-
-### [GENERAL] New core behaviors lack direct tests
-**File:** src/adapters/shared/lifecycle.ts (multiple functions)
-**Issue:** New core behaviors (user framing capture, idle-session detection, orphan recovery, rules extraction, command summarization) appear untested directly.
-**Recommendation:** Add focused unit/integration tests for these paths, especially timestamp-edge cases and cross-project/orphan scenarios.
+**Fix:** Change `relevantRows` to `rows` on line 438.
 
 ---
 
-## Observations
+## Major Issues
 
-### [ACCEPTANCE][GENERAL] Idle detection uses second-resolution timestamps
-**File:** src/adapters/shared/lifecycle.ts:842
-**Issue:** Work-between filter uses strict `>` and `<` on `timestamp_epoch`. Events in the same second as compaction are excluded, potentially producing false "idle" warnings.
-**Recommendation:** Use millisecond precision or event-id ordering with boundary-safe comparisons.
+### [BUG] FTS rank filter comment/code mismatch (experience-patterns.ts:417-427)
 
-### [QUALITY][GENERAL] Mixed module style (require vs import)
-**File:** src/assembly/sections.ts:558
-**Issue:** `require('os')` inside an otherwise ESM-import module breaks local style consistency.
-**Recommendation:** Use top-level ESM import (`import * as os from 'os'`).
+Comment says "rank must be better (more negative) than -15" but the SQL filter is `fts.rank < -10`. This means the filter is MORE aggressive than documented -- it will exclude more matches than intended. Since the critical bug above prevents this code from functioning anyway, impact is deferred, but should be corrected alongside the fix.
 
-### [GENERAL] V7-V8 migration comment mentions unimplemented column
-**File:** src/core/migrations.ts:768
-**Issue:** Comment claims addition of `concept_mention` to `session_events`, but the migration code does not implement that.
-**Recommendation:** Align comment with code, or add the missing migration if intended.
+### [DESIGN] `__bonus_guard__` session_id in checkpoint_tracking (stop.ts:250-265)
 
-### [GENERAL] node_modules test results in diff
-**File:** node_modules/.vite/vitest/results.json
-**Issue:** Generated test-result artifact is in the diff. High-churn, should not be source-controlled.
-**Recommendation:** Add to `.gitignore`.
+The session success bonus guard uses `checkpoint_tracking` table with synthetic session IDs like `__bonus_guard__<session_id>`. This pollutes the table with non-session rows, which could:
+- Inflate row counts in queries that scan `checkpoint_tracking`
+- Cause confusion during debugging
+- Interact badly with any future code that assumes `session_id` in this table references real sessions
 
-### [EFFICIENCY] CLAUDE.md rule extraction not cached
-**File:** src/assembly/sections.ts:563
-**Issue:** `formatRulesReminderSection` synchronously re-reads and re-parses global/project `CLAUDE.md` on each post-compaction assembly.
-**Recommendation:** Cache extracted rules by file path + mtime in module scope.
+**Recommendation:** Use a dedicated guard table or a session-scoped flag (e.g., via `experience_flags`).
 
-### [EFFICIENCY] claudex_search runs dual pipeline unconditionally
-**File:** src/mcp/recall-server.ts:73
-**Issue:** `claudex_search` always runs both artifact search and journal FTS, then truncates merged results. Up to 2 full search pipelines per request.
-**Recommendation:** Staged retrieval (query second source only for remaining slots) or unified merge strategy with a single effective limit.
+### [QUALITY] `learnings_fts` missing from SCHEMA_V3 DDL (schema.ts)
 
-### [SECURITY] Prompt injection persistence via CLAUDE.md rules
-**File:** src/assembly/sections.ts:556
-**Issue:** Post-compaction rule reinjection pulls broad bullet content from CLAUDE.md sections without trust gating. In an untrusted repo, a crafted project CLAUDE.md could plant persistent behavioral text.
-**Recommendation:** Restrict extraction to an allowlisted section/schema, or require explicit trust for project-level reinjection.
+The `learnings_fts` FTS5 virtual table and its sync triggers are NOT declared in the main `SCHEMA_V3` constant in `schema.ts`. They are created by `migrateSchemaFixes()` which IS called during `initializeSchema()`, so fresh installs do get the table. However:
+- The schema DDL is incomplete as documentation -- a reader of `schema.ts` won't see `learnings_fts`
+- If `migrateSchemaFixes()` is ever refactored or its call order changes, fresh installs break
 
-### [REUSE] Bash command path scrubbing overlaps with existing redaction
-**File:** src/core/session-events.ts:331
-**Issue:** `summarizeBashCommand` has custom absolute-path scrubbing regex that overlaps with existing `sanitizePath()` logic.
-**Recommendation:** Reuse `sanitizePath()` from `src/extraction/redaction.ts` to avoid diverging path normalization rules.
+**Recommendation:** Add `learnings_fts` DDL to `SCHEMA_V3` for completeness.
+
+### [TYPE] `unverified_patterns` event kind in types but not in CHECK constraint (observability/types.ts + schema.ts)
+
+`EventKind` type includes `'unverified_patterns'` and `EventKindDetailMap` maps it, but the telemetry table's CHECK constraint doesn't allow it. Any attempt to emit this event kind would cause a SQLite constraint violation. Currently no code emits it, so impact is latent.
+
+---
+
+## Moderate Issues
+
+### [QUALITY] `createTipAndStrategy` is now a dead export (experience-patterns.ts:810)
+
+The stop hook removed all calls to `createTipAndStrategy` (moved to Angel). It's still exported from `experience-patterns.ts` but has no callers outside its own module. No Angel code calls it either -- the Angel uses `createPattern` directly.
+
+### [DESIGN] `hybridSearchAsync` error handling regression (hybrid-retrieval.ts:550)
+
+The old `hybridSearch` function fell back to `hybridSearchSync` on full pipeline failure:
+```typescript
+catch {
+    return hybridSearchSync(db, query, project, options);
+}
+```
+
+The new `hybridSearchAsync` returns an empty array on failure:
+```typescript
+catch {
+    return [];
+}
+```
+
+The recall-server's `claudex_search` tool calls `hybridSearchAsync` as its primary search, with no fallback to `hybridSearchSync` when the async version returns empty due to a non-query-related error. If Qdrant causes an exception during RRF merge (unlikely but possible), all search results are silently lost.
+
+### [DESIGN] `markMessagesDelivered` uses raw `db.prepare` instead of `cachedPrepare` (message-sender.ts:71)
+
+All other DB operations in the codebase use `cachedPrepare` for statement caching. `markMessagesDelivered` uses `db.prepare` directly, likely because the dynamic `IN (?,?,...?)` clause changes shape per call. This is functionally correct but creates a new prepared statement per invocation, which could leak if called frequently. Since delivery happens at most once per prompt, impact is minimal.
+
+### [QUALITY] `os` import added but unused in worker-context.ts
+
+Line 1 adds `import * as os from 'os';` but no `os.*` call is used in the changed code. The `readProjectPrimer` function changes only use `path` and `process.cwd()`.
+
+---
+
+## Minor Issues
+
+### Comment accuracy issues
+
+1. `stop.ts`: The doc comment still says "captures decisions, extracts insights, tracks thread, checks checkpoint threshold" -- the updated version lists more operations (conversation turn storage, pattern verification, etc.) but misses the new ones added below (artifact linking, activation decay).
+
+2. `hybrid-retrieval.ts:756`: Spread activation docstring says "Unidirectional: source -> targets only" but the code below it only processes `source_id = A.id` queries, which is correct. The old comment mentioning "bidirectional" was wrong.
+
+### Test coverage gaps
+
+1. No tests for `ensureQdrantRunning()` or `ensureAngelRunning()` in session-start.
+2. No tests for `storeConversationTurn()` in lifecycle.ts.
+3. No tests for the ACE escalation logic (`escalatePattern`, `getHelpfulRatio`).
+4. No tests for `getWeakDomains` or `getDomainPredictability`.
+5. No tests for `upsertConversationEmbedding` or `searchConversations` in qdrant-client.
+
+### `resetReferenceEmbeddings` removed from insight-extractor.ts
+
+The test helper `resetReferenceEmbeddings()` was removed. No tests reference it (checked), so no breakage.
+
+---
+
+## Angel System Review (Requested)
+
+### pattern-extractor.ts: callClaudeCli removed, callOllama added
+
+**Correct.** The old `callClaudeCli` (Claude CLI subprocess) would trigger CC hooks and create phantom sessions -- the exact problem the Angel spec warns against. The new `callOllama` uses the HTTP API directly (localhost:11434), no hooks involved. The Anthropic API (Priority 1) + Ollama fallback (Priority 2) cascade is properly implemented.
+
+The `callOllama` function correctly uses `stream: false` for synchronous response collection. The extraction prompt is well-structured with conservative guardrails ("only extract patterns you're confident represent real corrections").
+
+### types.ts: model -> cloudModel + localModel
+
+**Correct.** Clean split: `cloudModel` (default `claude-sonnet-4-6`) for complex reasoning via API, `localModel` (default `llama3.2`) for trivial classification via Ollama. The `model` field no longer exists.
+
+### heartbeat.ts: updated config refs
+
+**Correct.** All references use `ctx.config.cloudModel` and `ctx.config.localModel` appropriately. The heartbeat tick structure is clean: 5 phases with clear separation of concerns.
+
+**Concern:** Phase 4b deletes patterns where `harmful_count > helpful_count` after 5+ triggers. This is aggressive -- a pattern with 3 helpful + 4 harmful (57% harmful) gets deleted. Consider a higher threshold or a minimum harmful_count floor.
+
+### index.ts: updated auth logic
+
+**Correct.** Auth priority is:
+1. CliProxy on localhost:8317 (MAX subscription OAuth) -- checked via HTTP health
+2. ANTHROPIC_API_KEY env var
+3. No auth -- Angel runs Ollama-only
+
+The fallback client (`new Anthropic({ apiKey: 'no-auth-ollama-only', baseURL: 'http://127.0.0.1:0' })`) is clever: it creates a valid SDK object that will fail on any API call, forcing the pattern-extractor to fall through to the Ollama path. The `baseURL: 'http://127.0.0.1:0'` ensures connection refused rather than hitting a real endpoint.
+
+PID file management is correct: write on start, remove on SIGTERM/SIGINT/uncaughtException. Race condition between PID check and PID write is theoretically possible but benign (worst case: two Angels run briefly, both doing idempotent work).
+
+---
+
+## checkpoint/loader.ts: observation_count filter
+
+**Correct.** The `AND s.observation_count > 0` filter in `loadCheckpoint` prevents phantom sessions (Angel CLI invocations that triggered session-start hooks but had no real user interaction) from being selected as the "last checkpoint." Without this filter, an Angel-spawned session with 0 observations could mask the real user's last checkpoint.
+
+The change applies to both the project-scoped and unscoped queries, which is correct. Tests were updated to use `ensureSession(db, sessionId, project, obsCount=5)` to create valid session rows.
+
+---
+
+## Hook Return Value Compliance
+
+| Hook | Return Value | CC Expected Schema | Status |
+|------|-------------|-------------------|--------|
+| SessionStart | `{}` | Empty object | PASS |
+| UserPromptSubmit | `{ hookSpecificOutput: { hookEventName, additionalContext } }` or `{}` | hookSpecificOutput with hookEventName + additionalContext | PASS |
+| Stop | `{ systemMessage }` or `{}` | systemMessage string (top-level) | PASS |
+| SessionEnd | `{}` | Empty object | PASS |
+
+All hook return values conform to CC's expected JSON schema.
+
+---
+
+## Async Operations in Ephemeral Contexts
+
+| Operation | Hook | Awaited? | Status |
+|-----------|------|----------|--------|
+| `ensureQdrantRunning()` | session-start | Yes | PASS |
+| `ensureAngelRunning()` | session-start | Yes | PASS |
+| `captureDecisionsWithClassifier()` | stop | Yes | PASS |
+| `captureInsightsAsLearnings()` | stop | Yes (newly async) | PASS |
+| `embedText()` (conversation turn) | stop | Yes | PASS |
+| `upsertConversationEmbedding()` | stop | Yes | PASS |
+| `embedJournalEntry()` | stop | Yes | PASS |
+| `linkArtifactToRelated()` | stop | Yes | PASS |
+| Cross-session coordination import | user-prompt-submit | Yes (dynamic import) | PASS |
+| `hybridSearchAsync()` | recall-server | Yes | PASS |
+
+All async operations in ephemeral hook processes are properly awaited. No fire-and-forget patterns in hooks.
+
+---
+
+## New Export Wiring Check
+
+| Export | Module | Imported & Called? | Status |
+|--------|--------|-------------------|--------|
+| `storeConversationTurn` | lifecycle.ts | Yes (stop.ts) | PASS |
+| `consumeInjectedArtifacts` | artifacts.ts | Yes (assembler.ts) | PASS |
+| `upsertConversationEmbedding` | qdrant-client.ts | Yes (stop.ts) | PASS |
+| `searchConversations` | qdrant-client.ts | **No** -- exported but unused | WARN |
+| `hybridSearchAsync` | hybrid-retrieval.ts | Yes (recall-server.ts) | PASS |
+| `extractInsightsCombined` | insight-extractor.ts | Yes (lifecycle.ts) | PASS |
+| `getWeakDomains` | capability-tracker.ts | Yes (user-prompt-submit.ts) | PASS |
+| `getDomainPredictability` | capability-tracker.ts | **No** -- exported but only used internally | WARN |
+| `getPredictabilityGuidance` | capability-tracker.ts | Used internally via `generateDomainAdvisory` | PASS |
+| `escalatePattern` | experience-patterns.ts | Yes (experience-scoring.ts) | PASS |
+| `getHelpfulRatio` | experience-patterns.ts | Used internally in `findMatchingPatterns` | PASS |
+| `createTipAndStrategy` | experience-patterns.ts | **No** -- dead export | WARN |
+| `getCrossSessionActivity` | cross-session-coordination.ts | Yes (user-prompt-submit.ts, dynamic) | PASS |
+| `detectFileConflicts` | cross-session-coordination.ts | Yes (user-prompt-submit.ts, dynamic) | PASS |
+| `formatCrossSessionAwareness` | cross-session-coordination.ts | Yes (user-prompt-submit.ts, dynamic) | PASS |
+| `getPendingMessages` | message-sender.ts | Yes (user-prompt-submit.ts) | PASS |
+| `markMessagesDelivered` | message-sender.ts | Yes (user-prompt-submit.ts) | PASS |
+| `commitEffects` | InjectPayload type | Set in assembler, called in user-prompt-submit | PASS |
+
+---
+
+## Build & Test Results
+
+- **Build:** PASS (61ms, all hooks smoke-tested)
+- **Tests:** 92 files, 1714 tests, ALL PASSING
+- **New test files:** 3 (angel/message-sender, angel/pattern-extractor, angel/session-monitor)
+
+---
+
+## Summary of Required Fixes
+
+| Priority | Issue | File | Fix |
+|----------|-------|------|-----|
+| **P0** | `relevantRows` ReferenceError | experience-patterns.ts:438 | Change `relevantRows` to `rows` |
+| P1 | FTS rank filter comment mismatch | experience-patterns.ts:417 | Update comment to match code (`-10` not `-15`) |
+| P2 | `learnings_fts` missing from SCHEMA_V3 | schema.ts | Add DDL to maintain schema completeness |
+| P2 | `__bonus_guard__` table pollution | stop.ts | Consider dedicated guard mechanism |
+| P3 | `unverified_patterns` type/constraint mismatch | observability/types.ts + schema.ts | Add to CHECK or remove from types |
+| P3 | Dead export `createTipAndStrategy` | experience-patterns.ts | Remove or mark @deprecated |
+| P3 | Unused `os` import | worker-context.ts | Remove |
+| P3 | `searchConversations` exported but unused | qdrant-client.ts | Keep (future use) or remove |
+
+---
+
+## Grade Rationale: B-
+
+**Strengths:**
+- Architectural clarity: Hook/Angel split is well-designed and correctly implemented
+- Security: Angel spawn uses absolute paths, safe CWD, hardened against PATH hijacking
+- Robustness: Comprehensive non-throwing patterns, proper async await in ephemeral contexts
+- Data integrity: conversation_turns dual-write (SQLite + Qdrant), dedup guards, staleness filters
+- Test discipline: all 1714 tests pass, new Angel modules have test coverage
+
+**Weaknesses:**
+- P0 bug: `relevantRows` ReferenceError makes the entire ACE ranking system dead code
+- ACE ranking never executes in production (masked by fallback, but the feature is silently broken)
+- Schema completeness gap (`learnings_fts` not in DDL)
+- Some dead exports left behind from the Hook->Angel migration
+- Test coverage gaps for new Angel spawn logic and ACE escalation paths

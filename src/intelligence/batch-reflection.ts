@@ -171,11 +171,14 @@ export function shouldRunReflection(db: Database, project: string): boolean {
 
     const lastReflectionEpoch = guard?.last_checkpoint_epoch ?? 0;
 
-    // Count sessions for this project since last reflection
+    // Count sessions for this project since last reflection.
+    // Filter out sessions with corrupted millisecond epochs (> year 2100 in seconds).
+    // Historical bug: some sessions stored Date.now() (ms) instead of seconds.
+    const MAX_SANE_EPOCH = 4_102_444_800; // 2100-01-01 in seconds
     const countResult = cachedPrepare(db,
       `SELECT COUNT(*) as cnt FROM sessions
-       WHERE project = ? AND created_at_epoch > ?`
-    ).get(project, lastReflectionEpoch) as { cnt: number };
+       WHERE project = ? AND created_at_epoch > ? AND created_at_epoch < ?`
+    ).get(project, lastReflectionEpoch, MAX_SANE_EPOCH) as { cnt: number };
 
     return countResult.cnt >= REFLECTION_INTERVAL;
   } catch {
@@ -272,6 +275,14 @@ export function runBatchReflection(
 
       const content = contentParts.join('\n');
       const summary = `[Reflection] ${cluster.keywords.slice(0, 3).join(', ')} — ${cluster.items.length} learnings`;
+
+      // Dedup: skip if an artifact with the same summary already exists for this project
+      try {
+        const existing = cachedPrepare(db,
+          `SELECT id FROM artifacts WHERE project = ? AND summary = ? LIMIT 1`
+        ).get(project, summary) as { id: number } | undefined;
+        if (existing) continue; // Already have this reflection
+      } catch { /* non-fatal — proceed with creation */ }
 
       try {
         createArtifact(db, sessionId, project, 'learning', `reflection:${cluster.keywords[0]}`, summary, content, 5);

@@ -17,6 +17,9 @@ import { cachedPrepare } from '../core/stmt-cache.js';
 // Types
 // ---------------------------------------------------------------------------
 
+/** Domain predictability classification (Athena conviction-decisiveness). */
+export type DomainPredictability = 'deterministic' | 'semi_deterministic' | 'semi_stochastic' | 'stochastic';
+
 export interface CapabilityBoundary {
   id: number;
   project: string;
@@ -84,6 +87,53 @@ const DOMAIN_MAP: Record<string, string> = {
 };
 
 /**
+ * Maps domains to predictability levels (Athena conviction-decisiveness split).
+ * Deterministic: one right answer — be assertive, verify.
+ * Semi-deterministic: few right approaches — present the best with confidence.
+ * Semi-stochastic: multiple valid approaches — present tradeoffs.
+ * Stochastic: subjective — present options, ask.
+ */
+const PREDICTABILITY_MAP: Record<string, DomainPredictability> = {
+  database: 'deterministic',
+  migrations: 'deterministic',
+  build: 'deterministic',
+  git: 'deterministic',
+  testing: 'semi_deterministic',
+  api: 'semi_deterministic',
+  config: 'semi_deterministic',
+  auth: 'semi_stochastic',
+  security: 'semi_stochastic',
+  performance: 'semi_stochastic',
+  deployment: 'semi_stochastic',
+  styling: 'stochastic',
+};
+
+/**
+ * Returns the predictability level for a domain.
+ * Defaults to 'semi_stochastic' for unknown domains (safe middle ground).
+ */
+export function getDomainPredictability(domain: string): DomainPredictability {
+  return PREDICTABILITY_MAP[domain] ?? 'semi_stochastic';
+}
+
+/**
+ * Returns response posture guidance for a predictability level.
+ * This text is injected alongside experience warnings to calibrate the agent's response style.
+ */
+export function getPredictabilityGuidance(predictability: DomainPredictability): string {
+  switch (predictability) {
+    case 'deterministic':
+      return 'This is a deterministic domain — there is typically one correct answer. Verify your solution rather than hedging.';
+    case 'semi_deterministic':
+      return 'This domain has few correct approaches. Present the best one with confidence, note alternatives only if meaningfully different.';
+    case 'semi_stochastic':
+      return 'Multiple valid approaches exist here. Present tradeoffs and recommend, but acknowledge alternatives.';
+    case 'stochastic':
+      return 'This is subjective territory. Present options and ask for preference rather than asserting one approach.';
+  }
+}
+
+/**
  * Extracts a normalized domain from topic text.
  * Returns null if no recognizable domain is found.
  * Non-throwing.
@@ -99,9 +149,9 @@ export function extractDomain(topicText: string): string | null {
       if (domain) return domain;
     }
 
-    // Fallback: use first significant word (length >= 3) as domain
-    const significant = words.find(w => w.length >= 3 && !/^(?:the|and|for|with|from|this|that|have|been|will|were)$/.test(w));
-    return significant ?? null;
+    // No fallback — only return recognized domains to avoid polluting
+    // capability_boundaries with noise words like "lets", "there", "stuff"
+    return null;
   } catch {
     return null;
   }
@@ -224,7 +274,9 @@ export function generateDomainAdvisory(
     if (boundary.correction_rate <= threshold) return null;
 
     const pct = Math.round(boundary.correction_rate * 100);
-    return `This topic area ("${domain}") has a ${pct}% correction rate (${boundary.corrections}/${boundary.total_interactions}) — extra care advised.`;
+    const predictability = getDomainPredictability(domain);
+    const guidance = getPredictabilityGuidance(predictability);
+    return `This topic area ("${domain}") has a ${pct}% correction rate (${boundary.corrections}/${boundary.total_interactions}) — extra care advised. ${guidance}`;
   } catch {
     return null;
   }

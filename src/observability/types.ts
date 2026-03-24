@@ -61,7 +61,8 @@ export interface DedupDetail {
 
 export interface DecayPruneDetail {
   count: number;
-  threshold: number;
+  threshold?: number;
+  action?: string;
 }
 
 export interface ErrorDetail {
@@ -102,6 +103,7 @@ export type EventKind =
   | 'topic_shift'
   | 'dedup'
   | 'decay_prune'
+  | 'unverified_patterns'
   | 'error';
 
 /** Type mapping from EventKind to its detail type. */
@@ -115,5 +117,6 @@ export interface EventKindDetailMap {
   topic_shift: TopicShiftDetail;
   dedup: DedupDetail;
   decay_prune: DecayPruneDetail;
+  unverified_patterns: Record<string, unknown>;
   error: ErrorDetail;
 }

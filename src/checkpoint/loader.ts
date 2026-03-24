@@ -295,21 +295,26 @@ export function loadCheckpoint(
         let row: CheckpointMeta | undefined;
 
         if (project) {
+          // Filter: observation_count > 0 excludes phantom sessions (e.g. Angel CLI
+          // invocations that triggered hooks but had no real user interaction).
           row = db
             .prepare(
               `SELECT cm.* FROM checkpoint_meta cm
                JOIN sessions s ON cm.session_id = s.session_id
                WHERE cm.status IN ('committed', 'mirrored')
                  AND s.project = ?
+                 AND s.observation_count > 0
                ORDER BY cm.created_at_epoch DESC LIMIT 1`
             )
             .get(project) as CheckpointMeta | undefined;
         } else {
           row = db
             .prepare(
-              `SELECT * FROM checkpoint_meta
-               WHERE status IN ('committed', 'mirrored')
-               ORDER BY created_at_epoch DESC LIMIT 1`
+              `SELECT cm.* FROM checkpoint_meta cm
+               JOIN sessions s ON cm.session_id = s.session_id
+               WHERE cm.status IN ('committed', 'mirrored')
+                 AND s.observation_count > 0
+               ORDER BY cm.created_at_epoch DESC LIMIT 1`
             )
             .get() as CheckpointMeta | undefined;
         }

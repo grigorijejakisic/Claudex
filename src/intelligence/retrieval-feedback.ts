@@ -287,7 +287,15 @@ export function penalizeUnreferencedArtifacts(
     }>;
 
     for (const c of candidates) {
-      updateRetrievalScore(db, c.artifact_id, SCORE_NEVER_REFERENCED);
+      // Idempotence guard: only penalize if score is still above MIN_SCORE floor.
+      // Old guard checked > SCORE_NEVER_REFERENCED (-0.05) which is always true
+      // since MIN_SCORE (0.1) clamps scores above that — compounding penalty endlessly.
+      const current = cachedPrepare(db,
+        `SELECT retrieval_score FROM artifacts WHERE id = ?`
+      ).get(c.artifact_id) as { retrieval_score: number } | undefined;
+      if (current && current.retrieval_score > MIN_SCORE) {
+        updateRetrievalScore(db, c.artifact_id, SCORE_NEVER_REFERENCED);
+      }
     }
   } catch {
     // Non-throwing

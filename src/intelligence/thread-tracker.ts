@@ -22,6 +22,13 @@ const STOP_WORDS = new Set([
 const GREETING_PATTERN = /^(hi|hello|hey|thanks|thank you|good morning|good afternoon)\b/i;
 
 /**
+ * Matches CC internal messages that should never become thread topics.
+ * Task notifications: "tasknotification taskid...taskid tooluseid..."
+ * Output file references: "outputfile..." (CC background task outputs)
+ */
+const CC_INTERNAL_PATTERN = /^(tasknotification\s|outputfile)/i;
+
+/**
  * Cleans a gist for use in thread summary.
  * Strips markdown formatting, collapses whitespace, ensures proper termination.
  */
@@ -80,8 +87,8 @@ export function extractTopic(text: string): string | null {
     if (!text) return null;
     const trimmed = text.trim();
 
-    // Skip greetings and very short messages
-    if (trimmed.length < 20 || GREETING_PATTERN.test(trimmed)) return null;
+    // Skip greetings, very short messages, and CC internal notifications
+    if (trimmed.length < 20 || GREETING_PATTERN.test(trimmed) || CC_INTERNAL_PATTERN.test(trimmed)) return null;
 
     // First sentence
     const sentEnd = trimmed.search(/[.!?]/);

@@ -21,7 +21,7 @@ const MAX_PREDICTIVE_PATTERNS = 50;
 
 /**
  * Module-level cache for empty-table fast path.
- * Avoids querying context_triggers (always empty) and experience_patterns
+ * Avoids querying context_triggers and experience_patterns when they have no trigger data
  * (trigger_glob/trigger_command always null) on every PostToolUse call.
  * Cache is invalidated conservatively: set to null on first call per process,
  * refreshed every 60 seconds. In CC hooks (fresh process per call), this

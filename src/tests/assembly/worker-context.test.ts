@@ -38,14 +38,15 @@ describe('assembleWorkerContext', () => {
   // --------------------------------------------------------------------------
 
   it('returns empty formatted string when DB has no relevant data', async () => {
-    const pkg = await assembleWorkerContext(db, 'implement authentication middleware', PROJECT);
+    // Use non-existent projectDir to avoid picking up the real PROJECT_PRIMER.md
+    const pkg = await assembleWorkerContext(db, 'implement authentication middleware', PROJECT, { projectDir: '/nonexistent' });
 
     expect(pkg.formatted).toBe('');
     expect(pkg.experienceWarnings).toBe('');
     expect(pkg.learnings).toBe('');
     expect(pkg.relevantArtifacts).toBe('');
     expect(pkg.hotFiles).toBe('');
-    expect(pkg.primer).toBe(''); // no PROJECT_PRIMER.md in test cwd
+    expect(pkg.primer).toBe('');
     expect(pkg.tokenBudget).toBe(0);
   });
 
@@ -347,7 +348,7 @@ describe('assembleWorkerContext', () => {
   });
 
   it('returns empty package when DB is null', async () => {
-    const pkg = await assembleWorkerContext(null as any, 'implement feature', PROJECT);
+    const pkg = await assembleWorkerContext(null as any, 'implement feature', PROJECT, { projectDir: '/nonexistent' });
 
     expect(pkg.formatted).toBe('');
     expect(pkg.tokenBudget).toBe(0);
@@ -375,7 +376,7 @@ describe('assembleWorkerContext', () => {
   it('is non-throwing when DB prepare throws', async () => {
     const brokenDb = { prepare: () => { throw new Error('DB broken'); } } as any;
 
-    const pkg = await assembleWorkerContext(brokenDb, 'implement authentication', PROJECT);
+    const pkg = await assembleWorkerContext(brokenDb, 'implement authentication', PROJECT, { projectDir: '/nonexistent' });
     expect(pkg.formatted).toBe('');
   });
 

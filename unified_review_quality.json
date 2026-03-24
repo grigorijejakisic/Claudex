@@ -1,61 +1,205 @@
 {
   "assessments": {
-    "naming_quality": 82,
-    "error_consistency": 54,
-    "abstraction_fitness": 60,
-    "logic_clarity": 57,
-    "ai_generated_debt": 46,
-    "type_safety": 68,
-    "contract_coherence": 50
+    "naming_quality": 83,
+    "error_consistency": 63,
+    "abstraction_fitness": 69,
+    "logic_clarity": 62,
+    "ai_generated_debt": 58,
+    "type_safety": 64,
+    "contract_coherence": 53
   },
   "findings": [
     {
       "id": "quality-001",
-      "dimension": "error_consistency",
-      "file": "src/core/migrations.ts",
-      "line": 758,
+      "dimension": "contract_coherence",
+      "file": "src/angel/heartbeat.ts",
+      "line": 83,
       "severity": "high",
-      "description": "runMigrations unconditionally sets user_version=8 even though individual migration steps are broadly non-throwing and may partially fail; this can mark a partially migrated DB as current and suppress future repair attempts."
+      "description": "Transient extraction failures permanently mark sessions as processed, preventing future retry. Returns patternsCreated=0 on failure which triggers markSessionProcessed."
     },
     {
       "id": "quality-002",
       "dimension": "contract_coherence",
-      "file": "src/intelligence/experience-flags.ts",
-      "line": 227,
+      "file": "src/adapters/cc-hooks/user-prompt-submit.ts",
+      "line": 280,
       "severity": "high",
-      "description": "BehavioralCounters now includes last_loop_signal_epoch, but getBehavioralCounters does not deserialize it. applyToolCallPattern writes/reads this field, so cooldown state is not reliably persisted across turns."
+      "description": "Angel messages marked delivered before token budget gating. If extraContent is dropped for budget, messages are permanently lost."
     },
     {
       "id": "quality-003",
-      "dimension": "contract_coherence",
-      "file": "src/mcp/recall-server.ts",
-      "line": 197,
-      "severity": "medium",
-      "description": "The claudex_events path claims to fetch the latest active session, but project-scoped lookup does not filter by status='active', so it can return completed sessions and bypass the active-session fallback."
+      "dimension": "logic_clarity",
+      "file": "src/intelligence/cross-session-coordination.ts",
+      "line": 52,
+      "severity": "high",
+      "description": "ORDER BY MAX(o.timestamp_epoch) without GROUP BY is invalid SQL. Silently returns empty array, disabling cross-session awareness."
     },
     {
       "id": "quality-004",
       "dimension": "logic_clarity",
-      "file": "src/adapters/cc-hooks/session-start.ts",
-      "line": 38,
-      "severity": "medium",
-      "description": "Orphan recovery closes every active session older than 1 hour globally (no project/adapter scope), which can terminate legitimate long-lived concurrent sessions. It also stamps ended_at_epoch to cutoff rather than actual close time."
+      "file": "src/intelligence/retrieval-feedback.ts",
+      "line": 294,
+      "severity": "high",
+      "description": "Idempotence guard compares against -0.05 but scores are clamped to >= 0.1, so guard is always true and penalties keep applying."
     },
     {
       "id": "quality-005",
-      "dimension": "abstraction_fitness",
-      "file": "src/core/migrations.ts",
-      "line": 1250,
-      "severity": "medium",
-      "description": "Migration responsibilities are duplicated/conflicting: V5-V6 already rebuilds sessions/observations, while V6-V7 repeats those rebuilds. This increases migration complexity and maintenance risk without a clear single-owner boundary."
+      "dimension": "contract_coherence",
+      "file": "src/adapters/cc-hooks/post-tool-use.ts",
+      "line": 160,
+      "severity": "high",
+      "description": "Trigger-engine matches merged into injected_pattern_ids, but those patterns were never actually injected into context. Feedback scoring rewards/penalizes unshown patterns."
     },
     {
       "id": "quality-006",
-      "dimension": "ai_generated_debt",
-      "file": "src/assembly/sections.ts",
-      "line": 558,
+      "dimension": "logic_clarity",
+      "file": "src/core/artifacts.ts",
+      "line": 510,
+      "severity": "high",
+      "description": "Supersede older-than guard compares to wall clock instead of new artifact timestamp, not enforcing intended relative ordering."
+    },
+    {
+      "id": "quality-007",
+      "dimension": "logic_clarity",
+      "file": "src/core/artifacts.ts",
+      "line": 688,
+      "severity": "high",
+      "description": "Contradiction detection regex: should matches inside should not, marking two negative statements as contradictory."
+    },
+    {
+      "id": "quality-008",
+      "dimension": "contract_coherence",
+      "file": "src/shared/constants.ts",
+      "line": 44,
+      "severity": "high",
+      "description": "DEFAULT_CONFIG missing required ClaudexConfig fields. deepMerge strips keys not present in defaults, making parts of config unconfigurable."
+    },
+    {
+      "id": "quality-009",
+      "dimension": "error_consistency",
+      "file": "src/core/migrations.ts",
+      "line": 103,
+      "severity": "high",
+      "description": "Migration success inferred from no thrown exceptions, but steps are non-throwing. Can advance user_version after partial failure."
+    },
+    {
+      "id": "quality-010",
+      "dimension": "contract_coherence",
+      "file": "src/angel/pattern-extractor.ts",
+      "line": 177,
+      "severity": "medium",
+      "description": "Double-embedding: createPattern already fire-and-forget embeds, then Angel also await embeds the same pattern."
+    },
+    {
+      "id": "quality-011",
+      "dimension": "contract_coherence",
+      "file": "src/embeddings/embed-pipeline.ts",
+      "line": 177,
+      "severity": "medium",
+      "description": "embedArtifact/embedPattern return true without checking Qdrant upsert or SQLite UPDATE success. False success reporting."
+    },
+    {
+      "id": "quality-012",
+      "dimension": "type_safety",
+      "file": "src/extraction/quality-gate.ts",
+      "line": 66,
+      "severity": "medium",
+      "description": "exitCode compared numerically without normalization. String '0' treated as non-zero failure."
+    },
+    {
+      "id": "quality-013",
+      "dimension": "contract_coherence",
+      "file": "src/extraction/extractor.ts",
+      "line": 237,
+      "severity": "medium",
+      "description": "External discoveries stored as external:discovery but promotion queries filter obs_type = discovery, excluding them."
+    },
+    {
+      "id": "quality-014",
+      "dimension": "contract_coherence",
+      "file": "src/intelligence/trigger-engine.ts",
+      "line": 41,
+      "severity": "medium",
+      "description": "Trigger-data cache keyed by DB handle only, not project. Cross-project cache pollution."
+    },
+    {
+      "id": "quality-015",
+      "dimension": "abstraction_fitness",
+      "file": "src/embeddings/embed-pipeline.ts",
+      "line": 36,
+      "severity": "medium",
+      "description": "Singleton embedding provider ignores config after first initialization."
+    },
+    {
+      "id": "quality-016",
+      "dimension": "type_safety",
+      "file": "src/shared/config.ts",
+      "line": 90,
+      "severity": "medium",
+      "description": "Heavy as unknown as casting in config merge/validation bypasses strict typing and hides schema drift."
+    },
+    {
+      "id": "quality-017",
+      "dimension": "contract_coherence",
+      "file": "src/core/hybrid-retrieval.ts",
+      "line": 636,
+      "severity": "medium",
+      "description": "Spread activation comments claim reverse-link traversal but only queries source_id direction."
+    },
+    {
+      "id": "quality-018",
+      "dimension": "contract_coherence",
+      "file": "src/core/hybrid-retrieval.ts",
+      "line": 258,
+      "severity": "medium",
+      "description": "searchVectorChannel exported but never called. Dead code at birth."
+    },
+    {
+      "id": "quality-019",
+      "dimension": "contract_coherence",
+      "file": "src/core/file-ingester.ts",
+      "line": 264,
+      "severity": "medium",
+      "description": "IngestResult.skipped documented but never incremented."
+    },
+    {
+      "id": "quality-020",
+      "dimension": "contract_coherence",
+      "file": "src/intelligence/retrieval-feedback.ts",
+      "line": 36,
+      "severity": "medium",
+      "description": "Docs say EMA update but implementation is additive clamp. Contract/behavior mismatch."
+    },
+    {
+      "id": "quality-021",
+      "dimension": "contract_coherence",
+      "file": "src/intelligence/learnings-promoter.ts",
+      "line": 45,
+      "severity": "medium",
+      "description": "Duplicate learnings upsert uses current agent_id instead of matched row agent_id, can create parallel duplicates."
+    },
+    {
+      "id": "quality-022",
+      "dimension": "logic_clarity",
+      "file": "src/adapters/cc-hooks/user-prompt-submit.ts",
+      "line": 84,
       "severity": "low",
-      "description": "formatRulesReminderSection introduces require('os') inside an otherwise import-based module, which breaks local style consistency and suggests patch-style insertion rather than cohesive module design."
+      "description": "Topic shift event recorded with ctx.project instead of routedProject, inconsistent with surrounding routing."
+    },
+    {
+      "id": "quality-023",
+      "dimension": "error_consistency",
+      "file": "src/shared/config.ts",
+      "line": 72,
+      "severity": "low",
+      "description": "Config clone fallback retries same failing deepClone call."
+    },
+    {
+      "id": "quality-024",
+      "dimension": "logic_clarity",
+      "file": "src/shared/content-router.ts",
+      "line": 186,
+      "severity": "low",
+      "description": "isPathBoundaryMatch only checks first indexOf hit, can miss later valid boundary matches."
     }
   ]
 }

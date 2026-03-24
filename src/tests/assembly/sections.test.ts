@@ -162,24 +162,19 @@ describe('formatProjectSection', () => {
     expect(result).toContain('This is a project');
   });
 
-  it('returns project section with primer and active handoff', () => {
+  it('returns null when CLAUDE.md exists (CC loads it natively)', () => {
     const dir = mkDir('proj-both');
     writeFile(dir, 'PROJECT_PRIMER.md', 'Primer content');
-    writeFile(dir, 'context/handoffs/ACTIVE.md', 'Active handoff content');
+    writeFile(dir, 'CLAUDE.md', '# Project rules');
     const result = formatProjectSection(dir);
-    expect(result).toContain('## Project');
-    expect(result).toContain('Primer content');
-    expect(result).toContain('## Active Handoff');
-    expect(result).toContain('Active handoff content');
+    expect(result).toBeNull();
   });
 
-  it('returns project section with only active handoff', () => {
+  it('returns null when only active handoff exists (covered by session continuity)', () => {
     const dir = mkDir('proj-active-only');
     writeFile(dir, 'context/handoffs/ACTIVE.md', 'Active only');
     const result = formatProjectSection(dir);
-    expect(result).not.toBeNull();
-    expect(result).toContain('## Active Handoff');
-    expect(result).toContain('Active only');
+    expect(result).toBeNull();
   });
 
   it('returns null when neither file exists', () => {

@@ -44,7 +44,7 @@ describe('ingestFileArtifacts', () => {
 
       const result = await ingestFileArtifacts(db, 'sess-1', 'test-project', tmpDir);
       expect(result.ingested).toBe(1);
-      expect(result.skipped).toBe(0);
+      expect(result.errors).toBe(0);
 
       const artifacts = db.prepare(
         `SELECT * FROM artifacts WHERE artifact_type = 'session_log'`
@@ -164,7 +164,7 @@ describe('ingestFileArtifacts', () => {
       insertSession(db, 'sess-1');
       const result = await ingestFileArtifacts(db, 'sess-1', 'test-project', tmpDir);
       expect(result.ingested).toBe(0);
-      expect(result.skipped).toBe(0);
+      expect(result.errors).toBe(0);
       expect(result.errors).toBe(0);
     } finally {
       db.close();

@@ -6,7 +6,6 @@
 import { wrapHook, getTranscriptPath } from './infrastructure.js';
 import { getTokenGauge } from '../../gauge/token-gauge.js';
 import { CC_CAPABILITIES } from '../../shared/constants.js';
-import { emitTelemetry } from '../../observability/telemetry.js';
 import { emitErrorTelemetry } from '../../observability/error-telemetry.js';
 import { runSessionEndCleanup } from '../shared/lifecycle.js';
 

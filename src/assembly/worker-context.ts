@@ -1,3 +1,5 @@
+import * as os from 'os';
+
 /**
  * Worker Context Assembly — assembles task-specific knowledge packages for spawned workers.
  *
@@ -457,8 +459,8 @@ function readProjectPrimer(project: string, projectDir?: string): string | null 
     const candidates = [
       // Explicit project directory takes priority (avoids CWD dependency)
       ...(projectDir ? [path.join(projectDir, 'PROJECT_PRIMER.md')] : []),
-      // Fallback: cwd-relative (most common case when claudex runs inside project)
-      path.join(process.cwd(), 'PROJECT_PRIMER.md'),
+      // Fallback: cwd-relative — only when projectDir not explicitly provided
+      ...(!projectDir ? [path.join(process.cwd(), 'PROJECT_PRIMER.md')] : []),
       // Also try as absolute if project looks like a path
       ...(project.includes('/') || project.includes('\\')
         ? [path.join(project, 'PROJECT_PRIMER.md')]

@@ -15,12 +15,12 @@ import { getDbPath } from '../shared/paths.js';
 import { getProjectId } from '../shared/scope-detector.js';
 import { searchArtifactsGlobal } from '../core/artifacts.js';
 import type { ArtifactRow } from '../core/artifacts.js';
-import { hybridSearchSync } from '../core/hybrid-retrieval.js';
-import type { ScoredArtifact } from '../core/hybrid-retrieval.js';
+import { hybridSearchSync, hybridSearchAsync } from '../core/hybrid-retrieval.js';
 import { getSessionEvents } from '../core/session-events.js';
 import { cachedPrepare } from '../core/stmt-cache.js';
 import { initializeSchema, runMigrations } from '../core/migrations.js';
 import { searchJournalFTS } from '../core/journal.js';
+import { tokenizeQuery } from '../shared/search-utils.js';
 
 // ---------------------------------------------------------------------------
 // DB connection
@@ -76,7 +76,8 @@ server.tool(
       return { content: [{ type: 'text', text: JSON.stringify({ error: 'query is required' }) }] };
     }
 
-    // 6.1: Hybrid search with graceful degradation to FTS5
+    // 6.1: Full 3-channel hybrid search (FTS5 + Qdrant KNN + recency via RRF)
+    // Uses async version for Qdrant vector channel. Falls back to sync on failure.
     let artifactResults: Array<{
       id: number;
       type: string;
@@ -90,7 +91,8 @@ server.tool(
 
     try {
       // Fetch extra results to support pagination (offset + limit)
-      const hybridResults = hybridSearchSync(getDb(), query, proj, {
+      // Use async hybrid search (3-channel: FTS5 + Qdrant KNN + recency)
+      const hybridResults = await hybridSearchAsync(getDb(), query, proj, {
         limit: offset + limit,
       });
 
@@ -133,8 +135,120 @@ server.tool(
       score: 0.5, // Journal matches get a baseline score (recall-optimized)
     }));
 
-    // Merge: journal results first (recall-optimized), then artifacts
-    const allResults = [...journalResults, ...artifactResults];
+    // Search conversation_turns via FTS5 for dialogue recall
+    let conversationResults: Array<{
+      id: number;
+      type: string;
+      summary: string;
+      provenance: string;
+      importance: number;
+      project: string;
+      source: 'conversation';
+      score: number;
+    }> = [];
+    try {
+      const keywords = tokenizeQuery(query, 5);
+      if (keywords.length > 0) {
+        const ftsQuery = keywords.join(' OR ');
+        const convHits = cachedPrepare(getDb(),
+          `SELECT ct.id, ct.session_id, ct.turn_number, ct.user_text, ct.assistant_text,
+                  ct.project, ct.timestamp_epoch
+           FROM conversation_turns ct
+           JOIN conversation_turns_fts fts ON fts.rowid = ct.id
+           WHERE conversation_turns_fts MATCH ?
+             AND ct.project = ?
+           ORDER BY ct.timestamp_epoch DESC
+           LIMIT ?`
+        ).all(ftsQuery, proj, Math.min(offset + limit, 5)) as Array<{
+          id: number; session_id: string; turn_number: number;
+          user_text: string | null; assistant_text: string | null;
+          project: string; timestamp_epoch: number;
+        }>;
+
+        conversationResults = convHits.map(c => ({
+          id: c.id,
+          type: 'conversation_turn' as const,
+          summary: [
+            c.user_text ? `User: ${c.user_text.slice(0, 100)}` : '',
+            c.assistant_text ? `Assistant: ${c.assistant_text.slice(0, 100)}` : '',
+          ].filter(Boolean).join(' | '),
+          provenance: `session:${c.session_id}:turn${c.turn_number}`,
+          importance: 3,
+          project: c.project,
+          source: 'conversation' as const,
+          score: 0.4, // Conversation matches get a baseline score
+        }));
+      }
+    } catch { /* FTS on conversation_turns may fail — non-fatal */ }
+
+    // Search learnings via FTS5 (feedback, corrections, migrated memory)
+    let learningResults: Array<{
+      id: number; type: string; summary: string; provenance: string;
+      importance: number; project: string; source: 'learning'; score: number;
+    }> = [];
+    try {
+      const keywords = tokenizeQuery(query, 5);
+      if (keywords.length > 0) {
+        const ftsQuery = keywords.join(' OR ');
+        const hits = cachedPrepare(getDb(),
+          `SELECT l.id, l.content, l.project, l.promotion_count
+           FROM learnings l
+           JOIN learnings_fts fts ON fts.rowid = l.id
+           WHERE learnings_fts MATCH ?
+             AND (l.project = ? OR l.project = '__global__')
+           ORDER BY l.promotion_count DESC
+           LIMIT ?`
+        ).all(ftsQuery, proj, Math.min(offset + limit, 10)) as Array<{
+          id: number; content: string; project: string; promotion_count: number;
+        }>;
+        learningResults = hits.map(l => ({
+          id: l.id,
+          type: 'learning',
+          summary: l.content.slice(0, 300),
+          provenance: `learning:${l.id}`,
+          importance: 5,
+          project: l.project,
+          source: 'learning' as const,
+          score: 0.6, // Learnings are high-signal behavioral corrections
+        }));
+      }
+    } catch { /* learnings_fts may not exist — non-fatal */ }
+
+    // Search decisions via LIKE (no FTS index — small table, keyword match sufficient)
+    let decisionResults: Array<{
+      id: number; type: string; summary: string; provenance: string;
+      importance: number; project: string; source: 'decision'; score: number;
+    }> = [];
+    try {
+      const keywords = tokenizeQuery(query, 3);
+      if (keywords.length > 0) {
+        const conditions = keywords.map(() => 'content LIKE ?').join(' AND ');
+        const likeParams = keywords.map(k => `%${k}%`);
+        const hits = cachedPrepare(getDb(),
+          `SELECT id, content, project, session_id
+           FROM decisions
+           WHERE (project = ? OR project = '__global__')
+             AND (${conditions})
+           ORDER BY timestamp_epoch DESC
+           LIMIT ?`
+        ).all(proj, ...likeParams, Math.min(offset + limit, 5)) as Array<{
+          id: number; content: string; project: string; session_id: string;
+        }>;
+        decisionResults = hits.map(d => ({
+          id: d.id,
+          type: 'decision',
+          summary: d.content.slice(0, 300),
+          provenance: `decision:${d.id}:${d.session_id}`,
+          importance: 4,
+          project: d.project,
+          source: 'decision' as const,
+          score: 0.55,
+        }));
+      }
+    } catch { /* non-fatal */ }
+
+    // Merge: learnings first (behavioral), then decisions, then journal, then conversations, then artifacts
+    const allResults = [...learningResults, ...decisionResults, ...journalResults, ...conversationResults, ...artifactResults];
     const total = allResults.length;
 
     // 6.2: Apply pagination

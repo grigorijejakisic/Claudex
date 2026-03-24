@@ -1,6 +1,14 @@
 /**
  * Stop hook -> after_turn event.
- * Captures decisions, extracts insights, tracks thread, checks checkpoint threshold.
+ *
+ * MECHANICAL operations only — fast, deterministic, no LLM calls:
+ *   Decision capture, thread tracking, conversation turn storage,
+ *   checkpoint check, retrieval feedback, activation decay, session summary.
+ *
+ * REFLECTIVE operations moved to Angel (src/angel/):
+ *   Experience pattern extraction, structured failure analysis, tip/strategy creation,
+ *   causal attribution, contrastive extraction. The Angel sees full conversations
+ *   holistically — hooks only see 2-second snapshots.
  */
 
 import { wrapHook, getTranscriptPath } from './infrastructure.js';
@@ -11,33 +19,31 @@ import {
   captureDecisionsWithClassifier,
   captureInsightsAsLearnings,
   trackAfterTurn,
+  storeConversationTurn,
   checkpointIfThresholdMet,
   captureRecallFlowEntry,
   detectIdleSession,
 } from '../shared/lifecycle.js';
 import { routeByContent, buildProjectIndex } from '../../shared/content-router.js';
-import { applyExperienceFeedback } from '../../intelligence/experience-scoring.js';
 import * as fs from 'fs';
 import * as path from 'path';
 import { getSessionEvents, synthesizeSessionSummary, saveSessionSummary, recordEvent } from '../../core/session-events.js';
 import { processRetrievalFeedback, applySessionSuccessBonus } from '../../intelligence/retrieval-feedback.js';
 import { getExperienceFlags } from '../../intelligence/experience-flags.js';
-import { recordDomainInteraction, extractDomain, generateDomainAdvisory } from '../../intelligence/capability-tracker.js';
-import { incrementVerificationCount, createTipAndStrategy } from '../../intelligence/experience-patterns.js';
+import { recordDomainInteraction, extractDomain } from '../../intelligence/capability-tracker.js';
+import { incrementVerificationCount, pruneDeadPatterns, updatePatternScore } from '../../intelligence/experience-patterns.js';
+import { applyExperienceFeedback } from '../../intelligence/experience-scoring.js';
 import { getThreadState } from '../../core/thread.js';
 import { linkArtifactToRelated } from '../../core/artifacts.js';
 import { decayActivationScores } from '../../core/hybrid-retrieval.js';
 import { penalizeUnreferencedArtifacts } from '../../intelligence/retrieval-feedback.js';
-import { analyzeFailure, storeStructuredAnalysis } from '../../intelligence/structured-analysis.js';
-import { findCausalEvent, storeCausalAttribution } from '../../intelligence/correction-detection.js';
-import { shouldRunContrastiveExtraction, runContrastiveExtraction } from '../../intelligence/contrastive-extraction.js';
 import { cachedPrepare } from '../../core/stmt-cache.js';
 import { embedText, embedJournalEntry } from '../../embeddings/embed-pipeline.js';
+import { upsertConversationEmbedding } from '../../embeddings/qdrant-client.js';
 import type { Database } from 'better-sqlite3';
 
 // ---------------------------------------------------------------------------
 // Hook step runner — eliminates repeated try/catch boilerplate.
-// Synchronous steps only; async callers wrap their own try/catch.
 // ---------------------------------------------------------------------------
 
 function runHookStep(
@@ -71,7 +77,7 @@ const main = wrapHook('Stop', async (input, ctx) => {
 
   // Each operation isolated — if A fails, B and C still run
 
-  // Decision capture with optional embedding classifier (built fresh each invocation)
+  // Decision capture with optional embedding classifier
   const turnStartEpoch = Math.floor(Date.now() / 1000) - 2;
   try {
     await captureDecisionsWithClassifier({
@@ -86,7 +92,7 @@ const main = wrapHook('Stop', async (input, ctx) => {
     emitErrorTelemetry(ctx.db, input.session_id, 'stop/decision_capture', e);
   }
 
-  // Record captured decisions as session events (for summary synthesis)
+  // Record captured decisions as session events
   runHookStep('decision_events', () => {
     const newDecisions = cachedPrepare(ctx.db,
       `SELECT content, source FROM decisions
@@ -98,19 +104,57 @@ const main = wrapHook('Stop', async (input, ctx) => {
     }
   }, ctx.db, input.session_id);
 
-  // Insight extraction — analytical conclusions from assistant response
-  runHookStep('insight_extraction', () => {
+  // Insight extraction
+  try {
     if (lastAssistantText) {
-      captureInsightsAsLearnings(ctx.db, input.session_id, routedProject, lastAssistantText);
+      await captureInsightsAsLearnings(ctx.db, input.session_id, routedProject, lastAssistantText);
     }
-  }, ctx.db, input.session_id);
+  } catch (e) {
+    emitErrorTelemetry(ctx.db, input.session_id, 'stop/insight_extraction', e);
+  }
 
   // Thread tracking
   runHookStep('track_after_turn', () => {
     trackAfterTurn(ctx.db, input.session_id, lastUserText, lastAssistantText);
   }, ctx.db, input.session_id);
 
-  // Embed thread summary (awaited — ephemeral process requires completion before exit)
+  // Store conversation turn + dual-write embedding (SQLite BLOB + Qdrant)
+  runHookStep('store_conversation_turn', () => {
+    storeConversationTurn(ctx.db, input.session_id, routedProject, lastUserText, lastAssistantText);
+  }, ctx.db, input.session_id);
+
+  try {
+    const turnText = [lastUserText, lastAssistantText].filter(Boolean).join('\n\n');
+    if (turnText.length > 20) {
+      const toEmbed = turnText.substring(0, 2000);
+      const turnEmbedding = await embedText(toEmbed);
+      if (turnEmbedding) {
+        const blob = Buffer.from(new Float32Array(turnEmbedding).buffer);
+        const latestTurn = cachedPrepare(ctx.db,
+          `SELECT id, turn_number FROM conversation_turns
+           WHERE session_id = ? ORDER BY id DESC LIMIT 1`
+        ).get(input.session_id) as { id: number; turn_number: number } | undefined;
+
+        if (latestTurn) {
+          cachedPrepare(ctx.db,
+            `UPDATE conversation_turns SET embedding = ? WHERE id = ?`
+          ).run(blob, latestTurn.id);
+
+          await upsertConversationEmbedding(latestTurn.id, turnEmbedding, {
+            turn_id: latestTurn.id,
+            session_id: input.session_id,
+            project: routedProject,
+            turn_number: latestTurn.turn_number,
+            timestamp_epoch: Math.floor(Date.now() / 1000),
+            user_text_preview: (lastUserText ?? '').slice(0, 200),
+            assistant_text_preview: (lastAssistantText ?? '').slice(0, 200),
+          });
+        }
+      }
+    }
+  } catch { /* non-fatal */ }
+
+  // Embed thread summary
   try {
     const thread = getThreadState(ctx.db, input.session_id);
     if (thread?.summary) {
@@ -143,20 +187,7 @@ const main = wrapHook('Stop', async (input, ctx) => {
     emitErrorTelemetry(ctx.db, input.session_id, 'stop/checkpoint', e);
   }
 
-  // Experience pattern extraction + score feedback + flag rotation
-  await applyExperienceFeedback(
-    ctx.db,
-    input.session_id,
-    lastAssistantText,
-    lastUserText,
-    routedProject,
-    ctx.config,
-  );
-
-  // Retrieval feedback — score ALL recently-active artifacts, regardless of state.
-  // Fresh artifacts (from recent tool use) and materialized artifacts (from triggers)
-  // both appear in assembly output. Score them all based on whether the assistant
-  // referenced their content.
+  // Retrieval feedback — score recently-active artifacts based on assistant reference
   try {
     if (lastAssistantText) {
       const recentArtifacts = cachedPrepare(ctx.db,
@@ -181,7 +212,7 @@ const main = wrapHook('Stop', async (input, ctx) => {
     emitErrorTelemetry(ctx.db, input.session_id, 'stop/retrieval_feedback', e);
   }
 
-  // Capability boundary tracking (3.6) — record domain interaction + correction rate
+  // Capability boundary tracking — record domain interaction
   runHookStep('capability_tracking', () => {
     const thread = getThreadState(ctx.db, input.session_id);
     if (thread?.topic) {
@@ -193,25 +224,52 @@ const main = wrapHook('Stop', async (input, ctx) => {
     }
   }, ctx.db, input.session_id);
 
-  // Verification gate (3.3) — if patterns were injected and no correction, increment verification
+  // Pattern verification + helpful scoring — MECHANICAL feedback loop.
+  // If patterns were injected this turn and no correction followed:
+  //   1. Increment verification_count (→ verified at 2, gets 1.5x boost)
+  //   2. Increment helpful_count via updatePatternScore(+1) (→ ACE ranking)
+  // This teaches the system which patterns are useful.
   runHookStep('pattern_verification', () => {
     const flags = getExperienceFlags(ctx.db, input.session_id);
-    if (!flags.correction_flagged && flags.injected_pattern_ids) {
-      try {
-        const patternIds = JSON.parse(flags.injected_pattern_ids) as string[];
-        for (const pid of patternIds) {
-          incrementVerificationCount(ctx.db, pid);
-        }
-      } catch { /* non-fatal — injected_pattern_ids may not be valid JSON */ }
+    if (!flags.correction_flagged && flags.injected_pattern_ids?.length > 0) {
+      for (const pid of flags.injected_pattern_ids) {
+        incrementVerificationCount(ctx.db, pid);
+        updatePatternScore(ctx.db, pid, 1); // +1 score, +1 helpful_count
+      }
     }
   }, ctx.db, input.session_id);
 
-  // Session success bonus — if no corrections this session, reward all recently-active artifacts.
-  // Closes the retrieval feedback loop for the positive signal (applySessionSuccessBonus was
-  // implemented but never wired — now connected).
+  // Experience scoring — full feedback loop (extraction, topic-aware scoring, flag rotation).
+  // Runs AFTER pattern_verification (which reads injected_pattern_ids for current turn)
+  // because the finally block in applyExperienceFeedback rotates injected → awaiting.
+  try {
+    await applyExperienceFeedback(
+      ctx.db,
+      input.session_id,
+      lastAssistantText,
+      lastUserText,
+      routedProject,
+      ctx.config,
+    );
+  } catch (e) {
+    emitErrorTelemetry(ctx.db, input.session_id, 'stop/experience_feedback', e);
+  }
+
+  // Prune dead patterns — remove patterns scored to 0 (ExpeL "die at 0" rule)
+  runHookStep('prune_dead_patterns', () => {
+    pruneDeadPatterns(ctx.db);
+  }, ctx.db, input.session_id);
+
+  // Session success bonus — once per session, boost retrieval scores for non-corrected sessions
   runHookStep('session_success_bonus', () => {
     const flags = getExperienceFlags(ctx.db, input.session_id);
     if (!flags.correction_flagged) {
+      // Guard: use session_events to prevent double-application (not checkpoint_tracking)
+      const guard = cachedPrepare(ctx.db,
+        `SELECT id FROM session_events WHERE session_id = ? AND event_type = 'session_success_bonus' LIMIT 1`
+      ).get(input.session_id) as { id: number } | undefined;
+      if (guard) return;
+
       const activeArtifacts = cachedPrepare(ctx.db,
         `SELECT id FROM artifacts
          WHERE project = ? AND state IN ('fresh', 'materialized')
@@ -219,6 +277,8 @@ const main = wrapHook('Stop', async (input, ctx) => {
       ).all(routedProject) as Array<{ id: number }>;
       if (activeArtifacts.length > 0) {
         applySessionSuccessBonus(ctx.db, activeArtifacts.map(a => a.id));
+        recordEvent(ctx.db, input.session_id, routedProject, 'session_success_bonus', 'system', 'applied',
+          `${activeArtifacts.length} artifacts boosted`);
       }
     }
   }, ctx.db, input.session_id);
@@ -231,7 +291,7 @@ const main = wrapHook('Stop', async (input, ctx) => {
     emitErrorTelemetry(ctx.db, input.session_id, 'stop/load_events', e);
   }
 
-  // Pre-compute session summary from events (for next session's reconstruction)
+  // Session summary synthesis
   try {
     const summary = synthesizeSessionSummary(sessionEvents);
     if (summary) {
@@ -241,8 +301,7 @@ const main = wrapHook('Stop', async (input, ctx) => {
     emitErrorTelemetry(ctx.db, input.session_id, 'stop/session_summary', e);
   }
 
-  // Capture enriched recall flow entry (heuristic tier) — only at boundaries
-  // (topic shifts or compaction), not every turn, to avoid write amplification
+  // Recall flow entry at boundaries
   const hasRecentTopicShift = sessionEvents.some(e =>
     e.event_type === 'topic_shift' &&
     e.timestamp_epoch > Math.floor(Date.now() / 1000) - 120
@@ -254,8 +313,7 @@ const main = wrapHook('Stop', async (input, ctx) => {
     }, ctx.db, input.session_id);
   }
 
-  // Idle session detection — suggest /endsession when back-to-back compactions
-  // with minimal work between them indicate the user walked away.
+  // Idle session detection
   let idleWarning = '';
   try {
     if (detectIdleSession(ctx.db, input.session_id, sessionEvents)) {
@@ -263,8 +321,7 @@ const main = wrapHook('Stop', async (input, ctx) => {
     }
   } catch { /* non-throwing */ }
 
-  // Embed recent journal entries (awaited — ephemeral process requires completion before exit).
-  // Batches all unembedded entries from this session instead of embedding inline in addJournalEntry.
+  // Embed recent journal entries
   try {
     const unembedded = cachedPrepare(ctx.db,
       `SELECT id, content, recall_text, project, entry_type FROM session_journal
@@ -283,84 +340,7 @@ const main = wrapHook('Stop', async (input, ctx) => {
     }
   } catch { /* non-fatal */ }
 
-  // ---------------------------------------------------------------------------
-  // V9 Intelligence Wiring — semantic upgrade features that run at end-of-turn
-  // ---------------------------------------------------------------------------
-
-  // 3.1 Structured failure analysis — when correction detected, analyze it
-  try {
-    const flags = getExperienceFlags(ctx.db, input.session_id);
-    if (flags.correction_flagged && lastUserText && lastAssistantText) {
-      const analysis = await analyzeFailure(lastUserText, lastAssistantText);
-      if (analysis) {
-        // Find the most recent pattern created this session to attach analysis to
-        const recentPattern = cachedPrepare(ctx.db,
-          `SELECT id FROM experience_patterns WHERE source_session = ? ORDER BY created_at_epoch DESC LIMIT 1`
-        ).get(input.session_id) as { id: string } | undefined;
-        if (recentPattern) {
-          storeStructuredAnalysis(ctx.db, recentPattern.id, analysis);
-        }
-      }
-    }
-  } catch { /* non-fatal */ }
-
-  // 3.2 Tips/strategies — create both levels on correction
-  // (applyExperienceFeedback already ran above and may have created patterns via createPattern.
-  //  We check for fresh corrections and create the strategy-level duplicate.)
-  try {
-    const flags = getExperienceFlags(ctx.db, input.session_id);
-    if (flags.correction_flagged && lastUserText) {
-      // Find tip patterns created this turn (no strategy pair yet)
-      const freshTips = cachedPrepare(ctx.db,
-        `SELECT id, trigger_context, lesson, pattern_type, severity FROM experience_patterns
-         WHERE source_session = ? AND abstraction_level = 'tip'
-           AND created_at_epoch > ? ORDER BY created_at_epoch DESC LIMIT 3`
-      ).all(input.session_id, Math.floor(Date.now() / 1000) - 30) as Array<{
-        id: string; trigger_context: string; lesson: string;
-        pattern_type: string; severity: string;
-      }>;
-      for (const tip of freshTips) {
-        // Check if strategy already exists for this tip's lesson
-        const hasStrategy = cachedPrepare(ctx.db,
-          `SELECT 1 FROM experience_patterns WHERE source_session = ? AND abstraction_level = 'strategy'
-           AND trigger_context = ? LIMIT 1`
-        ).get(input.session_id, tip.trigger_context);
-        if (!hasStrategy) {
-          createTipAndStrategy(ctx.db, {
-            pattern_type: tip.pattern_type as 'correction' | 'behavioral' | 'discovery',
-            trigger_context: tip.trigger_context,
-            lesson: tip.lesson,
-            severity: tip.severity as 'critical' | 'important' | 'minor',
-          }, input.session_id, routedProject);
-        }
-      }
-    }
-  } catch { /* non-fatal */ }
-
-  // 3.7 Causal attribution — trace correction back to causing tool call
-  try {
-    const flags = getExperienceFlags(ctx.db, input.session_id);
-    if (flags.correction_flagged && lastUserText) {
-      const causalEvent = findCausalEvent(ctx.db, input.session_id, lastUserText);
-      if (causalEvent) {
-        const recentPattern = cachedPrepare(ctx.db,
-          `SELECT id FROM experience_patterns WHERE source_session = ? ORDER BY created_at_epoch DESC LIMIT 1`
-        ).get(input.session_id) as { id: string } | undefined;
-        if (recentPattern) {
-          storeCausalAttribution(ctx.db, recentPattern.id, causalEvent.id);
-        }
-      }
-    }
-  } catch { /* non-fatal */ }
-
-  // 3.5 Contrastive extraction — every 10 sessions, compare success vs failure
-  try {
-    if (shouldRunContrastiveExtraction(ctx.db, routedProject)) {
-      runContrastiveExtraction(ctx.db, routedProject, input.session_id);
-    }
-  } catch { /* non-fatal */ }
-
-  // 4.1 Artifact linking — link recent unlinked artifacts to related ones
+  // Artifact linking — link recent unlinked artifacts to related ones
   try {
     const unlinked = cachedPrepare(ctx.db,
       `SELECT a.id FROM artifacts a
@@ -373,17 +353,17 @@ const main = wrapHook('Stop', async (input, ctx) => {
     }
   } catch { /* non-fatal */ }
 
-  // 2.4 Activation decay — decay scores for this project (lightweight, runs every turn)
+  // Activation decay
   runHookStep('activation_decay', () => {
     decayActivationScores(ctx.db, routedProject);
   }, ctx.db, input.session_id);
 
-  // 5.2 Penalize unreferenced artifacts — artifacts retrieved 3+ times but never used
+  // Penalize unreferenced artifacts
   runHookStep('penalize_unreferenced', () => {
     penalizeUnreferencedArtifacts(ctx.db, routedProject);
   }, ctx.db, input.session_id);
 
-  // Behavioral gate: check if hook source is newer than dist (edited but not rebuilt)
+  // Build gate warning
   let gateWarning = '';
   try {
     const srcDir = path.join(input.cwd, 'src', 'adapters', 'cc-hooks');
@@ -413,8 +393,6 @@ const main = wrapHook('Stop', async (input, ctx) => {
 
   const warnings = [gateWarning, idleWarning].filter(Boolean).join('\n\n');
   if (warnings) {
-    // Stop hooks don't support hookSpecificOutput/additionalContext —
-    // only UserPromptSubmit and PostToolUse do. Use top-level systemMessage instead.
     return { systemMessage: warnings };
   }
 

@@ -28,9 +28,9 @@ import { GLOBAL_PROJECT_SCOPE } from '../../shared/constants.js';
 function makePattern(overrides: Partial<ExtractionInput> = {}): ExtractionInput {
   return {
     pattern_type: 'correction',
-    trigger_context: 'server migration OAuth token transfer',
-    lesson: 'Always copy OAuth token from ~/.claude/.credentials.json when migrating',
-    anti_pattern: 'Assumed old token would work on new machine',
+    trigger_context: 'server migration OAuth token transfer credentials authentication',
+    lesson: 'Always copy OAuth token from ~/.claude/.credentials.json when migrating servers. The token is machine-specific and must be explicitly transferred during server migration.',
+    anti_pattern: 'Assumed old OAuth token would work on new machine without explicit migration transfer',
     severity: 'important',
     ...overrides,
   };

@@ -63,6 +63,7 @@ export const COLLECTIONS = {
   patterns: 'claudex_patterns',
   threads: 'claudex_threads',
   journal: 'claudex_journal',
+  conversations: 'claudex_conversations',
 } as const;
 
 // ---------------------------------------------------------------------------
@@ -110,8 +111,8 @@ export async function getQdrantClient(config?: Partial<QdrantConfig>): Promise<Q
     // Health check
     if (_available === null || now - _lastHealthCheck >= HEALTH_CHECK_INTERVAL_MS) {
       try {
-        const health = await _client.api('service').healthz();
-        _available = health?.status === 200 || (health as { title?: string })?.title === 'qdrant - vectorass';
+        await _client.getCollections();
+        _available = true;
         // Qdrant returns { title: 'qdrant - vector engine' } on GET /healthz
         // Be lenient: if we got any response, it's alive
         if (!_available) {
@@ -174,6 +175,7 @@ export async function ensureCollections(config?: Partial<QdrantConfig>): Promise
       COLLECTIONS.patterns,
       COLLECTIONS.threads,
       COLLECTIONS.journal,
+      COLLECTIONS.conversations,
     ];
 
     for (const name of collections) {
@@ -288,6 +290,71 @@ export async function upsertJournalEmbedding(
     return true;
   } catch {
     return false;
+  }
+}
+
+/**
+ * Upsert a conversation turn embedding into Qdrant.
+ * Non-throwing.
+ */
+export async function upsertConversationEmbedding(
+  turnId: number,
+  embedding: number[],
+  payload: Record<string, unknown>,
+  config?: Partial<QdrantConfig>,
+): Promise<boolean> {
+  try {
+    const client = await getQdrantClient(config);
+    if (!client) return false;
+
+    await client.upsert(COLLECTIONS.conversations, {
+      wait: false,
+      points: [{
+        id: turnId,
+        vector: embedding,
+        payload,
+      }],
+    });
+
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Search conversation turns by semantic similarity.
+ * Used for recall — finding dialogue by how the user would describe it.
+ * Non-throwing.
+ */
+export async function searchConversations(
+  embedding: number[],
+  project: string,
+  limit: number = 5,
+  config?: Partial<QdrantConfig>,
+): Promise<SearchResult[]> {
+  try {
+    const client = await getQdrantClient(config);
+    if (!client) return [];
+
+    const results = await client.search(COLLECTIONS.conversations, {
+      vector: embedding,
+      limit,
+      filter: {
+        must: [
+          { key: 'project', match: { value: project } },
+        ],
+      },
+      with_payload: true,
+    });
+
+    return results.map(r => ({
+      id: r.id as number,
+      score: r.score,
+      payload: (r.payload ?? {}) as Record<string, unknown>,
+    }));
+  } catch {
+    return [];
   }
 }
 

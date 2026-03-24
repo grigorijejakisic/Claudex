@@ -346,8 +346,16 @@ export function findCausalEvent(
       }
     }
 
-    // Minimum threshold: require at least some signal
+    // Minimum threshold: require textual overlap (not just bonus-only crossing)
+    // and overall score >= 0.5
     if (!bestEvent || bestScore < 0.5) return null;
+    // Guard against false positives: if score is entirely from bonuses
+    // (recency + event-type) with zero word overlap, reject the match
+    const hasTextualEvidence = correctionWords.length > 0 && events.some(e => {
+      const eWords = (e.entity + ' ' + (e.detail ?? '')).toLowerCase().split(/\s+/);
+      return correctionWords.some(w => eWords.includes(w));
+    });
+    if (!hasTextualEvidence) return null;
 
     return {
       event_id: bestEvent.id,

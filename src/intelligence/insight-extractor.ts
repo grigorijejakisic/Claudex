@@ -21,16 +21,16 @@ export interface ExtractedInsight {
 // Each captures a sentence containing an analytical conclusion.
 
 const INSIGHT_PATTERNS: Array<{ pattern: RegExp; marker: string }> = [
-  // Root cause / diagnosis
-  { pattern: /\b(root cause|the issue is|the problem is|the bug is|this is because|this means|this happens because)\b/i, marker: 'diagnosis' },
-  // Findings / discoveries
-  { pattern: /\b(found that|discovered that|turns out|it turns out|the real issue|the actual)\b/i, marker: 'finding' },
-  // Conclusions / summaries
-  { pattern: /\b(in summary|the fix is|the solution is|this confirms|this explains why|this is why|so the)\b/i, marker: 'conclusion' },
-  // Architecture / design insights
-  { pattern: /\b(the architecture|the design|the pattern|the model|the approach|the strategy)\s+(is|was|should|needs)\b/i, marker: 'architecture' },
-  // Systemic observations
-  { pattern: /\b(every|all|none of the|never|always|systematically|consistently)\b.*\b(because|due to|caused by|means|fails|works|broken)\b/i, marker: 'systemic' },
+  // Root cause / diagnosis — require specific diagnostic framing
+  { pattern: /\b(root cause[: ]|the issue is that|the problem is that|the bug is that|this happens because)\b/i, marker: 'diagnosis' },
+  // Findings / discoveries — require "that" clause for substance
+  { pattern: /\b(found that|discovered that|it turns out that|the real issue is)\b/i, marker: 'finding' },
+  // Conclusions / summaries — removed "so the" (matches everything), tightened others
+  { pattern: /\b(in summary|the fix is|the solution is|this confirms that|this explains why)\b/i, marker: 'conclusion' },
+  // Architecture / design insights — require declarative structure
+  { pattern: /\b(the architecture|the design pattern|the approach)\s+(is|should be|needs to)\b/i, marker: 'architecture' },
+  // Systemic observations — require causal connector
+  { pattern: /\b(systematically|consistently)\b.*\b(because|due to|caused by)\b/i, marker: 'systemic' },
 ];
 
 /** Filler patterns to exclude from insights. */
@@ -291,11 +291,4 @@ export async function extractInsightsCombined(
     // Absolute fallback: return regex results
     return extractInsights(assistantText, maxInsights);
   }
-}
-
-/**
- * Resets cached reference embeddings (for testing).
- */
-export function resetReferenceEmbeddings(): void {
-  _referenceEmbeddings = null;
 }

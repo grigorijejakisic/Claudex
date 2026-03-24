@@ -47,6 +47,7 @@ import {
   getPackedArtifacts,
   searchArtifactsGlobal,
   getMaterializedArtifacts,
+  consumeInjectedArtifacts,
 } from '../core/artifacts.js';
 import { hybridSearchSync, spreadActivation } from '../core/hybrid-retrieval.js';
 import { recordRetrievalEvent } from '../intelligence/retrieval-feedback.js';
@@ -249,9 +250,9 @@ export function assembleFullContext(params: FullAssemblyParams): InjectPayload {
       }
     }
 
-    // Priority 3: Checkpoint
+    // Priority 3: Checkpoint — skipLearnings because Priority 4 injects them separately
     const checkpoint = loadCheckpoint(params.db, params.projectDir, undefined, params.project);
-    const checkpointSection = formatCheckpointSection(checkpoint);
+    const checkpointSection = formatCheckpointSection(checkpoint, { skipLearnings: true });
     if (checkpointSection) {
       const cost = estimateTokens(checkpointSection);
       if (cost <= budget) {
@@ -311,7 +312,7 @@ export function assembleFullContext(params: FullAssemblyParams): InjectPayload {
 
     // === LAYER 2: Reference (packed artifact summaries) ===
     try {
-      const packedArtifacts = getPackedArtifacts(params.db, params.project, 30);
+      const packedArtifacts = getPackedArtifacts(params.db, params.project, 20);
       const refSection = formatReferenceLayer(packedArtifacts);
       if (refSection) {
         const cost = estimateTokens(refSection);
@@ -353,6 +354,27 @@ export function assembleFullContext(params: FullAssemblyParams): InjectPayload {
         if (!seen.has(a.id)) { materializedArtifacts.push(a); seen.add(a.id); }
       }
 
+      // Dedup: exclude learning-type artifacts from materialization when
+      // learnings were already injected in Priority 4 (prevents cross-contamination)
+      if (sources.includes('learnings')) {
+        materializedArtifacts = materializedArtifacts.filter(a => a.artifact_type !== 'learning');
+      }
+
+      // Dedup: exclude session_log and handoff artifacts when session continuity
+      // already injected — the compressed handoff extract covers what matters.
+      if (sources.includes('session_continuity')) {
+        materializedArtifacts = materializedArtifacts.filter(a =>
+          a.artifact_type !== 'session_log' && a.artifact_type !== 'handoff'
+        );
+      }
+
+      // Staleness filter: observation-type artifacts older than 48h have very low
+      // value for a new session. Decisions, learnings, patterns etc. persist longer.
+      const STALE_OBS_CUTOFF = Math.floor(Date.now() / 1000) - 48 * 3600;
+      materializedArtifacts = materializedArtifacts.filter(a =>
+        a.artifact_type !== 'observation' || a.timestamp_epoch >= STALE_OBS_CUTOFF
+      );
+
       const rationale = query ? `hybrid search on "${query}"` : undefined;
       const matSection = formatMaterializationLayer(materializedArtifacts, rationale, params.sessionId);
       if (matSection) {
@@ -370,6 +392,11 @@ export function assembleFullContext(params: FullAssemblyParams): InjectPayload {
               spreadActivation(params.db, art.id);
             }
           }
+
+          // Consume injected artifacts — pack them so the next turn's
+          // assembleRegularPrompt() doesn't re-inject via getMaterializedArtifacts().
+          // PostToolUse can re-materialize specific artifacts mid-session if needed.
+          consumeInjectedArtifacts(params.db, materializedArtifacts.map(a => a.id));
         }
       }
     } catch { /* non-fatal */ }
@@ -527,11 +554,13 @@ export function assembleRegularPrompt(params: RegularPromptParams): InjectPayloa
         params.db, params.prompt, params.project, params.sessionId,
       );
       if (expWarnings) {
-        expWarnings.applyEffects(); // Always apply — no budget check here
+        // Defer effects to caller — the caller's budget check may drop this payload
+        // (e.g. if extraContent exceeds budget). Effects committed only after injection.
         return {
           content: expWarnings.section,
           tokenEstimate: expWarnings.tokenCost,
           sources: ['experience_warnings'],
+          commitEffects: expWarnings.applyEffects,
         };
       }
     }

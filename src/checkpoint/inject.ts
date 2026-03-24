@@ -12,7 +12,8 @@ import type { CheckpointV3, SelectiveLoadPreset } from './types.js';
  */
 export function renderCheckpointMarkdown(
   checkpoint: CheckpointV3,
-  preset?: SelectiveLoadPreset
+  preset?: SelectiveLoadPreset,
+  options?: { skipLearnings?: boolean },
 ): string {
   try {
     if (!checkpoint) return '';
@@ -113,8 +114,8 @@ export function renderCheckpointMarkdown(
       sections.push(lines.join('\n'));
     }
 
-    // 6. Learnings (RESUME+)
-    if (includeResume && checkpoint.learnings && checkpoint.learnings.length > 0) {
+    // 6. Learnings (RESUME+) — skipped when assembler already injected them as a separate section
+    if (includeResume && !options?.skipLearnings && checkpoint.learnings && checkpoint.learnings.length > 0) {
       const lines: string[] = ['### Learnings'];
       for (const learning of checkpoint.learnings) {
         lines.push(`- ${learning}`);

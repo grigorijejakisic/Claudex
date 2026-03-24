@@ -36,7 +36,7 @@ import { getDecisionsBySession } from '../../core/decisions.js';
 import { getObservationById } from '../../core/observations.js';
 import { createArtifact, tickArtifactTTL, packAllArtifacts, getConfidenceScore, setArtifactConfidence, setArtifactNovelty, flagSupersededArtifacts } from '../../core/artifacts.js';
 import { getLearningsByProject } from '../../core/learnings.js';
-import { extractInsights } from '../../intelligence/insight-extractor.js';
+import { extractInsights, extractInsightsCombined } from '../../intelligence/insight-extractor.js';
 import { embedArtifact } from '../../embeddings/embed-pipeline.js';
 
 // ---------------------------------------------------------------------------
@@ -123,19 +123,27 @@ const FILLER_PATTERNS = /^(yes|no|yeah|ok|sure|send|go|done|please|let me|I see|
 /**
  * Returns true if content is worth promoting to cross-session learnings.
  * Filters out raw tool titles, short user quotes, markdown-only content,
- * and conversational filler that leak from decisions/discoveries.
+ * conversational filler, and vague/generic sentences that leak from
+ * the insight extractor. A real learning must have substance.
  */
 function isPromotableContent(content: string): boolean {
   const trimmed = content.trim();
-  // Too short to be knowledge
-  if (trimmed.length < 30) return false;
+  // Too short to be knowledge — raised from 30 to 60 to filter fragments
+  if (trimmed.length < 60) return false;
   // Raw tool output titles
   if (TOOL_TITLE_PREFIX.test(trimmed)) return false;
   // Conversational filler
   if (FILLER_PATTERNS.test(trimmed)) return false;
   // Pure markdown formatting (e.g. "**What artifacts SHOULD be:**")
   const stripped = trimmed.replace(/[*_#`~>-]/g, '').trim();
-  if (stripped.length < 20) return false;
+  if (stripped.length < 40) return false;
+  // Vague/generic statements that aren't actionable knowledge
+  // Only filter if the statement is JUST a vague assertion without substance
+  if (/^(this confirms|so the|back to)\b/i.test(stripped)) return false;
+  // "The architecture was/is sound/clear/right" — vague praise without specifics
+  if (/^the architecture (was|is) (sound|clear|right|correct)\b/i.test(stripped)) return false;
+  // Questions aren't learnings
+  if (trimmed.endsWith('?')) return false;
   return true;
 }
 
@@ -260,7 +268,7 @@ export async function processToolAndPressure(params: ToolObservationParams): Pro
             if (embedded) {
               // After embedding stored, check novelty (2.5) and superseded (2.3)
               try {
-                const novelty = await checkNovelty(params.db, obs.content, params.project);
+                const novelty = await checkNovelty(obs.content, params.project);
                 setArtifactNovelty(params.db, artifactId, novelty.noveltyScore);
               } catch { /* non-fatal */ }
               // Flag older superseded artifacts (2.3)
@@ -435,6 +443,34 @@ export function trackAfterTurn(
 }
 
 /**
+ * Store a conversation turn (user prompt + assistant response) for session reconstruction.
+ * Called by Stop hook after each turn. Non-throwing.
+ */
+export function storeConversationTurn(
+  db: Database.Database,
+  sessionId: string,
+  project: string,
+  userText: string | undefined,
+  assistantText: string | undefined,
+): void {
+  if (!userText && !assistantText) return;
+  try {
+    // Get next turn number for this session
+    const lastTurn = cachedPrepare(db,
+      `SELECT MAX(turn_number) as max_turn FROM conversation_turns WHERE session_id = ?`
+    ).get(sessionId) as { max_turn: number | null } | undefined;
+    const turnNumber = (lastTurn?.max_turn ?? -1) + 1;
+
+    cachedPrepare(db,
+      `INSERT INTO conversation_turns (session_id, project, turn_number, user_text, assistant_text)
+       VALUES (?, ?, ?, ?, ?)`
+    ).run(sessionId, project, turnNumber, userText ?? null, assistantText ?? null);
+  } catch {
+    // Non-throwing — conversation storage failure must never break the hook
+  }
+}
+
+/**
  * Persist a topic update to thread_state when a topic shift is detected.
  * Called by both CC hooks (UserPromptSubmit) and bridge (onContext) after
  * topic shift detection. Non-throwing.
@@ -584,17 +620,23 @@ export async function captureDecisionsWithClassifier(params: DecisionCapturePara
  * root causes, and key findings that live in the conversation text.
  * Non-throwing.
  */
-export function captureInsightsAsLearnings(
+export async function captureInsightsAsLearnings(
   db: Database.Database,
   sessionId: string,
   project: string,
   assistantText: string,
-): void {
+): Promise<void> {
   try {
-    const insights = extractInsights(assistantText, 5);
+    // Combined: regex (floor) + semantic embedding (boost) when Ollama available
+    let insights = await extractInsightsCombined(assistantText, 5).catch(() => extractInsights(assistantText, 5));
     if (insights.length === 0) return;
 
-    const learningTexts = insights.map(i => i.content);
+    // Quality gate: filter insights through isPromotableContent before promotion.
+    // Without this gate, loose regex matches ("so the X", "the architecture is Y")
+    // get promoted as cross-session learnings — filling the DB with garbage.
+    const learningTexts = insights.map(i => i.content).filter(isPromotableContent);
+    if (learningTexts.length === 0) return;
+
     promoteLearnings({
       db,
       project,

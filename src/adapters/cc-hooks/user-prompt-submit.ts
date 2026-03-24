@@ -23,11 +23,22 @@ import { detectCorrectionSignal } from '../../intelligence/correction-detection.
 import { recordEvent } from '../../core/session-events.js';
 import { findSimilarThreads } from '../../intelligence/thread-tracker.js';
 import { shouldRunReflection, runBatchReflection } from '../../intelligence/batch-reflection.js';
-import { getDomainBoundary, extractDomain, generateDomainAdvisory } from '../../intelligence/capability-tracker.js';
+import { extractDomain, generateDomainAdvisory, getWeakDomains } from '../../intelligence/capability-tracker.js';
 import { getThreadState } from '../../core/thread.js';
+import { getPendingMessages, markMessagesDelivered } from '../../angel/message-sender.js';
+
+/** CC internal messages that should not trigger any context processing. */
+const CC_INTERNAL_RE = /^(tasknotification\s|outputfile)/i;
 
 const main = wrapHook('UserPromptSubmit', async (input, ctx) => {
   const prompt = (input.prompt as string) || (input.user_prompt as string) || '';
+
+  // Early exit: CC internal notifications (task completions, output file refs)
+  // should not set topics, capture decisions, trigger experience patterns, or
+  // consume assembly budget. Let them pass through with zero injection.
+  if (CC_INTERNAL_RE.test(prompt)) {
+    return {};
+  }
 
   const tracking = getCheckpointTracking(ctx.db, input.session_id);
   const isPostCompaction = tracking?.post_compact_pending === 1;
@@ -202,8 +213,7 @@ const main = wrapHook('UserPromptSubmit', async (input, ctx) => {
   let crossSessionContext = '';
   if (prompt && !topicShift?.shifted) {
     try {
-      const { getThreadState: getTS } = await import('../../core/thread.js');
-      const existingThread = getTS(ctx.db, input.session_id);
+      const existingThread = getThreadState(ctx.db, input.session_id);
       const isFirstPrompt = !existingThread?.topic;
 
       if (isFirstPrompt) {
@@ -246,10 +256,40 @@ const main = wrapHook('UserPromptSubmit', async (input, ctx) => {
     }
   }
 
+  // Cross-session coordination — detect file conflicts with other active sessions (BossCat pattern)
+  try {
+    const { getCrossSessionActivity, detectFileConflicts, formatCrossSessionAwareness } = await import('../../intelligence/cross-session-coordination.js');
+    const activities = getCrossSessionActivity(ctx.db, ctx.project, input.session_id);
+    const conflicts = detectFileConflicts(ctx.db, ctx.project, input.session_id);
+    const awareness = formatCrossSessionAwareness(activities, conflicts);
+    if (awareness) {
+      crossSessionContext = crossSessionContext
+        ? crossSessionContext + '\n\n' + awareness
+        : awareness;
+    }
+  } catch { /* non-fatal */ }
+
   // 4.4 Batch reflection — every 10 sessions, synthesize cross-session insights
   try {
     if (shouldRunReflection(ctx.db, ctx.project)) {
       runBatchReflection(ctx.db, ctx.project, input.session_id);
+    }
+  } catch { /* non-fatal */ }
+
+  // Session messages consumer — read pending messages from the Angel
+  // NOTE: Messages are marked delivered AFTER confirmed injection (below),
+  // not here. Budget gating could drop extraContent, causing message loss.
+  let angelMessages = '';
+  let pendingMessageIds: number[] = [];
+  try {
+    const pending = getPendingMessages(ctx.db, input.session_id);
+    if (pending.length > 0) {
+      const parts = pending.map(m => {
+        const prefix = m.priority === 'urgent' ? '**[URGENT]** ' : '';
+        return `${prefix}${m.content}`;
+      });
+      angelMessages = `## Angel Messages\n${parts.join('\n\n')}`;
+      pendingMessageIds = pending.map(m => m.id);
     }
   } catch { /* non-fatal */ }
 
@@ -263,6 +303,23 @@ const main = wrapHook('UserPromptSubmit', async (input, ctx) => {
         const advisory = generateDomainAdvisory(ctx.db, ctx.project, domain);
         if (advisory) {
           domainAdvisory = advisory;
+        }
+      }
+    }
+
+    // On assembly turns, surface all weak domains (not just current topic's)
+    if (isPostCompaction || topicShift?.shifted) {
+      const weakDomains = getWeakDomains(ctx.db, ctx.project);
+      if (weakDomains.length > 0) {
+        const currentDomain = thread?.topic ? extractDomain(thread.topic) : null;
+        const otherWeak = weakDomains.filter(d => d.domain !== currentDomain);
+        if (otherWeak.length > 0) {
+          const lines = otherWeak.map(d => {
+            const pct = Math.round(d.correction_rate * 100);
+            return `- **${d.domain}**: ${pct}% correction rate (${d.corrections}/${d.total_interactions})`;
+          });
+          domainAdvisory += (domainAdvisory ? '\n\n' : '') +
+            `## Known Weak Areas\n${lines.join('\n')}`;
         }
       }
     }
@@ -302,11 +359,30 @@ const main = wrapHook('UserPromptSubmit', async (input, ctx) => {
     } catch { /* non-fatal */ }
   }
 
-  // Combine cross-session context + domain advisory + assembly output
-  const contextParts = [crossSessionContext, domainAdvisory, payload.content].filter(Boolean);
-  const combinedContent = contextParts.length > 0 ? contextParts.join('\n\n') : '';
+  // Combine cross-session context + angel messages + domain advisory + assembly output.
+  // Trim to respect injection budget — cross-session/advisory content must not exceed
+  // the remaining budget after assembly has done its work.
+  const extraContent = [angelMessages, crossSessionContext, domainAdvisory].filter(Boolean).join('\n\n');
+  let combinedContent = payload.content || '';
+  if (extraContent) {
+    const budgetTokens = ctx.config.injection.budget_tokens;
+    const extraTokens = Math.ceil(extraContent.length / 4); // rough token estimate
+    const payloadTokens = payload.tokenEstimate;
+    if (payloadTokens + extraTokens <= budgetTokens) {
+      combinedContent = [extraContent, combinedContent].filter(Boolean).join('\n\n');
+      // Mark Angel messages as delivered only AFTER confirmed injection
+      if (pendingMessageIds.length > 0) {
+        try { markMessagesDelivered(ctx.db, pendingMessageIds); } catch { /* non-fatal */ }
+      }
+    }
+    // else: skip extra content to stay within budget — messages NOT marked delivered
+  }
 
   if (combinedContent) {
+    // Commit deferred side effects — experience pattern trigger counts, flags, etc.
+    // Only now, after confirming the payload will be injected into context.
+    try { payload.commitEffects?.(); } catch { /* non-fatal */ }
+
     return {
       hookSpecificOutput: {
         hookEventName: 'UserPromptSubmit',

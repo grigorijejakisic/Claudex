@@ -11,6 +11,14 @@ import {
 } from '../../checkpoint/loader.js';
 import type { CheckpointV3, CheckpointMeta } from '../../checkpoint/types.js';
 
+/** Create a session row so loadCheckpoint's JOIN finds a match. */
+function ensureSession(db: TestDatabase, sessionId: string, project: string = 'test', obsCount: number = 5): void {
+  db.prepare(
+    `INSERT OR IGNORE INTO sessions (session_id, project, status, observation_count, created_at_epoch)
+     VALUES (?, ?, 'active', ?, unixepoch())`
+  ).run(sessionId, project, obsCount);
+}
+
 function makeCheckpoint(overrides?: Partial<CheckpointV3>): CheckpointV3 {
   return {
     schema: 'claudex/checkpoint',
@@ -194,6 +202,7 @@ describe('loadCheckpoint', () => {
   });
 
   it('loads from DB when mirrored row exists (fast path)', () => {
+    ensureSession(db, 's1');
     const cp = makeCheckpoint();
     db.prepare(
       `INSERT INTO checkpoint_meta (checkpoint_id, session_id, trigger, status, data, mirror_path, created_at_epoch, updated_at_epoch)
@@ -207,6 +216,7 @@ describe('loadCheckpoint', () => {
   });
 
   it('re-mirrors committed row and returns data', () => {
+    ensureSession(db, 's1');
     const cp = makeCheckpoint();
     const mirrorPath = path.join(checkpointsDir, 'cp1.yaml');
     db.prepare(
@@ -249,15 +259,9 @@ describe('loadCheckpoint', () => {
   });
 
   it('filters by project when project parameter is provided', () => {
-    // Create sessions for two different projects
-    db.prepare(
-      `INSERT INTO sessions (session_id, project, status, created_at_epoch)
-       VALUES (?, ?, 'active', unixepoch())`
-    ).run('s-projA', 'projectA');
-    db.prepare(
-      `INSERT INTO sessions (session_id, project, status, created_at_epoch)
-       VALUES (?, ?, 'active', unixepoch())`
-    ).run('s-projB', 'projectB');
+    // Create sessions for two different projects (observation_count > 0 required by loader)
+    ensureSession(db, 's-projA', 'projectA');
+    ensureSession(db, 's-projB', 'projectB');
 
     // Create checkpoint for projectA
     const cpA = makeCheckpoint({ meta: { ...makeCheckpoint().meta, checkpoint_id: 'CPA' } });
@@ -291,10 +295,7 @@ describe('loadCheckpoint', () => {
 
   it('returns null when no checkpoints exist for the requested project', () => {
     // Create session and checkpoint for projectA only
-    db.prepare(
-      `INSERT INTO sessions (session_id, project, status, created_at_epoch)
-       VALUES (?, ?, 'active', unixepoch())`
-    ).run('s-projA', 'projectA');
+    ensureSession(db, 's-projA', 'projectA');
     const cpA = makeCheckpoint();
     db.prepare(
       `INSERT INTO checkpoint_meta (checkpoint_id, session_id, trigger, status, data, created_at_epoch, updated_at_epoch)
@@ -317,6 +318,7 @@ describe('selective loading', () => {
     const checkpointsDir = path.join(tmpDir, 'context', 'checkpoints');
     fs.mkdirSync(checkpointsDir, { recursive: true });
 
+    ensureSession(db, 's1');
     const cp = makeCheckpoint();
     db.prepare(
       `INSERT INTO checkpoint_meta (checkpoint_id, session_id, trigger, status, data, created_at_epoch, updated_at_epoch)
@@ -414,6 +416,7 @@ describe('Fix 1: recoverFromDb writes compressed for .yaml.gz mirror paths', () 
   });
 
   it('loadCheckpoint sync re-mirror writes gzip for .yaml.gz path', () => {
+    ensureSession(db, 's1');
     const cp = makeCheckpoint();
     const cpDir = path.join(tmpDir, 'context', 'checkpoints');
     fs.mkdirSync(cpDir, { recursive: true });

@@ -19,9 +19,10 @@ import {
   classifyPatternScope,
   updatePatternScore,
   incrementUsefulCount,
+  escalatePattern,
 } from './experience-patterns.js';
 import { detectEnrichmentProvider } from './enrichment.js';
-import { getExperienceFlags, setExperienceFlags } from './experience-flags.js';
+import { getExperienceFlags, setExperienceFlags, type ExperienceFlags } from './experience-flags.js';
 import { extractPatternFromAssistantText, extractLessonFromUserCorrection } from './correction-detection.js';
 import { tokenizeQuery } from '../shared/search-utils.js';
 
@@ -39,13 +40,14 @@ export async function applyExperienceFeedback(
   routedProject: string,
   config: ClaudexConfig,
 ): Promise<void> {
-  let expFlags = {
+  let expFlags: ExperienceFlags = {
     correction_flagged: false,
     injected_pattern_ids: [] as string[],
     injected_topic_keys: [] as string[],
     awaiting_feedback_ids: [] as string[],
     awaiting_topic_keys: [] as string[],
     correction_prompt: '',
+    pending_trigger_domains: [] as string[],
   };
   let flagsReadOk = false;
 
@@ -134,6 +136,8 @@ export async function applyExperienceFeedback(
             if (hasOverlap) {
               // This pattern is related to the correction — penalise it.
               updatePatternScore(db, patternId, -1);
+              // ACE escalation: if harmful_count hits threshold, escalate injection level
+              escalatePattern(db, patternId);
             }
             // else: no topic overlap — ExpeL neutral path.
             // We cannot determine whether this pattern was helpful or harmful this
@@ -172,6 +176,7 @@ export async function applyExperienceFeedback(
           injected_topic_keys: [],
           awaiting_feedback_ids: expFlags.injected_pattern_ids,
           awaiting_topic_keys: expFlags.injected_topic_keys,
+          pending_trigger_domains: [],
         }, expFlags);
       } catch (e) {
         emitErrorTelemetry(db, sessionId, 'stop/exp_flags_clear', e);

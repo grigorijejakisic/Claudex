@@ -52,7 +52,6 @@ interface FileSource {
 
 export interface IngestResult {
   ingested: number;
-  skipped: number;
   errors: number;
 }
 
@@ -63,11 +62,13 @@ export interface IngestResult {
 /**
  * Derives the Claude Code project key from a directory path.
  * Claude Code stores project-scoped data at ~/.claude/projects/<key>/
- * where key = absolute path with ':' removed and separators replaced by '-'.
+ * where key = absolute path with ':' replaced by '-' and separators replaced by '-'.
+ * Example: C:\Users\Foo\Project → C--Users-Foo-Project
+ * (colon becomes '-', then backslash becomes '-', giving double dash after drive letter)
  */
 function deriveClaudeProjectKey(dir: string): string {
   return path.resolve(dir)
-    .replace(/:/g, '')
+    .replace(/:/g, '-')
     .replace(/[/\\]/g, '-');
 }
 
@@ -261,7 +262,7 @@ export async function ingestFileArtifacts(
   project: string,
   projectDir: string,
 ): Promise<IngestResult> {
-  const result: IngestResult = { ingested: 0, skipped: 0, errors: 0 };
+  const result: IngestResult = { ingested: 0, errors: 0 };
 
   try {
     // Index creation moved to migrateV3toV4 — no runtime DDL on hot path

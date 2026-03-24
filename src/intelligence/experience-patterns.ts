@@ -36,6 +36,9 @@ export type Severity = 'critical' | 'important' | 'minor';
 
 export type AbstractionLevel = 'tip' | 'strategy';
 
+/** ACE escalation tiers — determines injection strength. */
+export type EscalationLevel = 'pattern' | 'warning' | 'enforcement' | 'circuit_breaker';
+
 export interface ExperiencePattern {
   id: string;
   pattern_type: PatternType;
@@ -53,6 +56,9 @@ export interface ExperiencePattern {
   abstraction_level: AbstractionLevel;
   verified: number;
   verification_count: number;
+  helpful_count: number;
+  harmful_count: number;
+  escalation_level: EscalationLevel;
 }
 
 export interface ExtractionInput {
@@ -355,7 +361,7 @@ export function createPattern(
     // Embed pattern async (fire-and-forget — SQLite is source of truth).
     // Non-blocking: embedding failure must never delay pattern creation.
     if (resultId) {
-      import('../../embeddings/embed-pipeline.js').then(({ embedPattern: ep }) => {
+      import('../embeddings/embed-pipeline.js').then(({ embedPattern: ep }) => {
         ep(db, resultId, sanitized.trigger_context, sanitized.lesson, {
           project,
           pattern_type: sanitized.pattern_type,
@@ -406,8 +412,13 @@ export function findMatchingPatterns(
     // then score weight (higher score = more validated).
     // Project results are prioritised over GLOBAL_PROJECT_SCOPE.
     // GLOBAL_PROJECT_SCOPE is passed as a query parameter — not embedded in SQL.
+    // Fetch extra to allow re-ranking after verification boost
+    // FTS5 rank is negative (more negative = better match).
+    // FTS5 match + ACE re-ranking. Rank threshold applied post-query in code
+    // (not in SQL) because BM25 needs multiple documents for meaningful IDF —
+    // single-document test indices produce rank ~0 which a SQL filter rejects.
     const rows = cachedPrepare(db,
-      `SELECT ep.*
+      `SELECT ep.*, fts.rank AS fts_rank
        FROM experience_patterns ep
        JOIN experience_patterns_fts fts ON fts.rowid = ep.rowid
        WHERE experience_patterns_fts MATCH ?
@@ -419,9 +430,42 @@ export function findMatchingPatterns(
          fts.rank,
          ep.score DESC
        LIMIT ?`
-    ).all(ftsQuery, project, GLOBAL_PROJECT_SCOPE, project, safeLimit) as ExperiencePattern[];
+    ).all(ftsQuery, project, GLOBAL_PROJECT_SCOPE, project, safeLimit * 2) as ExperiencePattern[];
 
-    return rows;
+    // Post-query rank filter: reject noise matches when corpus is large enough for BM25.
+    // Calibrated on live data (2026-03-24): real matches rank < -1.0, noise > -1.0.
+    // Skip filter when corpus is small (< 3 patterns) — BM25 IDF is meaningless with 1-2 docs.
+    const RANK_THRESHOLD = -1.0;
+    const corpusLargeEnough = rows.length >= 3;
+    const filtered = corpusLargeEnough
+      ? rows.filter(p => (p as Record<string, unknown>).fts_rank as number < RANK_THRESHOLD)
+      : rows;
+
+    // ACE ranking: combine verification boost, helpful ratio, and raw score.
+    // Patterns with high helpful ratios rank above same-score patterns with mixed feedback.
+    const ranked = filtered.map(p => {
+      const verBoost = applyVerificationBoost(p.score, p.verified);
+      const ratio = getHelpfulRatio(p);
+      // Composite: ratio weighted 40%, verified score 60%
+      const composite = ratio * 0.4 + (verBoost / Math.max(verBoost, 1)) * 0.6;
+      return { pattern: p, composite, verBoost };
+    });
+    ranked.sort((a, b) => {
+      // Severity first (critical > important > minor)
+      const sevOrder = { critical: 0, important: 1, minor: 2 } as const;
+      const sevA = sevOrder[a.pattern.severity] ?? 2;
+      const sevB = sevOrder[b.pattern.severity] ?? 2;
+      if (sevA !== sevB) return sevA - sevB;
+      // Escalation level — enforcement/circuit_breaker patterns always surface
+      const escOrder = { circuit_breaker: 0, enforcement: 1, warning: 2, pattern: 3 } as const;
+      const escA = escOrder[a.pattern.escalation_level as EscalationLevel] ?? 3;
+      const escB = escOrder[b.pattern.escalation_level as EscalationLevel] ?? 3;
+      if (escA !== escB) return escA - escB;
+      // Then by composite score descending
+      return b.composite - a.composite;
+    });
+
+    return ranked.slice(0, safeLimit).map(b => b.pattern);
   } catch {
     // FTS query may fail on invalid syntax — try keyword LIKE fallback
     return findMatchingPatternsFallback(db, prompt, project, safeLimit);
@@ -460,20 +504,77 @@ function findMatchingPatternsFallback(
 
 /**
  * Adjusts a pattern's score by delta (+1 or -1).
+ * Also increments helpful_count or harmful_count (ACE counters) based on delta sign.
  * Score is clamped at a minimum of 0 — pruning removes patterns at or below 0
  * via pruneDeadPatterns, which callers should invoke periodically.
  * Non-throwing.
  */
 export function updatePatternScore(db: Database, id: string, delta: number): void {
   try {
-    cachedPrepare(db,
-      `UPDATE experience_patterns
-       SET score = MAX(0, score + ?)
-       WHERE id = ?`
-    ).run(delta, id);
+    if (delta > 0) {
+      cachedPrepare(db,
+        `UPDATE experience_patterns
+         SET score = score + ?,
+             helpful_count = helpful_count + 1
+         WHERE id = ?`
+      ).run(delta, id);
+    } else {
+      cachedPrepare(db,
+        `UPDATE experience_patterns
+         SET score = MAX(0, score + ?),
+             harmful_count = harmful_count + 1
+         WHERE id = ?`
+      ).run(delta, id);
+    }
   } catch {
     // Non-throwing
   }
+}
+
+/**
+ * Escalates a pattern's injection level based on harmful_count (ACE escalation).
+ * Called after a harmful event. Thresholds:
+ *   harmful_count >= 3 → 'warning'
+ *   harmful_count >= 5 → 'enforcement'
+ *   harmful_count >= 8 → 'circuit_breaker'
+ * Only escalates UP, never down. Non-throwing.
+ */
+export function escalatePattern(db: Database, id: string): void {
+  try {
+    const row = cachedPrepare(db,
+      `SELECT harmful_count, escalation_level FROM experience_patterns WHERE id = ?`
+    ).get(id) as { harmful_count: number; escalation_level: string } | undefined;
+    if (!row) return;
+
+    let newLevel: EscalationLevel;
+    if (row.harmful_count >= 8) newLevel = 'circuit_breaker';
+    else if (row.harmful_count >= 5) newLevel = 'enforcement';
+    else if (row.harmful_count >= 3) newLevel = 'warning';
+    else return; // No escalation needed
+
+    // Only escalate up
+    const levels: EscalationLevel[] = ['pattern', 'warning', 'enforcement', 'circuit_breaker'];
+    const currentIdx = levels.indexOf(row.escalation_level as EscalationLevel);
+    const newIdx = levels.indexOf(newLevel);
+    if (newIdx <= currentIdx) return;
+
+    cachedPrepare(db,
+      `UPDATE experience_patterns SET escalation_level = ? WHERE id = ?`
+    ).run(newLevel, id);
+  } catch {
+    // Non-throwing
+  }
+}
+
+/**
+ * Returns the helpful ratio for a pattern (ACE metric).
+ * Range: 0.0 (always harmful) to 1.0 (always helpful).
+ * Returns 0.5 when no feedback data exists (neutral default).
+ */
+export function getHelpfulRatio(pattern: Pick<ExperiencePattern, 'helpful_count' | 'harmful_count'>): number {
+  const total = pattern.helpful_count + pattern.harmful_count;
+  if (total === 0) return 0.5;
+  return pattern.helpful_count / total;
 }
 
 /**

@@ -93,12 +93,35 @@ export function renderExperienceWarnings(patterns: ExperiencePattern[]): string 
     let inner = '## Past Experience — Relevant Patterns\n\n';
 
     for (const p of patterns) {
-      inner += `### ${p.severity === 'critical' ? 'Critical' : 'Important'}: ${escapeXml(p.trigger_context)}\n`;
+      // Escalation-aware prefix (ACE tiers)
+      const escalation = (p as ExperiencePattern & { escalation_level?: string }).escalation_level ?? 'pattern';
+      let prefix: string;
+      switch (escalation) {
+        case 'circuit_breaker':
+          prefix = 'CRITICAL ENFORCEMENT';
+          break;
+        case 'enforcement':
+          prefix = 'ENFORCEMENT';
+          break;
+        case 'warning':
+          prefix = 'WARNING';
+          break;
+        default:
+          prefix = p.severity === 'critical' ? 'Critical' : 'Important';
+      }
+
+      inner += `### ${prefix}: ${escapeXml(p.trigger_context)}\n`;
       if (p.anti_pattern) {
         inner += `**What went wrong:** ${escapeXml(p.anti_pattern)}\n`;
       }
       inner += `**Correct approach:** ${escapeXml(p.lesson)}\n`;
-      inner += `*Helped ${p.times_useful}/${p.times_triggered} times*\n\n`;
+
+      // ACE ratio stats
+      const helpful = (p as ExperiencePattern & { helpful_count?: number }).helpful_count ?? p.times_useful;
+      const harmful = (p as ExperiencePattern & { harmful_count?: number }).harmful_count ?? 0;
+      const total = helpful + harmful;
+      const ratioStr = total > 0 ? ` (${Math.round(helpful / total * 100)}% helpful)` : '';
+      inner += `*Helped ${p.times_useful}/${p.times_triggered} times${ratioStr}*\n\n`;
     }
 
     // Framing BEFORE the opening tag: the preamble is a structural instruction
@@ -116,31 +139,24 @@ export function renderExperienceWarnings(patterns: ExperiencePattern[]): string 
  */
 export function formatProjectSection(projectDir: string): string | null {
   try {
-    let primerContent: string | null = null;
-    let activeContent: string | null = null;
+    // Skip PROJECT_PRIMER.md — it's a pointer to CLAUDE.md, which CC loads natively.
+    // Skip ACTIVE.md — handoff is already covered by renderSessionContinuity (Priority 2.5).
+    // Only inject PROJECT_PRIMER.md when CLAUDE.md is absent (fallback).
+    const claudeMdPath = path.join(projectDir, 'CLAUDE.md');
+    if (fs.existsSync(claudeMdPath)) return null;
 
+    // Fallback: inject primer when no CLAUDE.md exists
     try {
       const primerPath = path.join(projectDir, 'PROJECT_PRIMER.md');
       if (fs.existsSync(primerPath)) {
         const content = fs.readFileSync(primerPath, 'utf-8');
-        if (content && content.trim().length > 0) primerContent = content;
+        if (content && content.trim().length > 0) {
+          return `## Project\n${wrapFileContent(content, 'PROJECT_PRIMER.md')}`;
+        }
       }
     } catch { /* skip */ }
 
-    try {
-      const activePath = path.join(getHandoffsDir(projectDir), 'ACTIVE.md');
-      if (fs.existsSync(activePath)) {
-        const content = fs.readFileSync(activePath, 'utf-8');
-        if (content && content.trim().length > 0) activeContent = content;
-      }
-    } catch { /* skip */ }
-
-    if (!primerContent && !activeContent) return null;
-
-    const parts: string[] = [];
-    if (primerContent) parts.push(`## Project\n${wrapFileContent(primerContent, 'PROJECT_PRIMER.md')}`);
-    if (activeContent) parts.push(`## Active Handoff\n${wrapFileContent(activeContent, 'context/handoffs/ACTIVE.md')}`);
-    return parts.join('\n\n');
+    return null;
   } catch {
     return null;
   }
@@ -150,10 +166,13 @@ export function formatProjectSection(projectDir: string): string | null {
  * Priority 3: Checkpoint resume data.
  * Delegates to renderCheckpointMarkdown with RESUME preset.
  */
-export function formatCheckpointSection(checkpoint: CheckpointV3 | null): string | null {
+export function formatCheckpointSection(
+  checkpoint: CheckpointV3 | null,
+  options?: { skipLearnings?: boolean },
+): string | null {
   try {
     if (!checkpoint) return null;
-    const rendered = renderCheckpointMarkdown(checkpoint, 'RESUME');
+    const rendered = renderCheckpointMarkdown(checkpoint, 'RESUME', options);
     if (!rendered || rendered.trim().length === 0) return null;
     return `## Checkpoint\n${rendered}`;
   } catch {
@@ -167,6 +186,8 @@ export function formatCheckpointSection(checkpoint: CheckpointV3 | null): string
 export function formatGsdSection(gsd: GsdState | null): string | null {
   try {
     if (!gsd) return null;
+    // Skip injection when milestone is complete — wastes tokens on stale state
+    if (/complete|done|finished/i.test(gsd.status)) return null;
     const lines: string[] = [
       '## GSD State',
       `**Phase ${gsd.phase}:** ${gsd.goal}`,

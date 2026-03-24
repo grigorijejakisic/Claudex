@@ -46,5 +46,8 @@ export interface InjectPayload {
   tokenEstimate: number;
   /** Which data sources contributed */
   sources: string[];
+  /** Deferred side effects — call ONLY after confirming payload will be injected.
+   *  Used by experience patterns to avoid inflating trigger counts for dropped payloads. */
+  commitEffects?: () => void;
 }
 

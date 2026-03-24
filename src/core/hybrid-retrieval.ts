@@ -424,9 +424,13 @@ export function hybridSearchSync(
       // get boosted, those that don't get demoted. retrieval_score defaults to 1.0.
       const retrievalMultiplier = getRetrievalScoreMultiplier(db, artifactId);
 
-      // Final score: base_score * retrieval_score (per spec 5.2)
+      // Wire novelty_score into scoring — novel artifacts (score > 0.5) get boosted,
+      // redundant ones (score < 0.5) get demoted. Default 0.5 = neutral.
+      const noveltyMultiplier = 0.5 + (artifact.novelty_score ?? 0.5);
+
+      // Final score: base_score * retrieval_score * novelty (per spec 5.2 + novelty)
       const baseScore = rrfScore * (1 + threeFactor);
-      const hybridScore = baseScore * retrievalMultiplier;
+      const hybridScore = baseScore * retrievalMultiplier * noveltyMultiplier;
 
       scored.push({
         ...artifact,
@@ -454,20 +458,14 @@ export function hybridSearchSync(
 
 /**
  * Full async hybrid search — FTS5 + Qdrant KNN + recency channels.
+ * Uses all 3 channels via RRF for best retrieval quality.
  *
- * This is the primary entry point. It:
- *   1. Runs FTS5 and recency channels synchronously
- *   2. Attempts Qdrant vector search (async, non-blocking)
- *   3. Merges all channels via RRF
- *   4. Re-scores with three-factor formula
- *   5. Returns top-K results
- *
- * Graceful degradation: if Qdrant is unavailable, falls back to
+ * Graceful degradation: if Qdrant/embeddings unavailable, falls back to
  * FTS5 + recency (equivalent to hybridSearchSync).
  *
  * Non-throwing — returns empty array on any error.
  */
-export async function hybridSearch(
+export async function hybridSearchAsync(
   db: Database,
   query: string,
   project: string,
@@ -477,51 +475,32 @@ export async function hybridSearch(
     const limit = options.limit ?? 10;
     const excludeSuperseded = options.excludeSuperseded ?? true;
     const globalScope = options.globalScope ?? true;
-    const weights = {
-      ...DEFAULT_WEIGHTS,
-      ...options.weights,
-    } as Required<ScoringWeights>;
+    const weights = { ...DEFAULT_WEIGHTS, ...options.weights } as Required<ScoringWeights>;
 
     if (!query || query.length < 3) return [];
 
     // Channel 1: FTS5 (sync)
     const fts5Results = searchFts5Channel(db, project, query, limit * 2, globalScope, excludeSuperseded);
 
-    // Channel 3: Recency (sync)
-    const recencyResults = searchRecencyChannel(db, project, limit, globalScope, excludeSuperseded);
-
-    // Channel 2: Vector KNN (async, best-effort)
+    // Channel 2: Qdrant vector search (async, graceful degradation)
     let vectorResults: { artifact: ArtifactRow; score: number }[] = [];
     try {
       const { embedQuery } = await import('../embeddings/embed-pipeline.js');
       const queryEmbedding = await embedQuery(query);
       if (queryEmbedding) {
-        vectorResults = await searchVectorChannel(db, project, queryEmbedding, limit * 2, options);
+        vectorResults = await searchVectorChannel(db, project, queryEmbedding, limit, options);
       }
-    } catch {
-      // Vector channel unavailable — degrade gracefully
-    }
+    } catch { /* Qdrant/embeddings unavailable — degrade to 2-channel */ }
+
+    // Channel 3: Recency (sync)
+    const recencyResults = searchRecencyChannel(db, project, limit, globalScope, excludeSuperseded);
 
     // Convert to channel results for RRF
-    const fts5Channel: ChannelResult[] = fts5Results.map((a, i) => ({
-      artifactId: a.id,
-      rank: i + 1,
-      artifact: a,
-    }));
+    const fts5Channel: ChannelResult[] = fts5Results.map((a, i) => ({ artifactId: a.id, rank: i + 1, artifact: a }));
+    const vectorChannel: ChannelResult[] = vectorResults.map((r, i) => ({ artifactId: r.artifact.id, rank: i + 1, artifact: r.artifact }));
+    const recencyChannel: ChannelResult[] = recencyResults.map((a, i) => ({ artifactId: a.id, rank: i + 1, artifact: a }));
 
-    const vectorChannel: ChannelResult[] = vectorResults.map((r, i) => ({
-      artifactId: r.artifact.id,
-      rank: i + 1,
-      artifact: r.artifact,
-    }));
-
-    const recencyChannel: ChannelResult[] = recencyResults.map((a, i) => ({
-      artifactId: a.id,
-      rank: i + 1,
-      artifact: a,
-    }));
-
-    // RRF merge across all available channels
+    // RRF merge (all available channels)
     const channels = [fts5Channel, recencyChannel];
     if (vectorChannel.length > 0) channels.push(vectorChannel);
     const rrfScores = rrfMerge(channels);
@@ -529,67 +508,49 @@ export async function hybridSearch(
     // Build artifact map
     const artifactMap = new Map<number, ArtifactRow>();
     for (const a of fts5Results) artifactMap.set(a.id, a);
-    for (const a of recencyResults) artifactMap.set(a.id, a);
     for (const r of vectorResults) artifactMap.set(r.artifact.id, r.artifact);
+    for (const a of recencyResults) artifactMap.set(a.id, a);
 
-    // Build per-channel rank maps
-    const fts5RankMap = new Map<number, number>();
-    const vectorRankMap = new Map<number, number>();
-    const recencyRankMap = new Map<number, number>();
-    for (const r of fts5Channel) fts5RankMap.set(r.artifactId, r.rank);
-    for (const r of vectorChannel) vectorRankMap.set(r.artifactId, r.rank);
-    for (const r of recencyChannel) recencyRankMap.set(r.artifactId, r.rank);
+    // Score and rank — all lookups via O(1) maps
+    const fts5RankMap = new Map(fts5Channel.map(r => [r.artifactId, r.rank]));
+    const vectorScoreMap = new Map(vectorResults.map(r => [r.artifact.id, r.score]));
+    const vectorRankMap = new Map(vectorChannel.map(r => [r.artifactId, r.rank]));
+    const recencyRankMap = new Map(recencyChannel.map(r => [r.artifactId, r.rank]));
 
-    // Build vector similarity map for relevance scoring
-    const vectorSimilarityMap = new Map<number, number>();
-    for (const r of vectorResults) vectorSimilarityMap.set(r.artifact.id, r.score);
-
-    // Score and rank
     const scored: ScoredArtifact[] = [];
     for (const [artifactId, rrfScore] of rrfScores) {
       const artifact = artifactMap.get(artifactId);
       if (!artifact) continue;
 
-      // Relevance: prefer vector cosine similarity, fall back to FTS5 rank proxy
-      let relevance: number;
-      const vectorSim = vectorSimilarityMap.get(artifactId);
-      if (vectorSim != null) {
-        relevance = Math.max(0, Math.min(1, vectorSim));
-      } else {
-        const fts5Rank = fts5RankMap.get(artifactId);
-        relevance = fts5Rank != null ? 1.0 / fts5Rank : 0.1;
-        relevance = Math.min(1, relevance);
-      }
+      // Use vector score as relevance when available, FTS5 rank as fallback
+      const vectorScore = vectorScoreMap.get(artifactId);
+      const fts5Rank = fts5RankMap.get(artifactId);
+      const relevance = vectorScore ?? (fts5Rank != null ? 1.0 / fts5Rank : 0.1);
 
-      const threeFactor = computeThreeFactorScore(artifact, relevance, weights);
-
-      // 5.2: Apply retrieval_score as multiplier
+      const threeFactor = computeThreeFactorScore(artifact, Math.min(1, relevance), weights);
       const retrievalMultiplier = getRetrievalScoreMultiplier(db, artifactId);
+      const noveltyMultiplier = 0.5 + (artifact.novelty_score ?? 0.5);
+      const baseScore = rrfScore * (1 + threeFactor);
+      const hybridScore = baseScore * retrievalMultiplier * noveltyMultiplier;
 
-      // Final score: RRF * (1 + three-factor) * retrieval_score — multiplicative blend
-      const hybridScore = rrfScore * (1 + threeFactor) * retrievalMultiplier;
-
-      // Confidence adjustment: multiply by confidence for final ranking
-      const confidence = (artifact as ArtifactRow & { confidence?: number }).confidence ?? 1.0;
-      const adjustedScore = hybridScore * confidence;
-
+      const vRank = vectorRankMap.get(artifactId);
+      const rRank = recencyRankMap.get(artifactId);
       scored.push({
         ...artifact,
-        hybrid_score: adjustedScore,
+        hybrid_score: hybridScore,
         score_breakdown: {
           rrf_fts5: fts5RankMap.has(artifactId) ? 1 / (RRF_K + (fts5RankMap.get(artifactId) ?? RRF_K)) : 0,
-          rrf_vector: vectorRankMap.has(artifactId) ? 1 / (RRF_K + (vectorRankMap.get(artifactId) ?? RRF_K)) : 0,
-          rrf_recency: recencyRankMap.has(artifactId) ? 1 / (RRF_K + (recencyRankMap.get(artifactId) ?? RRF_K)) : 0,
+          rrf_vector: vRank != null ? 1 / (RRF_K + vRank) : 0,
+          rrf_recency: rRank != null ? 1 / (RRF_K + rRank) : 0,
           three_factor: threeFactor,
         },
       });
     }
 
-    // Sort by hybrid_score descending, take top-K
     scored.sort((a, b) => b.hybrid_score - a.hybrid_score);
     return scored.slice(0, limit);
   } catch {
-    // Full pipeline failure — fall back to sync path
+    // Full async pipeline failed — fall back to sync (FTS5 + recency, no vector)
     return hybridSearchSync(db, query, project, options);
   }
 }
@@ -643,13 +604,7 @@ export function decayActivationScores(
   project: string,
 ): { packed: number; total: number } {
   try {
-    const now = Math.floor(Date.now() / 1000);
-
-    // Update activation scores for all non-packed artifacts
-    // activation = ln(2) - 0.5 * ln(hours_since + 1) + (importance - 3) * 0.3
-    // Using SQLite math: ln(x) approximation not available, so we compute in SQL
-    // Actually, better-sqlite3 doesn't have LN(). Use the math extension or
-    // compute per-row in JS. For efficiency, do a batch read + update.
+    // Batch read + JS compute (SQLite doesn't have LN())
     const artifacts = cachedPrepare(db,
       `SELECT id, importance, timestamp_epoch, last_materialized_epoch, state
        FROM artifacts
@@ -676,14 +631,8 @@ export function decayActivationScores(
     let total = 0;
 
     for (const art of artifacts) {
-      const lastAccess = art.last_materialized_epoch ?? art.timestamp_epoch;
-      const hoursSinceAccess = Math.max(0, (now - lastAccess) / 3600);
-
-      // Access count approximation: materialized = 2, fresh = 1
-      const accessCount = art.state === 'materialized' ? 2 : 1;
-      const importanceBoost = (art.importance - 3) * 0.3;
-
-      const activation = Math.log(accessCount + 1) - 0.5 * Math.log(hoursSinceAccess + 1) + importanceBoost;
+      // Use the shared computeActivation formula — single source of truth
+      const activation = computeActivation(art as unknown as ArtifactRow);
 
       if (activation < 0.1) {
         packStmt.run(activation, art.id);
@@ -756,7 +705,7 @@ const SPREAD_FACTOR = 0.3;
  * retrievals via their boosted activation scores.
  *
  * Queries artifact_links WHERE source_id = A.id, applies boost to each target.
- * Also processes reverse links (where target_id = A.id) to support bidirectional spreading.
+ * Unidirectional: source → targets only. Reverse links not processed.
  *
  * Non-throwing.
  */

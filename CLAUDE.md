@@ -2,104 +2,71 @@
 
 ## What This Is
 
-A persistent memory system with **one shared DB, two independent brains**. The SQLite DB at `~/.claudex/db/claudex.db` is the shared data layer — observations, learnings, artifacts are all there, scoped by `project` column. But the two hosts (Claude Code and OpenClaw) run completely separate adapters with their own process models, their own context assembly, and their own runtime identity.
+Persistent memory system giving LLMs context continuity across sessions. One shared SQLite DB (`~/.claudex/db/claudex.db`), three runtime components:
 
-- **CC Hooks adapter** (`src/adapters/cc-hooks/`): 6 Node.js scripts, fresh process per hook, DB-only state continuity, Ollama for enrichment (never call CC's own API from a hook — deadlock).
-- **OpenClaw Bridge adapter** (`src/adapters/openclaw-bridge/`): long-lived process, in-memory + DB state, native LLM API via host.
-- **Shared lifecycle** (`src/adapters/shared/lifecycle.ts`): composable functions both adapters call. Fix here = both get it.
+- **CC Hooks** (`src/adapters/cc-hooks/`): 6 ephemeral Node.js scripts per hook. DB-only state. Never call CC's API from a hook (deadlock).
+- **Angel** (`src/angel/`): Persistent guardian process. Extracts patterns from completed sessions via LLM (CliProxy → Claude CLI → Ollama fallback). Auto-spawned by session-start.
+- **OpenClaw Bridge** (`src/adapters/openclaw-bridge/`): Long-lived process, in-memory + DB state.
+- **Shared lifecycle** (`src/adapters/shared/lifecycle.ts`): Composable functions all adapters call.
 
-They read from the same DB. They do NOT share context, assembly, identity, or behavioral rules. The `adapter` column on sessions tracks which host produced what.
+V10 schema, 23 tables. Dual-write: SQLite (truth) + Qdrant (5 collections, acceleration). Embeddings via Ollama nomic-embed-text (768→384 Matryoshka truncation).
 
-**Live stats**: 16K+ observations, 380+ artifacts, 10 cross-session learnings, 141 sessions across 7 projects. DB is 24 MB, stable growth ~80 KB/day with pruning.
+## Hook/Angel Responsibility Split
+
+**Hooks** (fast, mechanical, ephemeral): decision capture, thread tracking, conversation turn storage, checkpoint, retrieval feedback, activation decay, pattern verification + helpful scoring, session summary.
+
+**Angel** (reflective, holistic, persistent): pattern extraction from full conversations, domain classification, session monitoring, idle warnings, inter-session messaging via session_messages table.
 
 ## CC Hook Payload Truth
-
-These field names are what Claude Code **actually sends**. Discovered by capturing real payloads — not from documentation. The codebase has fallback chains for all of them.
 
 | Hook | Field | CC sends | Code assumed (wrong) |
 |---|---|---|---|
 | PostToolUse | tool output | `tool_response` | `tool_output` |
 | UserPromptSubmit | user text | `prompt` | `user_prompt` |
 | Stop | assistant text | `last_assistant_message` | `stop_assistant_turn` |
-| PostToolUse (Glob) | file list | `filenames` | `files` |
-| PostToolUse (Read) | file content | `file.content` (nested) | `content` |
 
-**Lesson**: Never assume field names. Write a debug hook, dump the payload, compare against code.
+Never assume field names. Capture real payloads to verify.
 
-## Data Flow — CC Hooks Per Turn
+## Critical Safety Rules
 
-```
-UserPromptSubmit (fresh process)
-  → Read prompt from input.prompt
-  → Check post-compact flag → if set, do full reassembly
-  → Topic shift detection (Ollama if available, else keyword)
-  → Ensure initial topic if none
-  → Capture Tier 4 decisions from user text
-  → Search artifacts by prompt → materialize matches
-  → Assemble context (inject if threshold met or post-compact)
+- **CC hook deadlock**: Never call CC's CLIProxyAPI from a hook. Use Ollama instead.
+- **Fire-and-forget dies**: CC hooks are ephemeral — always await. Only Angel/OpenClaw can fire-and-forget.
+- **MAX subscription**: Never ask about API costs. OAuth auth at `~/.claude/.credentials.json`.
 
-PostToolUse (fresh process, runs for EACH tool)
-  → Extract observation from tool input/output
-  → Update pressure scores for touched files
-  → Create artifact if observation importance >= 3
-  → TTL tick (project-scoped, 120s guard interval)
-  → Track thread exchanges
-
-Stop (fresh process)
-  → Capture decisions (all 4 tiers, assistant text available)
-  → Extract insights from assistant text → promote as learnings
-  → Update thread state (topic, summary, key_exchanges)
-  → Checkpoint if token threshold met
-```
-
-## Artifact Lifecycle
-
-```
-fresh (TTL 4-8 based on importance)
-  ↓ TTL ticks at 120s intervals
-packed (TTL=0, metadata only in reference layer)
-  ↓ search match on user prompt
-materialized (TTL=2, full content visible)
-  ↓ TTL ticks
-packed (back to reference layer)
-```
-
-Compaction packs ALL artifacts before creating fresh learning artifacts. Reference layer sorts by type priority: decision > learning > flow > milestone > observation.
-
-## Quality Gates
-
-| Boundary | Filter | Why it exists |
-|---|---|---|
-| Observation → Artifact | `importance >= 3` | Low-signal Read/Grep were flooding artifact table |
-| Decision → Checkpoint | `isCheckpointWorthy()` | "yes please" and "Edit: foo.ts" were appearing as decisions |
-| Decision → Verified Fact | Length + filler check | User confirmations ("ok", "yes") stored as "facts" |
-| Decision/Discovery → Learning | `isPromotableContent()` | Tool titles and markdown fragments promoted as knowledge |
-| Insight → Flow Entry | Strip existing `[marker]` | `[diagnosis] [diagnosis]` doubling from feedback loops |
-| Bash → Importance | Capped at 4 | Test runner output with "error"/"fail" keywords hit importance 5 |
-| Thread → Summary | `cleanGistForSummary()` | Raw markdown and newlines producing garbled summaries |
-
-Every gate traces to a specific production failure. None are theoretical.
-
-## Debugging This Codebase
-
-- **Capture real CC payloads**: Temp hook that dumps `JSON.stringify(input)` to a file. Fastest way to verify assumptions.
-- **Query the DB**: `node -e "const db = require('better-sqlite3')(homedir + '/.claudex/db/claudex.db', {readonly:true}); ..."` — verify pipeline output directly.
-- **Check telemetry**: `SELECT * FROM telemetry WHERE session_id = '...' ORDER BY rowid` — which hooks fired, latency.
-- **Run `claudex health`**: CLI health check for DB schema, table counts, orphaned records.
-- **Read the assembly output**: If the injected context contains garbage, the system is failing. Unit tests won't catch this — live testing does.
+Intelligence systems, quality gates, and gotchas are in Claudex DB — surfaced by hybrid retrieval when relevant.
 
 ## Build & Test
 
 ```bash
-bun run build          # esbuild, ~30ms, outputs to dist/
-bun run test           # vitest, 71 files, 1213+ tests
-npx vitest run         # same thing, explicit
+bun run build          # esbuild, ~60ms, outputs to dist/
+bun run test           # vitest, 92 files, 1714 tests
+bun run setup          # register hooks
+node dist/angel/index.cjs  # start Angel (auto-spawned by session-start)
 ```
 
 **Do NOT use `bun test`** — invokes Bun's native runner, not Vitest.
 
-## What Needs Work
+## File Structure
 
-- **OpenClaw adapter**: Implemented, unit-tested, not production-validated. The bridge adapter has its own assembly path and capability declarations — it needs real usage to verify.
-- **Enrichment**: Ollama-based LLM enrichment for checkpoints/decisions. Graceful degradation when Ollama isn't running. Most users won't have it.
-- **Topic shift detection**: Embedding-based (Ollama nomic-embed-text) with keyword fallback. Keyword path always active.
+```
+src/
+  angel/            # Persistent guardian: heartbeat, pattern-extractor, session-monitor, message-sender, memory-monitor
+  core/             # schema (V10 DDL), migrations, storage, artifacts, observations, journal,
+                    # session-events, hybrid-retrieval, file-ingester, pressure, thread, stmt-cache
+  extraction/       # Per-tool extractors + redaction + quality gates
+  intelligence/     # experience-patterns, correction-detection, capability-tracker, batch-reflection,
+                    # thread-tracker, topic-shift, decision-capture, retrieval-feedback, insight-extractor,
+                    # cross-session-coordination, enrichment, trigger-engine
+  embeddings/       # Ollama client, Qdrant client (5 collections), embed pipeline
+  assembly/         # assembler (full + regular), sections, worker-context, token-estimator
+  checkpoint/       # ULID writer (DB-first), 3-hop loader, inject renderer
+  mcp/              # MCP recall server (search, recall, store, events) — 3-channel RRF
+  adapters/cc-hooks/  # 6 hook entry points + infrastructure
+  adapters/shared/    # lifecycle.ts — composable functions
+```
+
+## Reference Documents
+
+- `ARCHITECTURE.md` — READ WHEN: reviewing design, checking schema DDL
+- `context/specs/ANGEL_SYSTEM.md` — READ WHEN: understanding Angel design
+- `context/specs/SEMANTIC_INTELLIGENCE_UPGRADE.md` — READ WHEN: V9 features (6 parts, 31 changes)

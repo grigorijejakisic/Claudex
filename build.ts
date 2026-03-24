@@ -26,6 +26,7 @@ const requiredEntryPoints = [
 const optionalEntryPoints = [
   'src/adapters/openclaw-bridge/plugin-entry.ts',
   'src/mcp/recall-server.ts',
+  'src/angel/index.ts',
 ];
 
 /** Hook entry points to smoke test after build.
@@ -70,7 +71,7 @@ async function build() {
     target: 'node20',
     outdir: 'dist',
     outExtension: { '.js': '.cjs' },
-    external: ['better-sqlite3', '@modelcontextprotocol/sdk', 'zod'],
+    external: ['better-sqlite3', '@modelcontextprotocol/sdk', 'zod', '@anthropic-ai/sdk'],
     logLevel: 'info',
   });
 }

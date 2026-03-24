@@ -236,12 +236,12 @@ describe('isSemanticPipelineAvailable', () => {
 // V9 schema columns — fresh install
 // ---------------------------------------------------------------------------
 
-describe('V9 schema on fresh install', () => {
-  it('sets user_version to 9', () => {
+describe('V10 schema on fresh install', () => {
+  it('sets user_version to 10', () => {
     const db = createTestDb();
     try {
       const row = db.pragma('user_version') as Array<{ user_version: number }>;
-      expect(row[0].user_version).toBe(9);
+      expect(row[0].user_version).toBe(10);
     } finally {
       db.close();
     }

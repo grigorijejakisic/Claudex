@@ -239,6 +239,14 @@ export function materializeArtifacts(
 ): void {
   if (artifactIds.length === 0) return;
 
+  // Dynamic import to avoid circular dependency (hybrid-retrieval imports from artifacts)
+  let recordAccess: ((db: Database, id: number) => void) | null = null;
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const hr = require('../core/hybrid-retrieval.js');
+    recordAccess = hr.recordArtifactAccess;
+  } catch { /* non-fatal — access tracking is optional */ }
+
   if (scopeProject) {
     // Only materialize same-project artifacts — prevents cross-project state contamination
     const stmt = cachedPrepare(db,
@@ -248,6 +256,7 @@ export function materializeArtifacts(
     );
     for (const id of artifactIds) {
       stmt.run(id, scopeProject);
+      recordAccess?.(db, id);
     }
   } else {
     const stmt = cachedPrepare(db,
@@ -257,6 +266,7 @@ export function materializeArtifacts(
     );
     for (const id of artifactIds) {
       stmt.run(id);
+      recordAccess?.(db, id);
     }
   }
 }
@@ -287,6 +297,28 @@ export function tickArtifactTTL(
   ).run(project);
 
   return { packed: packed.changes, total: decremented.changes };
+}
+
+/**
+ * Packs specific artifacts after they've been injected by full assembly.
+ * Prevents double-injection: session-start materializes + injects, then
+ * the next user prompt's assembleRegularPrompt would re-read the same
+ * artifacts via getMaterializedArtifacts() and inject them again.
+ * Non-throwing.
+ */
+export function consumeInjectedArtifacts(
+  db: Database,
+  artifactIds: number[],
+): void {
+  if (artifactIds.length === 0) return;
+  try {
+    const stmt = cachedPrepare(db,
+      `UPDATE artifacts SET state = 'packed', ttl = 0 WHERE id = ?`
+    );
+    for (const id of artifactIds) {
+      stmt.run(id);
+    }
+  } catch { /* non-throwing */ }
 }
 
 /**
@@ -503,15 +535,16 @@ export function flagSupersededArtifacts(
     // The cosine check is done by the caller when embeddings are available.
     // FTS match alone means keyword overlap; we only flag if ALL query keywords matched (AND).
     let flagged = 0;
+    // Temporal guard: only supersede artifacts that are OLDER than the new one
     const flagStmt = cachedPrepare(db,
       `UPDATE artifacts
        SET superseded_by = ?, valid_until = ?
-       WHERE id = ? AND superseded_by IS NULL`
+       WHERE id = ? AND superseded_by IS NULL AND timestamp_epoch < ?`
     );
 
     for (const candidate of candidates) {
-      flagStmt.run(newArtifactId, now, candidate.id);
-      flagged++;
+      const result = flagStmt.run(newArtifactId, now, candidate.id, now);
+      if (result.changes > 0) flagged++;
     }
 
     return flagged;
@@ -790,7 +823,10 @@ export async function linkArtifactToRelated(
       const results = await qdrantSearch(embedding, project, 6, {
         excludeSuperseded: true,
       });
-      candidates = results.filter(r => r.id !== artifactId).slice(0, 5);
+      candidates = results
+        .filter(r => Number(r.id) !== artifactId)
+        .slice(0, 5)
+        .map(r => ({ id: Number(r.id), score: r.score, payload: r.payload }));
     } catch {
       // Qdrant import/search failed — fall through to SQLite
     }

@@ -4,3 +4,8 @@ dist/
 *.db
 *.db-wal
 *.db-shm
+context/checkpoints/
+context/sessions/
+context/reasoning/
+.qdrant-initialized
+SYSTEM_ANALYSIS_REPORT.md
