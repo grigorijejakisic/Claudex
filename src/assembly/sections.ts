@@ -570,6 +570,40 @@ export function formatLearningsSection(learnings: LearningRow[]): string | null 
 }
 
 /**
+ * Formats a lightweight "Active Projects" overview for cross-project awareness.
+ * Shows what projects exist and their last activity. Non-throwing.
+ */
+export interface ProjectOverviewRow {
+  project: string;
+  last_active: number;
+  topic: string | null;
+  has_handoff: boolean;
+}
+
+export function formatProjectsOverview(
+  projects: ProjectOverviewRow[],
+  currentProject: string,
+): string | null {
+  try {
+    // Only show if there are OTHER projects besides the current one
+    const others = projects.filter(p => p.project !== currentProject && p.project !== '__global__');
+    if (others.length === 0) return null;
+
+    const lines: string[] = ['## Other Active Projects'];
+    for (const p of others.slice(0, 5)) {
+      const ago = Math.floor((Date.now() / 1000 - p.last_active) / 3600);
+      const timeStr = ago < 1 ? '<1h ago' : ago < 24 ? `${ago}h ago` : `${Math.floor(ago / 24)}d ago`;
+      const handoff = p.has_handoff ? ' [handoff pending]' : '';
+      const topic = p.topic ? ` — ${p.topic}` : '';
+      lines.push(`- **${p.project}**${topic}${handoff} (${timeStr})`);
+    }
+    return lines.join('\n');
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Formats CLAUDE.md rules as a behavioral reminder for post-compaction assembly.
  * Reads both global (~/.claude/CLAUDE.md) and project CLAUDE.md, extracts
  * numbered rules and quality standards, and renders a condensed section.

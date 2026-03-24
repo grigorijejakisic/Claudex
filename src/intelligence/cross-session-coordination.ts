@@ -42,56 +42,67 @@ export function getCrossSessionActivity(
   try {
     const oneHourAgo = Math.floor(Date.now() / 1000) - 3600;
 
-    // Find other active sessions with recent activity
+    // Single query: sessions + topic + last activity (was 1 + 4×N = 21 queries)
     const sessions = cachedPrepare(db,
-      `SELECT s.session_id, s.observation_count, MAX(o.timestamp_epoch) AS last_obs
+      `SELECT s.session_id, s.observation_count,
+              t.topic,
+              MAX(o.timestamp_epoch) AS last_activity_epoch
        FROM sessions s
        JOIN observations o ON o.session_id = s.session_id
+       LEFT JOIN thread_state t ON t.session_id = s.session_id
        WHERE s.project = ? AND s.session_id != ? AND s.status = 'active'
          AND o.timestamp_epoch > ?
        GROUP BY s.session_id
-       ORDER BY last_obs DESC
+       ORDER BY last_activity_epoch DESC
        LIMIT 5`
-    ).all(project, currentSessionId, oneHourAgo) as Array<{ session_id: string; observation_count: number }>;
+    ).all(project, currentSessionId, oneHourAgo) as Array<{
+      session_id: string; observation_count: number;
+      topic: string | null; last_activity_epoch: number;
+    }>;
 
-    return sessions.map(s => {
-      // Get files being edited
-      const files = cachedPrepare(db,
-        `SELECT DISTINCT json_each.value as file_path
-         FROM observations, json_each(observations.files_modified)
-         WHERE observations.session_id = ?
-           AND observations.tool_name IN ('Edit', 'Write')
-           AND observations.timestamp_epoch > ?
-           AND json_each.value != ''
-         LIMIT 10`
-      ).all(s.session_id, oneHourAgo) as Array<{ file_path: string }>;
+    if (sessions.length === 0) return [];
 
-      // Get recent tool usage pattern
-      const tools = cachedPrepare(db,
-        `SELECT DISTINCT tool_name FROM observations
-         WHERE session_id = ? AND timestamp_epoch > ?
-         LIMIT 10`
-      ).all(s.session_id, oneHourAgo) as Array<{ tool_name: string }>;
+    // Batch query: files and tools for ALL sessions at once (was N×2 queries)
+    const sessionIds = sessions.map(s => s.session_id);
+    const placeholders = sessionIds.map(() => '?').join(',');
 
-      // Get topic
-      const thread = cachedPrepare(db,
-        `SELECT topic FROM thread_state WHERE session_id = ?`
-      ).get(s.session_id) as { topic: string | null } | undefined;
+    const filesRows = db.prepare(
+      `SELECT o.session_id, json_each.value as file_path
+       FROM observations o, json_each(o.files_modified)
+       WHERE o.session_id IN (${placeholders})
+         AND o.tool_name IN ('Edit', 'Write')
+         AND o.timestamp_epoch > ?
+         AND json_each.value != ''`
+    ).all(...sessionIds, oneHourAgo) as Array<{ session_id: string; file_path: string }>;
 
-      // Get last activity time
-      const lastObs = cachedPrepare(db,
-        `SELECT MAX(timestamp_epoch) as last_epoch FROM observations WHERE session_id = ?`
-      ).get(s.session_id) as { last_epoch: number | null };
+    const toolsRows = db.prepare(
+      `SELECT DISTINCT session_id, tool_name FROM observations
+       WHERE session_id IN (${placeholders})
+         AND timestamp_epoch > ?`
+    ).all(...sessionIds, oneHourAgo) as Array<{ session_id: string; tool_name: string }>;
 
-      return {
-        session_id: s.session_id,
-        files_editing: files.map(f => f.file_path),
-        recent_tools: tools.map(t => t.tool_name),
-        topic: thread?.topic ?? null,
-        observation_count: s.observation_count,
-        last_activity_epoch: lastObs?.last_epoch ?? 0,
-      };
-    });
+    // Group by session
+    const filesMap = new Map<string, string[]>();
+    const toolsMap = new Map<string, string[]>();
+    for (const r of filesRows) {
+      const arr = filesMap.get(r.session_id) ?? [];
+      if (!arr.includes(r.file_path)) arr.push(r.file_path);
+      filesMap.set(r.session_id, arr);
+    }
+    for (const r of toolsRows) {
+      const arr = toolsMap.get(r.session_id) ?? [];
+      arr.push(r.tool_name);
+      toolsMap.set(r.session_id, arr);
+    }
+
+    return sessions.map(s => ({
+      session_id: s.session_id,
+      files_editing: (filesMap.get(s.session_id) ?? []).slice(0, 10),
+      recent_tools: (toolsMap.get(s.session_id) ?? []).slice(0, 10),
+      topic: s.topic,
+      observation_count: s.observation_count,
+      last_activity_epoch: s.last_activity_epoch,
+    }));
   } catch {
     return [];
   }

@@ -19,6 +19,7 @@ import type { AngelConfig } from './types.js';
 import { getIdleSessions, getUnprocessedSessions, hasIdleWarning, markSessionProcessed } from './session-monitor.js';
 import { sendIdleWarning } from './message-sender.js';
 import { extractPatternsFromSession, classifySessionDomains } from './pattern-extractor.js';
+import { getUnverifiedFrequentPatterns, incrementVerificationCount } from '../intelligence/experience-patterns.js';
 import { monitorMemoryFiles } from './memory-monitor.js';
 
 export interface HeartbeatContext {
@@ -130,7 +131,16 @@ export async function heartbeatTick(ctx: HeartbeatContext): Promise<TickResult> 
         result.patterns_pruned = badPatterns.length;
       }
 
-      // 4c: Close orphaned sessions (active > 2 hours with no recent observations)
+      // 4c: Auto-verify patterns with strong positive signal (triggered 5+ times, all helpful)
+      const unverified = getUnverifiedFrequentPatterns(ctx.db, '__global__', 5);
+      for (const p of unverified) {
+        if (p.helpful_count >= 3 && p.harmful_count === 0) {
+          incrementVerificationCount(ctx.db, p.id);
+          incrementVerificationCount(ctx.db, p.id); // Needs 2 to become verified
+        }
+      }
+
+      // 4d: Close orphaned sessions (active > 2 hours with no recent observations)
       const twoHoursAgo = Math.floor(Date.now() / 1000) - 7200;
       const orphans = cachedPrepare(ctx.db,
         `SELECT session_id FROM sessions

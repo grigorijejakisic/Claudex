@@ -14,7 +14,7 @@
 import type Anthropic from '@anthropic-ai/sdk';
 import type { Database } from 'better-sqlite3';
 import { cachedPrepare } from '../core/stmt-cache.js';
-import { createPattern } from '../intelligence/experience-patterns.js';
+import { createPattern, createTipAndStrategy } from '../intelligence/experience-patterns.js';
 import { recordDomainInteraction, extractDomain } from '../intelligence/capability-tracker.js';
 import { recordEvent } from '../core/session-events.js';
 import type { ConversationTurn, ExtractedPattern } from './types.js';
@@ -210,6 +210,18 @@ export async function extractPatternsFromSession(
 
           // NOTE: createPattern() already calls embedPattern() internally (fire-and-forget).
           // Do NOT call embedPattern again here — it would double the embedding compute.
+
+          // Create tip→strategy abstraction pair for generalized learning.
+          // The tip is the specific correction; the strategy is the generalized rule.
+          try {
+            createTipAndStrategy(db, {
+              pattern_type: 'correction',
+              trigger_context: p.trigger_context,
+              lesson: p.lesson,
+              anti_pattern: p.anti_pattern,
+              severity: p.severity ?? 'important',
+            }, sessionId, project);
+          } catch { /* non-fatal — tip/strategy is supplementary */ }
 
           // Record domain interaction if domain was identified
           if (p.domain) {

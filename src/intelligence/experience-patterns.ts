@@ -877,23 +877,9 @@ export function incrementVerificationCount(db: Database, id: string): void {
 }
 
 /**
- * Returns whether a pattern is verified.
- * Non-throwing.
- */
-export function isPatternVerified(db: Database, id: string): boolean {
-  try {
-    const row = cachedPrepare(db,
-      `SELECT verified FROM experience_patterns WHERE id = ?`
-    ).get(id) as { verified: number } | undefined;
-    return row?.verified === 1;
-  } catch {
-    return false;
-  }
-}
-
-/**
  * Returns patterns that have been triggered 3+ times without verification.
  * These are candidates for review — may be noise.
+ * Used by Angel heartbeat Phase 4 for quality monitoring.
  * Non-throwing.
  */
 export function getUnverifiedFrequentPatterns(
