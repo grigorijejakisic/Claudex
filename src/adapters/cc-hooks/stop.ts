@@ -20,6 +20,7 @@ import {
   captureInsightsAsLearnings,
   trackAfterTurn,
   storeConversationTurn,
+  updateConversationTurnAssistant,
   checkpointIfThresholdMet,
   captureRecallFlowEntry,
   detectIdleSession,
@@ -44,7 +45,7 @@ import { decayActivationScores } from '../../core/hybrid-retrieval.js';
 import { penalizeUnreferencedArtifacts } from '../../intelligence/retrieval-feedback.js';
 import { cachedPrepare } from '../../core/stmt-cache.js';
 import { embedText, embedJournalEntry } from '../../embeddings/embed-pipeline.js';
-import { upsertConversationEmbedding } from '../../embeddings/qdrant-client.js';
+import { upsertConversationEmbedding, upsertThreadEmbedding } from '../../embeddings/qdrant-client.js';
 import {
   updateTemporalProfile,
   updateActionTransitions,
@@ -131,8 +132,18 @@ const main = wrapHook('Stop', async (input, ctx) => {
   }, ctx.db, input.session_id);
 
   // Store conversation turn + dual-write embedding (SQLite BLOB + Qdrant)
+  // Split-write: UserPromptSubmit creates the row with user_text,
+  // Stop completes it with assistant_text. Fallback: insert new row if no pending turn.
   runHookStep('store_conversation_turn', () => {
-    storeConversationTurn(ctx.db, input.session_id, routedProject, lastUserText, lastAssistantText);
+    if (lastAssistantText) {
+      const updated = updateConversationTurnAssistant(ctx.db, input.session_id, lastAssistantText);
+      if (!updated) {
+        // No pending turn from UserPromptSubmit — create a full turn (fallback)
+        storeConversationTurn(ctx.db, input.session_id, routedProject, undefined, lastAssistantText);
+      }
+    }
+    // Note: CC's Stop hook does NOT receive user text (only last_assistant_message).
+    // User text is stored by UserPromptSubmit via the split-write pattern.
   }, ctx.db, input.session_id);
 
   try {
@@ -168,7 +179,7 @@ const main = wrapHook('Stop', async (input, ctx) => {
     emitErrorTelemetry(ctx.db, input.session_id, 'stop/conversation_embedding', e);
   }
 
-  // Embed thread summary
+  // Embed thread summary — dual-write to SQLite BLOB + Qdrant claudex_threads
   try {
     const thread = getThreadState(ctx.db, input.session_id);
     if (thread?.summary) {
@@ -177,6 +188,18 @@ const main = wrapHook('Stop', async (input, ctx) => {
         const blob = Buffer.from(new Float32Array(embedding).buffer);
         ctx.db.prepare('UPDATE thread_state SET summary_embedding = ? WHERE session_id = ?')
           .run(blob, input.session_id);
+
+        // Push to Qdrant for cross-session semantic thread search
+        const pushed = await upsertThreadEmbedding(input.session_id, embedding, {
+          project: routedProject,
+          topic: thread.topic ?? '',
+          summary: thread.summary.slice(0, 500),
+          timestamp_epoch: Math.floor(Date.now() / 1000),
+        });
+        if (pushed) {
+          ctx.db.prepare('UPDATE thread_state SET qdrant_synced = 1 WHERE session_id = ?')
+            .run(input.session_id);
+        }
       }
     }
   } catch { /* non-fatal */ }

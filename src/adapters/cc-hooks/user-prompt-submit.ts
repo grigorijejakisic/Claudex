@@ -14,7 +14,7 @@ import { EmbeddingProvider } from '../../embeddings/embedding-provider.js';
 import { getIdentityDir } from '../../shared/paths.js';
 import { emitTelemetry } from '../../observability/telemetry.js';
 import { emitErrorTelemetry } from '../../observability/error-telemetry.js';
-import { persistTopicIfShifted, ensureInitialTopic, captureFlowEntry, captureExplicitDecisions, captureUserFraming } from '../shared/lifecycle.js';
+import { persistTopicIfShifted, ensureInitialTopic, captureFlowEntry, captureExplicitDecisions, captureUserFraming, storeConversationTurnUserText } from '../shared/lifecycle.js';
 import { searchArtifactsGlobal, materializeArtifacts } from '../../core/artifacts.js';
 import { findMatchingPatternsHybrid } from '../../intelligence/experience-patterns.js';
 import { getCooldownState, setCooldownState } from '../../core/thread.js';
@@ -22,7 +22,7 @@ import { routeByContent, buildProjectIndex } from '../../shared/content-router.j
 import { setExperienceFlags, getExperienceFlags } from '../../intelligence/experience-flags.js';
 import { detectCorrectionSignal } from '../../intelligence/correction-detection.js';
 import { recordEvent } from '../../core/session-events.js';
-import { findSimilarThreads } from '../../intelligence/thread-tracker.js';
+import { findSimilarThreadsAsync } from '../../intelligence/thread-tracker.js';
 import { shouldRunReflection, runBatchReflection } from '../../intelligence/batch-reflection.js';
 import { extractDomain, generateDomainAdvisory, getWeakDomains } from '../../intelligence/capability-tracker.js';
 import { getThreadState } from '../../core/thread.js';
@@ -129,6 +129,14 @@ const main = wrapHook('UserPromptSubmit', async (input, ctx) => {
   const routedProject = prompt
     ? routeByContent(prompt, ctx.project, buildProjectIndex())
     : ctx.project;
+
+  // Store user prompt as conversation turn (assistant_text added by Stop hook).
+  // Split-write: survives power loss between UserPromptSubmit and Stop.
+  if (prompt) {
+    try {
+      storeConversationTurnUserText(ctx.db, input.session_id, routedProject, prompt);
+    } catch { /* non-throwing */ }
+  }
 
   // Capture explicit decision markers (Tier 4 only) from user prompt.
   // Tier 1 confirmations are captured in Stop hook where assistant text is
@@ -271,7 +279,7 @@ const main = wrapHook('UserPromptSubmit', async (input, ctx) => {
 
           // 4.3: Cross-session thread linking
           if (!crossSessionContext) {
-            const similarThreads = findSimilarThreads(
+            const similarThreads = await findSimilarThreadsAsync(
               ctx.db, promptEmbedding, ctx.project, 0.8, input.session_id
             );
             if (similarThreads.length > 0) {

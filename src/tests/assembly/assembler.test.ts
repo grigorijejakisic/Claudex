@@ -41,7 +41,7 @@ function makeConfig(overrides?: Partial<ClaudexConfig['injection']> & { features
     checkpoint: { debounce_seconds: 60, compression: false, compaction_instructions: '' },
     learnings: { max_per_project: 50, surface_count: 10 },
     enrichment: { enabled: false, provider: 'auto', ollama_base_url: '', ollama_model: 'auto', timeout_ms: 10000 },
-    embeddings: { enabled: false, provider: 'ollama', model: 'nomic-embed-text', ollama_base_url: '', topic_shift_threshold: 0.35, topic_shift_window: 3, decision_confidence_threshold: 0.15, jaccard_shift_threshold: 0.15 },
+    embeddings: { enabled: false, provider: 'ollama', model: 'snowflake-arctic-embed2', ollama_base_url: '', topic_shift_threshold: 0.35, topic_shift_window: 3, decision_confidence_threshold: 0.15, jaccard_shift_threshold: 0.15 },
     observability: { enabled: false, retention_days: 7, retain_error_count: 1000 },
     gsd: { enabled: true },
     context: { advisory_threshold: 0.50, warning_threshold: 0.65, critical_threshold: 0.80, checkpoint_cooldown_seconds: 300 },

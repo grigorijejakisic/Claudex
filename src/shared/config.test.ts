@@ -49,7 +49,7 @@ describe('config', () => {
 
       expect(config.embeddings.enabled).toBe(true);
       expect(config.embeddings.provider).toBe('ollama');
-      expect(config.embeddings.model).toBe('nomic-embed-text');
+      expect(config.embeddings.model).toBe('snowflake-arctic-embed2');
       expect(config.embeddings.topic_shift_threshold).toBe(0.35);
 
       expect(config.observability.retention_days).toBe(7);

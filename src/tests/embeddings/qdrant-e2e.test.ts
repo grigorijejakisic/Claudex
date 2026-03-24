@@ -79,9 +79,9 @@ describe.skipIf(skip)('Qdrant E2E (live instance)', () => {
     await ensureCollections();
 
     // Create two similar vectors and one different
-    const vec1 = Array.from({ length: 384 }, (_, i) => Math.sin(i * 0.1));
-    const vec2 = Array.from({ length: 384 }, (_, i) => Math.sin(i * 0.1 + 0.05));
-    const vecDiff = Array.from({ length: 384 }, (_, i) => Math.cos(i * 0.5));
+    const vec1 = Array.from({ length: 1024 }, (_, i) => Math.sin(i * 0.1));
+    const vec2 = Array.from({ length: 1024 }, (_, i) => Math.sin(i * 0.1 + 0.05));
+    const vecDiff = Array.from({ length: 1024 }, (_, i) => Math.cos(i * 0.5));
 
     // Normalize
     const normalize = (v: number[]) => {
@@ -145,7 +145,7 @@ describe.skipIf(skip)('Qdrant E2E (live instance)', () => {
     resetQdrantClient();
     await ensureCollections();
 
-    const vec = Array.from({ length: 384 }, (_, i) => Math.sin(i * 0.3));
+    const vec = Array.from({ length: 1024 }, (_, i) => Math.sin(i * 0.3));
     const normalize = (v: number[]) => {
       const n = Math.sqrt(v.reduce((s, x) => s + x * x, 0));
       return v.map(x => x / n);
@@ -188,7 +188,7 @@ describe.skipIf(skip)('Qdrant E2E (live instance)', () => {
     resetQdrantClient();
     await ensureCollections();
 
-    const vec = Array.from({ length: 384 }, (_, i) => Math.sin(i * 0.7));
+    const vec = Array.from({ length: 1024 }, (_, i) => Math.sin(i * 0.7));
     const normalize = (v: number[]) => {
       const n = Math.sqrt(v.reduce((s, x) => s + x * x, 0));
       return v.map(x => x / n);

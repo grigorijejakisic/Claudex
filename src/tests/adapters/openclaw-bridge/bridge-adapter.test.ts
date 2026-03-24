@@ -489,7 +489,7 @@ describe('Embedding caching', () => {
     // Make Ollama "available" with mock embeddings
     globalThis.fetch = (async (url: string) => {
       if (typeof url === 'string' && url.includes('/api/tags')) {
-        return new Response(JSON.stringify({ models: [{ name: 'nomic-embed-text:latest' }] }));
+        return new Response(JSON.stringify({ models: [{ name: 'snowflake-arctic-embed2:latest' }] }));
       }
       // Return fake embeddings for batch
       return new Response(JSON.stringify({

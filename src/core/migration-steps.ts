@@ -627,9 +627,29 @@ export function migrateSchemaFixes(db: Database): void {
         db.exec('INSERT INTO learnings_fts(rowid, content) SELECT id, content FROM learnings');
       }
     }
+
   });
 
   migrate();
+}
+
+/**
+ * Drop orphan tables from pre-V6 schemas. No production code references these.
+ * Called from initializeSchema (not migrateSchemaFixes) to avoid the early-return guard.
+ * Idempotent — safe to call every startup.
+ */
+export function cleanupOrphanTables(db: Database): void {
+  const orphanTables = [
+    'audit_log', 'checkpoint_state', 'consensus_decisions',
+    'consensus_fts', 'reasoning_chains', 'reasoning_fts',
+  ];
+  for (const table of orphanTables) {
+    try {
+      if (hasTable(db, table)) {
+        db.exec(`DROP TABLE IF EXISTS ${table}`);
+      }
+    } catch { /* non-throwing per table */ }
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -894,6 +914,11 @@ export function migrateV10toV11(db: Database): void {
           WHERE confidence = 0.5 AND (helpful_count > 0 OR harmful_count > 0)
         `);
       } catch { /* non-fatal */ }
+    }
+
+    // 7. Add qdrant_synced to thread_state (tracks whether embedding was pushed to Qdrant)
+    if (hasTable(db, 'thread_state') && !hasColumn(db, 'thread_state', 'qdrant_synced')) {
+      db.exec("ALTER TABLE thread_state ADD COLUMN qdrant_synced INTEGER NOT NULL DEFAULT 0");
     }
 
   } catch {

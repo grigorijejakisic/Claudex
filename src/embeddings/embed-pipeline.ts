@@ -43,7 +43,7 @@ export async function getEmbeddingProvider(config?: {
     if (!_provider) {
       _provider = new EmbeddingProvider({
         baseUrl: config?.baseUrl ?? 'http://localhost:11434',
-        model: config?.model ?? 'nomic-embed-text',
+        model: config?.model ?? 'snowflake-arctic-embed2',
       });
     }
 
@@ -73,32 +73,22 @@ export function resetEmbeddingPipeline(): void {
 }
 
 // ---------------------------------------------------------------------------
-// Matryoshka truncation
+// Embedding constants
 // ---------------------------------------------------------------------------
 
-/** Target dimension for Matryoshka truncation. nomic-embed-text supports 768→384→256. */
-const MATRYOSHKA_DIM = 384;
+/** Native output dimension of snowflake-arctic-embed2. No truncation needed. */
+export const EMBED_DIM = 1024;
 
-/**
- * Truncate a full-dimension embedding to Matryoshka target dimension and re-normalize.
- * nomic-embed-text v1.5 produces independently meaningful prefixes at 384 dims.
- * Re-normalization is required after truncation for cosine distance to work correctly.
- */
-function matryoshkaTruncate(vec: number[], dim: number = MATRYOSHKA_DIM): number[] {
-  if (vec.length <= dim) return vec; // Already at or below target
-  const truncated = vec.slice(0, dim);
-  const norm = Math.sqrt(truncated.reduce((s, v) => s + v * v, 0));
-  if (norm === 0) return truncated;
-  return truncated.map(v => v / norm);
-}
+/** Max input chars — snowflake-arctic-embed2 has 8K token context (~32K chars). */
+const MAX_INPUT_CHARS = 8000;
 
 // ---------------------------------------------------------------------------
 // Embed text
 // ---------------------------------------------------------------------------
 
 /**
- * Embed a text string. Returns the 384-dim vector or null if unavailable.
- * Applies Matryoshka truncation + re-normalization from 768→384 dims.
+ * Embed a text string. Returns the 1024-dim vector or null if unavailable.
+ * Uses snowflake-arctic-embed2 (568M params, 8K context, native 1024-dim).
  * Non-throwing.
  */
 export async function embedText(
@@ -109,11 +99,10 @@ export async function embedText(
     const provider = await getEmbeddingProvider(config);
     if (!provider) return null;
 
-    // Truncate to ~512 tokens (~2048 chars) for consistent embedding quality
-    const truncated = text.length > 2048 ? text.slice(0, 2048) : text;
+    const truncated = text.length > MAX_INPUT_CHARS ? text.slice(0, MAX_INPUT_CHARS) : text;
     const raw = await provider.embed(truncated);
     if (!raw) return null;
-    return matryoshkaTruncate(raw);
+    return raw; // snowflake-arctic-embed2 outputs native 1024-dim, no truncation needed
   } catch {
     return null;
   }
@@ -296,4 +285,141 @@ export async function isSemanticPipelineAvailable(): Promise<boolean> {
   } catch {
     return false;
   }
+}
+
+// ---------------------------------------------------------------------------
+// Backfill: embed records that were created before the pipeline was active
+// ---------------------------------------------------------------------------
+
+export interface BackfillResult {
+  artifacts: number;
+  journal: number;
+  threads: number;
+  errors: number;
+}
+
+/** Max total chars to embed per backfill batch — bounds Ollama pressure by content volume, not just count. */
+const BACKFILL_CHAR_BUDGET = 50_000;
+
+/**
+ * Process unembedded records in batches. Content-length-aware: stops when either
+ * the record count OR the total character budget is exhausted.
+ * Called by Angel heartbeat when idle. Non-throwing.
+ *
+ * Prioritizes: artifacts (highest retrieval impact) > journal > threads.
+ */
+export async function backfillEmbeddings(
+  db: import('better-sqlite3').Database,
+  batchSize: number = 10,
+): Promise<BackfillResult> {
+  const result: BackfillResult = { artifacts: 0, journal: 0, threads: 0, errors: 0 };
+
+  try {
+    const provider = await getEmbeddingProvider();
+    if (!provider) return result;
+
+    let remaining = batchSize;
+    let charBudget = BACKFILL_CHAR_BUDGET;
+
+    // 1. Artifacts without embeddings (highest priority)
+    if (remaining > 0 && charBudget > 0) {
+      const unembedded = db.prepare(
+        `SELECT id, content, summary, project, artifact_type, importance, session_id, timestamp_epoch
+         FROM artifacts
+         WHERE embedding IS NULL AND state != 'packed' AND content IS NOT NULL
+         LIMIT ?`
+      ).all(remaining) as Array<{
+        id: number; content: string; summary: string; project: string;
+        artifact_type: string; importance: number; session_id: string; timestamp_epoch: number;
+      }>;
+
+      for (const art of unembedded) {
+        if (charBudget <= 0) break;
+        try {
+          const text = art.summary || art.content;
+          if (!text || text.length < 10) continue;
+          charBudget -= text.length;
+          const ok = await embedArtifact(db, art.id, text, {
+            project: art.project,
+            artifact_type: art.artifact_type,
+            importance: art.importance,
+            session_id: art.session_id,
+            summary: (art.summary || '').slice(0, 500),
+            timestamp_epoch: art.timestamp_epoch,
+          });
+          if (ok) { result.artifacts++; remaining--; }
+        } catch { result.errors++; }
+      }
+    }
+
+    // 2. Journal entries without embeddings
+    if (remaining > 0 && charBudget > 0) {
+      const unembedded = db.prepare(
+        `SELECT id, content, project, session_id, timestamp_epoch
+         FROM session_journal
+         WHERE embedding IS NULL AND content IS NOT NULL
+         LIMIT ?`
+      ).all(remaining) as Array<{
+        id: number; content: string; project: string; session_id: string; timestamp_epoch: number;
+      }>;
+
+      for (const entry of unembedded) {
+        if (charBudget <= 0) break;
+        try {
+          if (!entry.content || entry.content.length < 10) continue;
+          charBudget -= entry.content.length;
+          const ok = await embedJournalEntry(db, entry.id, entry.content, undefined, {
+            project: entry.project,
+            session_id: entry.session_id,
+            entry_type: 'journal',
+          });
+          if (ok) { result.journal++; remaining--; }
+        } catch { result.errors++; }
+      }
+    }
+
+    // 3. Thread summaries with SQLite BLOB but missing from Qdrant
+    // (detect by checking summary_embedding IS NOT NULL — they have BLOBs but were never pushed)
+    if (remaining > 0) {
+      try {
+        const { upsertThreadEmbedding } = await import('./qdrant-client.js');
+        const threads = db.prepare(
+          `SELECT ts.session_id, ts.topic, ts.summary, ts.summary_embedding, s.project
+           FROM thread_state ts
+           JOIN sessions s ON s.session_id = ts.session_id
+           WHERE ts.summary_embedding IS NOT NULL AND ts.summary IS NOT NULL
+             AND ts.qdrant_synced = 0
+           LIMIT ?`
+        ).all(remaining) as Array<{
+          session_id: string; topic: string | null; summary: string;
+          summary_embedding: Buffer; project: string;
+        }>;
+
+        for (const t of threads) {
+          try {
+            const buf = t.summary_embedding;
+            const embedding = Array.from(
+              new Float32Array(buf.buffer, buf.byteOffset, buf.byteLength / 4)
+            );
+            if (embedding.length === 0) continue;
+
+            const ok = await upsertThreadEmbedding(t.session_id, embedding, {
+              project: t.project,
+              topic: t.topic ?? '',
+              summary: t.summary.slice(0, 500),
+              timestamp_epoch: Math.floor(Date.now() / 1000),
+            });
+            if (ok) {
+              db.prepare('UPDATE thread_state SET qdrant_synced = 1 WHERE session_id = ?').run(t.session_id);
+              result.threads++; remaining--;
+            }
+          } catch { result.errors++; }
+        }
+      } catch { /* qdrant import failure — non-fatal */ }
+    }
+  } catch {
+    // Non-throwing
+  }
+
+  return result;
 }

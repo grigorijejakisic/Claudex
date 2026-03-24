@@ -70,7 +70,7 @@ export const DEFAULT_CONFIG = {
   embeddings: {
     enabled: true,
     provider: 'ollama' as const,
-    model: 'nomic-embed-text',
+    model: 'snowflake-arctic-embed2',
     ollama_base_url: 'http://localhost:11434',
     topic_shift_threshold: 0.35,
     topic_shift_window: 3,

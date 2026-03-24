@@ -17,7 +17,7 @@ import { QdrantClient } from '@qdrant/js-client-rest';
 export interface QdrantConfig {
   /** Qdrant HTTP endpoint. Default: http://localhost:6333 */
   url: string;
-  /** Embedding dimension. Default: 384 (nomic-embed-text Matryoshka) */
+  /** Embedding dimension. Default: 1024 (snowflake-arctic-embed2) */
   dimensions: number;
   /** Connection timeout in ms. Default: 3000 */
   timeoutMs: number;
@@ -72,7 +72,7 @@ export const COLLECTIONS = {
 
 const DEFAULT_QDRANT_CONFIG: QdrantConfig = {
   url: 'http://localhost:6333',
-  dimensions: 384,
+  dimensions: 1024,
   timeoutMs: 3000,
 };
 
@@ -505,6 +505,73 @@ export async function searchJournal(
 // ---------------------------------------------------------------------------
 // Delete operations
 // ---------------------------------------------------------------------------
+
+/**
+ * Upsert a thread embedding into the claudex_threads collection.
+ * Called by Stop hook when a thread summary is embedded.
+ * Non-throwing.
+ */
+export async function upsertThreadEmbedding(
+  sessionId: string,
+  embedding: number[],
+  payload: Record<string, unknown>,
+  config?: Partial<QdrantConfig>,
+): Promise<boolean> {
+  try {
+    const client = await getQdrantClient(config);
+    if (!client) return false;
+
+    // Use stable hash of session_id for Qdrant point ID
+    const pointId = hashStringToInt(sessionId);
+
+    await client.upsert(COLLECTIONS.threads, {
+      wait: false,
+      points: [{
+        id: pointId,
+        vector: embedding,
+        payload: { ...payload, session_id: sessionId },
+      }],
+    });
+
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Search thread summaries by semantic similarity.
+ * Used for cross-session thread linking — finding related past threads.
+ * Non-throwing.
+ */
+export async function searchThreads(
+  embedding: number[],
+  project: string,
+  limit: number = 5,
+  config?: Partial<QdrantConfig>,
+): Promise<SearchResult[]> {
+  try {
+    const client = await getQdrantClient(config);
+    if (!client) return [];
+
+    const results = await client.search(COLLECTIONS.threads, {
+      vector: embedding,
+      limit,
+      filter: {
+        must: [{ key: 'project', match: { value: project } }],
+      },
+      with_payload: true,
+    });
+
+    return results.map(r => ({
+      id: r.id,
+      score: r.score,
+      payload: r.payload as Record<string, unknown>,
+    }));
+  } catch {
+    return [];
+  }
+}
 
 /**
  * Delete an artifact point from Qdrant (when superseded or pruned).

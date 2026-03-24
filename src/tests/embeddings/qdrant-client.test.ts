@@ -92,7 +92,7 @@ describe('operations when Qdrant is unavailable', () => {
     resetQdrantClient();
   });
 
-  const fakeEmbedding = Array.from({ length: 384 }, () => Math.random());
+  const fakeEmbedding = Array.from({ length: 1024 }, () => Math.random());
   const fakeConfig = { url: 'http://127.0.0.1:19999', timeoutMs: 500 };
 
   const fakeArtifactPayload: ArtifactPayload = {

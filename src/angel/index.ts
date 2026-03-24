@@ -68,6 +68,15 @@ function parseArgs(argv: string[]): Partial<AngelConfig> {
           i++;
         }
         break;
+      case '--auto-close-minutes':
+        if (argv[i + 1]) {
+          const minutes = parseInt(argv[i + 1], 10);
+          if (!isNaN(minutes) && minutes > 0) {
+            config.autoCloseMinutesAfterWarning = minutes;
+          }
+          i++;
+        }
+        break;
     }
   }
 

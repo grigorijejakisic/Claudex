@@ -5,8 +5,10 @@
 export interface AngelConfig {
   /** Heartbeat interval in milliseconds. Default: 30 minutes. */
   heartbeatIntervalMs: number;
-  /** Idle threshold in seconds — sessions inactive beyond this are considered idle. Default: 30 min. */
+  /** Idle threshold in seconds — sessions inactive beyond this get a warning. Default: 15 min. */
   idleThresholdSeconds: number;
+  /** Auto-close threshold in minutes — sessions still idle this long after warning get auto-closed. Default: 15 min (so 30 min total). */
+  autoCloseMinutesAfterWarning: number;
   /** Cloud model for complex reasoning (pattern extraction). Uses CliProxy/API. Default: claude-sonnet-4-6. */
   cloudModel: string;
   /** Local model for simple tasks (classification). Uses Ollama. Default: llama3.2. */
@@ -19,7 +21,8 @@ export interface AngelConfig {
 
 export const DEFAULT_ANGEL_CONFIG: AngelConfig = {
   heartbeatIntervalMs: 30 * 60 * 1000, // 30 minutes
-  idleThresholdSeconds: 30 * 60,        // 30 minutes
+  idleThresholdSeconds: 15 * 60,        // 15 minutes — warning
+  autoCloseMinutesAfterWarning: 15,     // 15 minutes after warning — auto-close (30 min total)
   cloudModel: 'claude-sonnet-4-6',
   localModel: 'llama3.2',
   maxPatternsPerSession: 5,

@@ -31,6 +31,7 @@ import {
   migrateV9toV10,
   migrateV10toV11,
   migrateSchemaFixes,
+  cleanupOrphanTables,
   upgradeV2SchemaInPlace,
 } from './migration-steps.js';
 
@@ -143,6 +144,9 @@ export function initializeSchema(db: Database): void {
 
   // Schema fixes: single-owner artifact_claims, porter stemmer on FTS, etc.
   migrateSchemaFixes(db);
+
+  // Drop orphan tables from pre-V6 schemas (runs unconditionally, not gated by migrateSchemaFixes guard)
+  cleanupOrphanTables(db);
 
   // Record schema version
   const svCols = (db.pragma('table_info(schema_versions)') as Array<{ name: string }>).map(c => c.name);

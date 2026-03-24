@@ -479,6 +479,26 @@ export function updateTemporalProfile(
       common_first_actions: string;
     } | undefined;
 
+    // Compute avg session duration for this specific time slot (hour_bucket + day_of_week).
+    // Falls back to project-wide average if no sessions exist for this slot.
+    const slotAvg = cachedPrepare(db,
+      `SELECT AVG(ended_at_epoch - created_at_epoch) as avg_sec
+       FROM sessions
+       WHERE project = ? AND ended_at_epoch IS NOT NULL
+         AND created_at_epoch > 0 AND ended_at_epoch > created_at_epoch
+         AND CAST((CAST(created_at_epoch % 86400 AS REAL) / 3600 / 4) AS INTEGER) = ?
+         AND CAST(((created_at_epoch / 86400 + 4) % 7) AS INTEGER) = ?`
+    ).get(project, hourBucket, dayOfWeek) as { avg_sec: number | null } | undefined;
+
+    const globalAvg = slotAvg?.avg_sec ? null : cachedPrepare(db,
+      `SELECT AVG(ended_at_epoch - created_at_epoch) as avg_sec
+       FROM sessions
+       WHERE project = ? AND ended_at_epoch IS NOT NULL
+         AND created_at_epoch > 0 AND ended_at_epoch > created_at_epoch`
+    ).get(project) as { avg_sec: number | null } | undefined;
+
+    const avgDurationSec = slotAvg?.avg_sec ?? globalAvg?.avg_sec ?? null;
+
     if (existing) {
       // Update existing row
       let actions: string[] = [];
@@ -502,16 +522,17 @@ export function updateTemporalProfile(
         `UPDATE temporal_profile
          SET session_count = session_count + 1,
              common_first_actions = ?,
+             avg_duration_sec = ?,
              updated_at_epoch = unixepoch()
          WHERE project = ? AND hour_bucket = ? AND day_of_week = ?`
-      ).run(JSON.stringify(topActions), project, hourBucket, dayOfWeek);
+      ).run(JSON.stringify(topActions), avgDurationSec, project, hourBucket, dayOfWeek);
     } else {
       // Insert new row
       const actions = firstEvent ? [firstEvent.event_type] : [];
       cachedPrepare(db,
-        `INSERT INTO temporal_profile (project, hour_bucket, day_of_week, session_count, common_first_actions)
-         VALUES (?, ?, ?, 1, ?)`
-      ).run(project, hourBucket, dayOfWeek, JSON.stringify(actions));
+        `INSERT INTO temporal_profile (project, hour_bucket, day_of_week, session_count, common_first_actions, avg_duration_sec)
+         VALUES (?, ?, ?, 1, ?, ?)`
+      ).run(project, hourBucket, dayOfWeek, JSON.stringify(actions), avgDurationSec);
     }
   } catch {
     // Non-throwing

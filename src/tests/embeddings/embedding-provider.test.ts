@@ -13,9 +13,9 @@ function mockFetch(handler: (url: string, init?: RequestInit) => Promise<Respons
 
 describe('EmbeddingProvider', () => {
   describe('isAvailable', () => {
-    it('returns true when Ollama has nomic-embed-text model', async () => {
+    it('returns true when Ollama has snowflake-arctic-embed2 model', async () => {
       mockFetch(async () =>
-        new Response(JSON.stringify({ models: [{ name: 'nomic-embed-text:latest' }] }))
+        new Response(JSON.stringify({ models: [{ name: 'snowflake-arctic-embed2:latest' }] }))
       );
       const provider = new EmbeddingProvider();
       expect(await provider.isAvailable()).toBe(true);
@@ -47,7 +47,7 @@ describe('EmbeddingProvider', () => {
       let callCount = 0;
       mockFetch(async () => {
         callCount++;
-        return new Response(JSON.stringify({ models: [{ name: 'nomic-embed-text:latest' }] }));
+        return new Response(JSON.stringify({ models: [{ name: 'snowflake-arctic-embed2:latest' }] }));
       });
       const provider = new EmbeddingProvider();
       await provider.isAvailable();
@@ -61,7 +61,7 @@ describe('EmbeddingProvider', () => {
       const fakeEmb = [0.1, 0.2, 0.3];
       mockFetch(async (url: string) => {
         if (url.includes('/api/tags')) {
-          return new Response(JSON.stringify({ models: [{ name: 'nomic-embed-text:latest' }] }));
+          return new Response(JSON.stringify({ models: [{ name: 'snowflake-arctic-embed2:latest' }] }));
         }
         return new Response(JSON.stringify({ embeddings: [fakeEmb] }));
       });
@@ -81,7 +81,7 @@ describe('EmbeddingProvider', () => {
     it('returns null on HTTP error (thrown)', async () => {
       mockFetch(async (url: string) => {
         if (url.includes('/api/tags')) {
-          return new Response(JSON.stringify({ models: [{ name: 'nomic-embed-text:latest' }] }));
+          return new Response(JSON.stringify({ models: [{ name: 'snowflake-arctic-embed2:latest' }] }));
         }
         throw new Error('Internal Server Error');
       });
@@ -93,7 +93,7 @@ describe('EmbeddingProvider', () => {
     it('returns null on non-2xx response from /api/embed', async () => {
       mockFetch(async (url: string) => {
         if (url.includes('/api/tags')) {
-          return new Response(JSON.stringify({ models: [{ name: 'nomic-embed-text:latest' }] }));
+          return new Response(JSON.stringify({ models: [{ name: 'snowflake-arctic-embed2:latest' }] }));
         }
         return new Response('Bad Request', { status: 400 });
       });
@@ -105,7 +105,7 @@ describe('EmbeddingProvider', () => {
     it('returns null on malformed response', async () => {
       mockFetch(async (url: string) => {
         if (url.includes('/api/tags')) {
-          return new Response(JSON.stringify({ models: [{ name: 'nomic-embed-text:latest' }] }));
+          return new Response(JSON.stringify({ models: [{ name: 'snowflake-arctic-embed2:latest' }] }));
         }
         return new Response('not json at all');
       });
@@ -119,7 +119,7 @@ describe('EmbeddingProvider', () => {
       mockFetch(async (url: string) => {
         if (url.includes('/api/tags')) {
           tagsCalled = true;
-          return new Response(JSON.stringify({ models: [{ name: 'nomic-embed-text:latest' }] }));
+          return new Response(JSON.stringify({ models: [{ name: 'snowflake-arctic-embed2:latest' }] }));
         }
         return new Response(JSON.stringify({ embeddings: [[0.1]] }));
       });
@@ -134,7 +134,7 @@ describe('EmbeddingProvider', () => {
       const fakeEmbs = [[0.1, 0.2], [0.3, 0.4], [0.5, 0.6]];
       mockFetch(async (url: string) => {
         if (url.includes('/api/tags')) {
-          return new Response(JSON.stringify({ models: [{ name: 'nomic-embed-text:latest' }] }));
+          return new Response(JSON.stringify({ models: [{ name: 'snowflake-arctic-embed2:latest' }] }));
         }
         return new Response(JSON.stringify({ embeddings: fakeEmbs }));
       });
@@ -148,7 +148,7 @@ describe('EmbeddingProvider', () => {
       let capturedBody: string | null = null;
       mockFetch(async (url: string, init?: RequestInit) => {
         if (url.includes('/api/tags')) {
-          return new Response(JSON.stringify({ models: [{ name: 'nomic-embed-text:latest' }] }));
+          return new Response(JSON.stringify({ models: [{ name: 'snowflake-arctic-embed2:latest' }] }));
         }
         capturedBody = init?.body as string;
         return new Response(JSON.stringify({ embeddings: [[0.1], [0.2], [0.3]] }));
@@ -170,7 +170,7 @@ describe('EmbeddingProvider', () => {
       const fakeEmb = [0.1, 0.2, 0.3];
       mockFetch(async (url: string) => {
         if (url.includes('/api/tags')) {
-          return new Response(JSON.stringify({ models: [{ name: 'nomic-embed-text:latest' }] }));
+          return new Response(JSON.stringify({ models: [{ name: 'snowflake-arctic-embed2:latest' }] }));
         }
         return new Response(JSON.stringify({ embeddings: [fakeEmb] }));
       });
@@ -190,7 +190,7 @@ describe('EmbeddingProvider', () => {
     it('returns null for missing positions in partial response', async () => {
       mockFetch(async (url: string) => {
         if (url.includes('/api/tags')) {
-          return new Response(JSON.stringify({ models: [{ name: 'nomic-embed-text:latest' }] }));
+          return new Response(JSON.stringify({ models: [{ name: 'snowflake-arctic-embed2:latest' }] }));
         }
         // Return only 2 embeddings for 3 inputs
         return new Response(JSON.stringify({ embeddings: [[0.1], [0.2]] }));
@@ -205,7 +205,7 @@ describe('EmbeddingProvider', () => {
     it('returns all-null on HTTP error (thrown)', async () => {
       mockFetch(async (url: string) => {
         if (url.includes('/api/tags')) {
-          return new Response(JSON.stringify({ models: [{ name: 'nomic-embed-text:latest' }] }));
+          return new Response(JSON.stringify({ models: [{ name: 'snowflake-arctic-embed2:latest' }] }));
         }
         throw new Error('Internal Server Error');
       });
@@ -217,7 +217,7 @@ describe('EmbeddingProvider', () => {
     it('returns all-null on non-2xx response from /api/embed', async () => {
       mockFetch(async (url: string) => {
         if (url.includes('/api/tags')) {
-          return new Response(JSON.stringify({ models: [{ name: 'nomic-embed-text:latest' }] }));
+          return new Response(JSON.stringify({ models: [{ name: 'snowflake-arctic-embed2:latest' }] }));
         }
         return new Response('Service Unavailable', { status: 503 });
       });
@@ -229,7 +229,7 @@ describe('EmbeddingProvider', () => {
     it('is non-throwing on malformed response', async () => {
       mockFetch(async (url: string) => {
         if (url.includes('/api/tags')) {
-          return new Response(JSON.stringify({ models: [{ name: 'nomic-embed-text:latest' }] }));
+          return new Response(JSON.stringify({ models: [{ name: 'snowflake-arctic-embed2:latest' }] }));
         }
         return new Response('not json');
       });
@@ -243,7 +243,7 @@ describe('EmbeddingProvider', () => {
       mockFetch(async (url: string) => {
         if (url.includes('/api/tags')) {
           tagsCalled = true;
-          return new Response(JSON.stringify({ models: [{ name: 'nomic-embed-text:latest' }] }));
+          return new Response(JSON.stringify({ models: [{ name: 'snowflake-arctic-embed2:latest' }] }));
         }
         return new Response(JSON.stringify({ embeddings: [[0.1], [0.2]] }));
       });
@@ -258,7 +258,7 @@ describe('EmbeddingProvider', () => {
       let callCount = 0;
       mockFetch(async () => {
         callCount++;
-        return new Response(JSON.stringify({ models: [{ name: 'nomic-embed-text:latest' }] }));
+        return new Response(JSON.stringify({ models: [{ name: 'snowflake-arctic-embed2:latest' }] }));
       });
       const provider = new EmbeddingProvider();
       await provider.isAvailable();
@@ -273,7 +273,7 @@ describe('EmbeddingProvider', () => {
       let fetchCalled = false;
       mockFetch(async () => {
         fetchCalled = true;
-        return new Response(JSON.stringify({ models: [{ name: 'nomic-embed-text:latest' }] }));
+        return new Response(JSON.stringify({ models: [{ name: 'snowflake-arctic-embed2:latest' }] }));
       });
       const provider = new EmbeddingProvider({ baseUrl: 'http://evil.example.com:11434' });
       expect(await provider.isAvailable()).toBe(false);
@@ -398,7 +398,7 @@ describe('EmbeddingProvider baseUrl validation', () => {
 
   it('allows localhost baseUrl (default)', async () => {
     mockFetch(async () =>
-      new Response(JSON.stringify({ models: [{ name: 'nomic-embed-text:latest' }] }))
+      new Response(JSON.stringify({ models: [{ name: 'snowflake-arctic-embed2:latest' }] }))
     );
     const provider = new EmbeddingProvider();
     // Default is localhost — should proceed normally

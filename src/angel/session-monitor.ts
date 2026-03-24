@@ -129,3 +129,61 @@ export function hasIdleWarning(
     return false;
   }
 }
+
+/**
+ * Find sessions that were warned about being idle but are STILL idle.
+ * These sessions need auto-close: the warning was sent but nobody acted on it.
+ *
+ * Criteria:
+ * - Status is 'active'
+ * - An idle warning was already sent
+ * - Session is still idle (no observations since the warning)
+ * - Warning was sent > escalationMinutes ago
+ */
+export function getEscalatedIdleSessions(
+  db: Database,
+  escalationMinutes: number = 30,
+): Array<{ session_id: string; project: string; idle_minutes: number; topic: string | null }> {
+  try {
+    const now = Math.floor(Date.now() / 1000);
+    const warningCutoff = now - (escalationMinutes * 60);
+
+    // Find sessions that have an idle warning older than the escalation window
+    // AND are still active with no activity since the warning
+    const sessions = cachedPrepare(db,
+      `SELECT s.session_id, s.project,
+              t.topic,
+              sm.created_at_epoch AS warning_epoch,
+              COALESCE(MAX(o.timestamp_epoch), s.created_at_epoch) AS last_activity_epoch
+       FROM sessions s
+       INNER JOIN session_messages sm
+         ON sm.target_session = s.session_id
+         AND sm.sender = 'angel'
+         AND sm.message_type = 'advisory'
+         AND sm.content LIKE '%idle%'
+       LEFT JOIN observations o ON o.session_id = s.session_id
+       LEFT JOIN thread_state t ON t.session_id = s.session_id
+       WHERE s.status = 'active'
+         AND sm.created_at_epoch < ?
+       GROUP BY s.session_id
+       HAVING last_activity_epoch < sm.created_at_epoch
+       ORDER BY last_activity_epoch ASC
+       LIMIT 5`
+    ).all(warningCutoff) as Array<{
+      session_id: string;
+      project: string;
+      topic: string | null;
+      warning_epoch: number;
+      last_activity_epoch: number;
+    }>;
+
+    return sessions.map(s => ({
+      session_id: s.session_id,
+      project: s.project,
+      topic: s.topic,
+      idle_minutes: Math.floor((now - s.last_activity_epoch) / 60),
+    }));
+  } catch {
+    return [];
+  }
+}

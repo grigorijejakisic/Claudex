@@ -1,5 +1,5 @@
 /**
- * Ollama nomic-embed-text client with health check and graceful fallback.
+ * Ollama embedding client with health check and graceful fallback.
  * Non-throwing class — all public methods return null/false on error.
  */
 
@@ -53,7 +53,7 @@ export class EmbeddingProvider {
 
   constructor(config?: { baseUrl?: string; model?: string }) {
     this.baseUrl = config?.baseUrl ?? 'http://localhost:11434';
-    this.model = config?.model ?? 'nomic-embed-text';
+    this.model = config?.model ?? 'snowflake-arctic-embed2';
     this.available = null;
     this.urlBlocked = false;
 

@@ -3,6 +3,7 @@
  *
  * Each tick:
  *   1. Check for idle active sessions → send warnings
+ *   1b. Auto-close escalated idle sessions (warned but still idle after 30min)
  *   2. Find completed sessions the Angel hasn't processed → extract patterns
  *   3. Classify domains for unclassified sessions
  *   4. Guardian duties (pruning, verification, orphan cleanup)
@@ -21,12 +22,14 @@ import type Anthropic from '@anthropic-ai/sdk';
 import type { Database } from 'better-sqlite3';
 import { cachedPrepare } from '../core/stmt-cache.js';
 import type { AngelConfig } from './types.js';
-import { getIdleSessions, getUnprocessedSessions, hasIdleWarning, markSessionProcessed } from './session-monitor.js';
+import { getIdleSessions, getUnprocessedSessions, hasIdleWarning, markSessionProcessed, getEscalatedIdleSessions } from './session-monitor.js';
 import { sendIdleWarning } from './message-sender.js';
 import { extractPatternsFromSession, classifySessionDomains } from './pattern-extractor.js';
 import { getUnverifiedFrequentPatterns, incrementVerificationCount } from '../intelligence/experience-patterns.js';
 import { monitorMemoryFiles } from './memory-monitor.js';
 import { consolidateObservationBatch, shouldConsolidate, markConsolidationRan } from './consolidator.js';
+import { getSessionEvents, synthesizeSessionSummary, saveSessionSummary } from '../core/session-events.js';
+import { captureRecallFlowEntry } from '../adapters/shared/lifecycle.js';
 
 export interface HeartbeatContext {
   db: Database;
@@ -44,8 +47,10 @@ export interface TickResult {
   patterns_pruned?: number;
   memory_entries_migrated?: number;
   artifacts_linked?: number;
+  embeddings_backfilled?: number;
   observations_consolidated?: number;
   consolidation_clusters?: number;
+  sessions_auto_closed?: number;
   rl_training_episodes?: number;
   rl_avg_reward?: number;
   duration_ms: number;
@@ -76,6 +81,47 @@ export async function heartbeatTick(ctx: HeartbeatContext): Promise<TickResult> 
         const sent = sendIdleWarning(ctx.db, session.session_id, session.idle_minutes, session.topic);
         if (sent) result.idle_warnings_sent++;
       }
+    }
+
+    // Phase 1b: Auto-close escalated idle sessions
+    // Sessions that were warned but are STILL idle get closed with summary + recall capture.
+    // Intentionally lighter than /endsession (no checkpoint/pruning — no user present).
+    // This prevents sessions from being orphaned when the user walks away.
+    try {
+      const escalated = getEscalatedIdleSessions(ctx.db, ctx.config.autoCloseMinutesAfterWarning);
+
+      for (const session of escalated) {
+        try {
+          // 1. Synthesize session summary from events
+          const events = getSessionEvents(ctx.db, session.session_id);
+          const summary = synthesizeSessionSummary(events);
+          if (summary) {
+            saveSessionSummary(ctx.db, session.session_id, summary);
+          }
+
+          // 2. Capture recall flow entry for future session context
+          captureRecallFlowEntry(ctx.db, session.session_id, session.project, events);
+
+          // 3. Close the session
+          const now = Math.floor(Date.now() / 1000);
+          cachedPrepare(ctx.db,
+            `UPDATE sessions SET status = 'completed', ended_at_epoch = ? WHERE session_id = ?`
+          ).run(now, session.session_id);
+
+          // 4. Record the auto-close event
+          cachedPrepare(ctx.db,
+            `INSERT INTO session_events (session_id, project, event_type, entity, action, detail)
+             VALUES (?, ?, 'angel_auto_close', 'angel', 'auto_closed',
+                     'Session auto-closed after ' || ? || ' minutes idle (warned, no response)')`
+          ).run(session.session_id, session.project, session.idle_minutes);
+
+          result.sessions_auto_closed = (result.sessions_auto_closed ?? 0) + 1;
+        } catch {
+          // Individual session auto-close failure — continue with others
+        }
+      }
+    } catch {
+      // Non-critical — auto-close failures don't break the heartbeat
     }
 
     // Phase 2: Process completed sessions (pattern extraction)
@@ -188,6 +234,25 @@ export async function heartbeatTick(ctx: HeartbeatContext): Promise<TickResult> 
       }
     } catch {
       // Non-critical — linking failure doesn't break the heartbeat
+    }
+
+    // Phase 6b: Embedding backfill — process unembedded artifacts, journal, threads.
+    // Only runs when no heavy work happened this tick (same constraint as RL training).
+    // Rate-limited internally by backfillEmbeddings batch size.
+    try {
+      const heavyWorkRan = result.sessions_processed > 0
+        || (result.artifacts_linked ?? 0) > 0
+        || (result.sessions_auto_closed ?? 0) > 0;
+      if (!heavyWorkRan) {
+        const { backfillEmbeddings } = await import('../embeddings/embed-pipeline.js');
+        const backfill = await backfillEmbeddings(ctx.db, 10);
+        const total = backfill.artifacts + backfill.journal + backfill.threads;
+        if (total > 0) {
+          result.embeddings_backfilled = total;
+        }
+      }
+    } catch {
+      // Non-critical — backfill failure doesn't break the heartbeat
     }
 
     // Phase 7: Observation consolidation — merge similar observations into summaries

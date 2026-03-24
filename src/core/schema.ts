@@ -195,7 +195,8 @@ CREATE TABLE IF NOT EXISTS thread_state (
   key_exchanges TEXT NOT NULL DEFAULT '[]'
     CHECK (json_valid(key_exchanges)),
   updated_at_epoch INTEGER NOT NULL DEFAULT (unixepoch()),
-  summary_embedding BLOB
+  summary_embedding BLOB,
+  qdrant_synced INTEGER NOT NULL DEFAULT 0
 );
 
 -- checkpoint_tracking

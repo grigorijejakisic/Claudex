@@ -865,14 +865,14 @@ export function spreadActivation(
       const boost = SPREAD_FACTOR * link.strength * sourceActivation;
       if (boost <= 0) continue;
 
-      // Read current activation, apply boost, write back
+      // Read current activation, apply boost, write back — skip packed artifacts
       const target = cachedPrepare(db,
-        `SELECT activation_score FROM artifacts WHERE id = ?`
-      ).get(link.target_id) as { activation_score: number | null } | undefined;
+        `SELECT activation_score, state FROM artifacts WHERE id = ?`
+      ).get(link.target_id) as { activation_score: number | null; state: string } | undefined;
 
-      if (!target) continue;
+      if (!target || target.state === 'packed') continue;
       const currentActivation = target.activation_score ?? 0;
-      const newActivation = currentActivation + boost;
+      const newActivation = Math.min(currentActivation + boost, 10.0); // Cap to prevent unbounded growth
 
       cachedPrepare(db,
         `UPDATE artifacts SET activation_score = ? WHERE id = ?`

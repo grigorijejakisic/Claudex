@@ -372,6 +372,10 @@ function cosine(a: ArrayLike<number>, b: ArrayLike<number>): number {
  *
  * Non-throwing — returns empty array on any failure.
  */
+/**
+ * Synchronous thread search — SQLite BLOB cosine only.
+ * For Qdrant-accelerated search, use findSimilarThreadsAsync.
+ */
 export function findSimilarThreads(
   db: Database,
   queryEmbedding: number[] | Float32Array,
@@ -380,58 +384,116 @@ export function findSimilarThreads(
   excludeSessionId?: string,
 ): SimilarThread[] {
   try {
-    // Get recent thread_state rows with summary_embedding populated.
-    // Join with sessions to scope by project.
-    const rows = db.prepare(
-      `SELECT t.session_id, t.topic, t.summary, t.key_exchanges, t.summary_embedding
-       FROM thread_state t
-       JOIN sessions s ON s.session_id = t.session_id
-       WHERE s.project = ?
-         AND t.summary_embedding IS NOT NULL
-         ${excludeSessionId ? 'AND t.session_id != ?' : ''}
-       ORDER BY t.updated_at_epoch DESC
-       LIMIT 20`
-    ).all(...(excludeSessionId ? [project, excludeSessionId] : [project])) as Array<{
-      session_id: string;
-      topic: string | null;
-      summary: string | null;
-      key_exchanges: string;
-      summary_embedding: Buffer;
-    }>;
-
-    const results: SimilarThread[] = [];
-
-    for (const row of rows) {
-      try {
-        const vec = new Float32Array(
-          row.summary_embedding.buffer,
-          row.summary_embedding.byteOffset,
-          row.summary_embedding.byteLength / 4,
-        );
-        const sim = cosine(queryEmbedding, vec);
-        if (sim >= threshold) {
-          let parsedExchanges: Array<{ role: string; gist: string }> = [];
-          try {
-            parsedExchanges = JSON.parse(row.key_exchanges);
-          } catch { /* corrupt JSON */ }
-
-          results.push({
-            session_id: row.session_id,
-            topic: row.topic,
-            summary: row.summary,
-            key_exchanges: parsedExchanges.filter(e => e.role !== '__cooldown'),
-            similarity: sim,
-          });
-        }
-      } catch {
-        // Skip corrupted rows
-      }
-    }
-
-    // Sort by similarity descending
-    results.sort((a, b) => b.similarity - a.similarity);
-    return results.slice(0, 3); // Top 3
+    return findSimilarThreadsSQLite(db, queryEmbedding, project, threshold, excludeSessionId);
   } catch {
     return [];
   }
+}
+
+/** SQLite BLOB cosine — loads embeddings and computes similarity in JS. */
+function findSimilarThreadsSQLite(
+  db: Database,
+  queryEmbedding: number[] | Float32Array,
+  project: string,
+  threshold: number,
+  excludeSessionId?: string,
+): SimilarThread[] {
+  const rows = db.prepare(
+    `SELECT t.session_id, t.topic, t.summary, t.key_exchanges, t.summary_embedding
+     FROM thread_state t
+     JOIN sessions s ON s.session_id = t.session_id
+     WHERE s.project = ?
+       AND t.summary_embedding IS NOT NULL
+       ${excludeSessionId ? 'AND t.session_id != ?' : ''}
+     ORDER BY t.updated_at_epoch DESC
+     LIMIT 20`
+  ).all(...(excludeSessionId ? [project, excludeSessionId] : [project])) as Array<{
+    session_id: string;
+    topic: string | null;
+    summary: string | null;
+    key_exchanges: string;
+    summary_embedding: Buffer;
+  }>;
+
+  const results: SimilarThread[] = [];
+
+  for (const row of rows) {
+    try {
+      const vec = new Float32Array(
+        row.summary_embedding.buffer,
+        row.summary_embedding.byteOffset,
+        row.summary_embedding.byteLength / 4,
+      );
+      const sim = cosine(queryEmbedding, vec);
+      if (sim >= threshold) {
+        let parsedExchanges: Array<{ role: string; gist: string }> = [];
+        try {
+          parsedExchanges = JSON.parse(row.key_exchanges);
+        } catch { /* corrupt JSON */ }
+
+        results.push({
+          session_id: row.session_id,
+          topic: row.topic,
+          summary: row.summary,
+          key_exchanges: parsedExchanges.filter(e => e.role !== '__cooldown'),
+          similarity: sim,
+        });
+      }
+    } catch {
+      // Skip corrupted rows
+    }
+  }
+
+  results.sort((a, b) => b.similarity - a.similarity);
+  return results.slice(0, 3);
+}
+
+/**
+ * Async Qdrant-accelerated thread search. Use this from async callers
+ * (UserPromptSubmit) for true KNN acceleration.
+ * Falls back to SQLite if Qdrant is unavailable.
+ */
+export async function findSimilarThreadsAsync(
+  db: Database,
+  queryEmbedding: number[] | Float32Array,
+  project: string,
+  threshold: number = 0.8,
+  excludeSessionId?: string,
+): Promise<SimilarThread[]> {
+  try {
+    const { isQdrantAvailable, searchThreads } = await import('../embeddings/qdrant-client.js');
+    if (isQdrantAvailable()) {
+      const embedding = Array.from(queryEmbedding);
+      const qdrantResults = await searchThreads(embedding, project, 10);
+
+      const results: SimilarThread[] = [];
+      for (const r of qdrantResults) {
+        if (r.score < threshold) continue;
+        const sessionId = r.payload?.session_id as string;
+        if (!sessionId || sessionId === excludeSessionId) continue;
+
+        // Hydrate from DB for full thread data
+        const thread = db.prepare(
+          'SELECT topic, summary, key_exchanges FROM thread_state WHERE session_id = ?'
+        ).get(sessionId) as { topic: string | null; summary: string | null; key_exchanges: string } | undefined;
+
+        if (!thread) continue;
+
+        let parsedExchanges: Array<{ role: string; gist: string }> = [];
+        try { parsedExchanges = JSON.parse(thread.key_exchanges); } catch { /* */ }
+
+        results.push({
+          session_id: sessionId,
+          topic: thread.topic,
+          summary: thread.summary,
+          key_exchanges: parsedExchanges.filter(e => e.role !== '__cooldown'),
+          similarity: r.score,
+        });
+      }
+
+      if (results.length > 0) return results.slice(0, 3);
+    }
+  } catch { /* Qdrant unavailable — fall through to SQLite */ }
+
+  return findSimilarThreadsSQLite(db, queryEmbedding, project, threshold, excludeSessionId);
 }

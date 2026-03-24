@@ -492,6 +492,62 @@ export function storeConversationTurn(
 }
 
 /**
+ * Store the user's prompt as a new conversation turn (assistant_text filled later by Stop hook).
+ * Called by UserPromptSubmit. Non-throwing.
+ *
+ * Split-write pattern: UserPromptSubmit creates the row with user_text,
+ * Stop hook fills in assistant_text via updateConversationTurnAssistant.
+ * This ensures user messages survive even if the session dies before Stop fires.
+ */
+export function storeConversationTurnUserText(
+  db: Database.Database,
+  sessionId: string,
+  project: string,
+  userText: string,
+): void {
+  if (!userText) return;
+  try {
+    const lastTurn = cachedPrepare(db,
+      `SELECT MAX(turn_number) as max_turn FROM conversation_turns WHERE session_id = ?`
+    ).get(sessionId) as { max_turn: number | null } | undefined;
+    const turnNumber = (lastTurn?.max_turn ?? -1) + 1;
+
+    cachedPrepare(db,
+      `INSERT INTO conversation_turns (session_id, project, turn_number, user_text, assistant_text)
+       VALUES (?, ?, ?, ?, NULL)`
+    ).run(sessionId, project, turnNumber, userText);
+  } catch {
+    // Non-throwing
+  }
+}
+
+/**
+ * Fill in assistant_text on the latest turn that's missing it.
+ * Called by Stop hook to complete the split-write from UserPromptSubmit.
+ * Returns true if a row was updated, false if no pending turn was found.
+ * Non-throwing.
+ */
+export function updateConversationTurnAssistant(
+  db: Database.Database,
+  sessionId: string,
+  assistantText: string,
+): boolean {
+  try {
+    const result = cachedPrepare(db,
+      `UPDATE conversation_turns SET assistant_text = ?
+       WHERE id = (
+         SELECT id FROM conversation_turns
+         WHERE session_id = ? AND assistant_text IS NULL
+         ORDER BY turn_number DESC LIMIT 1
+       )`
+    ).run(assistantText, sessionId);
+    return (result.changes ?? 0) > 0;
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Persist a topic update to thread_state when a topic shift is detected.
  * Called by both CC hooks (UserPromptSubmit) and bridge (onContext) after
  * topic shift detection. Non-throwing.
