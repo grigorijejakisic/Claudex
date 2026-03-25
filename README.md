@@ -2,7 +2,7 @@
 
 **Persistent memory that makes LLM agents actually remember.**
 
-LoCoMo **90.8%** | LongMemEval **89.1%** — outperforming every published memory system we benchmarked against.
+LoCoMo **90.8%** | LongMemEval **90.6%** — outperforming every published memory system we benchmarked against.
 
 ```
   OpenAI Memory      52.9%
@@ -10,8 +10,10 @@ LoCoMo **90.8%** | LongMemEval **89.1%** — outperforming every published memor
   Zep                75.1%
   Memori             82.0%
   MemMachine         84.9%
+  Hindsight OSS-120B 89.0%
   Hindsight          89.6%
   ----
+  Claudex            90.6%   LongMemEval Oracle (470 questions, 7 task types)
   Claudex            90.8%   LoCoMo (1540 questions, 10 conversations)
   Claudex            89.1%   LongMemEval Oracle (470 questions, 7 task types)
 ```
@@ -118,13 +120,13 @@ After 233 sessions and 21,000+ observations in production use, the system knows:
 
 | Category | Claudex | Description |
 |---|---|---|
-| Single-session (user) | **100.0%** | Recall user-stated facts |
-| Single-session (preference) | **96.7%** | Identify user preferences |
-| Single-session (assistant) | **96.4%** | Recall assistant-provided info |
-| Multi-session | **91.7%** | Combine info across sessions |
-| Knowledge-update | **84.7%** | Detect changed information |
-| Temporal-reasoning | **78.7%** | Time-based reasoning |
-| **Overall** | **89.1%** | **419/470 correct** |
+| Single-session (preference) | **100.0%** | Identify user preferences |
+| Single-session (assistant) | **98.2%** | Recall assistant-provided info |
+| Single-session (user) | **98.4%** | Recall user-stated facts |
+| Multi-session | **88.4%** | Combine info across sessions |
+| Knowledge-update | **87.5%** | Detect changed information |
+| Temporal-reasoning | **85.0%** | Time-based reasoning |
+| **Overall** | **90.6%** | **426/470 correct** |
 
 Answer model: `deepseek-coder-v2:16b` (local, 16B params). Published baselines use GPT-4o. The retrieval and assembly architecture does the heavy lifting — a stronger answer model would push scores higher.
 

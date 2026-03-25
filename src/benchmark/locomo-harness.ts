@@ -66,13 +66,16 @@ interface BenchmarkResult {
 
 const OLLAMA_BASE = 'http://localhost:11434';
 const EMBED_MODEL = 'snowflake-arctic-embed2';
-const ANSWER_MODEL = 'deepseek-coder-v2:16b'; // Non-thinking local model for answer generation
-const JUDGE_MODEL = 'deepseek-coder-v2:16b'; // Non-thinking local model for judging
+const ANSWER_MODEL = 'deepseek-coder-v2:16b';
+const JUDGE_MODEL = 'deepseek-coder-v2:16b';
 const TOP_K_RETRIEVAL = 10;
+const USE_CLAUDE_CLI = false;
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
+
+import { execSync } from 'child_process';
 
 async function ollamaGenerate(model: string, prompt: string, maxTokens: number = 500): Promise<string> {
   const resp = await fetch(`${OLLAMA_BASE}/api/generate`, {
@@ -87,6 +90,28 @@ async function ollamaGenerate(model: string, prompt: string, maxTokens: number =
   });
   const data = await resp.json() as { response?: string };
   return (data.response ?? '').trim();
+}
+
+function claudeGenerate(prompt: string, _maxTokens: number = 500): string {
+  try {
+    const tmpFile = path.join(os.tmpdir(), `claudex_bench_${Date.now()}.txt`);
+    fs.writeFileSync(tmpFile, prompt, 'utf8');
+    const result = execSync(
+      `cat "${tmpFile}" | claude -p --model ${ANSWER_MODEL}`,
+      { timeout: 60000, maxBuffer: 1024 * 1024, encoding: 'utf8', shell: 'bash' }
+    );
+    try { fs.unlinkSync(tmpFile); } catch { /* */ }
+    return result.trim();
+  } catch {
+    return '';
+  }
+}
+
+async function generate(prompt: string, maxTokens: number = 500): Promise<string> {
+  if (USE_CLAUDE_CLI) {
+    return claudeGenerate(prompt, maxTokens);
+  }
+  return ollamaGenerate(ANSWER_MODEL, prompt, maxTokens);
 }
 
 async function embedText(provider: EmbeddingProvider, text: string): Promise<number[] | null> {
@@ -224,7 +249,6 @@ function retrieveContext(
 
   // Channel 1: FTS5 keyword search
   try {
-    // Escape FTS5 special characters
     const safeQuery = query.replace(/['"()*:^~]/g, ' ').trim();
     const words = safeQuery.split(/\s+/).filter(w => w.length > 2).slice(0, 10);
     if (words.length > 0) {
@@ -238,23 +262,22 @@ function retrieveContext(
            AND a.project = ?
          ORDER BY rank
          LIMIT ?`
-      ).all(ftsQuery, project, topK) as Array<{
+      ).all(ftsQuery, project, topK * 2) as Array<{
         id: number; content: string; artifact_type: string; rank: number;
       }>;
 
       for (let i = 0; i < ftsResults.length; i++) {
         const r = ftsResults[i];
-        const score = 1.0 / (60 + i); // RRF score
         results.set(r.id, {
           content: r.content,
-          score: (results.get(r.id)?.score ?? 0) + score,
+          score: (results.get(r.id)?.score ?? 0) + 1.0 / (60 + i),
           artifact_type: r.artifact_type,
         });
       }
     }
-  } catch { /* FTS may not have artifacts_fts table — non-fatal */ }
+  } catch { /* non-fatal */ }
 
-  // Channel 2: Vector similarity (if embedding available)
+  // Channel 2: Vector similarity
   if (queryEmbedding) {
     try {
       const candidates = db.prepare(
@@ -262,7 +285,7 @@ function retrieveContext(
          FROM artifacts
          WHERE project = ? AND embedding IS NOT NULL
          ORDER BY importance DESC
-         LIMIT 100`
+         LIMIT 200`
       ).all(project) as Array<{
         id: number; content: string; artifact_type: string; embedding: Buffer;
       }>;
@@ -270,24 +293,60 @@ function retrieveContext(
       const scored: Array<{ id: number; content: string; artifact_type: string; sim: number }> = [];
       for (const c of candidates) {
         const vec = new Float32Array(c.embedding.buffer, c.embedding.byteOffset, c.embedding.byteLength / 4);
-        const sim = cosineSimilarity(queryEmbedding, vec);
-        scored.push({ id: c.id, content: c.content, artifact_type: c.artifact_type, sim });
+        scored.push({ id: c.id, content: c.content, artifact_type: c.artifact_type, sim: cosineSimilarity(queryEmbedding, vec) });
       }
       scored.sort((a, b) => b.sim - a.sim);
 
-      for (let i = 0; i < Math.min(scored.length, topK); i++) {
+      for (let i = 0; i < Math.min(scored.length, topK * 2); i++) {
         const r = scored[i];
-        const score = 1.0 / (60 + i); // RRF score
         results.set(r.id, {
           content: r.content,
-          score: (results.get(r.id)?.score ?? 0) + score,
+          score: (results.get(r.id)?.score ?? 0) + 1.0 / (60 + i),
           artifact_type: r.artifact_type,
         });
       }
-    } catch { /* vector search failure — non-fatal */ }
+    } catch { /* non-fatal */ }
   }
 
-  // Sort by combined RRF score
+  // Channel 3: Multi-hop expansion — extract entities from top results, second FTS pass
+  try {
+    const topResults = [...results.entries()]
+      .sort((a, b) => b[1].score - a[1].score)
+      .slice(0, 5);
+
+    const entities = new Set<string>();
+    for (const [, { content }] of topResults) {
+      const words = content.match(/\b[A-Z][a-z]{2,}\b/g) || [];
+      for (const w of words) entities.add(w);
+    }
+
+    if (entities.size > 0) {
+      const entityQuery = [...entities].slice(0, 5).join(' OR ');
+      try {
+        const hopResults = db.prepare(
+          `SELECT a.id, a.content, a.artifact_type, bm25(artifacts_fts) as rank
+           FROM artifacts a
+           JOIN artifacts_fts fts ON fts.rowid = a.id
+           WHERE artifacts_fts MATCH ? AND a.project = ?
+           ORDER BY rank LIMIT ?`
+        ).all(entityQuery, project, topK) as Array<{
+          id: number; content: string; artifact_type: string; rank: number;
+        }>;
+
+        for (let i = 0; i < hopResults.length; i++) {
+          const r = hopResults[i];
+          if (!results.has(r.id)) {
+            results.set(r.id, {
+              content: r.content,
+              score: 0.5 / (60 + i),
+              artifact_type: r.artifact_type,
+            });
+          }
+        }
+      } catch { /* non-fatal */ }
+    }
+  } catch { /* non-fatal */ }
+
   return [...results.entries()]
     .map(([id, { content, score, artifact_type }]) => ({ id, content, score, artifact_type }))
     .sort((a, b) => b.score - a.score)
@@ -309,7 +368,7 @@ Question: ${question}
 
 Answer concisely in 1-2 sentences:`;
 
-  return ollamaGenerate(ANSWER_MODEL, prompt, 150);
+  return generate(prompt, 150);
 }
 
 // ---------------------------------------------------------------------------
@@ -327,7 +386,7 @@ Is the predicted answer semantically equivalent to or contains the key informati
 
 Reply with ONLY "yes" or "no":`;
 
-  const response = await ollamaGenerate(JUDGE_MODEL, prompt, 10);
+  const response = await generate(prompt, 10);
   return response.toLowerCase().startsWith('yes');
 }
 
