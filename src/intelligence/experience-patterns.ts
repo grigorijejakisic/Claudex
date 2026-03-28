@@ -602,7 +602,12 @@ function findMatchingPatternsFallback(
  * via pruneDeadPatterns, which callers should invoke periodically.
  * Non-throwing.
  */
-export function updatePatternScore(db: Database, id: string, delta: number): void {
+export function updatePatternScore(
+  db: Database,
+  id: string,
+  delta: number,
+  harmfulReason?: 'caused_bug' | 'wasted_time' | 'wrong_context' | 'outdated' | 'contradicted',
+): void {
   try {
     if (delta > 0) {
       cachedPrepare(db,
@@ -618,6 +623,17 @@ export function updatePatternScore(db: Database, id: string, delta: number): voi
              harmful_count = harmful_count + 1
          WHERE id = ?`
       ).run(delta, id);
+
+      // Append structured harmful reason to root_cause for post-hoc analysis
+      if (harmfulReason) {
+        try {
+          const now = Math.floor(Date.now() / 1000);
+          const tag = `[harmful:${harmfulReason}:${now}]`;
+          cachedPrepare(db,
+            `UPDATE experience_patterns SET root_cause = COALESCE(root_cause, '') || ' ' || ? WHERE id = ?`
+          ).run(tag, id);
+        } catch { /* non-critical */ }
+      }
     }
   } catch {
     // Non-throwing
