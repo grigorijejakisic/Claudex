@@ -18,6 +18,26 @@ import { ulid } from 'ulid';
 import { cachedPrepare } from '../core/stmt-cache.js';
 import { tokenizeQuery } from '../shared/search-utils.js';
 import { GLOBAL_PROJECT_SCOPE } from '../shared/constants.js';
+
+/**
+ * Per-event exponential decay formula (CASS-inspired).
+ * Computes a decayed score at query time using helpful/harmful counts
+ * and time since creation. 90-day half-life, 4x harmful multiplier.
+ *
+ * Formula: (helpful - 4*harmful) * 0.5^(days/90) * maturity_mult
+ * Where maturity_mult: candidate=0.5, established=1.0, proven=1.5
+ *
+ * Used as a SQL expression in ORDER BY clauses for retrieval ranking.
+ */
+const DECAYED_SCORE_SQL = `(
+  (ep.helpful_count - 4.0 * ep.harmful_count)
+  * POWER(0.5, CAST((unixepoch() - ep.created_at_epoch) AS REAL) / (90.0 * 86400.0))
+  * CASE ep.maturity
+      WHEN 'proven' THEN 1.5
+      WHEN 'established' THEN 1.0
+      ELSE 0.5
+    END
+)`;
 import { isLocalOrPrivateUrl } from '../embeddings/embedding-provider.js';
 import { fetchJsonWithTimeout } from '../shared/fetch-utils.js';
 import type { EnrichmentProvider } from './enrichment.js';
@@ -468,7 +488,7 @@ export function findMatchingPatterns(
          CASE WHEN ep.source_project = ? THEN 0 ELSE 1 END,
          CASE ep.severity WHEN 'critical' THEN 0 WHEN 'important' THEN 1 ELSE 2 END,
          fts.rank,
-         ep.score DESC
+         ${DECAYED_SCORE_SQL} DESC
        LIMIT ?`
     ).all(ftsQuery, project, GLOBAL_PROJECT_SCOPE, project, safeLimit * 2) as ExperiencePattern[];
 
@@ -580,14 +600,14 @@ function findMatchingPatternsFallback(
     const likeParams = keywords.map(k => `%${k}%`);
 
     return cachedPrepare(db,
-      `SELECT * FROM experience_patterns
-       WHERE score >= 2
-         AND (source_project = ? OR source_project = ?)
-         AND (${conditions})
+      `SELECT * FROM experience_patterns ep
+       WHERE ep.score >= 2
+         AND (ep.source_project = ? OR ep.source_project = ?)
+         AND (${conditions.replace(/trigger_context/g, 'ep.trigger_context')})
        ORDER BY
-         CASE WHEN source_project = ? THEN 0 ELSE 1 END,
-         CASE severity WHEN 'critical' THEN 0 WHEN 'important' THEN 1 ELSE 2 END,
-         score DESC
+         CASE WHEN ep.source_project = ? THEN 0 ELSE 1 END,
+         CASE ep.severity WHEN 'critical' THEN 0 WHEN 'important' THEN 1 ELSE 2 END,
+         ${DECAYED_SCORE_SQL} DESC
        LIMIT ?`
     ).all(project, GLOBAL_PROJECT_SCOPE, ...likeParams, project, limit) as ExperiencePattern[];
   } catch {
@@ -743,12 +763,12 @@ export function matchIntentTriggeredPatterns(
     // Uses LIKE as a lightweight JSON array search — trigger_intents is a small JSON array.
     const intentLike = `%"${classifiedIntent.replace(/"/g, '')}"%`;
     return cachedPrepare(db,
-      `SELECT * FROM experience_patterns
-       WHERE retrieval_mode = 'categorical'
-         AND trigger_intents LIKE ?
-         AND score >= 2
-         AND (source_project = ? OR source_project = ?)
-       ORDER BY score DESC
+      `SELECT ep.* FROM experience_patterns ep
+       WHERE ep.retrieval_mode = 'categorical'
+         AND ep.trigger_intents LIKE ?
+         AND ep.score >= 2
+         AND (ep.source_project = ? OR ep.source_project = ?)
+       ORDER BY ${DECAYED_SCORE_SQL} DESC
        LIMIT ?`
     ).all(intentLike, project, GLOBAL_PROJECT_SCOPE, safeLimit) as ExperiencePattern[];
   } catch {
