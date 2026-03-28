@@ -16,6 +16,7 @@ import { cachedPrepare } from '../core/stmt-cache.js';
 
 export interface CrossSessionActivity {
   session_id: string;
+  name: string | null;
   files_editing: string[];
   recent_tools: string[];
   topic: string | null;
@@ -44,7 +45,7 @@ export function getCrossSessionActivity(
 
     // Single query: sessions + topic + last activity (was 1 + 4×N = 21 queries)
     const sessions = cachedPrepare(db,
-      `SELECT s.session_id, s.observation_count,
+      `SELECT s.session_id, s.name, s.observation_count,
               t.topic,
               MAX(o.timestamp_epoch) AS last_activity_epoch
        FROM sessions s
@@ -56,7 +57,7 @@ export function getCrossSessionActivity(
        ORDER BY last_activity_epoch DESC
        LIMIT 5`
     ).all(project, currentSessionId, oneHourAgo) as Array<{
-      session_id: string; observation_count: number;
+      session_id: string; name: string | null; observation_count: number;
       topic: string | null; last_activity_epoch: number;
     }>;
 
@@ -97,6 +98,7 @@ export function getCrossSessionActivity(
 
     return sessions.map(s => ({
       session_id: s.session_id,
+      name: s.name,
       files_editing: (filesMap.get(s.session_id) ?? []).slice(0, 10),
       recent_tools: (toolsMap.get(s.session_id) ?? []).slice(0, 10),
       topic: s.topic,
@@ -189,7 +191,8 @@ export function formatCrossSessionAwareness(
         : '';
       const topicStr = a.topic ? ` (${a.topic})` : '';
       const ago = Math.floor((Date.now() / 1000 - a.last_activity_epoch) / 60);
-      parts.push(`- Session ${a.session_id.substring(0, 8)}${topicStr}${filesStr} — ${ago}m ago`);
+      const label = a.name ?? `session-${a.session_id.substring(0, 8)}`;
+      parts.push(`- **${label}**${topicStr}${filesStr} — ${ago}m ago`);
     }
   }
 

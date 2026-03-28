@@ -131,28 +131,36 @@ export function nameSession(db: Database, sessionId: string, name: string): void
 }
 
 /**
- * Auto-generate a session name from thread topic.
+ * Auto-generate a session name: project-sN-pid.
+ * Format: claudex-v3-s38-12345 (project + session number + PID).
  * Only sets name if the session doesn't already have one.
  */
-export function autoNameSession(db: Database, sessionId: string, topic: string): void {
+export function autoNameSession(db: Database, sessionId: string, _topic: string): void {
   try {
     const existing = cachedPrepare(db,
-      `SELECT name FROM sessions WHERE session_id = ?`
-    ).get(sessionId) as { name: string | null } | undefined;
+      `SELECT name, project FROM sessions WHERE session_id = ?`
+    ).get(sessionId) as { name: string | null; project: string | null } | undefined;
 
     if (existing?.name) return; // already named
 
-    const slug = topic.toLowerCase()
-      .replace(/[^a-z0-9\s-]/g, '')
-      .replace(/\s+/g, '-')
-      .replace(/-+/g, '-')
-      .replace(/^-|-$/g, '')
-      .slice(0, 40);
+    const project = existing?.project ?? 'unknown';
+    // Shorten project name: "claudex-v3" from "claudex-v3", "nexus" from "nexus-e53c6c93"
+    const projSlug = project.replace(/-[a-f0-9]{8}$/, '').toLowerCase()
+      .replace(/[^a-z0-9-]/g, '').slice(0, 20);
 
-    if (slug.length >= 3) {
+    // Session number: count completed + active sessions for this project
+    const sessionCount = cachedPrepare(db,
+      `SELECT COUNT(*) as c FROM sessions WHERE project = ?`
+    ).get(project) as { c: number };
+    const num = sessionCount.c;
+
+    const pid = process.pid;
+    const name = `${projSlug}-s${num}-${pid}`;
+
+    if (name.length >= 3) {
       cachedPrepare(db,
         `UPDATE sessions SET name = ? WHERE session_id = ?`
-      ).run(slug, sessionId);
+      ).run(name, sessionId);
     }
   } catch { /* non-throwing */ }
 }
