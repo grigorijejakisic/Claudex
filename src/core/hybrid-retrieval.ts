@@ -683,10 +683,12 @@ export async function hybridSearchAsync(
 
     scored.sort((a, b) => b.hybrid_score - a.hybrid_score);
 
-    // Cross-encoder reranking (Hindsight-inspired): after RRF + three-factor scoring,
-    // run a neural cross-encoder that jointly scores (query, candidate) pairs.
-    // Uses Ollama with a reranking model. Non-blocking: skips if unavailable.
-    // Only reranks top candidates (not the full set) for performance.
+    // LLM-as-judge reranking (Hindsight-inspired, simplified):
+    // NOT a true neural cross-encoder (ms-marco-MiniLM) — uses Ollama text generation
+    // to rate relevance 0-10 for each (query, candidate) pair. Lower precision than
+    // a real cross-encoder but zero additional model dependencies.
+    // TODO: Replace with actual cross-encoder model when Ollama supports reranking API.
+    // Non-blocking: skips if unavailable. Only reranks top candidates for performance.
     try {
       const topCandidates = scored.slice(0, Math.min(20, scored.length));
       if (topCandidates.length > 1) {

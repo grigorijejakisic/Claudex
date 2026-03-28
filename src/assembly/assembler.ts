@@ -357,6 +357,28 @@ export function assembleFullContext(params: FullAssemblyParams): InjectPayload {
       }
     } catch { /* non-fatal */ }
 
+    // Priority 4.05: Entity summaries — pre-computed knowledge about recurring entities.
+    // Angel generates these for entities appearing in 3+ sessions. Surfaces consolidated
+    // understanding so agents don't need to search for "what is X?"
+    try {
+      const entitySummaries = cachedPrepare(params.db,
+        `SELECT title, content FROM artifacts
+         WHERE artifact_type = 'entity_summary' AND project = ? AND status = 'active'
+         ORDER BY importance DESC, created_at_epoch DESC LIMIT 5`
+      ).all(params.project) as Array<{ title: string; content: string }>;
+
+      if (entitySummaries.length > 0) {
+        const lines = entitySummaries.map(e => `- **${e.title}**: ${e.content.slice(0, 200)}`);
+        const section = `## Entity Knowledge\n${lines.join('\n')}`;
+        const cost = estimateTokens(section);
+        if (cost <= budget) {
+          sections.push(section);
+          budget -= cost;
+          sources.push('entity_summaries');
+        }
+      }
+    } catch { /* non-fatal */ }
+
     // Priority 4.1: Proven principles — proactive injection of established patterns.
     // Unlike experience warnings (keyword-matched per turn), these fire unconditionally
     // at every session start. They represent accumulated wisdom: always-applicable rules.
@@ -465,6 +487,7 @@ export function assembleFullContext(params: FullAssemblyParams): InjectPayload {
           limit: 10,
           globalScope: true,
           excludeSuperseded: true,
+          budgetTokens: budget > 0 ? budget : undefined,
         });
         if (searchResults.length > 0) {
           materializedArtifacts = searchResults;
