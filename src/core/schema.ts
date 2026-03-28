@@ -536,6 +536,24 @@ CREATE INDEX IF NOT EXISTS idx_sessmsg_target
 CREATE INDEX IF NOT EXISTS idx_sessmsg_sender
   ON session_messages(sender, created_at_epoch DESC);
 
+-- V12: solution_outcomes — track whether retrieved knowledge actually helped
+CREATE TABLE IF NOT EXISTS solution_outcomes (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  session_id TEXT NOT NULL,
+  project TEXT NOT NULL,
+  pattern_id TEXT,
+  artifact_id INTEGER,
+  approach TEXT NOT NULL,
+  outcome TEXT NOT NULL CHECK (outcome IN ('success', 'failure', 'partial', 'unknown')),
+  impact TEXT,
+  effectiveness_score REAL DEFAULT 0.5,
+  created_at_epoch INTEGER NOT NULL DEFAULT (unixepoch())
+);
+CREATE INDEX IF NOT EXISTS idx_outcomes_pattern
+  ON solution_outcomes(pattern_id, outcome);
+CREATE INDEX IF NOT EXISTS idx_outcomes_project
+  ON solution_outcomes(project, created_at_epoch DESC);
+
 -- V12: session_signals — stigmergic coordination between sessions
 CREATE TABLE IF NOT EXISTS session_signals (
   id INTEGER PRIMARY KEY AUTOINCREMENT,

@@ -169,6 +169,21 @@ export async function applyExperienceFeedback(
         }
       }
     }
+
+    // Outcome tracking: record whether injected patterns led to success or failure.
+    // Uses heuristic inference — correction = failure, no correction = success.
+    if (awaiting_feedback_ids.length > 0) {
+      try {
+        const { inferOutcomeFromSession } = await import('./outcome-tracker.js');
+        inferOutcomeFromSession(
+          db, sessionId, routedProject,
+          awaiting_feedback_ids,
+          correction_flagged,
+          true, // build assumed successful (we're in stop hook, code compiled)
+          !correction_flagged, // tests assumed passing if no correction
+        );
+      } catch { /* non-critical */ }
+    }
   } catch (e) {
     emitErrorTelemetry(db, sessionId, 'stop/exp_flags', e);
   } finally {

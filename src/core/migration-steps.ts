@@ -1028,6 +1028,26 @@ export function migrateV11toV12(db: Database): void {
   try {
     db.exec("CREATE INDEX IF NOT EXISTS idx_sessions_name ON sessions(name)");
   } catch { /* non-fatal */ }
+
+  // 5. Create solution_outcomes table (outcome tracking — Tier 2.1)
+  try {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS solution_outcomes (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        session_id TEXT NOT NULL,
+        project TEXT NOT NULL,
+        pattern_id TEXT,
+        artifact_id INTEGER,
+        approach TEXT NOT NULL,
+        outcome TEXT NOT NULL CHECK (outcome IN ('success', 'failure', 'partial', 'unknown')),
+        impact TEXT,
+        effectiveness_score REAL DEFAULT 0.5,
+        created_at_epoch INTEGER NOT NULL DEFAULT (unixepoch())
+      );
+      CREATE INDEX IF NOT EXISTS idx_outcomes_pattern ON solution_outcomes(pattern_id, outcome);
+      CREATE INDEX IF NOT EXISTS idx_outcomes_project ON solution_outcomes(project, created_at_epoch DESC);
+    `);
+  } catch { /* non-fatal */ }
 }
 
 /**
