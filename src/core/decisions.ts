@@ -48,6 +48,54 @@ export function insertDecision(
 }
 
 /**
+ * Upsert a decision by topic key — evolving decisions stay in one record.
+ * If a decision with the same topic_key exists in the project, update its content
+ * and bump revision count. Otherwise insert new.
+ *
+ * Topic key format: "domain/subject" (e.g., "architecture/auth-model", "decision/db-backend").
+ * Inspired by Engram's topic key upsert pattern.
+ */
+export function upsertDecisionByTopic(
+  db: Database,
+  decision: {
+    session_id: string;
+    project?: string;
+    content: string;
+    source: string;
+    topic_key: string;
+  },
+): number {
+  try {
+    const project = decision.project ?? '__global__';
+
+    // Check if a decision with this topic key exists
+    const existing = cachedPrepare(db,
+      `SELECT id, content FROM decisions
+       WHERE project = ? AND fingerprint = ? LIMIT 1`
+    ).get(project, `topic:${decision.topic_key}`) as { id: number; content: string } | undefined;
+
+    if (existing) {
+      // Update content, bump updated_at
+      cachedPrepare(db,
+        `UPDATE decisions SET content = ?, session_id = ?, source = ?,
+                updated_at_epoch = unixepoch() WHERE id = ?`
+      ).run(decision.content, decision.session_id, decision.source, existing.id);
+      return existing.id;
+    }
+
+    // Insert new with topic key as fingerprint prefix
+    const result = cachedPrepare(db,
+      `INSERT INTO decisions (session_id, project, content, source, fingerprint)
+       VALUES (?, ?, ?, ?, ?)`
+    ).run(decision.session_id, project, decision.content, decision.source, `topic:${decision.topic_key}`);
+
+    return Number(result.lastInsertRowid);
+  } catch {
+    return 0;
+  }
+}
+
+/**
  * Returns all decisions for a session, newest first.
  * Pass opts.limit to cap the result set (default: unlimited).
  */

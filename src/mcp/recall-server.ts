@@ -344,8 +344,9 @@ server.tool(
     type: z.enum(['decision', 'learning']).describe('Memory type'),
     project: z.string().optional().describe('Project scope (defaults to CWD project)'),
     agent_id: z.string().optional().describe('Agent identifier for multi-agent attribution'),
+    topic_key: z.string().optional().describe('Topic key for upsert (e.g., "architecture/auth-model"). Evolving decisions with the same topic key update in place instead of creating duplicates.'),
   },
-  async ({ content, type, project, agent_id }) => {
+  async ({ content, type, project, agent_id, topic_key }) => {
     const proj = project ?? defaultProject;
 
     if (!content) {
@@ -356,6 +357,19 @@ server.tool(
 
     // 6.4: Agent-ID attribution — prepend agent_id to session_id for tracking
     const sessionId = agent_id ? `${agent_id}:mcp:${proj}` : `mcp:${proj}`;
+
+    // Topic key upsert: evolving decisions stay in one record
+    if (type === 'decision' && topic_key) {
+      const { upsertDecisionByTopic } = await import('../core/decisions.js');
+      const id = upsertDecisionByTopic(getDb(), {
+        session_id: sessionId,
+        project: proj,
+        content,
+        source: 'explicit',
+        topic_key,
+      });
+      return { content: [{ type: 'text', text: JSON.stringify({ stored: id > 0, type, project: proj, topic_key, upserted: true }) }] };
+    }
 
     if (type === 'decision') {
       const result = cachedPrepare(getDb(),
