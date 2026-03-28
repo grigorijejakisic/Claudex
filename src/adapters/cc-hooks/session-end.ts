@@ -8,6 +8,7 @@ import { getTokenGauge } from '../../gauge/token-gauge.js';
 import { CC_CAPABILITIES } from '../../shared/constants.js';
 import { emitErrorTelemetry } from '../../observability/error-telemetry.js';
 import { runSessionEndCleanup } from '../shared/lifecycle.js';
+import { clearSessionSignals, sweepExpiredSignals } from '../../core/session-signals.js';
 
 const main = wrapHook('SessionEnd', async (input, ctx) => {
   const gauge = getTokenGauge({
@@ -30,6 +31,12 @@ const main = wrapHook('SessionEnd', async (input, ctx) => {
   } catch (e) {
     emitErrorTelemetry(ctx.db, input.session_id, 'session_end/cleanup', e);
   }
+
+  // Clear this session's signals + sweep expired signals globally
+  try {
+    clearSessionSignals(ctx.db, input.session_id);
+    sweepExpiredSignals(ctx.db);
+  } catch { /* non-critical */ }
 
   return {};
 });

@@ -6,6 +6,7 @@
 import { wrapHook, getTranscriptPath } from './infrastructure.js';
 import { getTokenGauge } from '../../gauge/token-gauge.js';
 import { CC_CAPABILITIES, EDIT_TOOL_NAMES } from '../../shared/constants.js';
+import { createSignal } from '../../core/session-signals.js';
 import { emitTelemetry } from '../../observability/telemetry.js';
 import { emitErrorTelemetry } from '../../observability/error-telemetry.js';
 import {
@@ -110,6 +111,11 @@ const main = wrapHook('PostToolUse', async (input, ctx) => {
     // NotebookEdit sends `notebook_path` — verify against real CC payloads if field name changes.
     const filePath = (toolInput.file_path as string) || (toolInput.path as string) || (toolInput.notebook_path as string) || '';
     const sig = toolName ? buildToolSignature(toolName, toolInput) : '';
+
+    // Stigmergic wip signal: broadcast "I'm editing this file" to other sessions
+    if (isEditTool && filePath && routedProject) {
+      createSignal(ctx.db, input.session_id, routedProject, 'wip', filePath);
+    }
 
     withBehavioralBatch(ctx.db, input.session_id, (counters) => {
       if (isEditTool && filePath) {

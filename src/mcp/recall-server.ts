@@ -2,7 +2,7 @@
  * Claudex Recall MCP Server — exposes Claudex DB as MCP tools.
  *
  * Uses official @modelcontextprotocol/sdk for stdio transport.
- * 4 tools: claudex_search, claudex_recall, claudex_store, claudex_events.
+ * 5 tools: claudex_search, claudex_recall, claudex_store, claudex_events, claudex_message.
  *
  * Usage: node dist/mcp/recall-server.cjs
  */
@@ -406,6 +406,72 @@ server.tool(
 
     const events = getSessionEvents(getDb(), session.session_id);
     return { content: [{ type: 'text', text: JSON.stringify(events, null, 2) }] };
+  },
+);
+
+server.tool(
+  'claudex_message',
+  'Send a message to another active session. Use for cross-session communication, context requests, or session transfer.',
+  {
+    target: z.string().describe('Session name, topic fragment, project name, or session ID'),
+    content: z.string().describe('Message content'),
+    type: z.enum(['request', 'notify', 'transfer']).default('request').describe('Message type: request (expects response), notify (FYI), transfer (handoff)'),
+    session_id: z.string().optional().describe('Current session ID (for sender attribution)'),
+  },
+  async ({ target, content, type, session_id }) => {
+    const { resolveSession, listActiveSessions } = await import('../core/session-discovery.js');
+
+    // M6: Enforce message size limit (8K chars ≈ 2K tokens)
+    const MAX_MESSAGE_LENGTH = 8000;
+    const trimmedContent = content.slice(0, MAX_MESSAGE_LENGTH);
+
+    const senderSessionId = session_id ?? `mcp:${defaultProject}`;
+    const resolved = resolveSession(getDb(), target, senderSessionId);
+
+    if (!resolved) {
+      const active = listActiveSessions(getDb(), senderSessionId);
+      const sessionList = active.map(s =>
+        `- ${s.name ?? s.session_id.slice(0, 8)} (${s.project ?? 'unknown'}: ${s.topic ?? 'no topic'})`
+      ).join('\n');
+      return { content: [{ type: 'text', text: JSON.stringify({
+        error: `No active session matching "${target}"`,
+        active_sessions: active.length > 0 ? sessionList : 'No other active sessions found',
+      }) }] };
+    }
+
+    // H1: For transfer type, use SBAR packaging instead of raw content
+    if (type === 'transfer') {
+      const { packageSessionContext, sendTransfer } = await import('../core/session-transfer.js');
+      const pkg = packageSessionContext(getDb(), senderSessionId);
+      if (pkg) {
+        sendTransfer(getDb(), senderSessionId, resolved.session_id, pkg);
+        return { content: [{ type: 'text', text: JSON.stringify({
+          sent: true,
+          transfer: true,
+          target_session: resolved.session_id,
+          target_name: resolved.name,
+          token_cost: pkg.tokenCost,
+        }) }] };
+      }
+      // Fallback: if SBAR packaging fails, send raw content as transfer
+    }
+
+    const messageType = type === 'transfer' ? 'transfer' : type === 'notify' ? 'notify' : 'request';
+    const priority = type === 'transfer' ? 'urgent' : 'normal';
+
+    cachedPrepare(getDb(),
+      `INSERT INTO session_messages (target_session, sender, sender_type, message_type, content, priority)
+       VALUES (?, ?, 'session', ?, ?, ?)`
+    ).run(resolved.session_id, senderSessionId, messageType, trimmedContent, priority);
+
+    return { content: [{ type: 'text', text: JSON.stringify({
+      sent: true,
+      target_session: resolved.session_id,
+      target_name: resolved.name,
+      target_topic: resolved.topic,
+      match_type: resolved.match_type,
+      message_type: messageType,
+    }) }] };
   },
 );
 

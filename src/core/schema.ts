@@ -102,12 +102,14 @@ CREATE TABLE IF NOT EXISTS sessions (
   cwd TEXT,
   source TEXT,
   status TEXT NOT NULL DEFAULT 'active'
-    CHECK (status IN ('active', 'completed', 'failed')),
+    CHECK (status IN ('active', 'completed', 'failed', 'transferred')),
   observation_count INTEGER NOT NULL DEFAULT 0,
   created_at_epoch INTEGER NOT NULL DEFAULT (unixepoch()),
   ended_at_epoch INTEGER,
   adapter TEXT DEFAULT 'unknown',
-  session_summary TEXT
+  session_summary TEXT,
+  name TEXT,
+  transferred_to TEXT
 );
 
 -- getActiveSession: WHERE status='active' AND project=? ORDER BY created_at_epoch DESC
@@ -517,11 +519,14 @@ CREATE TABLE IF NOT EXISTS session_messages (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   target_session TEXT NOT NULL,
   sender TEXT NOT NULL,
+  sender_type TEXT NOT NULL DEFAULT 'angel'
+    CHECK (sender_type IN ('angel', 'session', 'system')),
   message_type TEXT NOT NULL DEFAULT 'event'
-    CHECK (message_type IN ('event', 'command', 'query', 'advisory')),
+    CHECK (message_type IN ('event', 'command', 'query', 'advisory', 'request', 'response', 'notify', 'transfer', 'acknowledge')),
   content TEXT NOT NULL,
   priority TEXT NOT NULL DEFAULT 'normal'
     CHECK (priority IN ('normal', 'urgent', 'advisory')),
+  request_id TEXT,
   created_at_epoch INTEGER NOT NULL DEFAULT (unixepoch()),
   delivered_at_epoch INTEGER,
   acknowledged INTEGER NOT NULL DEFAULT 0
@@ -530,6 +535,24 @@ CREATE INDEX IF NOT EXISTS idx_sessmsg_target
   ON session_messages(target_session, delivered_at_epoch, priority);
 CREATE INDEX IF NOT EXISTS idx_sessmsg_sender
   ON session_messages(sender, created_at_epoch DESC);
+
+-- V12: session_signals — stigmergic coordination between sessions
+CREATE TABLE IF NOT EXISTS session_signals (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  session_id TEXT NOT NULL,
+  project TEXT NOT NULL,
+  signal_type TEXT NOT NULL
+    CHECK (signal_type IN ('wip', 'failure', 'danger', 'claim', 'discovery')),
+  target TEXT NOT NULL,
+  detail TEXT,
+  created_at_epoch INTEGER NOT NULL DEFAULT (unixepoch()),
+  expires_at_epoch INTEGER,
+  cleared_at_epoch INTEGER
+);
+CREATE INDEX IF NOT EXISTS idx_signals_project_type
+  ON session_signals(project, signal_type, cleared_at_epoch);
+CREATE INDEX IF NOT EXISTS idx_signals_session
+  ON session_signals(session_id, cleared_at_epoch);
 
 -- V11: artifact_access_log — enables proper ACT-R multi-access BLL
 CREATE TABLE IF NOT EXISTS artifact_access_log (

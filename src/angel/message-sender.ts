@@ -41,17 +41,17 @@ export function sendMessage(
 export function getPendingMessages(
   db: Database,
   sessionId: string,
-): Array<{ id: number; content: string; message_type: string; priority: string }> {
+): Array<{ id: number; content: string; message_type: string; priority: string; sender: string; sender_type: string }> {
   try {
     return cachedPrepare(db,
-      `SELECT id, content, message_type, priority
+      `SELECT id, content, message_type, priority, sender, COALESCE(sender_type, 'angel') as sender_type
        FROM session_messages
        WHERE target_session = ? AND delivered_at_epoch IS NULL
        ORDER BY
          CASE priority WHEN 'urgent' THEN 0 WHEN 'normal' THEN 1 ELSE 2 END,
          created_at_epoch ASC
-       LIMIT 5`
-    ).all(sessionId) as Array<{ id: number; content: string; message_type: string; priority: string }>;
+       LIMIT 10`
+    ).all(sessionId) as Array<{ id: number; content: string; message_type: string; priority: string; sender: string; sender_type: string }>;
   } catch {
     return [];
   }

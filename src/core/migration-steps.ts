@@ -954,6 +954,83 @@ export function migrateV10toV11(db: Database): void {
 }
 
 /**
+ * V11 → V12: Session communication — signals, naming, messaging extensions.
+ * Adds session_signals table, session name column, and session_messages extensions.
+ */
+export function migrateV11toV12(db: Database): void {
+  // 1. Add name + transferred_to to sessions
+  try {
+    if (hasTable(db, 'sessions')) {
+      if (!hasColumn(db, 'sessions', 'name'))
+        db.exec("ALTER TABLE sessions ADD COLUMN name TEXT");
+      if (!hasColumn(db, 'sessions', 'transferred_to'))
+        db.exec("ALTER TABLE sessions ADD COLUMN transferred_to TEXT");
+    }
+  } catch { /* non-fatal */ }
+
+  // 2. Recreate session_messages with extended message_type CHECK + new columns.
+  // SQLite doesn't support ALTER CHECK — must recreate the table.
+  try {
+    if (hasTable(db, 'session_messages') && !hasColumn(db, 'session_messages', 'sender_type')) {
+      db.exec(`
+        CREATE TABLE session_messages_v12 (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          target_session TEXT NOT NULL,
+          sender TEXT NOT NULL,
+          sender_type TEXT NOT NULL DEFAULT 'angel'
+            CHECK (sender_type IN ('angel', 'session', 'system')),
+          message_type TEXT NOT NULL DEFAULT 'event'
+            CHECK (message_type IN ('event', 'command', 'query', 'advisory', 'request', 'response', 'notify', 'transfer', 'acknowledge')),
+          content TEXT NOT NULL,
+          priority TEXT NOT NULL DEFAULT 'normal'
+            CHECK (priority IN ('normal', 'urgent', 'advisory')),
+          request_id TEXT,
+          created_at_epoch INTEGER NOT NULL DEFAULT (unixepoch()),
+          delivered_at_epoch INTEGER,
+          acknowledged INTEGER NOT NULL DEFAULT 0
+        );
+        INSERT INTO session_messages_v12 (id, target_session, sender, message_type, content, priority, created_at_epoch, delivered_at_epoch, acknowledged)
+          SELECT id, target_session, sender, message_type, content, priority, created_at_epoch, delivered_at_epoch, acknowledged
+          FROM session_messages;
+        DROP TABLE session_messages;
+        ALTER TABLE session_messages_v12 RENAME TO session_messages;
+        CREATE INDEX IF NOT EXISTS idx_sessmsg_target
+          ON session_messages(target_session, delivered_at_epoch, priority);
+        CREATE INDEX IF NOT EXISTS idx_sessmsg_sender
+          ON session_messages(sender, created_at_epoch DESC);
+      `);
+    }
+  } catch { /* non-fatal */ }
+
+  // 3. Create session_signals table
+  try {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS session_signals (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        session_id TEXT NOT NULL,
+        project TEXT NOT NULL,
+        signal_type TEXT NOT NULL
+          CHECK (signal_type IN ('wip', 'failure', 'danger', 'claim', 'discovery')),
+        target TEXT NOT NULL,
+        detail TEXT,
+        created_at_epoch INTEGER NOT NULL DEFAULT (unixepoch()),
+        expires_at_epoch INTEGER,
+        cleared_at_epoch INTEGER
+      );
+      CREATE INDEX IF NOT EXISTS idx_signals_project_type
+        ON session_signals(project, signal_type, cleared_at_epoch);
+      CREATE INDEX IF NOT EXISTS idx_signals_session
+        ON session_signals(session_id, cleared_at_epoch);
+    `);
+  } catch { /* non-fatal */ }
+
+  // 4. Add index on sessions.name for fast lookup
+  try {
+    db.exec("CREATE INDEX IF NOT EXISTS idx_sessions_name ON sessions(name)");
+  } catch { /* non-fatal */ }
+}
+
+/**
  * Upgrades v2 tables in-place when v3 opens the same database file.
  */
 export function upgradeV2SchemaInPlace(db: Database): void {

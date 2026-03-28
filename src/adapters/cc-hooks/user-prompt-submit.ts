@@ -27,6 +27,8 @@ import { shouldRunReflection, runBatchReflection } from '../../intelligence/batc
 import { extractDomain, generateDomainAdvisory, getWeakDomains } from '../../intelligence/capability-tracker.js';
 import { getThreadState } from '../../core/thread.js';
 import { getPendingMessages, markMessagesDelivered } from '../../angel/message-sender.js';
+import { getActiveSignals, formatSignalsForInjection } from '../../core/session-signals.js';
+import { autoNameSession } from '../../core/session-discovery.js';
 import { classifyIntent, getRetrievalConfigForIntent } from '../../intelligence/intent-classifier.js';
 import type { IntentType, RetrievalConfig } from '../../intelligence/intent-classifier.js';
 
@@ -334,16 +336,47 @@ const main = wrapHook('UserPromptSubmit', async (input, ctx) => {
   try {
     const pending = getPendingMessages(ctx.db, input.session_id);
     if (pending.length > 0) {
-      const parts = pending.map(m => {
+      const angelParts: string[] = [];
+      const sessionParts: string[] = [];
+      for (const m of pending) {
         const prefix = m.priority === 'urgent' ? '**[URGENT]** ' : '';
-        return `${prefix}${m.content}`;
-      });
-      angelMessages = `## Angel Messages\n${parts.join('\n\n')}`;
+        if (m.sender_type === 'session') {
+          // Resolve sender session name for human-friendly display
+          const senderName = m.sender.slice(0, 8);
+          const typeLabel = m.message_type === 'request' ? 'asks'
+            : m.message_type === 'response' ? 'replies'
+            : m.message_type === 'transfer' ? 'transfers'
+            : m.message_type === 'acknowledge' ? 'acknowledges'
+            : 'says';
+          sessionParts.push(`${prefix}**Session ${senderName}** ${typeLabel}: ${m.content}`);
+        } else {
+          angelParts.push(`${prefix}${m.content}`);
+        }
+      }
+      const sections: string[] = [];
+      if (sessionParts.length > 0) sections.push(`## Session Messages\n${sessionParts.join('\n\n')}`);
+      if (angelParts.length > 0) sections.push(`## Angel Messages\n${angelParts.join('\n\n')}`);
+      angelMessages = sections.join('\n\n');
       pendingMessageIds = pending.map(m => m.id);
     }
   } catch { /* non-fatal */ }
 
-  // 3.6 Domain advisory — inject warning when correction rate is high for current topic
+  // 3.6 Stigmergic signals — inject active cross-session signals
+  let signalsSection = '';
+  try {
+    const signals = getActiveSignals(ctx.db, ctx.project, input.session_id);
+    signalsSection = formatSignalsForInjection(signals);
+  } catch { /* non-fatal */ }
+
+  // 3.7 Auto-name session from thread topic (first time only)
+  try {
+    const thread = getThreadState(ctx.db, input.session_id);
+    if (thread?.topic) {
+      autoNameSession(ctx.db, input.session_id, thread.topic);
+    }
+  } catch { /* non-fatal */ }
+
+  // 3.8 Domain advisory — inject warning when correction rate is high for current topic
   let domainAdvisory = '';
   try {
     const thread = getThreadState(ctx.db, input.session_id);
@@ -414,7 +447,7 @@ const main = wrapHook('UserPromptSubmit', async (input, ctx) => {
   // Combine cross-session context + angel messages + domain advisory + assembly output.
   // Trim to respect injection budget — cross-session/advisory content must not exceed
   // the remaining budget after assembly has done its work.
-  const extraContent = [angelMessages, crossSessionContext, domainAdvisory].filter(Boolean).join('\n\n');
+  const extraContent = [angelMessages, signalsSection, crossSessionContext, domainAdvisory].filter(Boolean).join('\n\n');
   let combinedContent = payload.content || '';
   if (extraContent) {
     const budgetTokens = ctx.config.injection.budget_tokens;
