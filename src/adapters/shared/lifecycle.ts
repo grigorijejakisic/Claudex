@@ -301,6 +301,17 @@ export async function processToolAndPressure(params: ToolObservationParams): Pro
     } catch (e) {
       emitErrorTelemetry(params.db, params.sessionId, 'tool_processing/artifact_create', e);
     }
+
+    // Contradiction detection: check if new high-importance observation
+    // contradicts existing decisions or proven patterns.
+    try {
+      const obs = getObservationById(params.db, observationId);
+      if (obs && obs.importance >= 3) {
+        const { detectContradiction } = await import('../../intelligence/contradiction-detector.js');
+        detectContradiction(params.db, obs.content, params.project, params.sessionId);
+        // If contradiction found, a 'danger' signal is auto-created by the detector
+      }
+    } catch { /* non-fatal */ }
   }
 
   // Update pressure from file paths in tool input
