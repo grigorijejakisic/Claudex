@@ -312,14 +312,36 @@ export function createPattern(
     // Atomic dedup check + insert: wrap in transaction to prevent race conditions
     // where two concurrent hooks might both pass the dedup check and insert duplicates.
     const doCreate = db.transaction((): string => {
-      // Dedup check — if a similar pattern exists in the same project/type scope,
-      // reinforce it instead of creating a cross-project contamination or
-      // reviving a pruned pattern from another project.
+      // Non-LLM Curator: deterministic checks before LLM-extracted patterns enter the DB.
+      // 1. Dedup — reinforce existing instead of creating duplicates
       const existing = deduplicateCheck(db, sanitized.trigger_context, project, sanitized.pattern_type);
       if (existing !== null) {
         updatePatternScore(db, existing.id, 1);
         return existing.id;
       }
+
+      // 2. Contradiction check — reject if the new pattern's lesson directly
+      // contradicts a proven pattern's lesson (same trigger, opposite advice).
+      // Uses token overlap: if a proven pattern shares >50% trigger words but
+      // has an anti_pattern that matches the new lesson, reject.
+      try {
+        const provenPatterns = cachedPrepare(db,
+          `SELECT id, lesson, anti_pattern FROM experience_patterns
+           WHERE maturity = 'proven' AND source_project IN (?, '__global__')
+           AND score >= 20`
+        ).all(project) as Array<{ id: string; lesson: string; anti_pattern: string | null }>;
+
+        const newWords = new Set(sanitized.lesson.toLowerCase().split(/\s+/).filter(w => w.length >= 4));
+        for (const proven of provenPatterns) {
+          if (!proven.anti_pattern) continue;
+          const antiWords = proven.anti_pattern.toLowerCase().split(/\s+/).filter(w => w.length >= 4);
+          const overlap = antiWords.filter(w => newWords.has(w)).length;
+          if (antiWords.length > 0 && overlap / antiWords.length > 0.5) {
+            // New pattern's lesson matches a proven pattern's anti-pattern — contradiction. Reject.
+            return proven.id; // Return existing proven pattern ID instead of creating contradictory one
+          }
+        }
+      } catch { /* non-fatal — proceed with creation if check fails */ }
 
       const id = ulid();
       const now = Math.floor(Date.now() / 1000);
