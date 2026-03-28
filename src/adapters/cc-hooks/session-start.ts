@@ -15,6 +15,7 @@ import { getLastSessionSummary, synthesizeSessionSummary, getSessionEvents, save
 import { cachedPrepare } from '../../core/stmt-cache.js';
 import { captureRecallFlowEntry } from '../shared/lifecycle.js';
 import { predictSessionIntent, CONFIDENCE_THRESHOLD } from '../../intelligence/intent-predictor.js';
+import { detectWindowSize } from '../../gauge/window-detector.js';
 import * as path from 'path';
 import * as os from 'os';
 import * as fs from 'fs';
@@ -70,6 +71,59 @@ async function ensureQdrantRunning(): Promise<void> {
 }
 
 /**
+ * Ensure CliProxy is running on localhost:8317.
+ * CliProxy bridges MAX subscription OAuth to the Anthropic API — needed by the Angel
+ * for Opus-quality pattern extraction.
+ * Non-throwing — CliProxy is optional (Angel falls back to Ollama).
+ */
+async function ensureCliProxyRunning(): Promise<void> {
+  // Check if already running
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 2000);
+    const resp = await fetch('http://127.0.0.1:8317/v1/models', { signal: controller.signal });
+    clearTimeout(timeout);
+    if (resp.ok) return; // Already running
+  } catch {
+    // Not running — try to start
+  }
+
+  // Known locations for CliProxy
+  const candidates = [
+    path.join(os.tmpdir(), 'cliproxy_new', 'cli-proxy-api.exe'),
+    path.join(os.homedir(), '.cli-proxy-api', 'cli-proxy-api.exe'),
+  ];
+  const configCandidates = [
+    path.join(os.tmpdir(), 'laptop-cli-proxy-config.yaml'),
+    path.join(os.homedir(), '.cli-proxy-api', 'config.yaml'),
+  ];
+
+  const exe = candidates.find(p => fs.existsSync(p));
+  const config = configCandidates.find(p => fs.existsSync(p));
+  if (!exe) return;
+
+  const args = config ? ['-config', config] : [];
+  const child = spawn(exe, args, {
+    detached: true,
+    stdio: 'ignore',
+    cwd: os.homedir(),
+  });
+  child.unref();
+
+  // Wait briefly for startup
+  for (let i = 0; i < 5; i++) {
+    await new Promise(r => setTimeout(r, 500));
+    try {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 1000);
+      const resp = await fetch('http://127.0.0.1:8317/v1/models', { signal: controller.signal });
+      clearTimeout(timeout);
+      if (resp.ok) return;
+    } catch { /* still starting */ }
+  }
+}
+
+/**
  * Ensure the Angel process is running. Checks PID file, spawns if not alive.
  * Non-throwing — Angel is optional enhancement.
  */
@@ -112,6 +166,11 @@ const main = wrapHook('SessionStart', async (input, ctx) => {
     await ensureQdrantRunning();
   } catch { /* Qdrant is optional */ }
 
+  // Ensure CliProxy is running (non-blocking, non-fatal — enables Opus for Angel)
+  try {
+    await ensureCliProxyRunning();
+  } catch { /* CliProxy is optional */ }
+
   // Ensure Angel is running (non-blocking, non-fatal — optional enhancement)
   try {
     await ensureAngelRunning();
@@ -137,9 +196,12 @@ const main = wrapHook('SessionStart', async (input, ctx) => {
   try {
     const now = Math.floor(Date.now() / 1000);
     const cutoff = now - 3600;
+    // Close ALL orphaned active sessions across all projects — not just the current one.
+    // Cross-project cleanup prevents stale sessions from accumulating (e.g. Oracle/Nexus
+    // sessions that were never closed because the user switched projects).
     const orphans = cachedPrepare(ctx.db,
-      `SELECT session_id FROM sessions WHERE status = 'active' AND created_at_epoch < ? AND session_id != ? AND project = ?`
-    ).all(cutoff, input.session_id, ctx.project) as Array<{ session_id: string }>;
+      `SELECT session_id FROM sessions WHERE status = 'active' AND created_at_epoch < ? AND session_id != ?`
+    ).all(cutoff, input.session_id) as Array<{ session_id: string }>;
 
     for (const orphan of orphans) {
       // Generate recall metadata BEFORE closing — captures user framings,
@@ -228,6 +290,12 @@ const main = wrapHook('SessionStart', async (input, ctx) => {
     emitErrorTelemetry(ctx.db, input.session_id, 'session_start/intent_prediction', e);
   }
 
+  // Detect context window from model name (available in CC hook payloads).
+  // At session-start there's no transcript yet, so we can't use observed tokens.
+  // Model-only detection assumes 1M for Claude 4+ — see window-detector.ts.
+  const model = (input.model as string) ?? undefined;
+  const contextWindowTokens = detectWindowSize({ model });
+
   const payload = assembleFullContext({
     db: ctx.db,
     project: ctx.project,
@@ -236,6 +304,7 @@ const main = wrapHook('SessionStart', async (input, ctx) => {
     identityDir: getIdentityDir(),
     sessionId: input.session_id,
     predictedContext,
+    contextWindowTokens,
   });
 
   if (payload.tokenEstimate > 0) {

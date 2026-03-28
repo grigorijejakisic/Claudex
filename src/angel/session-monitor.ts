@@ -73,7 +73,7 @@ export function getUnprocessedSessions(
            SELECT DISTINCT se.session_id FROM session_events se
            WHERE se.event_type = 'angel_processed'
          )
-       ORDER BY s.ended_at_epoch DESC
+       ORDER BY turn_count DESC, s.ended_at_epoch DESC
        LIMIT ?`
     ).all(limit) as Array<{
       session_id: string;

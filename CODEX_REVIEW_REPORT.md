@@ -1,132 +1,181 @@
-# Codex Review Report
+# Codex Review Report: Angel System
 
-**Scope:** Uncommitted changes since 28f4f39 (8 files, ~133 lines added)
-**Date:** 2026-03-24
-**Reviewer:** Claude Opus 4.6 (1M context)
-**Build:** PASS (65ms) | **Tests:** 1714/1714 PASS (7.65s)
-
----
-
-## Summary
-
-Six focused changes: per-session pattern suppression, hybrid pattern matching, importance probe on regular turns, file ingester embedding backfill, learning artifact embedding in compaction, and the experience-flags plumbing to support it all. One real bug found (ID mismatch in hybrid search). Everything else is clean.
+**Scope**: 13 files in `src/angel/` -- heartbeat loop, 4 new guardian modules, 7 existing modules
+**Date**: 2026-03-28
+**Reviewer**: Claude Opus 4.6 (1M context)
+**Grade: B+**
 
 ---
 
-## 1. Per-session pattern suppression in assembler.ts
+## Executive Summary
 
-**Verdict: PASS (minor observation)**
-
-The `renderExperienceWarnings` function reads `session_injected_ids` from experience flags, builds a `Set`, filters out already-seen patterns, then in `applyEffects()` re-reads current flags and accumulates new IDs via `[...new Set([...current, ...new])]`.
-
-**Race conditions:** Not a concern. CC hooks are single-threaded Node.js processes. The `applyEffects()` callback runs synchronously within a single hook invocation. SQLite is in WAL mode with `busy_timeout`, so concurrent sessions won't corrupt each other's flags (they have different `sessionId`). The read-modify-write gap between `getExperienceFlags` and `setExperienceFlags` inside `applyEffects` is safe because no other code path modifies `session_injected_ids` for the same session within the same process tick.
-
-**Observation:** The `applyEffects` closure re-reads flags from DB (`getExperienceFlags`) even though the render phase already read them. This is intentional and correct -- the render phase read may be stale by the time effects are applied (e.g., in `assembleFullContext` where budget gating may defer application). The double-read costs one extra SELECT but guarantees correctness.
+The Angel system is well-architected. The 4 new guardian modules (retention-sweep, cross-project-consolidator, data-quality, proactive-curator) follow the established non-throwing, rate-limited, batch-bounded patterns correctly. SQL column names match the V10/V11 schema. `cachedPrepare` is used consistently with one known exception. All new exports are imported and called in `heartbeat.ts`. The code is production-ready with a handful of real issues to address.
 
 ---
 
-## 2. findMatchingPatternsHybrid in experience-patterns.ts
+## Findings by Severity
 
-**Verdict: BUG -- ID type mismatch (dead code, no production impact)**
+### HIGH (2 issues)
 
-The async/sync boundary is clean: `findMatchingPatterns` (sync FTS5) runs first, then async Qdrant search augments results. Dynamic imports (`await import(...)`) are correct for optional dependencies.
+#### H1. Feature flags `dataQualityChecks` and `proactiveCuration` are defined but never checked
 
-**Bug:** The function uses `String(vr.id)` to look up patterns in the DB, but `vr.id` is a **numeric hash** (from `hashStringToInt(patternId)` in `upsertPatternEmbedding`), not the original ULID string. The original ULID is stored in `payload.pattern_id_str`, not in the point ID. The SQL query `WHERE id = ?` will never match because `experience_patterns.id` is a ULID string like `01HYZ3...`, not a number like `2847193`.
+`RetentionConfig` defines three feature flags: `crossProjectConsolidation`, `dataQualityChecks`, and `proactiveCuration`. Only `crossProjectConsolidation` is actually checked (in `runCrossProjectConsolidation()` line 471). The other two flags are ignored -- `runDataQualityChecks()` and `runProactiveCuration()` run unconditionally regardless of config.
 
-**Fix:** Replace `String(vr.id)` with `String(vr.payload?.pattern_id_str ?? vr.id)`.
+**Files**: `src/angel/data-quality.ts`, `src/angel/proactive-curator.ts`, `src/angel/types.ts`
 
-**Production impact: NONE.** `findMatchingPatternsHybrid` is exported but never imported or called from any production code path. It's dead code -- the assembler still calls the sync `findMatchingPatterns`. This function was presumably added for future use. The bug will bite when it's wired in.
+**Fix**: Add early-return guards in `runDataQualityChecks()` and `runProactiveCuration()`, matching the pattern in `runCrossProjectConsolidation()`:
+```typescript
+if (!config.dataQualityChecks) return { ...EMPTY_RESULT };
+if (!config.proactiveCuration) return { ...EMPTY_RESULT };
+```
 
----
+#### H2. `logTickResult` in index.ts does not log new guardian metrics
 
-## 3. Importance probe in user-prompt-submit.ts
+`logTickResult()` (index.ts lines 227-243) only logs the original 6 metrics (idle_warnings, sessions, patterns, domains, learnings_pruned, patterns_pruned, memory_migrated). The 7 new TickResult fields from the guardian modules (retention_rows_deleted, cross_project_deduped, quality_issues_fixed, artifacts_promoted, artifacts_decayed, health_report_sent, user_profiles_synced) are silently dropped. Guardian work happens invisibly.
 
-**Verdict: PASS**
+**File**: `src/angel/index.ts`
 
-The regular-turn materialization probe is correctly gated:
-- Only fires on `else` branch (not assembly turns)
-- Minimum prompt length: 30 chars (prevents FTS noise on short inputs)
-- Search limited to 3 results (vs. 10 on assembly turns) -- respects budget
-- Filter: `importance >= 4` -- only decisions and learnings, not ephemeral observations
-- `materializeArtifacts` sets `state = 'materialized'` which makes them visible to the assembler on the next turn -- it does NOT inject directly
-
-**Budget:** Materialization does not consume injection token budget. It sets a DB flag. The assembler's `formatMaterializationLayer` handles the actual rendering and budget check. This is correct.
-
-**Concern (minor):** If a user sends many 30+ char prompts about the same topic, the same high-importance artifacts will be re-materialized every turn. `materializeArtifacts` is idempotent (sets `state = 'materialized'` which is already set), so this is wasteful but not harmful. Could add a check for `state != 'materialized'` in the query, but that's an optimization, not a bug.
+**Fix**: Add logging lines for the new fields, matching the existing pattern.
 
 ---
 
-## 4. File ingester embedding backfill
+### MEDIUM (4 issues)
 
-**Verdict: PASS (misleading comment)**
+#### M1. Raw `db.prepare()` in message-sender.ts bypasses stmt-cache
 
-`Promise.allSettled` is correct: individual embedding failures don't reject the batch, and `allSettled` always resolves (never rejects). The batch is capped at 10 artifacts (`slice(0, 10)`) to limit latency.
+`markMessagesDelivered()` (message-sender.ts line 71) uses `db.prepare()` directly instead of `cachedPrepare()`. Every other SQL call across all 13 Angel modules uses `cachedPrepare`. This is the only exception.
 
-**Blocking question:** Yes, it blocks session-start. `ingestFileArtifacts` is `await`ed in session-start (line 188), and the embedding backfill inside it is also `await`ed via `Promise.allSettled`. The comment says "fire-and-forget" but the code awaits. This is a **comment/code mismatch**, not a logic bug. Since hooks are ephemeral, awaiting is the correct behavior -- fire-and-forget would lose the work. The comment should say "awaited, capped to 10 for latency."
+**File**: `src/angel/message-sender.ts:71`
 
-**Latency impact:** With Ollama running locally, embedding 10 short texts takes ~1-2 seconds. This is within acceptable bounds for session-start (which already does checkpoint loading, assembly, etc). If Ollama is down, the try/catch returns immediately.
+**Fix**: Replace `db.prepare(...)` with `cachedPrepare(db, ...)`.
 
-**Query correctness:** `WHERE embedding IS NULL AND artifact_type IN (...)` correctly targets only artifacts that haven't been embedded yet. The `ORDER BY importance DESC LIMIT 20` ensures highest-value artifacts get embedded first, and the `slice(0, 10)` further caps concurrency.
+#### M2. Dynamic SQL in `deduplicatePatterns` defeats stmt-cache
 
----
+`deduplicatePatterns()` (cross-project-consolidator.ts line 252) builds `SELECT * FROM experience_patterns WHERE id IN (${placeholders})` with a variable number of placeholders. Each distinct id-count creates a new cache entry in `cachedPrepare`. With the `LIMIT 20` constraint on the parent query, the maximum number of distinct placeholder counts is bounded (~2-20), so this will not leak memory, but it is a design smell that could cause issues if the batch limit increases.
 
-## 5. Learning artifact embedding in lifecycle.ts
+**File**: `src/angel/cross-project-consolidator.ts:252`
 
-**Verdict: PASS**
+**Fix**: Consider using a temp table or fixed-batch approach. Low urgency given the LIMIT 20 bound.
 
-`embedArtifact` is properly `await`ed (line 1042). The comment explicitly says "awaited because hooks are ephemeral." The try/catch with empty catch block is consistent with the project pattern of non-throwing embedding operations.
+#### M3. Redundant importance check in `pruneArtifacts` cold tier
 
-The `artId > 0` check is valid -- `createArtifact` returns `Number(result.lastInsertRowid)` which is always positive for successful inserts.
+`pruneArtifacts()` (retention-sweep.ts lines 149-164) has both `importance < 3` AND `importance < 5` in the cold tier DELETE. The `importance < 5` predicate is redundant since `importance < 3` is strictly more restrictive.
 
-Static import at line 40 (`import { embedArtifact } from '../../embeddings/embed-pipeline.js'`) is correct and avoids the overhead of dynamic import on every compaction.
+**File**: `src/angel/retention-sweep.ts:159`
 
----
+**Fix**: Remove `AND importance < 5` from the cold tier query.
 
-## 6. experience-flags.ts -- session_injected_ids merge
+#### M4. `detectStaleEmbeddings` heuristic is overly aggressive
 
-**Verdict: PASS**
+`detectStaleEmbeddings()` (data-quality.ts lines 222-243) NULLs embeddings on ALL artifacts with `timestamp_epoch` in the last 24 hours. This catches newly-created artifacts whose embeddings are already correct (generated at insert time), not just artifacts whose content was modified after embedding. This creates unnecessary embedding churn on every quality check cycle -- every recent artifact loses its embedding and must be re-embedded by the backfill cycle.
 
-Three changes, all correct:
+**File**: `src/angel/data-quality.ts:222-243`
 
-1. **Interface**: `session_injected_ids: string[]` added to `ExperienceFlags` with docs.
-2. **getExperienceFlags**: Default value `[]`, parsed with `Array.isArray()` guard. Falls through to default on parse failure.
-3. **setExperienceFlags**: Uses `updates.session_injected_ids ?? current.session_injected_ids` for merge. This means if the caller doesn't include `session_injected_ids` in updates, the existing value is preserved.
-
-**Correctness of merge in assembler:** The assembler calls `setExperienceFlags` with all three fields (`injected_pattern_ids`, `injected_topic_keys`, `session_injected_ids`). The `session_injected_ids` value is the deduplicated accumulation of current + new. The `injected_pattern_ids` and `injected_topic_keys` are the **current turn's** IDs (not accumulated) -- this is correct because the Stop hook needs to know which patterns were injected on this specific turn for scoring.
+**Fix**: Track `embedded_at_epoch` or filter to artifacts where `timestamp_epoch > embedded_at_epoch` (indicating content changed after embedding).
 
 ---
 
-## 7. Import and call-site verification
+### LOW (5 issues)
 
-| Import | Source | Real? | Called from production? |
-|---|---|---|---|
-| `getExperienceFlags` | experience-flags.ts:142 | YES | YES (assembler.ts:153, :186) |
-| `setExperienceFlags` | experience-flags.ts:195 | YES | YES (assembler.ts:188) |
-| `findMatchingPatternsHybrid` | experience-patterns.ts:481 | YES | **NO -- dead code** |
-| `embedArtifact` (static) | embed-pipeline.ts:136 | YES | YES (lifecycle.ts:260, :1042) |
-| `embedArtifact` (dynamic) | embed-pipeline.ts:136 | YES | YES (file-ingester.ts:322) |
-| `searchArtifactsGlobal` | artifacts.ts:476 | YES | YES (user-prompt-submit.ts:179) |
-| `materializeArtifacts` | artifacts.ts (existing) | YES | YES (user-prompt-submit.ts:182) |
-| `searchPatterns` | qdrant-client.ts:433 | YES | NO (only used inside dead `findMatchingPatternsHybrid`) |
-| `embedQuery` | embed-pipeline.ts:284 | YES | NO (only used inside dead `findMatchingPatternsHybrid`) |
+#### L1. No test coverage for any Angel module
 
-All imports resolve to real exported functions. Two functions (`searchPatterns`, `embedQuery`) are only reachable through the dead `findMatchingPatternsHybrid` code path.
+Zero test files exist for any of the 13 Angel modules. The project has 92+ test files but none cover heartbeat, retention-sweep, cross-project-consolidator, data-quality, proactive-curator, user-profile-sync, or any other Angel module. The non-throwing contract and SQL correctness rely entirely on manual verification and production behavior.
+
+#### L2. `archiveAbandonedProjects` re-decays already-packed artifacts
+
+The query (proactive-curator.ts lines 227-238) finds projects with no recent sessions and runs `UPDATE artifacts SET state = 'packed', activation_score = activation_score * 0.5`. Since the UPDATE has no `AND state != 'packed'` filter, already-packed artifacts get their `activation_score` halved again on every curation cycle (every 60 minutes). Over days, activation_score approaches zero asymptotically but the repeated writes are wasteful.
+
+**File**: `src/angel/proactive-curator.ts:246-249`
+
+**Fix**: Add `AND state != 'packed'` to the UPDATE WHERE clause, or add `AND activation_score > 0.01`.
+
+#### L3. `prepareAwayDigests` creates unbounded artifacts over time
+
+Each curation cycle (default every 60 minutes) creates a new "away-digest" artifact for each qualifying project. There is no dedup check -- if a project stays "away" for 7 days, it accumulates ~168 digest artifacts. These are never cleaned up except by the general retention sweep.
+
+**File**: `src/angel/proactive-curator.ts:382-471`
+
+**Fix**: Check for existing recent digests before creating new ones (e.g., skip if one exists within 24 hours), or use a date-keyed `artifact_ref` with `INSERT OR IGNORE`.
+
+#### L4. Skeletal tier FTS desync
+
+When `pruneConversationTurns()` NULLs `assistant_text`, the FTS UPDATE trigger fires and replaces the indexed text with empty string. Conversations in the skeletal tier lose FTS searchability silently. This may be intentional (the data is gone so search should not find it) but is worth documenting explicitly.
+
+**File**: `src/angel/retention-sweep.ts:78-94`
+
+#### L5. Rate-limit unit inconsistency across modules
+
+Three modules use `Date.now()` (milliseconds) for rate limiting: retention-sweep, data-quality, proactive-curator. One module uses `Math.floor(Date.now() / 1000)` (seconds): cross-project-consolidator. All implementations are internally consistent and correct, but the unit inconsistency invites copy-paste bugs in future modules.
+
+**File**: `src/angel/cross-project-consolidator.ts:29,474-476`
 
 ---
 
-## Findings Summary
+## Verification Checklist
 
-| # | Severity | File | Finding |
-|---|---|---|---|
-| 1 | **BUG** | experience-patterns.ts:499 | `String(vr.id)` uses numeric hash instead of ULID from `payload.pattern_id_str`. Pattern DB lookups will always miss. Dead code -- no production impact yet. |
-| 2 | **WARN** | file-ingester.ts:306 | Comment says "fire-and-forget" but code awaits `Promise.allSettled`. Comment/code mismatch. |
-| 3 | **INFO** | experience-patterns.ts:481 | `findMatchingPatternsHybrid` is exported but never called. Dead code awaiting wiring. |
-| 4 | **INFO** | user-prompt-submit.ts:179 | Importance probe re-materializes already-materialized artifacts. Idempotent but wasteful on repeated same-topic prompts. |
+| Check | Result |
+|---|---|
+| All new exports imported and called in heartbeat.ts? | **PASS** -- `runRetentionSweep` (line 38/346), `runCrossProjectConsolidation` (line 39/367), `runDataQualityChecks` (line 40/383), `runProactiveCuration` (line 41/399), `syncUserProfiles` (line 37/326) |
+| Non-throwing pattern followed? | **PASS** -- Every function has try/catch returning zero/empty on error. Master functions wrap each sub-call. heartbeat.ts wraps each phase. |
+| Rate-limited with module-level variables? | **PASS** -- All 4 new modules use module-level `_last*Epoch` variables with reset functions exported for testing. |
+| Batch limits prevent runaway? | **PASS** -- retention-sweep: 500/table, data-quality: 10-200/table, proactive-curator: 10-100/operation, consolidator: 10-20/operation |
+| `cachedPrepare` used consistently? | **FAIL (1 exception)** -- `message-sender.ts:71` uses raw `db.prepare()`. All other ~80+ SQL calls use `cachedPrepare`. |
+| SQL column names match schema? | **PASS** -- All column references verified against V10/V11 schema DDL (schema.ts). Checked: `session_events.timestamp_epoch`, `retrieval_events.artifact_id`, `retrieval_events.was_referenced`, `artifacts.activation_score`, `artifacts.superseded_by`, `pressure_scores.raw_pressure`, `pressure_scores.temperature`, `pressure_scores.last_touched_epoch`, `session_messages.created_at_epoch`, `session_messages.delivered_at_epoch`, `knowledge_gaps.resolved_at_epoch`, `learnings.fingerprint`, `learnings.promotion_count`, `decisions.fingerprint`, `decisions.timestamp_epoch`, `experience_patterns.trigger_context`, `experience_patterns.source_project`, `verified_facts.session_id` |
+| SQL injection / missing parameterization? | **PASS** -- All user-data flows through `?` parameters. Dynamic IN clause in deduplicatePatterns uses `?` placeholders (not string interpolation). GROUP_CONCAT values are internal DB IDs, not user input. |
+| `LIMIT` on UPDATE/DELETE supported? | **PASS** -- Verified that better-sqlite3 v11.7+ compiles SQLite with `SQLITE_ENABLE_UPDATE_DELETE_LIMIT`. Tested live: `DELETE FROM t WHERE id > 0 LIMIT 2` works correctly. |
+| Config types complete and defaults sensible? | **PASS** -- RetentionConfig has 17 fields with reasonable defaults. AngelConfig includes retention with spread defaults. |
 
 ---
 
-## Grade: **A-**
+## Architecture Assessment
 
-One real bug in dead code, one misleading comment, zero production-path defects. All 1714 tests pass. Build clean. The suppression accumulation logic is correct and race-free. The importance probe respects budget boundaries. Embedding in lifecycle.ts is properly awaited. Experience flags merge is sound.
+### Strengths
+- Clean separation: each guardian module owns one concern with a single `run*()` entry point
+- Consistent non-throwing contract prevents heartbeat death spirals
+- Rate limiting prevents tight loops -- each module independently throttled
+- Batch limits prevent single-tick monopolization of the DB
+- Safety contracts documented and enforced (importance >= 5 never deleted, angel_processed never deleted, summary entries never deleted)
+- Transaction wrapping in cross-project-consolidator prevents partial state on multi-step dedup
+- heartbeat.ts phases are ordered by priority: idle detection > pattern extraction > guardian duties > embedding backfill > consolidation > RL training > user profile sync > guardian-of-all-memory
+- New TickResult fields aggregate cleanly with the existing telemetry structure
 
-The A- (not A) is for shipping dead code with a latent bug. The `findMatchingPatternsHybrid` function will silently return FTS-only results when wired in (Qdrant matches will never resolve from DB). Fix the ID lookup before connecting it to the assembler.
+### Weaknesses
+- Zero test coverage for the entire Angel subsystem (13 modules, ~4000 lines)
+- Feature flags defined but not wired for 2 of 3 guardian toggle flags (H1)
+- Observability gap -- guardian work not logged (H2)
+- Some operations can repeat on already-processed targets (L2, L3)
+
+---
+
+## Files Reviewed
+
+| File | Lines | Status |
+|---|---|---|
+| `src/angel/heartbeat.ts` | 565 | Good -- all phases wired, non-throwing, correct ordering |
+| `src/angel/types.ts` | 166 | Good -- complete types, sensible defaults |
+| `src/angel/retention-sweep.ts` | 426 | Good -- 8 pruning functions, batch-limited, safety guards |
+| `src/angel/cross-project-consolidator.ts` | 489 | Good -- 4 phases in transactions, fingerprint dedup |
+| `src/angel/data-quality.ts` | 386 | Good -- FTS validation, orphan cleanup, 0-obs fix |
+| `src/angel/proactive-curator.ts` | 521 | Good -- 7 tasks, dual rate limits, health reports |
+| `src/angel/user-profile-sync.ts` | 319 | Good -- stat-first, bounded I/O, mtime conflict resolution |
+| `src/angel/index.ts` | 333 | OK -- missing new metric logging (H2) |
+| `src/angel/pattern-extractor.ts` | 290 | Good -- dual LLM fallback (API then Ollama) |
+| `src/angel/consolidator.ts` | 453 | Good -- union-find clustering, policy-driven merge decisions |
+| `src/angel/session-monitor.ts` | 190 | Good -- escalation chain with anti-spam |
+| `src/angel/message-sender.ts` | 93 | OK -- one raw db.prepare (M1) |
+| `src/angel/memory-monitor.ts` | 299 | Good -- pinned section awareness, excess-only migration |
+
+---
+
+## Summary of Required Actions
+
+| Priority | Issue | Action |
+|---|---|---|
+| **Fix now** | H1: Feature flags not checked | Add early-return guards in `runDataQualityChecks()` and `runProactiveCuration()` |
+| **Fix now** | H2: Guardian metrics not logged | Add 7 new fields to `logTickResult()` in index.ts |
+| **Fix soon** | M1: Raw db.prepare | Replace with `cachedPrepare` in message-sender.ts:71 |
+| **Fix soon** | M3: Redundant WHERE clause | Remove `AND importance < 5` from cold tier query |
+| **Fix soon** | M4: Aggressive embedding nulling | Add content-change detection to avoid nulling fresh embeddings |
+| **Low priority** | L2: Repeated packing | Add `state != 'packed'` guard to archiveAbandonedProjects |
+| **Low priority** | L3: Unbounded digests | Add 24h dedup check to prepareAwayDigests |
+| **Backlog** | L1: No tests | Write tests for Angel modules |

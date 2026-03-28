@@ -123,6 +123,7 @@ function loadOAuthToken(): string | null {
  */
 async function isCliProxyAvailable(): Promise<boolean> {
   try {
+    // CliProxy doesn't have /health — use /v1/models to verify it's alive
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 2000);
     const resp = await fetch('http://127.0.0.1:8317/v1/models', { signal: controller.signal });
@@ -135,8 +136,9 @@ async function isCliProxyAvailable(): Promise<boolean> {
 
 /**
  * Create Anthropic client with the best available auth method.
- * Priority: CliProxy (localhost:8317) > ANTHROPIC_API_KEY > Claude CLI subprocess.
+ * Priority: CliProxy (localhost:8317) > OAuth token > ANTHROPIC_API_KEY.
  * CliProxy exposes MAX subscription OAuth as a standard API — best option.
+ * OAuth token from ~/.claude/.credentials.json works directly with Anthropic API.
  */
 function createAnthropicClient(useCliProxy: boolean): { client: Anthropic; authMethod: string } | null {
   // Priority 1: CliProxy on localhost:8317 (uses MAX subscription OAuth internally)
@@ -233,6 +235,17 @@ function logTickResult(result: TickResult): void {
   if (result.learnings_pruned) parts.push(`learnings_pruned=${result.learnings_pruned}`);
   if (result.patterns_pruned) parts.push(`patterns_pruned=${result.patterns_pruned}`);
   if (result.memory_entries_migrated) parts.push(`memory_migrated=${result.memory_entries_migrated}`);
+  if (result.artifacts_linked) parts.push(`linked=${result.artifacts_linked}`);
+  if (result.embeddings_backfilled) parts.push(`backfilled=${result.embeddings_backfilled}`);
+  if (result.observations_consolidated) parts.push(`consolidated=${result.observations_consolidated}`);
+  if (result.sessions_auto_closed) parts.push(`auto_closed=${result.sessions_auto_closed}`);
+  if (result.user_profiles_synced) parts.push(`profiles_synced=${result.user_profiles_synced}`);
+  if (result.retention_rows_deleted) parts.push(`retention=${result.retention_rows_deleted}`);
+  if (result.cross_project_deduped) parts.push(`deduped=${result.cross_project_deduped}`);
+  if (result.quality_issues_fixed) parts.push(`quality_fixed=${result.quality_issues_fixed}`);
+  if (result.artifacts_promoted) parts.push(`promoted=${result.artifacts_promoted}`);
+  if (result.artifacts_decayed) parts.push(`decayed=${result.artifacts_decayed}`);
+  if (result.health_report_sent) parts.push('health_report=sent');
 
   if (parts.length > 0) {
     log('info', `tick: ${parts.join(', ')} (${result.duration_ms}ms)`);

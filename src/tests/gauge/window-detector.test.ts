@@ -10,24 +10,28 @@ describe('detectWindowSize', () => {
     expect(detectWindowSize({ model: 'gpt-4' })).toBe(200_000);
   });
 
-  it('returns 200000 for claude-opus-4 with low observed tokens', () => {
-    expect(detectWindowSize({ model: 'claude-opus-4', observedTokens: 100_000 })).toBe(200_000);
+  it('returns 1000000 for claude-opus-4 (model-only detection)', () => {
+    expect(detectWindowSize({ model: 'claude-opus-4' })).toBe(1_000_000);
   });
 
-  it('returns 1000000 for claude-opus-4 with high observed tokens', () => {
+  it('returns 1000000 for claude-opus-4 with low observed tokens', () => {
+    expect(detectWindowSize({ model: 'claude-opus-4', observedTokens: 100_000 })).toBe(1_000_000);
+  });
+
+  it('returns 1000000 for claude-opus-4 with high observed tokens (confirmed)', () => {
     expect(detectWindowSize({ model: 'claude-opus-4', observedTokens: 196_000 })).toBe(1_000_000);
   });
 
-  it('returns 1000000 for claude-sonnet-4 with high observed tokens', () => {
-    expect(detectWindowSize({ model: 'claude-sonnet-4', observedTokens: 200_000 })).toBe(1_000_000);
+  it('returns 1000000 for claude-sonnet-4 (model-only detection)', () => {
+    expect(detectWindowSize({ model: 'claude-sonnet-4' })).toBe(1_000_000);
   });
 
   it('handles model prefix variants (claude-opus-4-20260301)', () => {
     expect(detectWindowSize({ model: 'claude-opus-4-20260301', observedTokens: 196_000 })).toBe(1_000_000);
   });
 
-  it('returns 200000 when model matches but observedTokens is undefined', () => {
-    expect(detectWindowSize({ model: 'claude-opus-4' })).toBe(200_000);
+  it('returns 1000000 for claude-sonnet-4 without observedTokens', () => {
+    expect(detectWindowSize({ model: 'claude-sonnet-4' })).toBe(1_000_000);
   });
 
   it('is non-throwing on null/undefined inputs', () => {

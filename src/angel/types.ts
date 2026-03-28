@@ -2,6 +2,61 @@
  * Angel System types — shared across all Angel modules.
  */
 
+/** Retention configuration for the Guardian of All Memory. */
+export interface RetentionConfig {
+  /** conversation_turns: days to keep full text. Default: 30 */
+  conversationTurnsFullDays: number;
+  /** conversation_turns: days to keep skeletal (user_text only). Default: 90 */
+  conversationTurnsSkeletalDays: number;
+  /** artifacts: days before unaccessed low-importance artifacts are deleted. Default: 60 */
+  artifactColdDeleteDays: number;
+  /** artifacts: days before superseded artifacts are deleted. Default: 30 */
+  artifactSupersededDeleteDays: number;
+  /** session_journal flow entries: retention days. Default: 60 */
+  journalFlowRetentionDays: number;
+  /** session_journal milestone entries: retention days. Default: 180 */
+  journalMilestoneRetentionDays: number;
+  /** session_events: retention days. Default: 90 */
+  sessionEventsRetentionDays: number;
+  /** retrieval_events: days before aggregation + deletion. Default: 30 */
+  retrievalEventsRetentionDays: number;
+  /** verified_facts: retention days. Default: 180 */
+  verifiedFactsRetentionDays: number;
+  /** Projects with no sessions for this many days get archived. Default: 30 */
+  abandonedProjectDays: number;
+  /** Retention sweep interval in minutes. Default: 60 */
+  sweepIntervalMinutes: number;
+  /** Data quality check interval in minutes. Default: 120 */
+  qualityCheckIntervalMinutes: number;
+  /** DB health self-report interval in hours. Default: 24 */
+  healthReportIntervalHours: number;
+  /** Enable cross-project knowledge consolidation. Default: true */
+  crossProjectConsolidation: boolean;
+  /** Enable data quality checks. Default: true */
+  dataQualityChecks: boolean;
+  /** Enable proactive memory curation. Default: true */
+  proactiveCuration: boolean;
+}
+
+export const DEFAULT_RETENTION_CONFIG: RetentionConfig = {
+  conversationTurnsFullDays: 30,
+  conversationTurnsSkeletalDays: 90,
+  artifactColdDeleteDays: 60,
+  artifactSupersededDeleteDays: 30,
+  journalFlowRetentionDays: 60,
+  journalMilestoneRetentionDays: 180,
+  sessionEventsRetentionDays: 90,
+  retrievalEventsRetentionDays: 30,
+  verifiedFactsRetentionDays: 180,
+  abandonedProjectDays: 30,
+  sweepIntervalMinutes: 60,
+  qualityCheckIntervalMinutes: 120,
+  healthReportIntervalHours: 24,
+  crossProjectConsolidation: true,
+  dataQualityChecks: true,
+  proactiveCuration: true,
+};
+
 export interface AngelConfig {
   /** Heartbeat interval in milliseconds. Default: 30 minutes. */
   heartbeatIntervalMs: number;
@@ -17,16 +72,56 @@ export interface AngelConfig {
   maxPatternsPerSession: number;
   /** PID file path. */
   pidFile: string;
+  /** Retention and guardian configuration. */
+  retention: RetentionConfig;
+}
+
+/** Result types for guardian phases. */
+export interface RetentionSweepResult {
+  conversation_turns_skeletal: number;
+  conversation_turns_deleted: number;
+  artifacts_deleted: number;
+  journal_entries_deleted: number;
+  session_events_deleted: number;
+  retrieval_events_deleted: number;
+  artifact_links_deleted: number;
+  verified_facts_deleted: number;
+  session_messages_deleted: number;
+}
+
+export interface CrossProjectResult {
+  learnings_deduped: number;
+  decisions_deduped: number;
+  patterns_deduped: number;
+  learnings_propagated: number;
+}
+
+export interface DataQualityResult {
+  zero_obs_sessions_queued: number;
+  orphaned_records_deleted: number;
+  stale_embeddings_nulled: number;
+  fts_discrepancies: number;
+}
+
+export interface CurationResult {
+  artifacts_promoted: number;
+  artifacts_decayed: number;
+  contradictions_detected: number;
+  hot_files_cooled: number;
+  projects_archived: number;
+  health_report_sent: boolean;
+  digests_prepared: number;
 }
 
 export const DEFAULT_ANGEL_CONFIG: AngelConfig = {
-  heartbeatIntervalMs: 30 * 60 * 1000, // 30 minutes
+  heartbeatIntervalMs: 2 * 60 * 1000, // 2 minutes (adaptive loop overrides based on workload)
   idleThresholdSeconds: 15 * 60,        // 15 minutes — warning
   autoCloseMinutesAfterWarning: 15,     // 15 minutes after warning — auto-close (30 min total)
-  cloudModel: 'claude-sonnet-4-6',
-  localModel: 'llama3.2',
+  cloudModel: 'claude-opus-4-6',
+  localModel: 'glm-5:cloud',
   maxPatternsPerSession: 5,
   pidFile: '',  // Set at runtime from paths
+  retention: { ...DEFAULT_RETENTION_CONFIG },
 };
 
 export interface IdleSession {

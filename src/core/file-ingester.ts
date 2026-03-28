@@ -48,6 +48,8 @@ interface FileSource {
   summary: string;
   content: string;
   mtimeMs: number;
+  /** If true, ingest as __global__ scope (cross-project user memories). */
+  globalScope?: boolean;
 }
 
 export interface IngestResult {
@@ -102,14 +104,100 @@ async function scanSources(
   // 3. Handoffs (top-level only)
   const handoffsDir = path.join(projectDir, 'context', 'handoffs');
 
-  // Scan all three directories concurrently
-  const [memorySources, sessionSources, handoffSources] = await Promise.all([
+  // 4. Cross-project user memories — scan OTHER projects' memory dirs for
+  //    type: user files. These are identity facts (hardware, preferences) that
+  //    must be visible globally, not siloed per project.
+  //    Only runs when the current project has a real memory dir (skip in tests).
+  const hasRealMemoryDir = fs.existsSync(memoryDir);
+  const globalUserSources = hasRealMemoryDir
+    ? scanCrossProjectUserMemories(home, projectKey, existingTimestamps)
+    : Promise.resolve([]);
+
+  // Scan all directories concurrently
+  const [memorySources, sessionSources, handoffSources, crossProjectSources] = await Promise.all([
     scanDirectory(memoryDir, 'memory_file', existingTimestamps),
     scanDirectory(sessionsDir, 'session_log', existingTimestamps),
     scanDirectory(handoffsDir, 'handoff', existingTimestamps),
+    globalUserSources,
   ]);
 
-  return [...memorySources, ...sessionSources, ...handoffSources];
+  return [...memorySources, ...sessionSources, ...handoffSources, ...crossProjectSources];
+}
+
+/**
+ * Scans all other project memory directories for type: user memory files.
+ * These are global identity facts (hardware specs, preferences, role) that
+ * should be visible across all projects. Reads YAML frontmatter to check type.
+ * Non-throwing, async.
+ */
+async function scanCrossProjectUserMemories(
+  home: string,
+  currentProjectKey: string,
+  existingTimestamps: Map<string, number>,
+): Promise<FileSource[]> {
+  const sources: FileSource[] = [];
+  try {
+    const projectsDir = path.join(home, '.claude', 'projects');
+    let projectDirs: fs.Dirent[];
+    try {
+      projectDirs = await fsp.readdir(projectsDir, { withFileTypes: true });
+    } catch { return sources; }
+
+    // Scan up to 20 other projects (avoid unbounded I/O)
+    const otherProjects = projectDirs
+      .filter(d => d.isDirectory() && d.name !== currentProjectKey)
+      .slice(0, 20);
+
+    for (const projDir of otherProjects) {
+      try {
+        const memDir = path.join(projectsDir, projDir.name, 'memory');
+        let entries: fs.Dirent[];
+        try {
+          entries = await fsp.readdir(memDir, { withFileTypes: true });
+        } catch { continue; }
+
+        for (const entry of entries) {
+          if (!entry.isFile()) continue;
+          if (path.extname(entry.name).toLowerCase() !== '.md') continue;
+          if (SKIP_FILES.has(entry.name)) continue;
+
+          const filePath = path.join(memDir, entry.name);
+          try {
+            const stat = await fsp.stat(filePath);
+            if (stat.size > MAX_FILE_SIZE || stat.size < MIN_CONTENT_LENGTH) continue;
+
+            // Mtime check
+            const existingTs = existingTimestamps.get(filePath);
+            if (existingTs !== undefined && stat.mtimeMs < existingTs + 1000) continue;
+
+            const raw = await fsp.readFile(filePath, 'utf-8');
+            if (raw.includes('\0')) continue;
+
+            // Check YAML frontmatter for type: user
+            if (!raw.startsWith('---')) continue;
+            const endIdx = raw.indexOf('---', 3);
+            if (endIdx < 0) continue;
+            const frontmatter = raw.slice(3, endIdx);
+            if (!/\btype:\s*user\b/i.test(frontmatter)) continue;
+
+            // It's a user-type memory — ingest globally
+            let content = raw.slice(endIdx + 3).trim();
+            if (content.length < MIN_CONTENT_LENGTH) continue;
+
+            sources.push({
+              path: filePath,
+              type: 'memory_file',
+              summary: content.replace(/\n/g, ' ').slice(0, 200).trim(),
+              content,
+              mtimeMs: stat.mtimeMs,
+              globalScope: true,
+            });
+          } catch { /* skip individual file */ }
+        }
+      } catch { /* skip individual project */ }
+    }
+  } catch { /* non-throwing */ }
+  return sources;
 }
 
 /**
@@ -277,22 +365,28 @@ export async function ingestFileArtifacts(
           // file.mtimeMs vs artifact.timestamp_epoch*1000 is apples-to-apples.
           const fileMtimeEpoch = Math.floor(src.mtimeMs / 1000);
 
+          // Cross-project user memories use __global__ scope so they're
+          // visible from any project's hybrid retrieval.
+          const targetProject = src.globalScope ? '__global__' : project;
+          // User memories get elevated importance — they're identity facts
+          const targetImportance = src.globalScope ? 5 : 3;
+
           const existing = cachedPrepare(db,
             `SELECT id, summary FROM artifacts
              WHERE project = ? AND artifact_type = ? AND artifact_ref = ?
              LIMIT 1`
-          ).get(project, src.type, src.path) as { id: number; summary: string } | undefined;
+          ).get(targetProject, src.type, src.path) as { id: number; summary: string } | undefined;
 
           if (existing) {
             cachedPrepare(db,
-              `UPDATE artifacts SET summary = ?, content = ?, timestamp_epoch = ?
+              `UPDATE artifacts SET summary = ?, content = ?, timestamp_epoch = ?, importance = ?
                WHERE id = ?`
-            ).run(src.summary, src.content, fileMtimeEpoch, existing.id);
+            ).run(src.summary, src.content, fileMtimeEpoch, targetImportance, existing.id);
           } else {
             cachedPrepare(db,
               `INSERT INTO artifacts (session_id, project, artifact_type, artifact_ref, summary, content, state, ttl, importance, timestamp_epoch)
-               VALUES (?, ?, ?, ?, ?, ?, 'packed', 0, 3, ?)`
-            ).run(sessionId, project, src.type, src.path, src.summary, src.content, fileMtimeEpoch);
+               VALUES (?, ?, ?, ?, ?, ?, 'packed', 0, ?, ?)`
+            ).run(sessionId, targetProject, src.type, src.path, src.summary, src.content, targetImportance, fileMtimeEpoch);
           }
           result.ingested++;
         } catch {
@@ -308,9 +402,9 @@ export async function ingestFileArtifacts(
     // Adds ~2-5s on first run, subsequent starts find most artifacts already embedded.
     try {
       const unembedded = cachedPrepare(db,
-        `SELECT id, summary, content, artifact_type, importance, session_id
+        `SELECT id, summary, content, artifact_type, importance, session_id, project
          FROM artifacts
-         WHERE project = ? AND embedding IS NULL
+         WHERE project IN (?, '__global__') AND embedding IS NULL
            AND artifact_type IN ('session_log', 'decision', 'learning', 'handoff', 'memory_file')
          ORDER BY importance DESC
          LIMIT 20`

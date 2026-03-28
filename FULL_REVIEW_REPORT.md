@@ -1,80 +1,75 @@
 # Full Production Quality Gate Report
 
-**Scope:** Proactive Memory Milestone — 8 phases, 30 files, ~2500 lines
-**Date:** 2026-03-24
+**Scope:** Full codebase (134 source files, 99 test files, 1969 tests)
+**Date:** 2026-03-28 00:40 UTC
 **Models:** Codex CLI + Gemini CLI + Claude Live Test
-**Combined Grade:** A- (89/100)
+**Combined Grade: A- (86/100)**
 
 ## Model Grades
 
-| Model | Focus | Grade | Score | Weight |
-|-------|-------|-------|-------|--------|
-| Codex | Code quality, security, wiring | Pending | -- | 30% |
-| Gemini | Architecture, patterns, contracts | A- | 87/100 | 30% |
-| Claude | Live DB test, data flows, production | A | 94/100 | 40% |
-
-**Weighted (Gemini + Claude):** 0.30 x 87 + 0.40 x 94 = 26.1 + 37.6 = **89.4** (Codex pending)
-
-## What Was Built
-
-8 phases implementing the Proactive Memory system:
-
-| Phase | Feature | New Tests | New Files |
-|-------|---------|-----------|-----------|
-| 12 | Write-time observation deduplication | +10 | observations-dedup.test.ts |
-| 13 | V11 schema + category-aware decay | +16 | -- |
-| 14 | Negative retrieval learning + RIF | +13 | -- |
-| 15 | Pattern maturity + 4x harmful multiplier | +38 | -- |
-| 16 | Observation consolidation (Angel) | +21 | consolidator.ts, consolidator.test.ts |
-| 17 | Artifact relationship graph + graph walks | +14 | graph-walk.ts, graph-walk.test.ts |
-| 18 | Intent classification | +40 | intent-classifier.ts, intent-classifier.test.ts |
-| 19 | Intent prediction at session-start | +25 | intent-predictor.ts, intent-predictor.test.ts |
-| **Total** | | **+177** | **6 new modules** |
-
-Tests: 1714 -> 1895 (+177). Test files: 92 -> 97 (+5). Build: 65ms clean.
+| Model | Focus | Grade | Weight | Score |
+|-------|-------|-------|--------|-------|
+| Codex | Code quality, security, wiring | A- (88) | 30% | 26.4 |
+| Gemini | Architecture, patterns, contracts | A- (87) | 30% | 26.1 |
+| Claude | Live DB test, data flows, production | A- (84) | 40% | 33.6 |
 
 ## Findings Triage
 
 ### Fixed (agreed)
 
-1. **activation_score not used in ranking (Gemini MEDIUM)** — RIF was decrementing activation_score but hybrid scoring didn't use it. Added `activationFactor = Math.max(0.1, artifact.activation_score ?? 1.0)` as a direct multiplier in both `hybridSearchSync` and `hybridSearchAsync`. RIF suppression now affects ranking immediately, not just eventual packing.
+| # | Source | Finding | Fix |
+|---|--------|---------|-----|
+| 1 | **All three + live test** | Session-start budget stuck at 8K — no context window detection at session-start. Root cause of "/starthere investigating codebase" issue | `window-detector.ts`: model-only 1M detection for Claude 4+. `session-start.ts`: passes model to `detectWindowSize`, passes `contextWindowTokens` to assembler. `constants.ts`: 1M scale increased 2x→3x. **Budget: 8K→24K for Claude 4+** |
+| 2 | Codex (SEV-2) | `observability.enabled` missing from DEFAULT_CONFIG — silently disables telemetry pruning at session-start | Added `enabled: true` to `DEFAULT_CONFIG.observability` |
+| 3 | Codex (SEV-3) | Dead modules: `structured-analysis.ts`, `contrastive-extraction.ts` — 200 lines never imported | Deleted both files |
+| 4 | Codex (SEV-3) | `zod` imported but only available as transitive dependency | Added `zod: ^3.23.0` to `package.json` dependencies |
+| 5 | Live test | Cross-project orphan cleanup broken — `AND project = ?` filter prevented cleaning Oracle/Nexus stale sessions | Removed project filter from orphan query; now cleans all stale sessions |
 
-2. **Latent await bug in OpenClaw bridge (Phase 12 discovery)** — `processToolAndPressure()` wasn't being awaited in `bridge-adapter.ts`. Fixed during Phase 12 execution. Would have caused data loss in production.
+### Not Fixed (disagreed — with reasoning)
 
-### Not Fixed (intentional — with reasoning)
+| # | Source | Finding | Reason |
+|---|--------|---------|--------|
+| 6 | Gemini (B1) | Dead tables `knowledge_gaps`, `artifact_access_log` | Forward schema for planned features (System 3 metacognition, ACT-R multi-access BLL). Empty tables have zero cost; removing them loses the migration path |
+| 7 | Gemini (B2) | RL policy pipeline complete but no activation gate | By design — RL policy must prove improvement vs default policy on holdout data before activation. The gate is intentionally manual |
+| 8 | Gemini (C2) | Post-compaction drops cross-project awareness | By design — post-compaction skips sections already in the LLM's context from the system prompt. Cross-project awareness is session-start only |
+| 9 | Gemini (D1) | Topic text doesn't escape backticks | Low risk — topics truncated to 100 chars and sanitized. Backtick escaping could break legitimate code references |
+| 10 | Codex (SEV-4) | Several exports only used internally + tests | Test ergonomics justify the exports |
 
-1. **`artifact_access_log` orphan table (Gemini HIGH)** — Forward-looking schema provision for ACT-R multi-access base-level learning (BLL). Will be wired when we implement `Bi = ln(sum tj^(-d))`. The table exists to avoid a future migration.
+### Investigated but not fixed (separate task)
 
-2. **`knowledge_gaps` orphan table (Gemini MEDIUM)** — Forward-looking schema for System 3 metacognition ("Known Unknowns" register). Will be populated by Angel's dream phase in a future milestone.
-
-3. **`getMaturityWeight` allegedly dead code (Gemini LOW)** — **Incorrect finding.** Verified that `getMaturityWeight` IS called at `experience-patterns.ts:520` inside `findMatchingPatternsHybrid()`. The function is live and actively influences pattern retrieval ordering.
+| # | Source | Finding | Status |
+|---|--------|---------|--------|
+| 11 | Live test only | 63.2% of sessions (336/532) have 0 observations — all from `grigorije-0759758a` project | Hooks record telemetry/events, but observations table stays empty. Project detection issue for home-directory sessions. Needs separate investigation |
+| 12 | Live test only | 73.5% historical artifact embedding gap (1037/3917) | Pipeline works now (99% last 24h). Historical backfill is separate batch task |
 
 ## Live Wiring Test Results
 
 | Feature | DB Evidence | Hook Verified | Status |
-|---------|-------------|---------------|--------|
-| V11 Schema Migration | version=11, all columns present | Migration ran on live DB | PASS |
-| Stability Classification | 1049 stable, 18551 standard, 1239 transient | Backfill complete | PASS |
-| Pattern Maturity | 3 candidate, 4 proven, confidence 0.64-0.94 | Backfill + live computation | PASS |
-| Negative Retrieval Learning | 2823 was_referenced=0, 136 was_referenced=1 | Stop hook recording | PASS |
-| Temporal Profile | 1 row (this session's hour/day) | Stop hook updating | PASS |
-| Action Transitions | 61 rows (Markov chain) | Stop hook updating | PASS |
-| Intent Classification | 4 intent_classification events | user-prompt-submit wired | PASS |
-| Intent Prediction | 0 (session started pre-V11) | Will work next session | EXPECTED |
-| Write-Time Dedup | 0 consolidated_into (no duplicates hit yet) | Code wired, awaiting duplicates | EXPECTED |
-| Observation Consolidation | 0 (needs Angel heartbeat cycle) | Module exists, heartbeat wired | EXPECTED |
-| Artifact Graph Links | 2565 existing links | Bulk linking needs heartbeat | EXPECTED |
-| Qdrant | 804 points, 5 collections | Running, available | PASS |
-| Ollama | nomic-embed-text available | Running, available | PASS |
+|---------|------------|---------------|--------|
+| Session creation | 532 sessions, latest active | session-start smoke pass | PASS |
+| Observation capture | 28,531 observations across 47 projects | post-tool-use smoke pass | PASS |
+| Artifact pipeline | 3,917 artifacts (26.5% embedded, 99% last 24h) | Embedding pipeline active | PASS |
+| Qdrant vector search | 5 collections, all green (3,525 total points) | Collections responding | PASS |
+| Experience patterns | 30 patterns (avg confidence 0.37) | FTS5 match + inject verified | PASS |
+| Retrieval events | 7,497 events with feedback tracking | Recording on materialization | PASS |
+| Thread state | 355 threads, topic tracking active | Topic shift detection working | PASS |
+| Learnings | 78 learnings with FTS5 index | Promotion pipeline active | PASS |
+| Decisions | 61 decisions with fingerprinting | Capture pipeline active | PASS |
+| Injection budget | Before: 8K fixed. After: 24K for Claude 4+ | scaleBudget math verified | **FIXED** |
+| Orphan cleanup | 2 stale sessions (Oracle, Nexus) will auto-close | Cross-project filter removed | **FIXED** |
+| Observability pruning | Was silently disabled at session-start | `enabled: true` added | **FIXED** |
+| Ollama embeddings | snowflake-arctic-embed2 + nomic-embed-text | Models responding | PASS |
 
 ## Production Readiness Assessment
 
-**Ready for production with one caveat.**
+The system is production-ready with the fixes applied. The critical user-reported issue ("agents forgetting 1M plan" / "/starthere investigating instead of retrieving") had a clear root cause: injection budget stuck at 8K because `detectWindowSize` required 195K+ observed tokens (impossible at session-start). Fix enables model-only detection for Claude 4+ and increases 1M scale from 2x to 3x = 24K budget — enough for all 14 priority sections.
 
-All hooks build and smoke-test cleanly. V11 migration ran on live DB with correct backfills. 1895 tests pass.
+Remaining risk: 0-observation issue for `grigorije-0759758a` sessions (63.2% of all sessions) indicates data capture gap for home-directory sessions. Separate investigation needed.
 
-**The caveat:** Three features need their first real-world cycle:
-- Consolidation + graph linking need an Angel heartbeat cycle
-- Intent prediction needs a fresh session start
+**Build:** Clean (91ms). **Tests:** 99 files, 1969 tests, all passing (13.5s). **Hooks:** All 5 smoke pass.
 
-**Recommendation:** Start a new session, verify intent prediction fires, let Angel run 15+ minutes, then check DB.
+---
+
+## Individual Reports
+- Codex: `./CODEX_REVIEW_REPORT.md`
+- Gemini: `./GEMINI_REVIEW_REPORT.md`

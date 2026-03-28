@@ -11,6 +11,12 @@
  *   6. Bulk artifact linking (Qdrant similarity)
  *   7. Observation consolidation (merge similar obs, rate-limited)
  *   8. RL policy training (lowest priority — only when idle)
+ *   9. User profile sync (cross-project identity reconciliation)
+ *   --- Guardian of All Memory phases ---
+ *   4b. Data retention sweep (per-table lifecycle enforcement)
+ *   4c. Cross-project knowledge consolidation (fingerprint dedup)
+ *   4d. Data quality & integrity checks (0-obs fix, orphans, stale embeddings)
+ *   4e. Proactive memory curation (promotion, decay, health reports, digests)
  *
  * The heartbeat only runs meaningful work — no busy loops.
  * Design: easy, fast, purposeful. Every piece earns its place.
@@ -28,6 +34,11 @@ import { extractPatternsFromSession, classifySessionDomains } from './pattern-ex
 import { getUnverifiedFrequentPatterns, incrementVerificationCount } from '../intelligence/experience-patterns.js';
 import { monitorMemoryFiles } from './memory-monitor.js';
 import { consolidateObservationBatch, shouldConsolidate, markConsolidationRan } from './consolidator.js';
+import { syncUserProfiles } from './user-profile-sync.js';
+import { runRetentionSweep } from './retention-sweep.js';
+import { runCrossProjectConsolidation } from './cross-project-consolidator.js';
+import { runDataQualityChecks } from './data-quality.js';
+import { runProactiveCuration } from './proactive-curator.js';
 import { getSessionEvents, synthesizeSessionSummary, saveSessionSummary } from '../core/session-events.js';
 import { captureRecallFlowEntry } from '../adapters/shared/lifecycle.js';
 
@@ -53,6 +64,15 @@ export interface TickResult {
   sessions_auto_closed?: number;
   rl_training_episodes?: number;
   rl_avg_reward?: number;
+  user_profiles_synced?: number;
+  user_profile_conflicts?: number;
+  // Guardian of All Memory
+  retention_rows_deleted?: number;
+  cross_project_deduped?: number;
+  quality_issues_fixed?: number;
+  artifacts_promoted?: number;
+  artifacts_decayed?: number;
+  health_report_sent?: boolean;
   duration_ms: number;
   error?: string;
 }
@@ -125,7 +145,13 @@ export async function heartbeatTick(ctx: HeartbeatContext): Promise<TickResult> 
     }
 
     // Phase 2: Process completed sessions (pattern extraction)
-    const unprocessed = getUnprocessedSessions(ctx.db, 3); // Process max 3 per tick
+    // Process up to 5 sessions when running autonomously (no active sessions),
+    // or 3 when the user is working (save resources for hook responsiveness).
+    const hasActiveSessions = (cachedPrepare(ctx.db,
+      `SELECT COUNT(*) as c FROM sessions WHERE status = 'active'`
+    ).get() as { c: number }).c > 0;
+    const batchSize = hasActiveSessions ? 3 : 5;
+    const unprocessed = getUnprocessedSessions(ctx.db, batchSize);
 
     for (const session of unprocessed) {
       try {
@@ -299,6 +325,96 @@ export async function heartbeatTick(ctx: HeartbeatContext): Promise<TickResult> 
     } catch {
       // Non-critical — training failure doesn't break the heartbeat
     }
+    // Phase 9: User profile sync — cross-project identity reconciliation.
+    // Scans CC auto-memory dirs for type: user files, resolves conflicts by mtime,
+    // upserts canonical versions as __global__ artifacts. Rate-limited internally.
+    try {
+      const syncResult = await syncUserProfiles(ctx.db);
+      if (syncResult.profiles_synced > 0) {
+        result.user_profiles_synced = syncResult.profiles_synced;
+      }
+      if (syncResult.conflicts_resolved > 0) {
+        result.user_profile_conflicts = syncResult.conflicts_resolved;
+      }
+    } catch {
+      // Non-critical — user profile sync failure doesn't break the heartbeat
+    }
+
+    // =========================================================================
+    // Guardian of All Memory — Phases 4b-4e
+    // All pure SQL, no LLM calls, individually rate-limited and non-throwing.
+    // =========================================================================
+
+    // Phase 4b: Data retention sweep — per-table lifecycle enforcement.
+    // Prunes conversation_turns (3-tier), artifacts, journal, events, etc.
+    // Rate-limited internally (default: once per 60 min). Batch: 500 rows/table.
+    try {
+      const sweepResult = runRetentionSweep(ctx.db, ctx.config.retention);
+      const totalDeleted = sweepResult.conversation_turns_skeletal
+        + sweepResult.conversation_turns_deleted
+        + sweepResult.artifacts_deleted
+        + sweepResult.journal_entries_deleted
+        + sweepResult.session_events_deleted
+        + sweepResult.retrieval_events_deleted
+        + sweepResult.artifact_links_deleted
+        + sweepResult.verified_facts_deleted
+        + sweepResult.session_messages_deleted;
+      if (totalDeleted > 0) {
+        result.retention_rows_deleted = totalDeleted;
+      }
+    } catch {
+      // Non-critical — retention failure doesn't break the heartbeat
+    }
+
+    // Phase 4c: Cross-project knowledge consolidation — fingerprint-based dedup.
+    // Merges identical learnings/decisions/patterns into __global__ scope.
+    // Rate-limited internally (default: once per 60 min).
+    try {
+      const consolidation = runCrossProjectConsolidation(ctx.db, ctx.config.retention);
+      const totalDeduped = consolidation.learnings_deduped
+        + consolidation.decisions_deduped
+        + consolidation.patterns_deduped
+        + consolidation.learnings_propagated;
+      if (totalDeduped > 0) {
+        result.cross_project_deduped = totalDeduped;
+      }
+    } catch {
+      // Non-critical — consolidation failure doesn't break the heartbeat
+    }
+
+    // Phase 4d: Data quality & integrity checks.
+    // Fixes 0-observation sessions, cleans orphans, detects stale embeddings.
+    // Rate-limited internally (default: once per 120 min).
+    try {
+      const qualityResult = runDataQualityChecks(ctx.db, ctx.config.retention);
+      const totalFixed = qualityResult.zero_obs_sessions_queued
+        + qualityResult.orphaned_records_deleted
+        + qualityResult.stale_embeddings_nulled;
+      if (totalFixed > 0) {
+        result.quality_issues_fixed = totalFixed;
+      }
+    } catch {
+      // Non-critical — quality check failure doesn't break the heartbeat
+    }
+
+    // Phase 4e: Proactive memory curation.
+    // Promotes valuable artifacts, decays unused ones, detects contradictions,
+    // manages project lifecycles, sends health reports, prepares away-digests.
+    // Rate-limited internally (default: once per 60 min, health reports per 24h).
+    try {
+      const curationResult = runProactiveCuration(ctx.db, ctx.config.retention);
+      if (curationResult.artifacts_promoted > 0) {
+        result.artifacts_promoted = curationResult.artifacts_promoted;
+      }
+      if (curationResult.artifacts_decayed > 0) {
+        result.artifacts_decayed = curationResult.artifacts_decayed;
+      }
+      if (curationResult.health_report_sent) {
+        result.health_report_sent = true;
+      }
+    } catch {
+      // Non-critical — curation failure doesn't break the heartbeat
+    }
   } catch (e) {
     result.error = e instanceof Error ? e.message : String(e);
   }
@@ -420,8 +536,139 @@ export function resetLinkingRateLimit(): void {
   _lastLinkingEpoch = 0;
 }
 
+/** Adaptive interval bounds (ms). */
+const ACTIVE_INTERVAL_MS = 2 * 60 * 1000;   // 2 min — user is working
+const BACKLOG_INTERVAL_MS = 30 * 1000;       // 30 sec — backlog to clear
+const WIND_DOWN_INTERVAL_MS = 5 * 60 * 1000; // 5 min — work done, cooling down
+const IDLE_INTERVAL_MS = 10 * 60 * 1000;     // 10 min — nothing happening
+const MAX_INTERVAL_MS = 30 * 60 * 1000;      // 30 min — fully dormant
+
 /**
- * Start the heartbeat loop. Runs indefinitely until the process is killed.
+ * Check if there's a backlog of work the Angel should keep chewing through.
+ * This is the key difference from a simple "did work happen" check — the Angel
+ * stays awake independently until ALL pending work is done.
+ */
+function hasPendingBacklog(db: Database): boolean {
+  try {
+    // Unprocessed completed sessions (pattern extraction queue)
+    const unprocessed = cachedPrepare(db,
+      `SELECT COUNT(*) as c FROM sessions
+       WHERE status = 'completed'
+         AND session_id NOT IN (
+           SELECT DISTINCT session_id FROM session_events
+           WHERE event_type = 'angel_processed'
+         )
+         AND session_id IN (
+           SELECT DISTINCT session_id FROM conversation_turns
+         )`
+    ).get() as { c: number };
+    if (unprocessed.c > 0) return true;
+
+    // Unembedded artifacts (embedding backfill queue)
+    const unembedded = cachedPrepare(db,
+      `SELECT COUNT(*) as c FROM artifacts
+       WHERE embedding IS NULL AND content IS NOT NULL
+         AND artifact_type IN ('session_log', 'decision', 'learning', 'handoff', 'memory_file')
+       LIMIT 1`
+    ).get() as { c: number };
+    if (unembedded.c > 0) return true;
+
+    // Unlinked artifacts with embeddings (linking queue)
+    const unlinked = cachedPrepare(db,
+      `SELECT COUNT(*) as c FROM artifacts a
+       LEFT JOIN artifact_links al ON a.id = al.source_id
+       WHERE al.source_id IS NULL
+         AND a.embedding IS NOT NULL
+         AND a.state != 'packed'
+       LIMIT 1`
+    ).get() as { c: number };
+    if (unlinked.c > 0) return true;
+
+    // Unconsolidated observation clusters (consolidation queue)
+    const unconsolidated = cachedPrepare(db,
+      `SELECT COUNT(*) as c FROM observations
+       WHERE consumed = 0
+         AND consolidated_into IS NULL
+         AND deleted_at_epoch IS NULL
+         AND importance >= 2`
+    ).get() as { c: number };
+    if (unconsolidated.c > 50) return true; // Only if meaningful batch
+
+    return false;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Compute the next heartbeat interval based on workload.
+ *
+ * Adaptive strategy — the Angel works independently until done:
+ * 1. Pending backlog exists → 30 sec (keep working, don't sleep)
+ * 2. Active sessions exist → 2 min (responsive to user)
+ * 3. Work was done this tick → 5 min (cooling down)
+ * 4. Nothing to do → exponential backoff 10 → 20 → 30 min
+ *
+ * The Angel stays awake autonomously to clear backlogs (unprocessed sessions,
+ * unembedded artifacts, unlinkd artifacts) regardless of whether the user
+ * is online. It only sleeps when ALL queues are empty.
+ */
+function computeNextInterval(
+  db: Database,
+  result: TickResult,
+  consecutiveIdleTicks: number,
+): { intervalMs: number; idle: boolean } {
+  try {
+    // Priority 1: Pending backlog — stay awake and keep working
+    if (hasPendingBacklog(db)) {
+      return { intervalMs: BACKLOG_INTERVAL_MS, idle: false };
+    }
+
+    // Priority 2: Active sessions — responsive to user
+    const active = cachedPrepare(db,
+      `SELECT COUNT(*) as c FROM sessions WHERE status = 'active'`
+    ).get() as { c: number };
+
+    if (active.c > 0) {
+      return { intervalMs: ACTIVE_INTERVAL_MS, idle: false };
+    }
+
+    // Priority 3: Work was done this tick — more may come
+    const workDone = (result.sessions_processed ?? 0) > 0
+      || (result.patterns_extracted ?? 0) > 0
+      || (result.retention_rows_deleted ?? 0) > 0
+      || (result.cross_project_deduped ?? 0) > 0
+      || (result.quality_issues_fixed ?? 0) > 0
+      || (result.observations_consolidated ?? 0) > 0
+      || (result.artifacts_linked ?? 0) > 0
+      || (result.embeddings_backfilled ?? 0) > 0
+      || (result.user_profiles_synced ?? 0) > 0
+      || (result.artifacts_promoted ?? 0) > 0
+      || (result.artifacts_decayed ?? 0) > 0;
+
+    if (workDone) {
+      return { intervalMs: WIND_DOWN_INTERVAL_MS, idle: false };
+    }
+
+    // Priority 4: Nothing to do — exponential backoff
+    const backoff = Math.min(
+      IDLE_INTERVAL_MS * Math.pow(2, consecutiveIdleTicks),
+      MAX_INTERVAL_MS,
+    );
+    return { intervalMs: backoff, idle: true };
+  } catch {
+    return { intervalMs: IDLE_INTERVAL_MS, idle: true };
+  }
+}
+
+/**
+ * Start the adaptive heartbeat loop. Runs indefinitely until the process is killed.
+ *
+ * The interval adapts to workload:
+ * - 2 min when active sessions exist (the user is working)
+ * - 5 min when background work remains (pattern extraction, retention, etc.)
+ * - 10-30 min exponential backoff when fully idle
+ *
  * Returns a cleanup function.
  */
 export function startHeartbeat(
@@ -430,6 +677,7 @@ export function startHeartbeat(
 ): { stop: () => void } {
   let timer: ReturnType<typeof setTimeout> | null = null;
   let running = true;
+  let consecutiveIdleTicks = 0;
 
   async function tick() {
     if (!running) return;
@@ -438,7 +686,9 @@ export function startHeartbeat(
     onTick?.(result);
 
     if (running) {
-      timer = setTimeout(tick, ctx.config.heartbeatIntervalMs);
+      const { intervalMs, idle } = computeNextInterval(ctx.db, result, consecutiveIdleTicks);
+      consecutiveIdleTicks = idle ? consecutiveIdleTicks + 1 : 0;
+      timer = setTimeout(tick, intervalMs);
     }
   }
 
