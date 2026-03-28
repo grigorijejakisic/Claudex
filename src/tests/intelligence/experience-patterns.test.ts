@@ -639,15 +639,15 @@ describe('promoteToGlobalIfCrossProject', () => {
     expect(getById(db, id)!.source_project).toBe(GLOBAL_PROJECT_SCOPE);
   });
 
-  it('does NOT promote non-discovery patterns (correction/behavioral)', () => {
+  it('promotes ALL pattern types cross-project (correction, behavioral, discovery)', () => {
     const corrId = createPattern(db, makePattern({ pattern_type: 'correction' }), 'sess-1', 'proj-a');
     const behId = createPattern(db, makePattern({ pattern_type: 'behavioral', trigger_context: 'behavioral loop signal' }), 'sess-1', 'proj-a');
 
     promoteToGlobalIfCrossProject(db, corrId, 'proj-b');
     promoteToGlobalIfCrossProject(db, behId, 'proj-b');
 
-    expect(getById(db, corrId)!.source_project).toBe('proj-a');
-    expect(getById(db, behId)!.source_project).toBe('proj-a');
+    expect(getById(db, corrId)!.source_project).toBe(GLOBAL_PROJECT_SCOPE);
+    expect(getById(db, behId)!.source_project).toBe(GLOBAL_PROJECT_SCOPE);
   });
 
   it('does NOT re-promote a pattern already in __global__', () => {

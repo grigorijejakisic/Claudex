@@ -66,38 +66,53 @@ function formatTranscript(turns: ConversationTurn[]): string {
 
 const EXTRACTION_SYSTEM_PROMPT = `You are an experience pattern extractor for an AI coding assistant's memory system.
 
-Your job: read a session transcript and identify moments where the USER CORRECTED the assistant.
-A correction is when the user says something is wrong, tells the assistant to stop doing something,
+Your job: read a session transcript and extract TWO types of patterns:
+
+**1. CORRECTIONS** (pattern_type: "correction")
+When the user says something is wrong, tells the assistant to stop doing something,
 redirects the approach, or expresses frustration with the assistant's behavior.
 
-For each correction found, extract:
-- trigger_context: what situation/topic triggered the mistake (max 100 chars)
-- lesson: what the assistant should do differently (max 200 chars)
-- anti_pattern: what the assistant should NOT do (max 100 chars, optional)
-- severity: "critical" (caused real harm/wasted significant time), "important" (wrong approach), or "minor" (style/preference)
-- domain: the technical domain (e.g., "typescript", "git", "testing", "architecture")
+**2. DIRECTIVES** (pattern_type: "behavioral")
+When the user states a standing rule, principle, or way of working that should ALWAYS apply.
+Look for phrases like: "we always...", "never do...", "the rule is...", "from now on...",
+"remember that...", "I want you to...", or any statement establishing how work should be done.
+Directives are NOT corrections — they're proactive rules the user is teaching.
 
-Be CONSERVATIVE. Only extract patterns you're confident represent real corrections, not:
+For each pattern found, extract:
+- pattern_type: "correction" or "behavioral"
+- trigger_context: what situation/topic this applies to (max 100 chars)
+- lesson: the rule or corrected behavior (max 200 chars)
+- anti_pattern: what to avoid (max 100 chars, optional — mainly for corrections)
+- severity: "critical" (fundamental rule/caused real harm), "important" (strong preference/wrong approach), or "minor" (style/preference)
+- domain: the technical domain (e.g., "typescript", "git", "testing", "architecture", "workflow")
+- trigger_intents: array of task categories when this pattern applies. Choose from: ["continuation", "investigation", "implementation", "planning", "recall"]. Use multiple if the pattern applies broadly. For universal rules, include all that apply.
+- retrieval_mode: "reactive" (only surface when prompt matches), "categorical" (surface when task intent matches), or "always" (surface every turn). Use "always" only for critical universal rules. Use "categorical" for task-type-specific patterns. Default to "reactive" for specific corrections.
+
+Be CONSERVATIVE. Only extract patterns you're confident represent real corrections or deliberate directives, not:
 - Normal back-and-forth discussion
 - User providing additional context
 - Clarifications or refinements
 - User changing their mind (not the assistant being wrong)
+- One-off instructions that don't represent standing rules
 
 Respond with JSON only:
 {
   "patterns": [
     {
+      "pattern_type": "correction",
       "trigger_context": "...",
       "lesson": "...",
       "anti_pattern": "...",
       "severity": "important",
-      "domain": "..."
+      "domain": "...",
+      "trigger_intents": ["implementation"],
+      "retrieval_mode": "reactive"
     }
   ],
-  "summary": "Brief 1-2 sentence summary of the session's key correction themes, or 'no corrections found'"
+  "summary": "Brief 1-2 sentence summary of the session's key themes, or 'no patterns found'"
 }
 
-If no corrections are found, return: { "patterns": [], "summary": "no corrections found" }`;
+If no patterns are found, return: { "patterns": [], "summary": "no patterns found" }`;
 
 /**
  * Call Ollama for simple LLM tasks (classification, short extraction).
@@ -197,8 +212,9 @@ export async function extractPatternsFromSession(
       if (!p.trigger_context || !p.lesson) continue;
 
       try {
+        const resolvedType = (p.pattern_type === 'behavioral') ? 'behavioral' : 'correction';
         const patternId = createPattern(db, {
-          pattern_type: 'correction',
+          pattern_type: resolvedType,
           trigger_context: p.trigger_context,
           lesson: p.lesson,
           anti_pattern: p.anti_pattern,
@@ -208,6 +224,18 @@ export async function extractPatternsFromSession(
         if (patternId) {
           created++;
 
+          // Set retrieval_mode and trigger_intents from LLM extraction
+          try {
+            const mode = (p.retrieval_mode === 'always' || p.retrieval_mode === 'categorical')
+              ? p.retrieval_mode : 'reactive';
+            const intents = Array.isArray(p.trigger_intents)
+              ? JSON.stringify(p.trigger_intents.filter((i: string) => typeof i === 'string'))
+              : '[]';
+            cachedPrepare(db,
+              `UPDATE experience_patterns SET retrieval_mode = ?, trigger_intents = ? WHERE id = ?`
+            ).run(mode, intents, patternId);
+          } catch { /* non-fatal — defaults are fine */ }
+
           // NOTE: createPattern() already calls embedPattern() internally (fire-and-forget).
           // Do NOT call embedPattern again here — it would double the embedding compute.
 
@@ -215,7 +243,7 @@ export async function extractPatternsFromSession(
           // The tip is the specific correction; the strategy is the generalized rule.
           try {
             createTipAndStrategy(db, {
-              pattern_type: 'correction',
+              pattern_type: resolvedType,
               trigger_context: p.trigger_context,
               lesson: p.lesson,
               anti_pattern: p.anti_pattern,

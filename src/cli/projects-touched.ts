@@ -26,11 +26,13 @@
 import Database from 'better-sqlite3';
 import { getDbPath } from '../shared/paths.js';
 import { cachedPrepare } from '../core/stmt-cache.js';
+import { resolveProjectPath } from '../shared/scope-detector.js';
 
 // ── Types ────────────────────────────────────────────────────────────
 
 export interface ProjectTouched {
   id: string;
+  path: string | null;
   observation_count: number;
   decision_count: number;
   files: string[];
@@ -176,6 +178,7 @@ export function queryProjectsTouched(
 
     projects.push({
       id: projectId,
+      path: projectId === '__global__' ? null : resolveProjectPath(projectId),
       observation_count: observationCount,
       decision_count: decisionCount,
       files,

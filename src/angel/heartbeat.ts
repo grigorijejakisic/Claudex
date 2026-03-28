@@ -73,6 +73,10 @@ export interface TickResult {
   artifacts_promoted?: number;
   artifacts_decayed?: number;
   health_report_sent?: boolean;
+  patterns_promoted_to_always?: number;
+  patterns_merged?: number;
+  entities_summarized?: number;
+  entities_updated?: number;
   duration_ms: number;
   error?: string;
 }
@@ -415,6 +419,119 @@ export async function heartbeatTick(ctx: HeartbeatContext): Promise<TickResult> 
     } catch {
       // Non-critical — curation failure doesn't break the heartbeat
     }
+
+    // Phase 4e2: Entity summary generation (Hindsight-inspired observation layer).
+    // Generates consolidated summaries for recurring entities with trend computation.
+    // Rate-limited by consolidation interval (same as pattern consolidation).
+    try {
+      const now = Date.now();
+      if (now - _lastConsolidationEpoch >= CONSOLIDATION_INTERVAL_MS * 0.5) { // Run at half the consolidation interval
+        const { generateEntitySummaries } = await import('./entity-summarizer.js');
+        const entityResult = await generateEntitySummaries(ctx.db, ctx.client, ctx.config.cloudModel);
+        if (entityResult.entities_summarized > 0 || entityResult.entities_updated > 0) {
+          result.entities_summarized = entityResult.entities_summarized;
+          result.entities_updated = entityResult.entities_updated;
+        }
+      }
+    } catch {
+      // Non-critical
+    }
+
+    // Phase 4f: Pattern consolidation.
+    // Clusters related experience patterns and promotes proven ones to 'always' retrieval mode.
+    // Patterns that reach 'proven' maturity with score >= 50 are promoted to always-inject.
+    // Rate-limited: once per 30 minutes.
+    try {
+      const now = Date.now();
+      if (now - _lastConsolidationEpoch >= CONSOLIDATION_INTERVAL_MS) {
+        _lastConsolidationEpoch = now;
+        let promoted = 0;
+
+        // Promote high-confidence proven patterns to 'always' retrieval mode
+        const candidates = cachedPrepare(ctx.db,
+          `SELECT id, score, retrieval_mode FROM experience_patterns
+           WHERE maturity = 'proven' AND score >= 50 AND retrieval_mode = 'reactive'`
+        ).all() as Array<{ id: string; score: number; retrieval_mode: string }>;
+
+        for (const c of candidates) {
+          try {
+            cachedPrepare(ctx.db,
+              `UPDATE experience_patterns SET retrieval_mode = 'always' WHERE id = ?`
+            ).run(c.id);
+            promoted++;
+          } catch { /* individual promotion failure */ }
+        }
+
+        if (promoted > 0) {
+          result.patterns_promoted_to_always = promoted;
+        }
+
+        // Merge similar patterns using Qdrant semantic similarity + LLM synthesis.
+        // For each high-score pattern, find semantically similar ones via vector search.
+        // If found, use LLM to synthesize an abstract principle, then merge.
+        // Falls back to string-matching merge when Qdrant/LLM unavailable.
+        try {
+          const { findSimilarPatterns } = await import('../intelligence/experience-patterns.js');
+          const mergeTargets = cachedPrepare(ctx.db,
+            `SELECT id, trigger_context, lesson, score FROM experience_patterns
+             WHERE score >= 5 ORDER BY score DESC LIMIT 10`
+          ).all() as Array<{ id: string; trigger_context: string; lesson: string; score: number }>;
+
+          const merged = new Set<string>();
+          for (const target of mergeTargets) {
+            if (merged.has(target.id)) continue;
+            const similar = await findSimilarPatterns(ctx.db, target.id, target.trigger_context, 3, 0.80);
+            const toMerge = similar.filter(s => !merged.has(s.id) && s.id !== target.id);
+            if (toMerge.length === 0) continue;
+
+            // Try LLM synthesis — combine lessons into one abstract principle
+            let synthesizedLesson = target.lesson;
+            try {
+              const lessons = [target.lesson, ...toMerge.map(m => m.lesson)].join('\n- ');
+              const prompt = `These are related learnings from a coding assistant's experience:\n- ${lessons}\n\nSynthesize ONE concise abstract principle (max 200 chars) that captures the common rule. Output only the principle, nothing else.`;
+
+              if (ctx.client) {
+                const resp = await ctx.client.messages.create({
+                  model: ctx.config.cloudModel,
+                  max_tokens: 256,
+                  messages: [{ role: 'user', content: prompt }],
+                });
+                const text = resp.content.filter((b): b is { type: 'text'; text: string } => b.type === 'text').map(b => b.text).join('');
+                if (text.length > 10 && text.length < 300) {
+                  synthesizedLesson = text.trim();
+                }
+              }
+            } catch { /* LLM failed — keep original lesson */ }
+
+            // Merge: absorb scores, update lesson, delete absorbed patterns
+            let totalAbsorbed = 0;
+            for (const m of toMerge) {
+              cachedPrepare(ctx.db,
+                `UPDATE experience_patterns SET score = score + ? WHERE id = ?`
+              ).run(m.score, target.id);
+              cachedPrepare(ctx.db,
+                `DELETE FROM experience_patterns WHERE id = ?`
+              ).run(m.id);
+              merged.add(m.id);
+              totalAbsorbed += m.score;
+            }
+
+            // Update lesson with synthesized version
+            if (synthesizedLesson !== target.lesson) {
+              cachedPrepare(ctx.db,
+                `UPDATE experience_patterns SET lesson = ? WHERE id = ?`
+              ).run(synthesizedLesson, target.id);
+            }
+          }
+
+          if (merged.size > 0) {
+            result.patterns_merged = merged.size;
+          }
+        } catch { /* non-fatal — consolidation is best-effort */ }
+      }
+    } catch {
+      // Non-critical
+    }
   } catch (e) {
     result.error = e instanceof Error ? e.message : String(e);
   }
@@ -426,6 +543,10 @@ export async function heartbeatTick(ctx: HeartbeatContext): Promise<TickResult> 
 // ---------------------------------------------------------------------------
 // Phase 6: Bulk artifact linking
 // ---------------------------------------------------------------------------
+
+/** Rate limit: run pattern consolidation at most once per 30 minutes. */
+let _lastConsolidationEpoch = 0;
+const CONSOLIDATION_INTERVAL_MS = 30 * 60 * 1000;
 
 /** Rate limit: run bulk linking at most once per 5 minutes. */
 let _lastLinkingEpoch = 0;

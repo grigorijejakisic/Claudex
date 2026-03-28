@@ -257,15 +257,16 @@ export function promoteToGlobalIfCrossProject(
   triggeringProject: string,
 ): void {
   try {
-    // Only promote if the pattern belongs to a different real project
-    // (not already global, not already in the current project).
-    // Only promote discovery patterns to global — correction and behavioral
-    // patterns are project-specific by nature (C6).
+    // Promote ANY pattern type to global when it triggers cross-project.
+    // Original C6 design restricted this to 'discovery' only, but real-world
+    // evidence showed corrections and behavioral patterns are often universal
+    // (e.g., "use --clear not --clean" applies to all Expo projects, not just
+    // the one where the mistake was first made). Zero global patterns existed
+    // under the old restriction — Nexus v2 saw 0 patterns from Nexus v1.
     cachedPrepare(db,
       `UPDATE experience_patterns
        SET source_project = ?
        WHERE id = ?
-         AND pattern_type = 'discovery'
          AND source_project != ?
          AND source_project != ?`
     ).run(GLOBAL_PROJECT_SCOPE, patternId, GLOBAL_PROJECT_SCOPE, triggeringProject);
@@ -371,6 +372,20 @@ export function createPattern(
           score: 2,
         }).catch(() => {}); // swallow — non-critical
       }).catch(() => {}); // dynamic import failure — non-critical
+
+      // Retroactive pattern evolution (A-Mem pattern): when a new pattern is created
+      // that overlaps with existing patterns from OTHER sessions in the SAME project,
+      // boost their scores. This strengthens related knowledge when new evidence arrives.
+      // Guards: only boost same-project patterns from different sessions.
+      try {
+        const related = findMatchingPatterns(db, sanitized.trigger_context, project, 3);
+        for (const r of related) {
+          if (r.id === resultId) continue;
+          if (r.source_session === sessionId) continue;
+          if (r.source_project !== project) continue; // strict same-project only
+          updatePatternScore(db, r.id, 1);
+        }
+      } catch { /* non-fatal */ }
     }
 
     return resultId;
@@ -426,6 +441,7 @@ export function findMatchingPatterns(
        WHERE experience_patterns_fts MATCH ?
          AND ep.score >= 2
          AND (ep.source_project = ? OR ep.source_project = ?)
+         AND COALESCE(ep.retrieval_mode, 'reactive') = 'reactive'
        ORDER BY
          CASE WHEN ep.source_project = ? THEN 0 ELSE 1 END,
          CASE ep.severity WHEN 'critical' THEN 0 WHEN 'important' THEN 1 ELSE 2 END,
@@ -666,6 +682,109 @@ export function incrementUsefulCount(db: Database, id: string): void {
     ).run(id);
   } catch {
     // Non-throwing
+  }
+}
+
+/**
+ * Matches experience patterns by classified intent (categorical tier).
+ * Runs alongside FTS5/vector matching — this is the intent-triggered channel.
+ * Patterns with retrieval_mode='categorical' carry trigger_intents (JSON array
+ * of intent categories). Matches when the classified intent overlaps.
+ * Non-throwing.
+ */
+export function matchIntentTriggeredPatterns(
+  db: Database,
+  classifiedIntent: string,
+  project: string,
+  limit: number = 3,
+): ExperiencePattern[] {
+  if (!classifiedIntent) return [];
+  try {
+    const safeLimit = Math.max(1, Math.min(limit, 10));
+    // Match patterns where trigger_intents JSON array contains the classified intent.
+    // Uses LIKE as a lightweight JSON array search — trigger_intents is a small JSON array.
+    const intentLike = `%"${classifiedIntent.replace(/"/g, '')}"%`;
+    return cachedPrepare(db,
+      `SELECT * FROM experience_patterns
+       WHERE retrieval_mode = 'categorical'
+         AND trigger_intents LIKE ?
+         AND score >= 2
+         AND (source_project = ? OR source_project = ?)
+       ORDER BY score DESC
+       LIMIT ?`
+    ).all(intentLike, project, GLOBAL_PROJECT_SCOPE, safeLimit) as ExperiencePattern[];
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Returns proven/established experience patterns for proactive injection at session start.
+ * Unlike findMatchingPatterns (FTS5 keyword-reactive), this returns the top patterns
+ * unconditionally — they represent accumulated principles, not prompt-triggered corrections.
+ * Scoped to project + global. Ordered by score descending.
+ * Non-throwing.
+ */
+/**
+ * Finds semantically similar patterns using Qdrant vector search.
+ * Used by Angel consolidation to cluster related patterns for merging.
+ * Async — requires Qdrant. Returns empty on failure. Non-throwing.
+ */
+export async function findSimilarPatterns(
+  db: Database,
+  patternId: string,
+  triggerContext: string,
+  limit: number = 5,
+  minSimilarity: number = 0.75,
+): Promise<ExperiencePattern[]> {
+  try {
+    const { embedQuery } = await import('../embeddings/embed-pipeline.js');
+    const embedding = await embedQuery(triggerContext);
+    if (!embedding) return [];
+
+    const { searchPatterns } = await import('../embeddings/qdrant-client.js');
+    // Search across all projects — consolidation is cross-project
+    const results = await searchPatterns(embedding, GLOBAL_PROJECT_SCOPE, limit + 5);
+
+    const similar: ExperiencePattern[] = [];
+    for (const r of results) {
+      if ((r.score ?? 0) < minSimilarity) continue;
+      const pid = (r.payload?.pattern_id as string) ?? String(r.id);
+      if (pid === patternId) continue; // skip self
+      try {
+        const pattern = cachedPrepare(db,
+          `SELECT * FROM experience_patterns WHERE id = ? AND score >= 2`
+        ).get(pid) as ExperiencePattern | undefined;
+        if (pattern) similar.push(pattern);
+      } catch { /* skip */ }
+      if (similar.length >= limit) break;
+    }
+    return similar;
+  } catch {
+    return [];
+  }
+}
+
+export function getProvenPrinciples(
+  db: Database,
+  project: string,
+  limit: number = 5,
+): ExperiencePattern[] {
+  try {
+    const safeLimit = Math.max(1, Math.min(limit, 10));
+    // Proven patterns have earned cross-project visibility — they represent
+    // universal principles validated across many interactions. Don't restrict
+    // to current project scope; a proven pattern from Nexus v1 is just as
+    // relevant in Nexus v2.
+    return cachedPrepare(db,
+      `SELECT * FROM experience_patterns
+       WHERE maturity IN ('proven', 'established')
+         AND score >= 10
+       ORDER BY score DESC
+       LIMIT ?`
+    ).all(safeLimit) as ExperiencePattern[];
+  } catch {
+    return [];
   }
 }
 

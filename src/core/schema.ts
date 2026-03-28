@@ -404,7 +404,10 @@ CREATE TABLE IF NOT EXISTS experience_patterns (
   escalation_level TEXT NOT NULL DEFAULT 'pattern',
   maturity TEXT DEFAULT 'candidate'
     CHECK (maturity IN ('candidate', 'established', 'proven')),
-  confidence REAL DEFAULT 0.5
+  confidence REAL DEFAULT 0.5,
+  retrieval_mode TEXT DEFAULT 'reactive'
+    CHECK (retrieval_mode IN ('always', 'categorical', 'reactive')),
+  trigger_intents TEXT DEFAULT '[]'
 );
 
 CREATE INDEX IF NOT EXISTS idx_expat_project_score

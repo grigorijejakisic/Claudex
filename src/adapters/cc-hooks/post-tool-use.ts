@@ -167,6 +167,39 @@ const main = wrapHook('PostToolUse', async (input, ctx) => {
   }
 
   // ---------------------------------------------------------------------------
+  // Workflow phase detection — detect phase transitions from tool sequences
+  // and store the detected phase for intent-triggered pattern matching.
+  // Aviation checklist pattern: fire rules at phase transitions, not every turn.
+  // ---------------------------------------------------------------------------
+  try {
+    let detectedPhase: string | null = null;
+
+    // Map tool usage to workflow phases
+    const toolLower = toolName.toLowerCase();
+    const inputStr = JSON.stringify(toolInput).toLowerCase();
+
+    if (toolLower === 'bash' && (inputStr.includes('git commit') || inputStr.includes('git add'))) {
+      detectedPhase = 'pre-commit';
+    } else if (toolLower === 'bash' && (inputStr.includes('git push') || inputStr.includes('gh pr'))) {
+      detectedPhase = 'pre-publish';
+    } else if (EDIT_TOOL_NAMES.includes(toolName) && inputStr.includes('refactor')) {
+      detectedPhase = 'refactoring';
+    } else if (toolLower === 'bash' && (inputStr.includes('vitest') || inputStr.includes('test'))) {
+      detectedPhase = 'testing';
+    }
+
+    if (detectedPhase) {
+      // Store detected phase in experience flags for the assembler to pick up
+      const flags = getExperienceFlags(ctx.db, input.session_id);
+      setExperienceFlags(ctx.db, input.session_id, {
+        pending_trigger_domains: [...new Set([...flags.pending_trigger_domains, detectedPhase])],
+      }, flags);
+    }
+  } catch (e) {
+    emitErrorTelemetry(ctx.db, input.session_id, 'post_tool_use/phase_detection', e);
+  }
+
+  // ---------------------------------------------------------------------------
   // Session events — lightweight structured event capture
   // Only for mutative tools (Edit, Write, Bash) — skip reads to avoid DB bloat
   // ---------------------------------------------------------------------------

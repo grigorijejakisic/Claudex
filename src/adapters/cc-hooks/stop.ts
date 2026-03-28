@@ -25,7 +25,8 @@ import {
   captureRecallFlowEntry,
   detectIdleSession,
 } from '../shared/lifecycle.js';
-import { routeByContent, buildProjectIndex } from '../../shared/content-router.js';
+import { routeByContent, buildProjectIndex, type ProjectSignature } from '../../shared/content-router.js';
+import { detectProjectScope, registerProject } from '../../shared/scope-detector.js';
 import * as fs from 'fs';
 import * as path from 'path';
 import { getSessionEvents, synthesizeSessionSummary, saveSessionSummary, recordEvent } from '../../core/session-events.js';
@@ -87,6 +88,18 @@ const main = wrapHook('Stop', async (input, ctx) => {
   const routingContent = ((lastUserText || '') + ' ' + (lastAssistantText || '')).substring(0, 5000);
   const projectIndex = buildProjectIndex();
   const routedProject = routeByContent(routingContent, ctx.project, projectIndex);
+
+  // Auto-register unregistered projects discovered via content routing.
+  // When work is rerouted to a project that exists on disk but isn't in projects.json,
+  // register it so future sessions can find its path for handoff routing.
+  if (routedProject !== ctx.project) {
+    runHookStep('auto_register_project', () => {
+      const sig = projectIndex.find((p: ProjectSignature) => p.id === routedProject);
+      if (sig?.fullPath && detectProjectScope(sig.fullPath) === null) {
+        registerProject(routedProject, sig.fullPath);
+      }
+    }, ctx.db, input.session_id);
+  }
 
   // Each operation isolated — if A fails, B and C still run
 
@@ -288,6 +301,9 @@ const main = wrapHook('Stop', async (input, ctx) => {
 
         if (!flags.correction_flagged) {
           // Helpful path: no correction -> pattern was useful
+          // Note: times_useful is incremented by the deferred awaiting_feedback path
+          // in experience-scoring.ts on the NEXT turn. Don't double-count here.
+          // The display (sections.ts) uses helpful_count, not times_useful.
           incrementVerificationCount(ctx.db, pid);
           updatePatternScore(ctx.db, pid, 1); // +1 score, +1 helpful_count
         } else {

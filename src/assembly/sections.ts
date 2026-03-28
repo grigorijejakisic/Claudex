@@ -54,6 +54,34 @@ function sanitizeTopicText(text: string | null | undefined, maxLen: number = 100
 
 
 /**
+ * Priority 1.1: Claudex navigation reinforcement.
+ * Reminds the agent that Claudex MCP tools exist and should be used before filesystem exploration.
+ * Intentionally tiny (~40 tokens) — the full reference is in global CLAUDE.md.
+ */
+export function formatClaudexReadySection(): string {
+  return `## Claudex Active
+Memory system is live. Use \`claudex_search\`, \`claudex_recall\`, \`claudex_events\` MCP tools to find context — don't explore the filesystem for it. All projects are in \`~/Desktop/Projects/\`.`;
+}
+
+/**
+ * Priority 4.1: Proven principles — proactive injection of established learnings.
+ * Unlike experience warnings (keyword-matched per turn), these are injected
+ * unconditionally at session start. They represent the accumulated wisdom that
+ * every agent should know, regardless of what the current prompt is about.
+ */
+export function formatProvenPrinciplesSection(patterns: ExperiencePattern[]): string | null {
+  if (!patterns || patterns.length === 0) return null;
+
+  let inner = '## Proven Principles\nThese are established learnings from past sessions. Apply them proactively — they are always relevant.\n\n';
+
+  for (const p of patterns) {
+    inner += `- **${p.trigger_context}**: ${p.lesson}\n`;
+  }
+
+  return inner.trimEnd();
+}
+
+/**
  * Priority 1: Identity section from USER.md.
  * Reads from identityDir or default ~/.claudex/identity/.
  */
@@ -121,7 +149,7 @@ export function renderExperienceWarnings(patterns: ExperiencePattern[]): string 
       const harmful = (p as ExperiencePattern & { harmful_count?: number }).harmful_count ?? 0;
       const total = helpful + harmful;
       const ratioStr = total > 0 ? ` (${Math.round(helpful / total * 100)}% helpful)` : '';
-      inner += `*Helped ${p.times_useful}/${p.times_triggered} times${ratioStr}*\n\n`;
+      inner += `*Helped ${helpful}/${p.times_triggered} times${ratioStr}*\n\n`;
     }
 
     // Framing BEFORE the opening tag: the preamble is a structural instruction

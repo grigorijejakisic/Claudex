@@ -17,6 +17,8 @@ import { emitTelemetry, sanitizeErrorForTelemetry } from '../observability/telem
 import { estimateTokens } from '../shared/text-utils.js';
 import {
   formatIdentitySection,
+  formatClaudexReadySection,
+  formatProvenPrinciplesSection,
   formatProjectSection,
   formatCheckpointSection,
   formatGsdSection,
@@ -36,6 +38,8 @@ import {
 import type { ProjectOverviewRow } from './sections.js';
 import {
   findMatchingPatterns,
+  getProvenPrinciples,
+  matchIntentTriggeredPatterns,
   incrementTriggerCount,
   generateTopicKey,
   promoteToGlobalIfCrossProject,
@@ -100,6 +104,10 @@ export interface RegularPromptParams {
   config: ClaudexConfig;
   identityDir?: string;
   sessionId?: string;
+  /** Pre-computed hybrid pattern matches (FTS5 + vector). Avoids re-querying in sync assembler. */
+  hybridPatterns?: ExperiencePattern[];
+  /** Classified intent for intent-triggered pattern matching (categorical tier). */
+  classifiedIntent?: string;
 }
 
 export interface TopicPivotParams {
@@ -149,10 +157,15 @@ function renderExperienceWarnings(
   query: string,
   project: string,
   sessionId?: string,
+  precomputedPatterns?: ExperiencePattern[],
 ): ExperienceWarningResult | null {
   try {
     if (!query) return null;
-    let patterns = findMatchingPatterns(db, query, project, 3);
+    // Use pre-computed hybrid results (FTS5 + vector) when available,
+    // falling back to sync FTS5-only search.
+    let patterns = precomputedPatterns && precomputedPatterns.length > 0
+      ? precomputedPatterns
+      : findMatchingPatterns(db, query, project, 3);
     if (patterns.length === 0) return null;
 
     // Per-session suppression: don't re-inject patterns already shown this session.
@@ -189,6 +202,32 @@ function renderExperienceWarnings(
           if (p.source_project !== project && p.source_project !== GLOBAL_PROJECT_SCOPE) {
             promoteToGlobalIfCrossProject(db, p.id, project);
           }
+          // Reconsolidation: refresh confidence + re-embed on retrieval.
+          // Science says retrieval is a write operation — each surface strengthens the memory.
+          try {
+            const fresh = cachedPrepare(db,
+              `SELECT helpful_count, harmful_count, lesson FROM experience_patterns WHERE id = ?`
+            ).get(p.id) as { helpful_count: number; harmful_count: number; lesson: string } | undefined;
+            if (fresh) {
+              const conf = (fresh.helpful_count + 1) / (fresh.helpful_count + fresh.harmful_count + 2);
+              cachedPrepare(db,
+                `UPDATE experience_patterns SET confidence = ? WHERE id = ?`
+              ).run(conf, p.id);
+
+              // Re-embed if lesson was updated (e.g., by LLM consolidation).
+              // Fire-and-forget — non-blocking.
+              if (fresh.lesson !== p.lesson) {
+                import('../embeddings/embed-pipeline.js').then(({ embedPattern: ep }) => {
+                  ep(db, p.id, p.trigger_context, fresh.lesson, {
+                    project,
+                    pattern_type: p.pattern_type,
+                    severity: p.severity ?? 'important',
+                    score: p.score,
+                  }).catch(() => {});
+                }).catch(() => {});
+              }
+            }
+          } catch { /* non-fatal */ }
         }
         if (injectedIds.length > 0 && sessionId) {
           // Accumulate into session_injected_ids (never cleared during session)
@@ -230,6 +269,19 @@ export function assembleFullContext(params: FullAssemblyParams): InjectPayload {
           sections.push(identity);
           budget -= cost;
           sources.push('identity');
+        }
+      }
+
+      // Priority 1.1: Claudex navigation reinforcement — reminds agent about MCP tools.
+      // Tiny (~40 tokens). Full reference is in global CLAUDE.md.
+      // Only inject if identity loaded (skip in total degradation).
+      if (identity) {
+        const claudexReady = formatClaudexReadySection();
+        const claudexCost = estimateTokens(claudexReady);
+        if (claudexCost <= budget) {
+          sections.push(claudexReady);
+          budget -= claudexCost;
+          sources.push('claudex_ready');
         }
       }
 
@@ -299,6 +351,24 @@ export function assembleFullContext(params: FullAssemblyParams): InjectPayload {
             sections.push(learningsSection);
             budget -= cost;
             sources.push('learnings');
+          }
+        }
+      }
+    } catch { /* non-fatal */ }
+
+    // Priority 4.1: Proven principles — proactive injection of established patterns.
+    // Unlike experience warnings (keyword-matched per turn), these fire unconditionally
+    // at every session start. They represent accumulated wisdom: always-applicable rules.
+    try {
+      const principles = getProvenPrinciples(params.db, params.project, 5);
+      if (principles.length > 0) {
+        const principlesSection = formatProvenPrinciplesSection(principles);
+        if (principlesSection) {
+          const cost = estimateTokens(principlesSection);
+          if (cost <= budget) {
+            sections.push(principlesSection);
+            budget -= cost;
+            sources.push('proven_principles');
           }
         }
       }
@@ -625,18 +695,71 @@ export function assembleRegularPrompt(params: RegularPromptParams): InjectPayloa
     // Non-blocking — failures return empty.
     // The assembler is the single owner of pattern injection — the hook only
     // detects corrections to avoid double injection and inflated trigger counts.
-    if (params.prompt && params.prompt.length >= 20) {
-      const expWarnings = renderExperienceWarnings(
-        params.db, params.prompt, params.project, params.sessionId,
-      );
-      if (expWarnings) {
-        // Defer effects to caller — the caller's budget check may drop this payload
-        // (e.g. if extraContent exceeds budget). Effects committed only after injection.
+    {
+      const parts: string[] = [];
+      const srcs: string[] = [];
+      let totalTokens = 0;
+      let commitFn: (() => void) | undefined;
+
+      // 4a. Always-inject: proven principles (mid-session reinforcement).
+      // These are high-score proven patterns injected on EVERY turn, not just session start.
+      // Bypasses retrieval entirely — they've earned unconditional injection.
+      // Hard cap: 500 tokens (~5 patterns × ~40 tokens each). Injection budget is 8K.
+      try {
+        const principles = getProvenPrinciples(params.db, params.project, 5);
+        if (principles.length > 0) {
+          const section = formatProvenPrinciplesSection(principles);
+          if (section) {
+            const cost = estimateTokens(section);
+            if (cost <= 500) { // Hard cap — proven principles should be concise
+              parts.push(section);
+              totalTokens += cost;
+              srcs.push('proven_principles');
+            }
+          }
+        }
+      } catch { /* non-fatal */ }
+
+      // 4b. Categorical: intent-triggered patterns.
+      // Matches patterns tagged with trigger_intents against the classified intent.
+      // This is the "innate immune" channel — structural matching, not keyword.
+      if (params.classifiedIntent) {
+        try {
+          const intentPatterns = matchIntentTriggeredPatterns(
+            params.db, params.classifiedIntent, params.project, 3,
+          );
+          if (intentPatterns.length > 0) {
+            const section = formatExperienceWarningsSection(intentPatterns);
+            if (section) {
+              const cost = estimateTokens(section);
+              parts.push(section);
+              totalTokens += cost;
+              srcs.push('intent_patterns');
+            }
+          }
+        } catch { /* non-fatal */ }
+      }
+
+      // 4c. Reactive: FTS5 + vector hybrid-matched patterns for this specific prompt.
+      if (params.prompt && params.prompt.length >= 20) {
+        const expWarnings = renderExperienceWarnings(
+          params.db, params.prompt, params.project, params.sessionId,
+          params.hybridPatterns,
+        );
+        if (expWarnings) {
+          parts.push(expWarnings.section);
+          totalTokens += expWarnings.tokenCost;
+          srcs.push('experience_warnings');
+          commitFn = expWarnings.applyEffects;
+        }
+      }
+
+      if (parts.length > 0) {
         return {
-          content: expWarnings.section,
-          tokenEstimate: expWarnings.tokenCost,
-          sources: ['experience_warnings'],
-          commitEffects: expWarnings.applyEffects,
+          content: parts.join('\n\n'),
+          tokenEstimate: totalTokens,
+          sources: srcs,
+          commitEffects: commitFn,
         };
       }
     }

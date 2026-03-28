@@ -921,6 +921,16 @@ export function migrateV10toV11(db: Database): void {
       db.exec("ALTER TABLE thread_state ADD COLUMN qdrant_synced INTEGER NOT NULL DEFAULT 0");
     }
 
+    // 8. Add retrieval_mode and trigger_intents to experience_patterns.
+    // retrieval_mode: 'always' (injected every turn), 'categorical' (intent-triggered), 'reactive' (keyword/vector).
+    // trigger_intents: JSON array of intent categories for categorical patterns.
+    if (hasTable(db, 'experience_patterns')) {
+      if (!hasColumn(db, 'experience_patterns', 'retrieval_mode'))
+        db.exec("ALTER TABLE experience_patterns ADD COLUMN retrieval_mode TEXT DEFAULT 'reactive'");
+      if (!hasColumn(db, 'experience_patterns', 'trigger_intents'))
+        db.exec("ALTER TABLE experience_patterns ADD COLUMN trigger_intents TEXT DEFAULT '[]'");
+    }
+
   } catch {
     // Non-throwing
   }

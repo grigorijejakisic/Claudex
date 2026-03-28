@@ -152,6 +152,9 @@ export interface ExtractedPattern {
   anti_pattern?: string;
   severity: 'critical' | 'important' | 'minor';
   domain?: string;
+  pattern_type?: 'correction' | 'behavioral';
+  trigger_intents?: string[];
+  retrieval_mode?: 'always' | 'categorical' | 'reactive';
 }
 
 export interface ConversationTurn {

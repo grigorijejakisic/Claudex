@@ -4,8 +4,10 @@
  */
 
 import * as path from 'path';
+import * as fs from 'fs';
+import * as os from 'os';
 import { getProjectsJsonPath } from './paths.js';
-import { readJsonFile } from './fs-helpers.js';
+import { readJsonFile, writeJsonFile } from './fs-helpers.js';
 
 interface ProjectEntry {
   path: string;
@@ -98,6 +100,79 @@ export function getProjectId(cwd: string): string {
   } catch {
     // Non-throwing: no DB access — caller always gets a valid project ID string
     return 'unknown';
+  }
+}
+
+/**
+ * Resolves a project ID to its directory path.
+ * Checks projects.json first, then scans ~/Desktop/Projects/ for derived matches.
+ * Returns null if no path can be determined. Never throws.
+ */
+export function resolveProjectPath(projectId: string): string | null {
+  try {
+    // 1. Check registered projects in projects.json
+    const data = readJsonFile<ProjectsFile>(getProjectsJsonPath());
+    if (data?.projects) {
+      for (const [key, value] of Object.entries(data.projects)) {
+        let projId: string;
+        let projPath: string | undefined;
+        if (typeof value === 'string') {
+          projPath = key;
+          projId = value;
+        } else if (value && typeof value === 'object' && typeof (value as ProjectEntry).path === 'string') {
+          projPath = (value as ProjectEntry).path;
+          projId = key;
+        } else {
+          continue;
+        }
+        if (projId === projectId && projPath) return projPath;
+      }
+    }
+
+    // 2. Scan ~/Desktop/Projects/ for unregistered directories whose derived ID matches
+    const baseDir = path.join(os.homedir(), 'Desktop', 'Projects');
+    const entries = fs.readdirSync(baseDir, { withFileTypes: true });
+    for (const entry of entries) {
+      if (!entry.isDirectory()) continue;
+      const fullPath = path.join(baseDir, entry.name);
+      if (deriveProjectId(fullPath) === projectId) return fullPath;
+    }
+  } catch { /* non-throwing */ }
+
+  return null;
+}
+
+/**
+ * Auto-registers a project in projects.json.
+ * Idempotent — skips if project ID already exists.
+ * Returns true on success. Never throws.
+ */
+export function registerProject(id: string, dirPath: string, description?: string): boolean {
+  try {
+    const jsonPath = getProjectsJsonPath();
+    const data = readJsonFile<Record<string, unknown>>(jsonPath) ?? {
+      schema: 'claudex/project-registry',
+      version: 1,
+      projects: {},
+    };
+
+    const projects = (data as { projects?: Record<string, unknown> }).projects;
+    if (!projects || typeof projects !== 'object') return false;
+
+    // Idempotent — don't overwrite existing registrations
+    if (projects[id]) return true;
+
+    projects[id] = {
+      path: dirPath,
+      created: new Date().toISOString().split('T')[0],
+      last_session: new Date().toISOString().split('T')[0],
+      description: description ?? `Auto-registered from ${path.basename(dirPath)}`,
+      status: 'active',
+    };
+
+    return writeJsonFile(jsonPath, data);
+  } catch {
+    return false;
   }
 }
 

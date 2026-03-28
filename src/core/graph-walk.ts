@@ -55,6 +55,9 @@ const LINK_TYPE_MULTIPLIERS: Record<string, number> = {
   contradicts: 0, // Exclude contradicted artifacts
 };
 
+/** Temporal decay sigma — 30 days in seconds. Links older than this are heavily decayed. */
+const TEMPORAL_DECAY_SIGMA = 30 * 24 * 3600;
+
 const DEFAULT_OPTIONS: Required<GraphWalkOptions> = {
   maxDepth: 2,
   minScore: 0.05,
@@ -66,23 +69,31 @@ const DEFAULT_OPTIONS: Required<GraphWalkOptions> = {
 // Graph walk
 // ---------------------------------------------------------------------------
 
+/** Predefined meta-path patterns for MPFP traversal (Hindsight-inspired). */
+const META_PATHS: Array<{ name: string; edgeTypes: string[] }> = [
+  { name: 'direct_related', edgeTypes: ['related'] },
+  { name: 'direct_supports', edgeTypes: ['supports'] },
+  { name: 'direct_causal', edgeTypes: ['caused_by'] },
+  { name: 'topic_expansion', edgeTypes: ['related', 'related'] },
+  { name: 'evidence_chain', edgeTypes: ['supports', 'related'] },
+  { name: 'causal_context', edgeTypes: ['caused_by', 'related'] },
+  { name: 'version_chain', edgeTypes: ['supersedes'] },
+  { name: 'context_evidence', edgeTypes: ['related', 'supports'] },
+];
+
 /**
- * Walk the artifact_links graph from seed IDs, discovering related artifacts
- * via 2-hop traversal with dampened scores.
+ * MPFP meta-path graph traversal from seed IDs.
+ * Runs multiple typed path patterns in parallel and fuses results via RRF.
+ * Each pattern follows a specific sequence of edge types through the graph.
  *
- * Algorithm:
- * 1. Start with seed IDs at depth 0, score 1.0
- * 2. For each node, follow outgoing links (WHERE invalid_at_epoch IS NULL)
- * 3. Multiply score by: dampening * link_strength * link_type_multiplier
- * 4. Skip if result score < minScore or depth >= maxDepth
- * 5. Track visited IDs to prevent cycles
- * 6. Return non-seed artifacts sorted by max walk_score
+ * Hindsight-inspired upgrade from simple 2-hop BFS:
+ * - Predefined semantic patterns (topic expansion, evidence chain, causal, etc.)
+ * - Each pattern independently traverses the graph
+ * - Results fused across all patterns — artifacts found by multiple patterns score higher
+ * - Temporal decay applied to link weights
+ * - Lazy edge loading (per-depth-level batch queries)
  *
- * Uses iterative BFS instead of SQL recursive CTE because:
- * - Link-type multipliers need JS lookup (not available in SQLite)
- * - Cycle detection is cleaner in JS (no need for string concatenation tricks)
- * - Batch SQL queries per depth level (2 queries max)
- *
+ * Falls back to generic BFS if no typed links exist.
  * Non-throwing — returns empty array on any error.
  */
 export function graphWalkFromSeeds(
@@ -94,91 +105,140 @@ export function graphWalkFromSeeds(
     if (seedIds.length === 0) return [];
 
     const opts = { ...DEFAULT_OPTIONS, ...options };
-
-    // Track best score per artifact ID (across all paths)
-    const bestScores = new Map<number, number>();
     const seedSet = new Set(seedIds);
+    const now = Math.floor(Date.now() / 1000);
 
-    // Initialize seeds with score 1.0
-    const frontier: Array<{ id: number; score: number; depth: number }> = [];
-    for (const id of seedIds) {
-      frontier.push({ id, score: 1.0, depth: 0 });
-    }
+    // Run each meta-path pattern independently, collect results per pattern
+    const patternResults: Array<Map<number, number>> = [];
 
-    // Visited set for cycle detection
-    const visited = new Set<number>(seedIds);
+    for (const metaPath of META_PATHS) {
+      const scores = new Map<number, number>();
+      let currentIds = [...seedIds];
+      let currentScores = new Map<number, number>(seedIds.map(id => [id, 1.0]));
 
-    // BFS by depth level
-    let currentDepth = 0;
-    let currentLevel = frontier;
+      // Walk each hop in the meta-path
+      for (let hop = 0; hop < metaPath.edgeTypes.length; hop++) {
+        const edgeType = metaPath.edgeTypes[hop];
+        if (currentIds.length === 0) break;
 
-    while (currentDepth < opts.maxDepth && currentLevel.length > 0) {
-      // Collect all IDs at this level for batch query
-      const levelIds = currentLevel.map(n => n.id);
-      const scoreMap = new Map<number, number>();
-      for (const n of currentLevel) {
-        const existing = scoreMap.get(n.id) ?? 0;
-        scoreMap.set(n.id, Math.max(existing, n.score));
-      }
+        const placeholders = currentIds.map(() => '?').join(',');
+        const links = cachedPrepare(db,
+          `SELECT source_id, target_id, link_type, strength, valid_at_epoch
+           FROM artifact_links
+           WHERE source_id IN (${placeholders})
+             AND link_type = ?
+             AND invalid_at_epoch IS NULL`
+        ).all(...currentIds, edgeType) as Array<{
+          source_id: number;
+          target_id: number;
+          link_type: string;
+          strength: number;
+          valid_at_epoch: number | null;
+        }>;
 
-      // Batch fetch outgoing links for all nodes at this level
-      // SQLite doesn't support array params, so we use a placeholder per ID
-      const placeholders = levelIds.map(() => '?').join(',');
-      const links = cachedPrepare(db,
-        `SELECT source_id, target_id, link_type, strength
-         FROM artifact_links
-         WHERE source_id IN (${placeholders})
-           AND invalid_at_epoch IS NULL`
-      ).all(...levelIds) as Array<{
-        source_id: number;
-        target_id: number;
-        link_type: string;
-        strength: number;
-      }>;
+        const nextScores = new Map<number, number>();
+        for (const link of links) {
+          const sourceScore = currentScores.get(link.source_id) ?? 0;
+          const linkAge = link.valid_at_epoch ? Math.max(0, now - link.valid_at_epoch) : 0;
+          const temporalDecay = linkAge > 0 ? Math.exp(-linkAge / TEMPORAL_DECAY_SIGMA) : 1.0;
+          // Apply link-type multiplier even in MPFP — preserves caused_by(2x), supports(1.5x) advantage
+          const typeMultiplier = LINK_TYPE_MULTIPLIERS[link.link_type] ?? 1.0;
+          const walkScore = sourceScore * opts.dampening * link.strength * temporalDecay * typeMultiplier;
 
-      const nextLevel: Array<{ id: number; score: number; depth: number }> = [];
+          if (walkScore < opts.minScore) continue;
 
-      for (const link of links) {
-        const typeMultiplier = LINK_TYPE_MULTIPLIERS[link.link_type] ?? 1.0;
+          const existing = nextScores.get(link.target_id) ?? 0;
+          if (walkScore > existing) nextScores.set(link.target_id, walkScore);
 
-        // Skip contradicts edges (multiplier = 0)
-        if (typeMultiplier === 0) continue;
-
-        const sourceScore = scoreMap.get(link.source_id) ?? 0;
-        const walkScore = sourceScore * opts.dampening * link.strength * typeMultiplier;
-
-        // Prune low-signal paths
-        if (walkScore < opts.minScore) continue;
-
-        const targetId = link.target_id;
-
-        // Track best score for non-seed artifacts
-        if (!seedSet.has(targetId)) {
-          const existing = bestScores.get(targetId) ?? 0;
-          if (walkScore > existing) {
-            bestScores.set(targetId, walkScore);
+          // Record non-seed discoveries
+          if (!seedSet.has(link.target_id)) {
+            const prev = scores.get(link.target_id) ?? 0;
+            if (walkScore > prev) scores.set(link.target_id, walkScore);
           }
         }
 
-        // Only continue walking if not visited (cycle detection)
-        if (!visited.has(targetId)) {
-          visited.add(targetId);
-          nextLevel.push({ id: targetId, score: walkScore, depth: currentDepth + 1 });
-        }
+        currentIds = [...nextScores.keys()];
+        currentScores = nextScores;
       }
 
-      currentLevel = nextLevel;
-      currentDepth++;
+      if (scores.size > 0) patternResults.push(scores);
     }
 
-    // Convert to sorted results
-    const results: WalkedArtifact[] = [];
-    for (const [artifactId, walkScore] of bestScores) {
-      results.push({ artifactId, walkScore });
+    // Fallback: if no typed patterns produced results, run generic BFS (any edge type)
+    if (patternResults.length === 0) {
+      const genericScores = new Map<number, number>();
+      let currentIds = [...seedIds];
+      let currentScores = new Map<number, number>(seedIds.map(id => [id, 1.0]));
+      const visited = new Set<number>(seedIds);
+
+      for (let depth = 0; depth < opts.maxDepth; depth++) {
+        if (currentIds.length === 0) break;
+        const placeholders = currentIds.map(() => '?').join(',');
+        const links = cachedPrepare(db,
+          `SELECT source_id, target_id, link_type, strength, valid_at_epoch
+           FROM artifact_links
+           WHERE source_id IN (${placeholders})
+             AND invalid_at_epoch IS NULL`
+        ).all(...currentIds) as Array<{
+          source_id: number; target_id: number; link_type: string;
+          strength: number; valid_at_epoch: number | null;
+        }>;
+
+        const nextScores = new Map<number, number>();
+        for (const link of links) {
+          const typeMultiplier = LINK_TYPE_MULTIPLIERS[link.link_type] ?? 1.0;
+          if (typeMultiplier === 0) continue;
+          const sourceScore = currentScores.get(link.source_id) ?? 0;
+          const linkAge = link.valid_at_epoch ? Math.max(0, now - link.valid_at_epoch) : 0;
+          const temporalDecay = linkAge > 0 ? Math.exp(-linkAge / TEMPORAL_DECAY_SIGMA) : 1.0;
+          const walkScore = sourceScore * opts.dampening * link.strength * typeMultiplier * temporalDecay;
+          if (walkScore < opts.minScore) continue;
+          if (!seedSet.has(link.target_id)) {
+            const prev = genericScores.get(link.target_id) ?? 0;
+            if (walkScore > prev) genericScores.set(link.target_id, walkScore);
+          }
+          if (!visited.has(link.target_id)) {
+            visited.add(link.target_id);
+            const ex = nextScores.get(link.target_id) ?? 0;
+            if (walkScore > ex) nextScores.set(link.target_id, walkScore);
+          }
+        }
+        currentIds = [...nextScores.keys()];
+        currentScores = nextScores;
+      }
+
+      if (genericScores.size > 0) patternResults.push(genericScores);
     }
 
-    results.sort((a, b) => b.walkScore - a.walkScore);
-    return results.slice(0, opts.limit);
+    // RRF fusion across all pattern results
+    // Artifacts found by multiple patterns score higher
+    const rrfScores = new Map<number, number>();
+    // Track the max raw walk score per artifact (preserves link-type multiplier effects)
+    const maxRawScores = new Map<number, number>();
+    const RRF_K = 60;
+    for (const patternScores of patternResults) {
+      const ranked = [...patternScores.entries()].sort((a, b) => b[1] - a[1]);
+      for (let i = 0; i < ranked.length; i++) {
+        const [artifactId, rawScore] = ranked[i];
+        const rrfContrib = 1 / (RRF_K + i + 1);
+        rrfScores.set(artifactId, (rrfScores.get(artifactId) ?? 0) + rrfContrib);
+        const prevMax = maxRawScores.get(artifactId) ?? 0;
+        if (rawScore > prevMax) maxRawScores.set(artifactId, rawScore);
+      }
+    }
+
+    // Final score: blend RRF (multi-pattern discovery) with raw walk score (link-type strength).
+    // This ensures caused_by (2x multiplier) still outranks related (1x) even if
+    // related is found by more patterns.
+    const results: WalkedArtifact[] = [...rrfScores.entries()]
+      .map(([artifactId, rrfScore]) => {
+        const rawScore = maxRawScores.get(artifactId) ?? 0;
+        return { artifactId, walkScore: rrfScore * (1 + rawScore) };
+      })
+      .sort((a, b) => b.walkScore - a.walkScore)
+      .slice(0, opts.limit);
+
+    return results;
   } catch {
     return [];
   }

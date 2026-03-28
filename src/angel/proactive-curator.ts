@@ -508,6 +508,233 @@ export function prepareAwayDigests(db: Database): number {
 // ---------------------------------------------------------------------------
 
 /**
+ * Auto-write proven patterns into global CLAUDE.md.
+ * The Angel isn't making up rules — it's formalizing what the USER already said
+ * through corrections and directives. By the time a pattern reaches this threshold,
+ * it's been validated dozens of times. The Angel preserves the spirit of the user's words.
+ *
+ * Safety guards:
+ * - maturity = 'proven' (survived the full scoring pipeline)
+ * - score >= 50 (strong cumulative validation)
+ * - helpful_count / (helpful_count + harmful_count) >= 0.95 (95%+ helpful rate)
+ * - Not already written (tracked via generalized_rule marker)
+ *
+ * Writes to the "## Angel-Promoted Rules" section at the end of ~/.claude/CLAUDE.md.
+ * Also sends an Angel message so the user knows what was added.
+ * Non-throwing.
+ */
+function suggestClaudeMdUpdates(db: Database): void {
+  try {
+    const candidates = cachedPrepare(db,
+      `SELECT id, trigger_context, lesson, score, source_project, helpful_count, harmful_count
+       FROM experience_patterns
+       WHERE maturity = 'proven'
+         AND retrieval_mode = 'always'
+         AND score >= 50
+         AND (generalized_rule IS NULL OR generalized_rule NOT LIKE '[promoted]%')
+       ORDER BY score DESC
+       LIMIT 3`
+    ).all() as Array<{
+      id: string; trigger_context: string; lesson: string; score: number;
+      source_project: string; helpful_count: number; harmful_count: number;
+    }>;
+
+    if (candidates.length === 0) return;
+
+    // Filter by 95%+ helpful rate
+    const eligible = candidates.filter(c => {
+      const total = c.helpful_count + c.harmful_count;
+      if (total < 5) return false; // need enough data
+      return (c.helpful_count / total) >= 0.95;
+    });
+
+    if (eligible.length === 0) return;
+
+    // Read current CLAUDE.md
+    const os = require('os');
+    const path = require('path');
+    const fs = require('fs');
+    const claudeMdPath = path.join(os.homedir(), '.claude', 'CLAUDE.md');
+
+    let content: string;
+    try {
+      content = fs.readFileSync(claudeMdPath, 'utf-8');
+    } catch {
+      return; // Can't read CLAUDE.md — don't create it from scratch
+    }
+
+    // Find or create the Angel-Promoted Rules section
+    const SECTION_HEADER = '## Angel-Promoted Rules';
+    let sectionStart = content.indexOf(SECTION_HEADER);
+    let newRules = '';
+    const addedRules: string[] = [];
+
+    for (const c of eligible) {
+      const ruleLine = `- **${c.trigger_context}**: ${c.lesson}`;
+      // Don't add if already present (idempotent)
+      if (content.includes(c.lesson)) {
+        // Mark as promoted even if manually added
+        cachedPrepare(db,
+          `UPDATE experience_patterns SET generalized_rule = ? WHERE id = ?`
+        ).run(`[promoted] ${new Date().toISOString()}`, c.id);
+        continue;
+      }
+      newRules += ruleLine + '\n';
+      addedRules.push(`"${c.trigger_context}": ${c.lesson}`);
+
+      // Mark as promoted
+      cachedPrepare(db,
+        `UPDATE experience_patterns SET generalized_rule = ? WHERE id = ?`
+      ).run(`[promoted] ${new Date().toISOString()}`, c.id);
+    }
+
+    if (newRules.length === 0) return;
+
+    // Append rules to CLAUDE.md
+    if (sectionStart >= 0) {
+      // Find the end of the section (next ## or end of file)
+      const afterHeader = sectionStart + SECTION_HEADER.length;
+      const nextSection = content.indexOf('\n## ', afterHeader);
+      const insertAt = nextSection >= 0 ? nextSection : content.length;
+      content = content.slice(0, insertAt) + '\n' + newRules + content.slice(insertAt);
+    } else {
+      // Add new section at end
+      content = content.trimEnd() + '\n\n' + SECTION_HEADER + '\n' +
+        'Rules automatically promoted by Angel from proven experience patterns.\n\n' +
+        newRules;
+    }
+
+    // Write atomically
+    const { atomicWriteFile } = require('../shared/fs-helpers.js');
+    atomicWriteFile(claudeMdPath, content);
+
+    // Notify the user via Angel message
+    const activeSession = cachedPrepare(db,
+      `SELECT session_id FROM sessions
+       WHERE ended_at_epoch IS NULL
+       ORDER BY created_at_epoch DESC LIMIT 1`
+    ).get() as { session_id: string } | undefined;
+
+    if (activeSession && addedRules.length > 0) {
+      const msg = `**Angel promoted ${addedRules.length} rule(s) to CLAUDE.md:**\n` +
+        addedRules.map(r => `- ${r}`).join('\n');
+      sendMessage(db, activeSession.session_id, 'angel', msg);
+    }
+  } catch {
+    // Non-throwing
+  }
+}
+
+/** Max rules in the Angel-Promoted Rules section. When exceeded, lowest-scoring are removed. */
+const MAX_PROMOTED_RULES = 15;
+
+/**
+ * Custodian of the Angel-Promoted Rules section in CLAUDE.md.
+ * Keeps the section lean and current:
+ * 1. Remove rules whose patterns are no longer proven or score dropped below threshold
+ * 2. Cap at MAX_PROMOTED_RULES — if over, remove lowest-scoring
+ * 3. Merge overlapping rules (patterns that were consolidated by the Angel)
+ *
+ * Runs after suggestClaudeMdUpdates in the curation cycle.
+ * Non-throwing.
+ */
+function curateClaudeMdRules(db: Database): void {
+  try {
+    const os = require('os');
+    const path = require('path');
+    const fs = require('fs');
+    const claudeMdPath = path.join(os.homedir(), '.claude', 'CLAUDE.md');
+
+    let content: string;
+    try {
+      content = fs.readFileSync(claudeMdPath, 'utf-8');
+    } catch { return; }
+
+    const SECTION_HEADER = '## Angel-Promoted Rules';
+    const sectionStart = content.indexOf(SECTION_HEADER);
+    if (sectionStart < 0) return; // No section yet
+
+    // Find section boundaries
+    const afterHeader = content.indexOf('\n', sectionStart) + 1;
+    const nextSection = content.indexOf('\n## ', afterHeader);
+    const sectionEnd = nextSection >= 0 ? nextSection : content.length;
+    const sectionBody = content.slice(afterHeader, sectionEnd);
+
+    // Parse existing rules (lines starting with "- **")
+    const ruleLines = sectionBody.split('\n').filter(l => l.startsWith('- **'));
+    if (ruleLines.length === 0) return;
+
+    // Get all promoted patterns from DB to check validity
+    const promoted = cachedPrepare(db,
+      `SELECT id, trigger_context, lesson, score, maturity, helpful_count, harmful_count
+       FROM experience_patterns
+       WHERE generalized_rule LIKE '[promoted]%'
+       ORDER BY score DESC`
+    ).all() as Array<{
+      id: string; trigger_context: string; lesson: string; score: number;
+      maturity: string; helpful_count: number; harmful_count: number;
+    }>;
+
+    // Build a set of still-valid lessons
+    const validLessons = new Set<string>();
+    const scoredLessons: Array<{ lesson: string; score: number }> = [];
+
+    for (const p of promoted) {
+      const total = p.helpful_count + p.harmful_count;
+      const helpfulRate = total >= 5 ? p.helpful_count / total : 1;
+
+      // Still valid if: proven maturity, score >= 25 (allow some decay from 50), 90%+ helpful
+      if (p.maturity === 'proven' && p.score >= 25 && helpfulRate >= 0.90) {
+        validLessons.add(p.lesson);
+        scoredLessons.push({ lesson: p.lesson, score: p.score });
+      } else {
+        // Pattern degraded — unmark it so it could re-promote later if it recovers
+        cachedPrepare(db,
+          `UPDATE experience_patterns SET generalized_rule = NULL WHERE id = ?`
+        ).run(p.id);
+      }
+    }
+
+    // Filter rules: keep only those whose lesson text still appears in valid set
+    let keptRules = ruleLines.filter(line => {
+      // Extract lesson text after the **: marker
+      const lessonMatch = line.match(/\*\*:\s*(.+)$/);
+      if (!lessonMatch) return true; // keep non-standard lines
+      return validLessons.has(lessonMatch[1].trim());
+    });
+
+    // Cap at MAX_PROMOTED_RULES — keep highest-scoring
+    if (keptRules.length > MAX_PROMOTED_RULES) {
+      // Score each rule line by matching its lesson to the DB score
+      const scored = keptRules.map(line => {
+        const lessonMatch = line.match(/\*\*:\s*(.+)$/);
+        const lesson = lessonMatch?.[1]?.trim() ?? '';
+        const entry = scoredLessons.find(s => s.lesson === lesson);
+        return { line, score: entry?.score ?? 0 };
+      });
+      scored.sort((a, b) => b.score - a.score);
+      keptRules = scored.slice(0, MAX_PROMOTED_RULES).map(s => s.line);
+    }
+
+    // Rebuild section
+    const description = 'Rules automatically promoted by Angel from proven experience patterns.\n';
+    const newSection = SECTION_HEADER + '\n' + description + '\n' + keptRules.join('\n') + '\n';
+
+    // Replace section in content
+    const before = content.slice(0, sectionStart);
+    const after = content.slice(sectionEnd);
+    const updated = before + newSection + after;
+
+    if (updated !== content) {
+      const { atomicWriteFile } = require('../shared/fs-helpers.js');
+      atomicWriteFile(claudeMdPath, updated);
+    }
+  } catch {
+    // Non-throwing
+  }
+}
+
+/**
  * Run all proactive curation tasks. Rate-limited by config.sweepIntervalMinutes.
  * The health report has its own separate rate limit inside generateHealthReport().
  *
@@ -539,6 +766,8 @@ export function runProactiveCuration(db: Database, config: RetentionConfig): Cur
     const hot_files_cooled = coolStaleHotFiles(db);
     const projects_archived = archiveAbandonedProjects(db, config);
     const digests_prepared = prepareAwayDigests(db);
+    suggestClaudeMdUpdates(db);
+    curateClaudeMdRules(db);
 
     return {
       artifacts_promoted,

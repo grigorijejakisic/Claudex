@@ -217,13 +217,15 @@ const main = wrapHook('UserPromptSubmit', async (input, ctx) => {
   // Experience pattern detection
   // ---------------------------------------------------------------------------
 
-  // On assembly turns, run hybrid pattern search (FTS5 + Qdrant vector)
-  // to find semantically similar patterns that keyword matching misses.
-  // Results are available to the assembler via findMatchingPatterns (FTS5 handles
-  // the sync path; this async call pre-warms Qdrant-only matches into the DB cache).
-  if ((isPostCompaction || topicShift?.shifted) && prompt) {
+  // Run hybrid pattern search (FTS5 + Qdrant vector) on EVERY turn.
+  // Previously only ran on assembly turns (post-compaction/topic-shift).
+  // Vector search catches semantically similar patterns that keyword matching misses —
+  // this is the primary fix for the "broad rules never surface" problem.
+  // Results are passed to assembleRegularPrompt to avoid re-querying sync FTS5.
+  let hybridPatterns: Awaited<ReturnType<typeof findMatchingPatternsHybrid>> | undefined;
+  if (prompt && prompt.length >= 20) {
     try {
-      await findMatchingPatternsHybrid(ctx.db, prompt, routedProject, 3);
+      hybridPatterns = await findMatchingPatternsHybrid(ctx.db, prompt, routedProject, 5);
     } catch { /* non-fatal — FTS5 path is the safety net */ }
   }
 
@@ -384,6 +386,8 @@ const main = wrapHook('UserPromptSubmit', async (input, ctx) => {
     config: ctx.config,
     identityDir: getIdentityDir(),
     sessionId: input.session_id,
+    hybridPatterns,
+    classifiedIntent: intentType,
   });
 
   if (isPostCompaction) {

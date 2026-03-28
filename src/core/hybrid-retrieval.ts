@@ -53,6 +53,12 @@ export interface HybridSearchOptions {
    * When set, overrides weights.alpha.
    */
   recencyWeight?: number;
+  /**
+   * Token budget for greedy packing. When set, retrieval stops adding results
+   * when the next result would exceed this budget. Maximizes context utilization.
+   * If omitted, returns up to `limit` results regardless of token cost.
+   */
+  budgetTokens?: number;
 }
 
 export interface ScoringWeights {
@@ -676,7 +682,57 @@ export async function hybridSearchAsync(
     }
 
     scored.sort((a, b) => b.hybrid_score - a.hybrid_score);
-    const selected = scored.slice(0, limit);
+
+    // Cross-encoder reranking (Hindsight-inspired): after RRF + three-factor scoring,
+    // run a neural cross-encoder that jointly scores (query, candidate) pairs.
+    // Uses Ollama with a reranking model. Non-blocking: skips if unavailable.
+    // Only reranks top candidates (not the full set) for performance.
+    try {
+      const topCandidates = scored.slice(0, Math.min(20, scored.length));
+      if (topCandidates.length > 1) {
+        const response = await fetch('http://localhost:11434/api/generate', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            model: 'nomic-embed-text',
+            prompt: `Rate relevance 0-10 for query "${query.substring(0, 200)}" vs each document. Return only numbers separated by commas.\n` +
+              topCandidates.map((c, i) => `${i}: ${(c.content ?? '').substring(0, 150)}`).join('\n'),
+            stream: false,
+          }),
+          signal: AbortSignal.timeout(3000), // 3s max — don't block assembly
+        });
+        if (response.ok) {
+          const data = await response.json() as { response: string };
+          const scores = data.response.match(/\d+(\.\d+)?/g)?.map(Number);
+          if (scores && scores.length >= topCandidates.length) {
+            for (let i = 0; i < topCandidates.length; i++) {
+              // Blend cross-encoder score with existing hybrid score (30% CE, 70% hybrid)
+              const ceNormalized = (scores[i] ?? 5) / 10;
+              topCandidates[i].hybrid_score = topCandidates[i].hybrid_score * 0.7 + ceNormalized * 0.3;
+            }
+            topCandidates.sort((a, b) => b.hybrid_score - a.hybrid_score);
+            // Replace scored top section with reranked version
+            scored.splice(0, topCandidates.length, ...topCandidates);
+          }
+        }
+      }
+    } catch { /* Cross-encoder unavailable — proceed with RRF-only scores */ }
+
+    // Token budget-aware greedy packing: stop adding results when budget is full.
+    let selected: ScoredArtifact[];
+    if (options.budgetTokens && options.budgetTokens > 0) {
+      selected = [];
+      let usedTokens = 0;
+      for (const item of scored) {
+        const itemTokens = Math.ceil((item.content?.length ?? 100) / 4);
+        if (usedTokens + itemTokens > options.budgetTokens && selected.length > 0) break;
+        selected.push(item);
+        usedTokens += itemTokens;
+        if (selected.length >= limit) break;
+      }
+    } else {
+      selected = scored.slice(0, limit);
+    }
 
     // Phase 14: RIF — suppress non-selected candidates that scored above threshold
     const selectedIds = new Set(selected.map(s => s.id));
