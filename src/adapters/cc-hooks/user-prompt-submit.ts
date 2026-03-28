@@ -342,14 +342,24 @@ const main = wrapHook('UserPromptSubmit', async (input, ctx) => {
       for (const m of pending) {
         const prefix = m.priority === 'urgent' ? '**[URGENT]** ' : '';
         if (m.sender_type === 'session') {
-          // Resolve sender session name for human-friendly display
-          const senderName = m.sender.slice(0, 8);
+          // Resolve sender to human-readable identity (name + project)
+          let senderLabel = `Session ${m.sender.slice(0, 8)}`;
+          try {
+            const senderInfo = cachedPrepare(ctx.db,
+              `SELECT name, project FROM sessions WHERE session_id = ?`
+            ).get(m.sender) as { name: string | null; project: string | null } | undefined;
+            if (senderInfo?.name) {
+              const proj = senderInfo.project ? ` (${senderInfo.project})` : '';
+              senderLabel = `Agent "${senderInfo.name}"${proj}`;
+            }
+          } catch { /* fallback to truncated ID */ }
+
           const typeLabel = m.message_type === 'request' ? 'asks'
             : m.message_type === 'response' ? 'replies'
-            : m.message_type === 'transfer' ? 'transfers'
-            : m.message_type === 'acknowledge' ? 'acknowledges'
+            : m.message_type === 'transfer' ? 'transfers context'
+            : m.message_type === 'acknowledge' ? 'confirms'
             : 'says';
-          sessionParts.push(`${prefix}**Session ${senderName}** ${typeLabel}: ${m.content}`);
+          sessionParts.push(`${prefix}**${senderLabel}** ${typeLabel}: ${m.content}`);
           // Auto-acknowledge transfer messages (I-PASS read-back protocol)
           if (m.message_type === 'transfer') {
             acknowledgeTransfer(ctx.db, input.session_id, m.sender, 'Transfer received and injected.');
