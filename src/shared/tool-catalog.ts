@@ -79,7 +79,7 @@ export const TOOL_CATALOG: Record<string, ToolDefinition> = {
   },
   NotebookEdit: {
     name: 'NotebookEdit',
-    keyFields: ['cell_id', 'cellId', 'cell', 'notebook', 'file_path', 'filePath'],
+    keyFields: ['cell_id', 'cellId', 'cell', 'notebook_path', 'notebook', 'file_path', 'filePath'],
     behaviorHints: ['file-modifying', 'notebook'],
     defaultCategory: 'code',
   },

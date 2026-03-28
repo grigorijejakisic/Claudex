@@ -57,6 +57,7 @@ import {
   consumeInjectedArtifacts,
 } from '../core/artifacts.js';
 import { hybridSearchSync, spreadActivation } from '../core/hybrid-retrieval.js';
+import type { ExperiencePattern } from '../intelligence/experience-patterns.js';
 import { cachedPrepare } from '../core/stmt-cache.js';
 import { recordRetrievalEvent } from '../intelligence/retrieval-feedback.js';
 import { getRecentFlow } from '../core/journal.js';

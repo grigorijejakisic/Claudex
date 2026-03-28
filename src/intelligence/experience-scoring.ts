@@ -23,7 +23,7 @@ import {
 } from './experience-patterns.js';
 import { detectEnrichmentProvider } from './enrichment.js';
 import { getExperienceFlags, setExperienceFlags, type ExperienceFlags } from './experience-flags.js';
-import { extractPatternFromAssistantText, extractLessonFromUserCorrection } from './correction-detection.js';
+import { extractPatternFromAssistantText, extractLessonFromUserCorrection, findCausalEvent, storeCausalAttribution } from './correction-detection.js';
 import { tokenizeQuery } from '../shared/search-utils.js';
 
 /**
@@ -95,7 +95,16 @@ export async function applyExperienceFeedback(
 
           // Classify scope: LLM -> heuristic -> default project-scoped
           const scopedProject = await classifyPatternScope(extracted, routedProject, enrichmentProvider);
-          createPattern(db, extracted, sessionId, scopedProject);
+          const patternId = createPattern(db, extracted, sessionId, scopedProject);
+
+          // Wire causal attribution: trace which session event the user is correcting
+          // and link it to the pattern for richer root-cause analysis.
+          try {
+            const causal = findCausalEvent(db, sessionId, lastUserText);
+            if (causal) {
+              storeCausalAttribution(db, patternId, causal.event_id);
+            }
+          } catch { /* Non-critical — pattern created regardless */ }
         }
       } catch (e) {
         emitErrorTelemetry(db, sessionId, 'stop/exp_pattern_create', e);

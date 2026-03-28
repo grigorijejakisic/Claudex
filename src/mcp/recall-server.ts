@@ -21,6 +21,7 @@ import { cachedPrepare } from '../core/stmt-cache.js';
 import { initializeSchema, runMigrations } from '../core/migrations.js';
 import { searchJournalFTS } from '../core/journal.js';
 import { tokenizeQuery } from '../shared/search-utils.js';
+import { searchConversations } from '../embeddings/qdrant-client.js';
 
 // ---------------------------------------------------------------------------
 // DB connection
@@ -180,6 +181,30 @@ server.tool(
         }));
       }
     } catch { /* FTS on conversation_turns may fail — non-fatal */ }
+
+    // Supplementary: Qdrant vector search for conversations (catches semantic matches FTS5 misses)
+    try {
+      const { embedQuery } = await import('../embeddings/embed-pipeline.js');
+      const embedding = await embedQuery(query);
+      if (embedding) {
+        const vectorConvs = await searchConversations(embedding, proj, 3);
+        const existingIds = new Set(conversationResults.map(c => c.id));
+        for (const vc of vectorConvs) {
+          if (existingIds.has(vc.id as number)) continue; // skip FTS5 duplicates
+          const payload = vc.payload ?? {};
+          conversationResults.push({
+            id: vc.id as number,
+            type: 'conversation_turn',
+            summary: String(payload.summary ?? payload.user_text ?? '').slice(0, 200),
+            provenance: `session:${payload.session_id ?? 'unknown'}:turn${payload.turn_number ?? '?'}`,
+            importance: 3,
+            project: String(payload.project ?? proj),
+            source: 'conversation',
+            score: vc.score * 0.5, // Blend: vector conversations score lower than FTS5 matches
+          });
+        }
+      }
+    } catch { /* Qdrant/embeddings unavailable — non-fatal */ }
 
     // Search learnings via FTS5 (feedback, corrections, migrated memory)
     let learningResults: Array<{

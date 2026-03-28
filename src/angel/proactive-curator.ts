@@ -618,7 +618,7 @@ function suggestClaudeMdUpdates(db: Database): void {
     if (activeSession && addedRules.length > 0) {
       const msg = `**Angel promoted ${addedRules.length} rule(s) to CLAUDE.md:**\n` +
         addedRules.map(r => `- ${r}`).join('\n');
-      sendMessage(db, activeSession.session_id, 'angel', msg);
+      sendMessage(db, activeSession.session_id, msg);
     }
   } catch {
     // Non-throwing

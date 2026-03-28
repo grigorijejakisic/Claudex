@@ -18,7 +18,7 @@ export function extractNotebookEdit(
   try {
     const cellId = String(input.cell_id ?? input.cellId ?? input.cell ?? '');
     const changeType = String(input.type ?? input.change_type ?? input.action ?? '');
-    const notebookPath = String(input.notebook ?? input.file_path ?? input.filePath ?? '');
+    const notebookPath = String(input.notebook_path ?? input.notebook ?? input.file_path ?? input.filePath ?? '');
 
     const identifier = cellId || changeType;
     if (!identifier) return null;

@@ -25,6 +25,7 @@
  */
 
 import type Anthropic from '@anthropic-ai/sdk';
+import type { TextBlock } from '@anthropic-ai/sdk/resources/messages/messages.js';
 import type { Database } from 'better-sqlite3';
 import { cachedPrepare } from '../core/stmt-cache.js';
 import type { AngelConfig } from './types.js';
@@ -510,7 +511,7 @@ export async function heartbeatTick(ctx: HeartbeatContext): Promise<TickResult> 
                   max_tokens: 256,
                   messages: [{ role: 'user', content: prompt }],
                 });
-                const text = resp.content.filter((b): b is { type: 'text'; text: string } => b.type === 'text').map(b => b.text).join('');
+                const text = resp.content.filter((b): b is TextBlock => b.type === 'text').map(b => b.text).join('');
                 if (text.length > 10 && text.length < 300) {
                   synthesizedLesson = text.trim();
                 }

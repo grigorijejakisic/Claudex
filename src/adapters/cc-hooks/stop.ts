@@ -15,6 +15,7 @@ import { wrapHook, getTranscriptPath } from './infrastructure.js';
 import { getTokenGauge } from '../../gauge/token-gauge.js';
 import { CC_CAPABILITIES } from '../../shared/constants.js';
 import { emitErrorTelemetry } from '../../observability/error-telemetry.js';
+import { updateRecallText } from '../../core/journal.js';
 import {
   captureDecisionsWithClassifier,
   captureInsightsAsLearnings,
@@ -441,6 +442,15 @@ const main = wrapHook('Stop', async (input, ctx) => {
       project: string; entry_type: string;
     }>;
     for (const entry of unembedded) {
+      // Backfill recall_text for entries missing it — extract key terms from content
+      if (!entry.recall_text && entry.content) {
+        const words = entry.content.split(/[\s_\-/.,;:!?()[\]{}]+/).filter(w => w.length >= 4);
+        const unique = [...new Set(words.map(w => w.toLowerCase()))].slice(0, 8);
+        if (unique.length >= 2) {
+          updateRecallText(ctx.db, entry.id, unique.join(' | '));
+          entry.recall_text = unique.join(' | ');
+        }
+      }
       await embedJournalEntry(ctx.db, entry.id, entry.content, entry.recall_text ?? undefined, {
         project: entry.project,
         session_id: input.session_id,

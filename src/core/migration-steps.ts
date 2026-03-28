@@ -800,8 +800,12 @@ export function migrateV9toV10(db: Database): void {
  * 6. Backfill maturity + confidence based on trigger/helpful counts
  */
 export function migrateV10toV11(db: Database): void {
+  // Each step is isolated so a failure in one doesn't cascade and skip later steps.
+  // Root cause: the original single try/catch swallowed errors from steps 1-7,
+  // preventing step 8 (retrieval_mode + trigger_intents) from ever running.
+
+  // 1. Add columns to observations
   try {
-    // 1. Add columns to observations
     if (hasTable(db, 'observations')) {
       if (!hasColumn(db, 'observations', 'stability_class'))
         db.exec("ALTER TABLE observations ADD COLUMN stability_class TEXT DEFAULT 'standard'");
@@ -810,24 +814,30 @@ export function migrateV10toV11(db: Database): void {
       if (!hasColumn(db, 'observations', 'consolidated_into'))
         db.exec("ALTER TABLE observations ADD COLUMN consolidated_into INTEGER");
     }
+  } catch { /* non-fatal */ }
 
-    // 2. Add columns to experience_patterns
+  // 2. Add columns to experience_patterns
+  try {
     if (hasTable(db, 'experience_patterns')) {
       if (!hasColumn(db, 'experience_patterns', 'maturity'))
         db.exec("ALTER TABLE experience_patterns ADD COLUMN maturity TEXT DEFAULT 'candidate'");
       if (!hasColumn(db, 'experience_patterns', 'confidence'))
         db.exec("ALTER TABLE experience_patterns ADD COLUMN confidence REAL DEFAULT 0.5");
     }
+  } catch { /* non-fatal */ }
 
-    // 3. Add columns to artifact_links
+  // 3. Add columns to artifact_links
+  try {
     if (hasTable(db, 'artifact_links')) {
       if (!hasColumn(db, 'artifact_links', 'valid_at_epoch'))
         db.exec("ALTER TABLE artifact_links ADD COLUMN valid_at_epoch INTEGER");
       if (!hasColumn(db, 'artifact_links', 'invalid_at_epoch'))
         db.exec("ALTER TABLE artifact_links ADD COLUMN invalid_at_epoch INTEGER");
     }
+  } catch { /* non-fatal */ }
 
-    // 4. Create new tables
+  // 4. Create new tables
+  try {
     db.exec(`
       CREATE TABLE IF NOT EXISTS artifact_access_log (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -840,7 +850,9 @@ export function migrateV10toV11(db: Database): void {
       CREATE INDEX IF NOT EXISTS idx_aal_artifact
         ON artifact_access_log(artifact_id, timestamp_epoch DESC);
     `);
+  } catch { /* non-fatal */ }
 
+  try {
     db.exec(`
       CREATE TABLE IF NOT EXISTS knowledge_gaps (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -856,7 +868,9 @@ export function migrateV10toV11(db: Database): void {
       CREATE INDEX IF NOT EXISTS idx_kg_project
         ON knowledge_gaps(project, resolved_at_epoch);
     `);
+  } catch { /* non-fatal */ }
 
+  try {
     db.exec(`
       CREATE TABLE IF NOT EXISTS temporal_profile (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -870,7 +884,9 @@ export function migrateV10toV11(db: Database): void {
         UNIQUE(project, hour_bucket, day_of_week)
       );
     `);
+  } catch { /* non-fatal */ }
 
+  try {
     db.exec(`
       CREATE TABLE IF NOT EXISTS action_transitions (
         project TEXT NOT NULL,
@@ -881,59 +897,60 @@ export function migrateV10toV11(db: Database): void {
         PRIMARY KEY (project, from_action, to_action)
       );
     `);
+  } catch { /* non-fatal */ }
 
-    // 5. Backfill stability_class based on category
-    try {
-      db.exec(`
-        UPDATE observations SET stability_class = 'transient'
-        WHERE stability_class = 'standard' AND category IN ('error', 'test')
-      `);
-      db.exec(`
-        UPDATE observations SET stability_class = 'stable'
-        WHERE stability_class = 'standard' AND category IN ('architecture', 'decision')
-      `);
-    } catch { /* non-fatal */ }
+  // 5. Backfill stability_class based on category
+  try {
+    db.exec(`
+      UPDATE observations SET stability_class = 'transient'
+      WHERE stability_class = 'standard' AND category IN ('error', 'test')
+    `);
+    db.exec(`
+      UPDATE observations SET stability_class = 'stable'
+      WHERE stability_class = 'standard' AND category IN ('architecture', 'decision')
+    `);
+  } catch { /* non-fatal */ }
 
-    // 6. Backfill experience_patterns maturity + confidence
+  // 6. Backfill experience_patterns maturity + confidence
+  try {
     if (hasTable(db, 'experience_patterns')) {
-      try {
-        // Proven: times_triggered >= 5 AND helpful_count >= 3
-        db.exec(`
-          UPDATE experience_patterns SET maturity = 'proven'
-          WHERE maturity = 'candidate' AND times_triggered >= 5 AND helpful_count >= 3
-        `);
-        // Established: times_triggered >= 2 (but not already proven)
-        db.exec(`
-          UPDATE experience_patterns SET maturity = 'established'
-          WHERE maturity = 'candidate' AND times_triggered >= 2
-        `);
-        // Confidence: Bayesian (helpful + 1) / (helpful + harmful + 2)
-        db.exec(`
-          UPDATE experience_patterns
-          SET confidence = CAST((helpful_count + 1) AS REAL) / CAST((helpful_count + harmful_count + 2) AS REAL)
-          WHERE confidence = 0.5 AND (helpful_count > 0 OR harmful_count > 0)
-        `);
-      } catch { /* non-fatal */ }
+      // Proven: times_triggered >= 5 AND helpful_count >= 3
+      db.exec(`
+        UPDATE experience_patterns SET maturity = 'proven'
+        WHERE maturity = 'candidate' AND times_triggered >= 5 AND helpful_count >= 3
+      `);
+      // Established: times_triggered >= 2 (but not already proven)
+      db.exec(`
+        UPDATE experience_patterns SET maturity = 'established'
+        WHERE maturity = 'candidate' AND times_triggered >= 2
+      `);
+      // Confidence: Bayesian (helpful + 1) / (helpful + harmful + 2)
+      db.exec(`
+        UPDATE experience_patterns
+        SET confidence = CAST((helpful_count + 1) AS REAL) / CAST((helpful_count + harmful_count + 2) AS REAL)
+        WHERE confidence = 0.5 AND (helpful_count > 0 OR harmful_count > 0)
+      `);
     }
+  } catch { /* non-fatal */ }
 
-    // 7. Add qdrant_synced to thread_state (tracks whether embedding was pushed to Qdrant)
+  // 7. Add qdrant_synced to thread_state (tracks whether embedding was pushed to Qdrant)
+  try {
     if (hasTable(db, 'thread_state') && !hasColumn(db, 'thread_state', 'qdrant_synced')) {
       db.exec("ALTER TABLE thread_state ADD COLUMN qdrant_synced INTEGER NOT NULL DEFAULT 0");
     }
+  } catch { /* non-fatal */ }
 
-    // 8. Add retrieval_mode and trigger_intents to experience_patterns.
-    // retrieval_mode: 'always' (injected every turn), 'categorical' (intent-triggered), 'reactive' (keyword/vector).
-    // trigger_intents: JSON array of intent categories for categorical patterns.
+  // 8. Add retrieval_mode and trigger_intents to experience_patterns.
+  // retrieval_mode: 'always' (injected every turn), 'categorical' (intent-triggered), 'reactive' (keyword/vector).
+  // trigger_intents: JSON array of intent categories for categorical patterns.
+  try {
     if (hasTable(db, 'experience_patterns')) {
       if (!hasColumn(db, 'experience_patterns', 'retrieval_mode'))
         db.exec("ALTER TABLE experience_patterns ADD COLUMN retrieval_mode TEXT DEFAULT 'reactive'");
       if (!hasColumn(db, 'experience_patterns', 'trigger_intents'))
         db.exec("ALTER TABLE experience_patterns ADD COLUMN trigger_intents TEXT DEFAULT '[]'");
     }
-
-  } catch {
-    // Non-throwing
-  }
+  } catch { /* non-fatal */ }
 }
 
 /**

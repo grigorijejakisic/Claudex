@@ -351,9 +351,9 @@ export function findCausalEvent(
     if (!bestEvent || bestScore < 0.5) return null;
     // Guard against false positives: if score is entirely from bonuses
     // (recency + event-type) with zero word overlap, reject the match
-    const hasTextualEvidence = correctionWords.length > 0 && events.some(e => {
+    const hasTextualEvidence = correctionWords.size > 0 && events.some(e => {
       const eWords = (e.entity + ' ' + (e.detail ?? '')).toLowerCase().split(/\s+/);
-      return correctionWords.some(w => eWords.includes(w));
+      return eWords.some(w => correctionWords.has(w));
     });
     if (!hasTextualEvidence) return null;
 

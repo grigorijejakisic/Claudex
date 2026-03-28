@@ -14,6 +14,7 @@
  */
 
 import type Anthropic from '@anthropic-ai/sdk';
+import type { TextBlock } from '@anthropic-ai/sdk/resources/messages/messages.js';
 import type { Database } from 'better-sqlite3';
 import { cachedPrepare } from '../core/stmt-cache.js';
 import { ulid } from 'ulid';
@@ -148,7 +149,7 @@ export async function generateEntitySummaries(
               }],
             });
             summary = resp.content
-              .filter((b): b is { type: 'text'; text: string } => b.type === 'text')
+              .filter((b): b is TextBlock => b.type === 'text')
               .map(b => b.text).join('');
           } catch { /* LLM failed — use template */ }
         }
