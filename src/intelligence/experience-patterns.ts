@@ -20,18 +20,30 @@ import { tokenizeQuery } from '../shared/search-utils.js';
 import { GLOBAL_PROJECT_SCOPE } from '../shared/constants.js';
 
 /**
- * Per-event exponential decay formula (CASS-inspired).
- * Computes a decayed score at query time using helpful/harmful counts
- * and time since creation. 90-day half-life, 4x harmful multiplier.
+ * Per-event exponential decay with zone-based half-lives (CASS + Ori Mnemos inspired).
  *
- * Formula: (helpful - 4*harmful) * 0.5^(days/90) * maturity_mult
- * Where maturity_mult: candidate=0.5, established=1.0, proven=1.5
+ * Different knowledge types decay at different rates:
+ *   - correction/failure patterns: 60-day half-life (recent mistakes matter most)
+ *   - tips/heuristics: 90-day half-life (default, general advice)
+ *   - architecture/decisions: 180-day half-life (structural knowledge persists)
+ *   - discovery patterns: 120-day half-life (findings stay relevant longer)
  *
- * Used as a SQL expression in ORDER BY clauses for retrieval ranking.
+ * Zone is derived from pattern_type: correction→fast, discovery→slow, tip→default.
+ * 4x harmful multiplier (CASS asymmetric risk).
+ * Maturity multiplier: candidate=0.5, established=1.0, proven=1.5.
  */
 const DECAYED_SCORE_SQL = `(
   (ep.helpful_count - 4.0 * ep.harmful_count)
-  * POWER(0.5, CAST((unixepoch() - ep.created_at_epoch) AS REAL) / (90.0 * 86400.0))
+  * POWER(0.5, CAST((unixepoch() - ep.created_at_epoch) AS REAL) / (
+      CASE ep.pattern_type
+        WHEN 'correction' THEN 60.0
+        WHEN 'failure' THEN 60.0
+        WHEN 'discovery' THEN 120.0
+        WHEN 'architecture' THEN 180.0
+        WHEN 'decision' THEN 180.0
+        ELSE 90.0
+      END * 86400.0
+    ))
   * CASE ep.maturity
       WHEN 'proven' THEN 1.5
       WHEN 'established' THEN 1.0
