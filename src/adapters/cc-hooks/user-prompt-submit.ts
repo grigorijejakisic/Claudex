@@ -29,6 +29,7 @@ import { getThreadState } from '../../core/thread.js';
 import { getPendingMessages, markMessagesDelivered } from '../../angel/message-sender.js';
 import { getActiveSignals, formatSignalsForInjection } from '../../core/session-signals.js';
 import { autoNameSession } from '../../core/session-discovery.js';
+import { acknowledgeTransfer } from '../../core/session-transfer.js';
 import { classifyIntent, getRetrievalConfigForIntent } from '../../intelligence/intent-classifier.js';
 import type { IntentType, RetrievalConfig } from '../../intelligence/intent-classifier.js';
 
@@ -349,6 +350,10 @@ const main = wrapHook('UserPromptSubmit', async (input, ctx) => {
             : m.message_type === 'acknowledge' ? 'acknowledges'
             : 'says';
           sessionParts.push(`${prefix}**Session ${senderName}** ${typeLabel}: ${m.content}`);
+          // Auto-acknowledge transfer messages (I-PASS read-back protocol)
+          if (m.message_type === 'transfer') {
+            acknowledgeTransfer(ctx.db, input.session_id, m.sender, 'Transfer received and injected.');
+          }
         } else {
           angelParts.push(`${prefix}${m.content}`);
         }

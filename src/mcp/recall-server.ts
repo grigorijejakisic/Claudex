@@ -2,7 +2,7 @@
  * Claudex Recall MCP Server — exposes Claudex DB as MCP tools.
  *
  * Uses official @modelcontextprotocol/sdk for stdio transport.
- * 5 tools: claudex_search, claudex_recall, claudex_store, claudex_events, claudex_message.
+ * 6 tools: claudex_search, claudex_recall, claudex_store, claudex_events, claudex_message, claudex_session.
  *
  * Usage: node dist/mcp/recall-server.cjs
  */
@@ -472,6 +472,66 @@ server.tool(
       match_type: resolved.match_type,
       message_type: messageType,
     }) }] };
+  },
+);
+
+server.tool(
+  'claudex_session',
+  'Manage sessions: name them, list active sessions, create/clear signals, pick up transfers.',
+  {
+    action: z.enum(['name', 'list', 'signal', 'clear_signal', 'pickup']).describe('Action to perform'),
+    session_id: z.string().optional().describe('Current session ID'),
+    name: z.string().optional().describe('Session name (for action=name)'),
+    signal_type: z.enum(['wip', 'failure', 'danger', 'claim', 'discovery']).optional().describe('Signal type (for action=signal)'),
+    target: z.string().optional().describe('Signal target — file path, task, or topic (for action=signal)'),
+    detail: z.string().optional().describe('Signal detail (for action=signal)'),
+    signal_id: z.number().optional().describe('Signal ID to clear (for action=clear_signal)'),
+    source: z.string().optional().describe('Source session name/ID to pick up from (for action=pickup)'),
+  },
+  async ({ action, session_id, name, signal_type, target, detail, signal_id, source }) => {
+    const sessionId = session_id ?? `mcp:${defaultProject}`;
+
+    if (action === 'name') {
+      if (!name) return { content: [{ type: 'text', text: JSON.stringify({ error: 'name is required' }) }] };
+      const { nameSession } = await import('../core/session-discovery.js');
+      nameSession(getDb(), sessionId, name);
+      return { content: [{ type: 'text', text: JSON.stringify({ named: true, session_id: sessionId, name }) }] };
+    }
+
+    if (action === 'list') {
+      const { listActiveSessions } = await import('../core/session-discovery.js');
+      const sessions = listActiveSessions(getDb(), sessionId);
+      return { content: [{ type: 'text', text: JSON.stringify({ sessions, count: sessions.length }) }] };
+    }
+
+    if (action === 'signal') {
+      if (!signal_type || !target) return { content: [{ type: 'text', text: JSON.stringify({ error: 'signal_type and target are required' }) }] };
+      const { createSignal } = await import('../core/session-signals.js');
+      const id = createSignal(getDb(), sessionId, defaultProject, signal_type, target, detail);
+      return { content: [{ type: 'text', text: JSON.stringify({ created: id > 0, signal_id: id, signal_type, target }) }] };
+    }
+
+    if (action === 'clear_signal') {
+      if (!signal_id) return { content: [{ type: 'text', text: JSON.stringify({ error: 'signal_id is required' }) }] };
+      const { clearSignal } = await import('../core/session-signals.js');
+      clearSignal(getDb(), signal_id);
+      return { content: [{ type: 'text', text: JSON.stringify({ cleared: true, signal_id }) }] };
+    }
+
+    if (action === 'pickup') {
+      if (!source) return { content: [{ type: 'text', text: JSON.stringify({ error: 'source session name/ID is required' }) }] };
+      const { resolveSession } = await import('../core/session-discovery.js');
+      const resolved = resolveSession(getDb(), source, sessionId);
+      if (!resolved) return { content: [{ type: 'text', text: JSON.stringify({ error: `No session matching "${source}"` }) }] };
+
+      const { packageSessionContext, formatTransferPackage } = await import('../core/session-transfer.js');
+      const pkg = packageSessionContext(getDb(), resolved.session_id);
+      if (!pkg) return { content: [{ type: 'text', text: JSON.stringify({ error: 'Could not package session context' }) }] };
+
+      return { content: [{ type: 'text', text: formatTransferPackage(pkg) }] };
+    }
+
+    return { content: [{ type: 'text', text: JSON.stringify({ error: `Unknown action: ${action}` }) }] };
   },
 );
 
