@@ -50,6 +50,7 @@ const EMPTY_RESULT: RetentionSweepResult = {
   artifact_links_deleted: 0,
   verified_facts_deleted: 0,
   session_messages_deleted: 0,
+  observations_deleted: 0,
 };
 
 // ---------------------------------------------------------------------------
@@ -393,6 +394,62 @@ export function pruneSessionMessages(db: Database, _config: RetentionConfig): nu
 }
 
 // ---------------------------------------------------------------------------
+// 8b. Observation pruning — importance-tiered retention
+// ---------------------------------------------------------------------------
+
+/**
+ * Prune old observations by importance tier:
+ *   - Low (1-2): 30 days
+ *   - Medium (3): 90 days
+ *   - High (4-5): 180 days
+ *
+ * Observations that have been referenced by retrieval events are kept longer
+ * (their access proves they're still useful). Batch-limited to 500.
+ */
+export function pruneObservations(db: Database, config: RetentionConfig): number {
+  try {
+    const now = Math.floor(Date.now() / 1000);
+    let totalDeleted = 0;
+
+    // Tier 1: Low importance (1-2), older than config days
+    const lowCutoff = now - (config.observationLowImpRetentionDays ?? 30) * 86400;
+    const lowResult = cachedPrepare(db,
+      `DELETE FROM observations
+       WHERE importance <= 2
+         AND timestamp_epoch < ?
+         AND id NOT IN (SELECT DISTINCT artifact_id FROM retrieval_events WHERE artifact_id IS NOT NULL)
+       LIMIT 500`
+    ).run(lowCutoff);
+    totalDeleted += lowResult.changes;
+
+    // Tier 2: Medium importance (3), older than config days
+    const medCutoff = now - (config.observationMedImpRetentionDays ?? 90) * 86400;
+    const medResult = cachedPrepare(db,
+      `DELETE FROM observations
+       WHERE importance = 3
+         AND timestamp_epoch < ?
+         AND id NOT IN (SELECT DISTINCT artifact_id FROM retrieval_events WHERE artifact_id IS NOT NULL)
+       LIMIT 500`
+    ).run(medCutoff);
+    totalDeleted += medResult.changes;
+
+    // Tier 3: High importance (4-5), older than config days
+    const highCutoff = now - (config.observationHighImpRetentionDays ?? 180) * 86400;
+    const highResult = cachedPrepare(db,
+      `DELETE FROM observations
+       WHERE importance >= 4
+         AND timestamp_epoch < ?
+         AND id NOT IN (SELECT DISTINCT artifact_id FROM retrieval_events WHERE artifact_id IS NOT NULL)
+       LIMIT 500`
+    ).run(highCutoff);
+    totalDeleted += highResult.changes;
+
+    return totalDeleted;
+  } catch {
+    return 0;
+  }
+}
+
 // 9. Master sweep
 // ---------------------------------------------------------------------------
 
@@ -450,6 +507,10 @@ export function runRetentionSweep(
 
   try {
     result.session_messages_deleted = pruneSessionMessages(db, config);
+  } catch { /* non-fatal */ }
+
+  try {
+    result.observations_deleted = pruneObservations(db, config);
   } catch { /* non-fatal */ }
 
   return result;

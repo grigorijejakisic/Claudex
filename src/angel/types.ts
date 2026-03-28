@@ -22,6 +22,12 @@ export interface RetentionConfig {
   retrievalEventsRetentionDays: number;
   /** verified_facts: retention days. Default: 180 */
   verifiedFactsRetentionDays: number;
+  /** observations: days before low-importance (1-2) observations are pruned. Default: 30 */
+  observationLowImpRetentionDays: number;
+  /** observations: days before medium-importance (3) observations are pruned. Default: 90 */
+  observationMedImpRetentionDays: number;
+  /** observations: days before high-importance (4-5) observations are pruned. Default: 180 */
+  observationHighImpRetentionDays: number;
   /** Projects with no sessions for this many days get archived. Default: 30 */
   abandonedProjectDays: number;
   /** Retention sweep interval in minutes. Default: 60 */
@@ -48,6 +54,9 @@ export const DEFAULT_RETENTION_CONFIG: RetentionConfig = {
   sessionEventsRetentionDays: 90,
   retrievalEventsRetentionDays: 30,
   verifiedFactsRetentionDays: 180,
+  observationLowImpRetentionDays: 30,
+  observationMedImpRetentionDays: 90,
+  observationHighImpRetentionDays: 180,
   abandonedProjectDays: 30,
   sweepIntervalMinutes: 60,
   qualityCheckIntervalMinutes: 120,
@@ -87,6 +96,7 @@ export interface RetentionSweepResult {
   artifact_links_deleted: number;
   verified_facts_deleted: number;
   session_messages_deleted: number;
+  observations_deleted: number;
 }
 
 export interface CrossProjectResult {
