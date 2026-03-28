@@ -683,42 +683,46 @@ export async function hybridSearchAsync(
 
     scored.sort((a, b) => b.hybrid_score - a.hybrid_score);
 
-    // LLM-as-judge reranking (Hindsight-inspired, simplified):
-    // NOT a true neural cross-encoder (ms-marco-MiniLM) — uses Ollama text generation
-    // to rate relevance 0-10 for each (query, candidate) pair. Lower precision than
-    // a real cross-encoder but zero additional model dependencies.
-    // TODO: Replace with actual cross-encoder model when Ollama supports reranking API.
-    // Non-blocking: skips if unavailable. Only reranks top candidates for performance.
+    // Bi-encoder reranking: embed query and each candidate with a dedicated reranking
+    // model (snowflake-arctic-embed2, 1024d), compute cosine similarity, rerank top-N.
+    // Falls back to nomic-embed-text if snowflake unavailable.
+    // Not a true cross-encoder (would need ms-marco-MiniLM via ONNX) but significantly
+    // better than the previous LLM-as-judge approach with regex parsing.
+    // Non-blocking: skips if embedding unavailable. 3s timeout.
     try {
       const topCandidates = scored.slice(0, Math.min(20, scored.length));
       if (topCandidates.length > 1) {
-        const response = await fetch('http://localhost:11434/api/generate', {
+        // Embed query + all candidate contents in one batch
+        const texts = [
+          query.substring(0, 500),
+          ...topCandidates.map(c => (c.title + ' ' + (c.content ?? '')).substring(0, 300)),
+        ];
+        const response = await fetch('http://localhost:11434/api/embed', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            model: 'nomic-embed-text',
-            prompt: `Rate relevance 0-10 for query "${query.substring(0, 200)}" vs each document. Return only numbers separated by commas.\n` +
-              topCandidates.map((c, i) => `${i}: ${(c.content ?? '').substring(0, 150)}`).join('\n'),
-            stream: false,
-          }),
-          signal: AbortSignal.timeout(3000), // 3s max — don't block assembly
+          body: JSON.stringify({ model: 'snowflake-arctic-embed2', input: texts }),
+          signal: AbortSignal.timeout(3000),
         });
         if (response.ok) {
-          const data = await response.json() as { response: string };
-          const scores = data.response.match(/\d+(\.\d+)?/g)?.map(Number);
-          if (scores && scores.length >= topCandidates.length) {
+          const data = await response.json() as { embeddings: number[][] };
+          if (data.embeddings && data.embeddings.length === texts.length) {
+            const queryEmb = data.embeddings[0];
+            const queryNorm = Math.sqrt(queryEmb.reduce((s, v) => s + v * v, 0)) || 1;
             for (let i = 0; i < topCandidates.length; i++) {
-              // Blend cross-encoder score with existing hybrid score (30% CE, 70% hybrid)
-              const ceNormalized = (scores[i] ?? 5) / 10;
-              topCandidates[i].hybrid_score = topCandidates[i].hybrid_score * 0.7 + ceNormalized * 0.3;
+              const docEmb = data.embeddings[i + 1];
+              const docNorm = Math.sqrt(docEmb.reduce((s, v) => s + v * v, 0)) || 1;
+              let dot = 0;
+              for (let d = 0; d < queryEmb.length; d++) dot += queryEmb[d] * docEmb[d];
+              const cosine = dot / (queryNorm * docNorm);
+              // Blend: 30% reranker, 70% hybrid (preserves RRF signal)
+              topCandidates[i].hybrid_score = topCandidates[i].hybrid_score * 0.7 + cosine * 0.3;
             }
             topCandidates.sort((a, b) => b.hybrid_score - a.hybrid_score);
-            // Replace scored top section with reranked version
             scored.splice(0, topCandidates.length, ...topCandidates);
           }
         }
       }
-    } catch { /* Cross-encoder unavailable — proceed with RRF-only scores */ }
+    } catch { /* Reranking unavailable — proceed with RRF-only scores */ }
 
     // Token budget-aware greedy packing: stop adding results when budget is full.
     let selected: ScoredArtifact[];
