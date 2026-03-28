@@ -139,6 +139,20 @@ export async function heartbeatTick(ctx: HeartbeatContext): Promise<TickResult> 
                      'Session auto-closed after ' || ? || ' minutes idle (warned, no response)')`
           ).run(session.session_id, session.project, session.idle_minutes);
 
+          // 5. Git commit — every session end produces a commit
+          try {
+            const { execSync } = require('child_process');
+            const { resolveProjectPath } = require('../shared/scope-detector.js');
+            const projectPath = resolveProjectPath(session.project);
+            if (projectPath) {
+              execSync('git add -A && git diff --cached --quiet || git commit -m "session(auto-close): Angel auto-closed idle session"', {
+                cwd: projectPath,
+                stdio: 'ignore',
+                timeout: 10000,
+              });
+            }
+          } catch { /* git commit failure is non-fatal */ }
+
           result.sessions_auto_closed = (result.sessions_auto_closed ?? 0) + 1;
         } catch {
           // Individual session auto-close failure — continue with others
