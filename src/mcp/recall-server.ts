@@ -57,7 +57,7 @@ const server = new McpServer(
 
 server.tool(
   'claudex_search',
-  'Search Claudex memory across all artifacts. Returns ranked results with provenance and relevance scores.',
+  'Search Claudex memory — decisions, learnings, observations, project knowledge. Use for conceptual questions ("What decisions were made about auth?", "What is Nexus?"). Returns ranked results with provenance.',
   {
     query: z.string().describe('Search query text'),
     project: z.string().optional().describe('Project scope (defaults to CWD project)'),
@@ -295,7 +295,7 @@ server.tool(
 
 server.tool(
   'claudex_recall',
-  'Retrieve a specific artifact by ID or file reference path.',
+  'Retrieve a specific artifact by ID or file path. Use when you have an exact reference ("Get artifact #3074", "Show me the handoff").',
   {
     id: z.number().optional().describe('Artifact ID'),
     artifact_ref: z.string().optional().describe('Artifact reference (file path)'),
@@ -338,7 +338,7 @@ server.tool(
 
 server.tool(
   'claudex_store',
-  'Store a decision or learning in Claudex memory.',
+  'Persist a decision or learning for future sessions. Use after key decisions or user directives that should survive across sessions.',
   {
     content: z.string().describe('Content to store'),
     type: z.enum(['decision', 'learning']).describe('Memory type'),
@@ -375,7 +375,7 @@ server.tool(
 
 server.tool(
   'claudex_events',
-  'Query structured session events for a project.',
+  'Query session history — what happened last session, what was built, what tools were used. Use for ANY question about recent work or session state.',
   {
     project: z.string().optional().describe('Project scope (defaults to CWD project)'),
     session_id: z.string().optional().describe('Specific session ID (defaults to latest)'),
@@ -411,7 +411,7 @@ server.tool(
 
 server.tool(
   'claudex_message',
-  'Send a message to another active session. Use for cross-session communication, context requests, or session transfer.',
+  'Send a message to another active session by name, topic, or project. Use when: asking another session a question, notifying about changes, or transferring work. The target receives it on their next turn.',
   {
     target: z.string().describe('Session name, topic fragment, project name, or session ID'),
     content: z.string().describe('Message content'),
@@ -477,7 +477,7 @@ server.tool(
 
 server.tool(
   'claudex_session',
-  'Manage sessions: name them, list active sessions, create/clear signals, pick up transfers.',
+  'Manage sessions and signals. Actions: "list" (show active sessions), "name" (name this session), "signal" (create wip/failure/danger/claim/discovery signal), "clear_signal" (remove a signal), "pickup" (grab context from another session).',
   {
     action: z.enum(['name', 'list', 'signal', 'clear_signal', 'pickup']).describe('Action to perform'),
     session_id: z.string().optional().describe('Current session ID'),
