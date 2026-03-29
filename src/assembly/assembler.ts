@@ -590,15 +590,21 @@ export function assembleFullContext(params: FullAssemblyParams): InjectPayload {
         const query = params.searchQuery ?? checkpoint?.thread?.topic ?? null;
         const parts: string[] = [];
 
+        // Helper: shorten file path to project-relative
+        const shortenPath = (fp: string): string => {
+          const srcIdx = fp.indexOf('src' + path.sep);
+          return srcIdx >= 0 ? fp.substring(srcIdx) : fp.split(/[\\/]/).slice(-2).join('/');
+        };
+
         // Recent changes since last session on this project
         const lastSessionEpoch = Math.floor(Date.now() / 1000) - 86400; // 24h ago
         const changed = getChangedFiles(params.db, params.project, lastSessionEpoch);
         if (changed.length > 0) {
           parts.push('**Changed since last session:**');
           for (const f of changed.slice(0, 5)) {
-            const basename = f.file_path.split(/[\\/]/).pop() ?? f.file_path;
-            const exportedSymbols = f.symbols.filter(s => s.exported).map(s => s.name).join(', ');
-            parts.push(`- \`${basename}\`${exportedSymbols ? ` (exports: ${exportedSymbols})` : ''}`);
+            const relPath = shortenPath(f.file_path);
+            const exportedSymbols = f.symbols.filter(s => s.exported).map(s => s.name).slice(0, 5).join(', ');
+            parts.push(`- \`${relPath}\`${exportedSymbols ? ` (${exportedSymbols})` : ''}`);
           }
         }
 
@@ -608,9 +614,9 @@ export function assembleFullContext(params: FullAssemblyParams): InjectPayload {
           if (relevant.length > 0) {
             parts.push(parts.length > 0 ? '\n**Relevant to current task:**' : '**Relevant files:**');
             for (const f of relevant) {
-              const basename = f.file_path.split(/[\\/]/).pop() ?? f.file_path;
+              const relPath = shortenPath(f.file_path);
               const topSymbols = f.symbols.filter(s => s.exported).slice(0, 5).map(s => `${s.kind} ${s.name}`).join(', ');
-              parts.push(`- \`${basename}\`: ${topSymbols || '(no exports)'}`);
+              parts.push(`- \`${relPath}\`: ${topSymbols || '(no exports)'}`);
             }
           }
         }
