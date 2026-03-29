@@ -1029,7 +1029,51 @@ export function migrateV11toV12(db: Database): void {
     db.exec("CREATE INDEX IF NOT EXISTS idx_sessions_name ON sessions(name)");
   } catch { /* non-fatal */ }
 
-  // 5. Create angel_opinions table (CARA reasoning — Tier 3.1)
+  // 5. Recreate artifacts table with entity_summary in artifact_type CHECK.
+  // SQLite can't ALTER CHECK — must recreate. Removes state CHECK too (legacy
+  // values 'fresh'/'materialized'/'packed' conflict with new 'active'/'superseded').
+  try {
+    if (hasTable(db, 'artifacts')) {
+      const schema = db.prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name='artifacts'").get() as { sql: string };
+      if (schema?.sql && !schema.sql.includes('entity_summary')) {
+        db.exec(`
+          CREATE TABLE artifacts_v12 (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            session_id TEXT NOT NULL,
+            project TEXT,
+            artifact_type TEXT NOT NULL CHECK (artifact_type IN (
+              'observation', 'learning', 'decision', 'hot_file', 'flow', 'milestone',
+              'memory_file', 'session_log', 'handoff', 'entity_summary'
+            )),
+            artifact_ref TEXT,
+            summary TEXT,
+            content TEXT,
+            state TEXT DEFAULT 'active',
+            ttl INTEGER,
+            importance INTEGER NOT NULL DEFAULT 3 CHECK (importance BETWEEN 1 AND 5),
+            timestamp_epoch INTEGER NOT NULL DEFAULT (unixepoch()),
+            last_materialized_epoch INTEGER,
+            retrieval_score REAL DEFAULT 0.0,
+            embedding BLOB,
+            activation_score REAL DEFAULT 0.0,
+            superseded_by INTEGER,
+            valid_until INTEGER,
+            confidence REAL DEFAULT 1.0,
+            novelty_score REAL DEFAULT 0.5
+          );
+          INSERT INTO artifacts_v12 SELECT * FROM artifacts;
+          DROP TABLE artifacts;
+          ALTER TABLE artifacts_v12 RENAME TO artifacts;
+          CREATE INDEX IF NOT EXISTS idx_artifacts_project ON artifacts(project, artifact_type, timestamp_epoch DESC);
+          CREATE INDEX IF NOT EXISTS idx_artifacts_session ON artifacts(session_id, timestamp_epoch DESC);
+          CREATE INDEX IF NOT EXISTS idx_artifacts_type ON artifacts(artifact_type, state, importance DESC);
+          CREATE INDEX IF NOT EXISTS idx_artifacts_activation ON artifacts(project, activation_score DESC);
+        `);
+      }
+    }
+  } catch { /* non-fatal */ }
+
+  // 6. Create angel_opinions table (CARA reasoning — Tier 3.1)
   try {
     db.exec(`
       CREATE TABLE IF NOT EXISTS angel_opinions (
