@@ -452,7 +452,18 @@ export async function heartbeatTick(ctx: HeartbeatContext): Promise<TickResult> 
       // Non-critical
     }
 
-    // Phase 4e3: CARA reasoning — derive opinions from proven patterns.
+    // Phase 4e3a: Cross-agent session indexing — learn from Codex, Gemini, Aider sessions.
+    try {
+      const { indexCrossAgentSessions } = await import('../intelligence/cross-agent-indexer.js');
+      const activeProject = cachedPrepare(ctx.db,
+        `SELECT project FROM sessions WHERE status = 'active' ORDER BY created_at_epoch DESC LIMIT 1`
+      ).get() as { project: string } | undefined;
+      if (activeProject?.project) {
+        indexCrossAgentSessions(ctx.db, 'angel-heartbeat', activeProject.project);
+      }
+    } catch { /* non-critical */ }
+
+    // Phase 4e3b: CARA reasoning — derive opinions from proven patterns.
     // Angel forms opinions about tools, approaches, and patterns based on evidence.
     try {
       const { deriveOpinionsFromPatterns } = await import('./cara-reasoning.js');
