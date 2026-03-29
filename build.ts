@@ -29,6 +29,7 @@ const optionalEntryPoints = [
   'src/angel/index.ts',
   'src/benchmark/locomo-harness.ts',
   'src/benchmark/longmemeval-harness.ts',
+  'src/benchmark/debug-locomo.ts',
 ];
 
 /** Hook entry points to smoke test after build.

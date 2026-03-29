@@ -77,98 +77,95 @@ server.tool(
       return { content: [{ type: 'text', text: JSON.stringify({ error: 'query is required' }) }] };
     }
 
-    // 6.1: Full 3-channel hybrid search (FTS5 + Qdrant KNN + recency via RRF)
-    // Uses async version for Qdrant vector channel. Falls back to sync on failure.
-    let artifactResults: Array<{
-      id: number;
-      type: string;
-      summary: string;
-      provenance: string;
-      importance: number;
-      project: string;
-      source: 'artifacts';
-      score: number;
-    }>;
+    // RRF constant — controls how much top ranks dominate
+    const RRF_K = 60;
 
+    // Unified result type for cross-source RRF ranking
+    type SearchResult = {
+      id: number; type: string; summary: string; provenance: string;
+      importance: number; project: string; source: string; score: number;
+      recall_text?: string;
+    };
+
+    // Channel 1: Artifacts via hybrid search (FTS5 + Qdrant KNN + recency)
+    let artifactResults: SearchResult[] = [];
     try {
-      // Fetch extra results to support pagination (offset + limit)
-      // Use async hybrid search (3-channel: FTS5 + Qdrant KNN + recency)
       const hybridResults = await hybridSearchAsync(getDb(), query, proj, {
         limit: offset + limit,
       });
-
-      artifactResults = hybridResults.map(a => ({
+      artifactResults = hybridResults.map((a, rank) => ({
         id: a.id,
         type: a.artifact_type,
         summary: a.summary,
         provenance: a.artifact_ref ?? `artifact #${a.id}`,
         importance: a.importance,
         project: a.project,
-        source: 'artifacts' as const,
-        score: a.hybrid_score,
+        source: 'artifacts',
+        score: 1.0 / (RRF_K + rank), // RRF rank score
       }));
     } catch {
-      // Graceful degradation: fall back to FTS5-only search
       const ftsResults = searchArtifactsGlobal(getDb(), proj, query, offset + limit);
-      artifactResults = ftsResults.map(a => ({
+      artifactResults = ftsResults.map((a, rank) => ({
         id: a.id,
         type: a.artifact_type,
         summary: a.summary,
         provenance: a.artifact_ref ?? `artifact #${a.id}`,
         importance: a.importance,
         project: a.project,
-        source: 'artifacts' as const,
-        score: 0,
+        source: 'artifacts',
+        score: 1.0 / (RRF_K + rank),
       }));
     }
 
-    // Also search session journal (Evolved Flow recall metadata)
-    const journalHits = searchJournalFTS(getDb(), query, proj, Math.min(offset + limit, 5));
-    const journalResults = journalHits.map(j => ({
-      id: j.id,
-      type: 'journal_flow' as const,
-      summary: j.content.slice(0, 200),
-      provenance: `session:${j.session_id}`,
-      importance: 4,
-      project: j.project,
-      source: 'journal' as const,
-      recall_text: j.recall_text ?? undefined,
-      score: 0.5, // Journal matches get a baseline score (recall-optimized)
-    }));
+    // Channel 2: Journal (BM25-ranked, deduplicated per session, recall_text as summary)
+    let journalResults: SearchResult[] = [];
+    try {
+      const journalHits = searchJournalFTS(getDb(), query, proj, Math.min(offset + limit, 10));
+      // Deduplicate: keep best match per session
+      const seenSessions = new Set<string>();
+      const dedupedHits = journalHits.filter(j => {
+        if (seenSessions.has(j.session_id)) return false;
+        seenSessions.add(j.session_id);
+        return true;
+      }).slice(0, 5);
+      journalResults = dedupedHits.map((j, rank) => ({
+        id: j.id,
+        type: 'journal_flow',
+        // Use recall_text (meaningful aliases) over raw content ("Build succeeded")
+        summary: j.recall_text || j.content.slice(0, 200),
+        provenance: `session:${j.session_id}`,
+        importance: 4,
+        project: j.project,
+        source: 'journal',
+        recall_text: j.recall_text ?? undefined,
+        score: 1.0 / (RRF_K + rank), // RRF rank score
+      }));
+    } catch { /* non-fatal */ }
 
-    // Search conversation_turns via FTS5 for dialogue recall
-    let conversationResults: Array<{
-      id: number;
-      type: string;
-      summary: string;
-      provenance: string;
-      importance: number;
-      project: string;
-      source: 'conversation';
-      score: number;
-    }> = [];
+    // Channel 3: Conversation turns (BM25-ranked via FTS5)
+    let conversationResults: SearchResult[] = [];
     try {
       const keywords = tokenizeQuery(query, 5);
       if (keywords.length > 0) {
         const ftsQuery = keywords.join(' OR ');
         const convHits = cachedPrepare(getDb(),
           `SELECT ct.id, ct.session_id, ct.turn_number, ct.user_text, ct.assistant_text,
-                  ct.project, ct.timestamp_epoch
+                  ct.project, ct.timestamp_epoch, bm25(conversation_turns_fts) as rank
            FROM conversation_turns ct
            JOIN conversation_turns_fts fts ON fts.rowid = ct.id
            WHERE conversation_turns_fts MATCH ?
              AND ct.project = ?
-           ORDER BY ct.timestamp_epoch DESC
+           ORDER BY rank
            LIMIT ?`
         ).all(ftsQuery, proj, Math.min(offset + limit, 5)) as Array<{
           id: number; session_id: string; turn_number: number;
           user_text: string | null; assistant_text: string | null;
-          project: string; timestamp_epoch: number;
+          project: string; timestamp_epoch: number; rank: number;
         }>;
 
-        conversationResults = convHits.map(c => ({
+        conversationResults = convHits.map((c, rank) => ({
           id: c.id,
-          type: 'conversation_turn' as const,
+          type: 'conversation_turn',
           summary: [
             c.user_text ? `User: ${c.user_text.slice(0, 100)}` : '',
             c.assistant_text ? `Assistant: ${c.assistant_text.slice(0, 100)}` : '',
@@ -176,13 +173,13 @@ server.tool(
           provenance: `session:${c.session_id}:turn${c.turn_number}`,
           importance: 3,
           project: c.project,
-          source: 'conversation' as const,
-          score: 0.4, // Conversation matches get a baseline score
+          source: 'conversation',
+          score: 1.0 / (RRF_K + rank),
         }));
       }
     } catch { /* FTS on conversation_turns may fail — non-fatal */ }
 
-    // Supplementary: Qdrant vector search for conversations (catches semantic matches FTS5 misses)
+    // Supplementary: Qdrant vector search for conversations (semantic matches FTS5 misses)
     try {
       const { embedQuery } = await import('../embeddings/embed-pipeline.js');
       const embedding = await embedQuery(query);
@@ -191,7 +188,7 @@ server.tool(
         const existingIds = new Set(conversationResults.map(c => c.id));
         for (const vc of vectorConvs) {
           if (existingIds.has(vc.id as number)) continue;
-          existingIds.add(vc.id as number); // track to prevent duplicates within vector results
+          existingIds.add(vc.id as number);
           const payload = vc.payload ?? {};
           conversationResults.push({
             id: vc.id as number,
@@ -201,83 +198,122 @@ server.tool(
             importance: 3,
             project: String(payload.project ?? proj),
             source: 'conversation',
-            score: vc.score * 0.5, // Blend: vector conversations score lower than FTS5 matches
+            score: vc.score * (1.0 / (RRF_K + 5)), // Score below top FTS5 matches
           });
         }
       }
     } catch { /* Qdrant/embeddings unavailable — non-fatal */ }
 
-    // Search learnings via FTS5 (feedback, corrections, migrated memory)
-    let learningResults: Array<{
-      id: number; type: string; summary: string; provenance: string;
-      importance: number; project: string; source: 'learning'; score: number;
-    }> = [];
+    // Channel 4: Learnings (BM25-ranked via FTS5)
+    let learningResults: SearchResult[] = [];
     try {
       const keywords = tokenizeQuery(query, 5);
       if (keywords.length > 0) {
         const ftsQuery = keywords.join(' OR ');
         const hits = cachedPrepare(getDb(),
-          `SELECT l.id, l.content, l.project, l.promotion_count
+          `SELECT l.id, l.content, l.project, l.promotion_count,
+                  bm25(learnings_fts) as rank
            FROM learnings l
            JOIN learnings_fts fts ON fts.rowid = l.id
            WHERE learnings_fts MATCH ?
              AND (l.project = ? OR l.project = '__global__')
-           ORDER BY l.promotion_count DESC
+           ORDER BY rank
            LIMIT ?`
         ).all(ftsQuery, proj, Math.min(offset + limit, 10)) as Array<{
-          id: number; content: string; project: string; promotion_count: number;
+          id: number; content: string; project: string; promotion_count: number; rank: number;
         }>;
-        learningResults = hits.map(l => ({
+        learningResults = hits.map((l, rank) => ({
           id: l.id,
           type: 'learning',
           summary: l.content.slice(0, 300),
           provenance: `learning:${l.id}`,
           importance: 5,
           project: l.project,
-          source: 'learning' as const,
-          score: 0.6, // Learnings are high-signal behavioral corrections
+          source: 'learning',
+          score: 1.0 / (RRF_K + rank), // RRF rank score
         }));
       }
     } catch { /* learnings_fts may not exist — non-fatal */ }
 
-    // Search decisions via LIKE (no FTS index — small table, keyword match sufficient)
-    let decisionResults: Array<{
-      id: number; type: string; summary: string; provenance: string;
-      importance: number; project: string; source: 'decision'; score: number;
-    }> = [];
+    // Channel 5: Decisions (FTS5 with BM25 — replaces broken LIKE AND)
+    let decisionResults: SearchResult[] = [];
     try {
-      const keywords = tokenizeQuery(query, 3);
+      const keywords = tokenizeQuery(query, 5);
       if (keywords.length > 0) {
-        const conditions = keywords.map(() => 'content LIKE ?').join(' AND ');
-        const likeParams = keywords.map(k => `%${k}%`);
+        const ftsQuery = keywords.join(' OR ');
         const hits = cachedPrepare(getDb(),
-          `SELECT id, content, project, session_id
-           FROM decisions
-           WHERE (project = ? OR project = '__global__')
-             AND (${conditions})
-           ORDER BY timestamp_epoch DESC
+          `SELECT d.id, d.content, d.project, d.session_id,
+                  bm25(decisions_fts) as rank
+           FROM decisions d
+           JOIN decisions_fts fts ON fts.rowid = d.id
+           WHERE decisions_fts MATCH ?
+             AND (d.project = ? OR d.project = '__global__')
+           ORDER BY rank
            LIMIT ?`
-        ).all(proj, ...likeParams, Math.min(offset + limit, 5)) as Array<{
-          id: number; content: string; project: string; session_id: string;
+        ).all(ftsQuery, proj, Math.min(offset + limit, 5)) as Array<{
+          id: number; content: string; project: string; session_id: string; rank: number;
         }>;
-        decisionResults = hits.map(d => ({
+        decisionResults = hits.map((d, rank) => ({
           id: d.id,
           type: 'decision',
           summary: d.content.slice(0, 300),
           provenance: `decision:${d.id}:${d.session_id}`,
           importance: 4,
           project: d.project,
-          source: 'decision' as const,
-          score: 0.55,
+          source: 'decision',
+          score: 1.0 / (RRF_K + rank),
         }));
       }
-    } catch { /* non-fatal */ }
+    } catch {
+      // Fallback: LIKE OR search if decisions_fts doesn't exist
+      try {
+        const keywords = tokenizeQuery(query, 3);
+        if (keywords.length > 0) {
+          const conditions = keywords.map(() => 'content LIKE ?').join(' OR ');
+          const likeParams = keywords.map(k => `%${k}%`);
+          const hits = cachedPrepare(getDb(),
+            `SELECT id, content, project, session_id
+             FROM decisions
+             WHERE (project = ? OR project = '__global__')
+               AND (${conditions})
+             ORDER BY timestamp_epoch DESC
+             LIMIT ?`
+          ).all(proj, ...likeParams, Math.min(offset + limit, 5)) as Array<{
+            id: number; content: string; project: string; session_id: string;
+          }>;
+          decisionResults = hits.map((d, rank) => ({
+            id: d.id,
+            type: 'decision',
+            summary: d.content.slice(0, 300),
+            provenance: `decision:${d.id}:${d.session_id}`,
+            importance: 4,
+            project: d.project,
+            source: 'decision',
+            score: 1.0 / (RRF_K + rank),
+          }));
+        }
+      } catch { /* non-fatal */ }
+    }
 
-    // Merge: learnings first (behavioral), then decisions, then journal, then conversations, then artifacts
-    const allResults = [...learningResults, ...decisionResults, ...journalResults, ...conversationResults, ...artifactResults];
+    // Source weight multipliers — tune how much each source contributes to final ranking
+    const SOURCE_WEIGHTS: Record<string, number> = {
+      decision: 1.3,    // Explicit decisions — highest signal for "what was decided" queries
+      learning: 1.2,    // Behavioral corrections — high signal
+      artifacts: 1.0,   // General content
+      journal: 0.9,     // Breadcrumbs
+      conversation: 0.8, // Raw dialogue — most noise
+    };
+
+    // Merge all channels and sort by weighted RRF score
+    const allResults = [
+      ...artifactResults, ...journalResults, ...conversationResults,
+      ...learningResults, ...decisionResults,
+    ].map(r => ({
+      ...r,
+      score: r.score * (SOURCE_WEIGHTS[r.source] ?? 1.0),
+    })).sort((a, b) => b.score - a.score);
+
     const total = allResults.length;
-
-    // 6.2: Apply pagination
     const paginatedResults = allResults.slice(offset, offset + limit);
     const has_more = offset + limit < total;
 

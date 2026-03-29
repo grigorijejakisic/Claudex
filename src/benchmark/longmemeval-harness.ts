@@ -48,17 +48,35 @@ interface BenchmarkResult {
 // ---------------------------------------------------------------------------
 
 const OLLAMA_BASE = 'http://localhost:11434';
+const CLIPROXY_BASE = 'http://127.0.0.1:8317/v1';
 const EMBED_MODEL = 'snowflake-arctic-embed2';
-const ANSWER_MODEL = 'deepseek-coder-v2:16b';
-const JUDGE_MODEL = 'deepseek-coder-v2:16b';
+const ANSWER_MODEL = 'claude-sonnet-4-6';
+const JUDGE_MODEL = 'claude-sonnet-4-6';
 const TOP_K_RETRIEVAL = 10;
-const USE_CLAUDE_CLI = false;
+const USE_CLIPROXY = true;
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
-import { execSync } from 'child_process';
+async function cliproxyGenerate(model: string, prompt: string, maxTokens: number = 500): Promise<string> {
+  const resp = await fetch(`${CLIPROXY_BASE}/chat/completions`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': 'Bearer cliproxy-no-key-needed',
+    },
+    body: JSON.stringify({
+      model,
+      messages: [{ role: 'user', content: prompt }],
+      max_tokens: maxTokens,
+      temperature: 0,
+    }),
+    signal: AbortSignal.timeout(60000),
+  });
+  const data = await resp.json() as { choices?: Array<{ message?: { content?: string } }> };
+  return (data.choices?.[0]?.message?.content ?? '').trim();
+}
 
 async function ollamaGenerate(model: string, prompt: string, maxTokens: number = 500): Promise<string> {
   const resp = await fetch(`${OLLAMA_BASE}/api/generate`, {
@@ -75,25 +93,9 @@ async function ollamaGenerate(model: string, prompt: string, maxTokens: number =
   return (data.response ?? '').trim();
 }
 
-function claudeGenerate(prompt: string, _maxTokens: number = 500): string {
-  try {
-    // Write prompt to temp file to avoid shell escaping issues
-    const tmpFile = path.join(os.tmpdir(), `claudex_bench_${Date.now()}.txt`);
-    fs.writeFileSync(tmpFile, prompt, 'utf8');
-    const result = execSync(
-      `cat "${tmpFile}" | claude -p --model ${ANSWER_MODEL}`,
-      { timeout: 60000, maxBuffer: 1024 * 1024, encoding: 'utf8', shell: 'bash' }
-    );
-    try { fs.unlinkSync(tmpFile); } catch { /* */ }
-    return result.trim();
-  } catch {
-    return '';
-  }
-}
-
 async function generate(prompt: string, maxTokens: number = 500): Promise<string> {
-  if (USE_CLAUDE_CLI) {
-    return claudeGenerate(prompt, maxTokens);
+  if (USE_CLIPROXY) {
+    return cliproxyGenerate(ANSWER_MODEL, prompt, maxTokens);
   }
   return ollamaGenerate(ANSWER_MODEL, prompt, maxTokens);
 }
@@ -144,10 +146,13 @@ function ingestInstance(
     ).run(`${qid}_${sessionId}`, qid, i * 86400);
     sessionCount++;
 
+    // Temporal anchor: prefix content with session date so retrieval surfaces dates
+    const datePrefix = sessionDate ? `[${sessionDate}] ` : '';
+
     // Store each turn as an artifact (higher granularity than observations)
     for (let t = 0; t < turns.length; t++) {
       const turn = turns[t];
-      const content = `[${turn.role}] ${turn.content}`;
+      const content = `${datePrefix}[${turn.role}] ${turn.content}`;
 
       // Store as artifact for FTS5 + vector search
       cachedPrepare(db,
@@ -157,7 +162,7 @@ function ingestInstance(
         qid,
         `${qid}_${sessionId}`,
         content,
-        turn.content.substring(0, 200),
+        `${datePrefix}${turn.content.substring(0, 200)}`,
         turn.has_answer ? 5 : 3, // Boost importance of evidence turns
         i * 86400 + t,
       );

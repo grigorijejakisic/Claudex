@@ -1128,6 +1128,27 @@ export function migrateV11toV12(db: Database): void {
       CREATE INDEX IF NOT EXISTS idx_outcomes_project ON solution_outcomes(project, created_at_epoch DESC);
     `);
   } catch { /* non-fatal */ }
+
+  // 7. FTS5 index on decisions table for proper ranked search
+  try {
+    db.exec(`
+      CREATE VIRTUAL TABLE IF NOT EXISTS decisions_fts USING fts5(
+        content,
+        content=decisions,
+        content_rowid=id,
+        tokenize='porter unicode61'
+      );
+      CREATE TRIGGER IF NOT EXISTS decisions_fts_ai AFTER INSERT ON decisions BEGIN
+        INSERT INTO decisions_fts(rowid, content) VALUES (new.id, new.content);
+      END;
+      CREATE TRIGGER IF NOT EXISTS decisions_fts_ad AFTER DELETE ON decisions BEGIN
+        INSERT INTO decisions_fts(decisions_fts, rowid, content)
+        VALUES ('delete', old.id, old.content);
+      END;
+    `);
+    // Populate FTS from existing data
+    db.exec("INSERT OR IGNORE INTO decisions_fts(rowid, content) SELECT id, content FROM decisions");
+  } catch { /* non-fatal — FTS5 may already exist */ }
 }
 
 /**
