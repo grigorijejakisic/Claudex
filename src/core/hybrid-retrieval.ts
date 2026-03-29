@@ -592,7 +592,7 @@ export async function hybridSearchAsync(
       if (timeRange) {
         temporalResults = cachedPrepare(db,
           `SELECT * FROM artifacts
-           WHERE project = ? AND state = 'active'
+           WHERE project = ? AND superseded_by IS NULL
              AND timestamp_epoch >= ? AND timestamp_epoch <= ?
            ORDER BY importance DESC, timestamp_epoch DESC
            LIMIT ?`
