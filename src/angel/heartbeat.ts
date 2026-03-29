@@ -182,8 +182,8 @@ export async function heartbeatTick(ctx: HeartbeatContext): Promise<TickResult> 
           ctx.db,
           session.session_id,
           session.project,
-          ctx.client,
-          ctx.config.cloudModel,
+          undefined,
+          undefined,
           ctx.config.maxPatternsPerSession,
           ctx.config.localModel,
         );
@@ -192,9 +192,9 @@ export async function heartbeatTick(ctx: HeartbeatContext): Promise<TickResult> 
         result.patterns_extracted += extraction.patternsCreated;
 
         // Only mark as processed on definitive outcomes — NOT on transient failures.
-        // 'too few turns', 'insufficient content', 'no corrections found' = definitive, mark processed.
+        // 'too few turns', 'insufficient content', 'no patterns found/array' = definitive, mark processed.
         // 'extraction failed', 'no LLM available', 'empty LLM response' = transient, retry next tick.
-        const definitiveOutcomes = ['too few turns', 'insufficient content', 'no corrections found'];
+        const definitiveOutcomes = ['too few turns', 'insufficient content', 'no patterns found', 'no patterns array'];
         const isDefinitive = extraction.patternsCreated > 0 || definitiveOutcomes.some(o => extraction.summary.includes(o));
         if (isDefinitive && extraction.patternsCreated === 0) {
           markSessionProcessed(ctx.db, session.session_id, session.project, extraction.summary);
@@ -385,17 +385,39 @@ export async function heartbeatTick(ctx: HeartbeatContext): Promise<TickResult> 
       if (downServices.length > 0) {
         result.services_down = downServices;
 
-        // Auto-restart known services
+        // Auto-restart known services (with process guard to prevent duplicate instances)
         try {
           const { execSync } = await import('child_process');
+
+          // Check if a process is already running by name (exact image match)
+          const isRunning = (processName: string): boolean => {
+            try {
+              const out = execSync(`tasklist /FI "IMAGENAME eq ${processName}" /NH`, {
+                shell: 'cmd.exe', timeout: 3000, windowsHide: true, encoding: 'utf-8',
+              });
+              return out.toLowerCase().includes(processName.toLowerCase());
+            } catch { return false; }
+          };
+
+          // Check if a specific Python script is running (not just any python.exe)
+          const isPythonScriptRunning = (scriptName: string): boolean => {
+            try {
+              const out = execSync(
+                `powershell -NoProfile -Command "Get-CimInstance Win32_Process -Filter \\"name='python.exe'\\" | Select-Object -ExpandProperty CommandLine"`,
+                { timeout: 3000, windowsHide: true, encoding: 'utf-8' },
+              );
+              return out.toLowerCase().includes(scriptName.toLowerCase());
+            } catch { return false; }
+          };
+
           for (const svc of downServices) {
-            if (svc.includes('CliProxy')) {
+            if (svc.includes('CliProxy') && !isRunning('cli-proxy-api.exe')) {
               // CliProxy auto-restart — background process, no window
               try {
                 execSync('start /B cli-proxy-api.exe', { shell: 'cmd.exe', timeout: 5000, windowsHide: true });
               } catch { /* may not be in PATH — non-fatal */ }
             }
-            if (svc.includes('Reranker')) {
+            if (svc.includes('Reranker') && !isPythonScriptRunning('reranker.py')) {
               // Reranker auto-restart — Python background process
               try {
                 const rerankerPath = path.join(process.cwd(), 'services', 'reranker.py');

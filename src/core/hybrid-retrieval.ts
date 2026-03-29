@@ -196,14 +196,16 @@ function searchFts5Channel(
     const properNouns = query.match(/\b[A-Z][a-z]{2,}\b/g) || [];
     const uniqueProperNouns = [...new Set(properNouns.map(n => n.toLowerCase()))];
 
-    // Build FTS5 query: proper nouns get double weight via repetition
-    const allTerms = [...uniqueProperNouns, ...keywords];
-    const ftsQuery = [...new Set(allTerms)].join(' OR ');
+    // Build FTS5 query (deduped — FTS5 can't boost individual terms)
+    const ftsQuery = [...new Set(keywords)].join(' OR ');
     const supersededFilter = excludeSuperseded ? 'AND a.superseded_by IS NULL' : '';
     const projectFilter = globalScope ? '' : 'AND a.project = ?';
     const orderPrefix = globalScope
       ? 'CASE WHEN a.project = ? THEN 0 ELSE 1 END,'
       : '';
+
+    // Fetch extra results so post-boost re-ranking has room to promote proper noun matches
+    const fetchLimit = uniqueProperNouns.length > 0 ? limit * 2 : limit;
 
     const sql = `SELECT a.* FROM artifacts a
        JOIN artifacts_fts fts ON fts.rowid = a.id
@@ -216,10 +218,26 @@ function searchFts5Channel(
        LIMIT ?`;
 
     const params = globalScope
-      ? [ftsQuery, project, limit]
-      : [ftsQuery, project, limit];
+      ? [ftsQuery, project, fetchLimit]
+      : [ftsQuery, project, fetchLimit];
 
-    return cachedPrepare(db, sql).all(...params) as ArtifactRow[];
+    let results = cachedPrepare(db, sql).all(...params) as ArtifactRow[];
+
+    // Post-FTS5 proper noun boosting: promote results containing proper nouns to the top
+    if (uniqueProperNouns.length > 0 && results.length > 1) {
+      const boosted: ArtifactRow[] = [];
+      const rest: ArtifactRow[] = [];
+      for (const r of results) {
+        const summaryLower = (r.summary ?? '').toLowerCase();
+        const hasProperNoun = uniqueProperNouns.some(n => summaryLower.includes(n));
+        (hasProperNoun ? boosted : rest).push(r);
+      }
+      results = [...boosted, ...rest].slice(0, limit);
+    } else {
+      results = results.slice(0, limit);
+    }
+
+    return results;
   } catch {
     // FTS may fail — fall back to LIKE search
     try {
@@ -600,13 +618,17 @@ export async function hybridSearchAsync(
     try {
       const timeRange = parseTemporalExpression(query);
       if (timeRange) {
-        temporalResults = cachedPrepare(db,
-          `SELECT * FROM artifacts
-           WHERE project = ? AND superseded_by IS NULL
+        const temporalSuperseded = excludeSuperseded ? 'AND superseded_by IS NULL' : '';
+        const temporalProject = globalScope ? '' : 'AND project = ?';
+        const temporalSql = `SELECT * FROM artifacts
+           WHERE 1=1 ${temporalProject} ${temporalSuperseded}
              AND timestamp_epoch >= ? AND timestamp_epoch <= ?
            ORDER BY importance DESC, timestamp_epoch DESC
-           LIMIT ?`
-        ).all(project, timeRange.start, timeRange.end, limit) as ArtifactRow[];
+           LIMIT ?`;
+        const temporalParams = globalScope
+          ? [timeRange.start, timeRange.end, limit]
+          : [project, timeRange.start, timeRange.end, limit];
+        temporalResults = cachedPrepare(db, temporalSql).all(...temporalParams) as ArtifactRow[];
       }
     } catch { /* temporal parse failure — skip channel */ }
 

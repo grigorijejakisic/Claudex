@@ -70,7 +70,7 @@ server.tool(
       ? Math.min(rawLimit, 50)
       : 10;
     const offset = rawOffset != null && Number.isInteger(rawOffset) && rawOffset >= 0
-      ? rawOffset
+      ? Math.min(rawOffset, 500)
       : 0;
 
     if (!query) {
@@ -93,7 +93,7 @@ server.tool(
       const hybridResults = await hybridSearchAsync(getDb(), query, proj, {
         limit: offset + limit,
       });
-      artifactResults = hybridResults.map((a, rank) => ({
+      artifactResults = hybridResults.map((a, i) => ({
         id: a.id,
         type: a.artifact_type,
         summary: a.summary,
@@ -101,11 +101,11 @@ server.tool(
         importance: a.importance,
         project: a.project,
         source: 'artifacts',
-        score: 1.0 / (RRF_K + rank), // RRF rank score
+        score: 1.0 / (RRF_K + i + 1), // RRF rank score (1-indexed)
       }));
     } catch {
       const ftsResults = searchArtifactsGlobal(getDb(), proj, query, offset + limit);
-      artifactResults = ftsResults.map((a, rank) => ({
+      artifactResults = ftsResults.map((a, i) => ({
         id: a.id,
         type: a.artifact_type,
         summary: a.summary,
@@ -113,22 +113,22 @@ server.tool(
         importance: a.importance,
         project: a.project,
         source: 'artifacts',
-        score: 1.0 / (RRF_K + rank),
+        score: 1.0 / (RRF_K + i + 1),
       }));
     }
 
     // Channel 2: Journal (BM25-ranked, deduplicated per session, recall_text as summary)
     let journalResults: SearchResult[] = [];
     try {
-      const journalHits = searchJournalFTS(getDb(), query, proj, Math.min(offset + limit, 10));
+      const journalHits = searchJournalFTS(getDb(), query, proj, offset + limit);
       // Deduplicate: keep best match per session
       const seenSessions = new Set<string>();
       const dedupedHits = journalHits.filter(j => {
         if (seenSessions.has(j.session_id)) return false;
         seenSessions.add(j.session_id);
         return true;
-      }).slice(0, 5);
-      journalResults = dedupedHits.map((j, rank) => ({
+      }).slice(0, Math.max(5, offset + limit));
+      journalResults = dedupedHits.map((j, i) => ({
         id: j.id,
         type: 'journal_flow',
         // Use recall_text (meaningful aliases) over raw content ("Build succeeded")
@@ -138,7 +138,7 @@ server.tool(
         project: j.project,
         source: 'journal',
         recall_text: j.recall_text ?? undefined,
-        score: 1.0 / (RRF_K + rank), // RRF rank score
+        score: 1.0 / (RRF_K + i + 1), // RRF rank score (1-indexed)
       }));
     } catch { /* non-fatal */ }
 
@@ -157,13 +157,13 @@ server.tool(
              AND ct.project = ?
            ORDER BY rank
            LIMIT ?`
-        ).all(ftsQuery, proj, Math.min(offset + limit, 5)) as Array<{
+        ).all(ftsQuery, proj, offset + limit) as Array<{
           id: number; session_id: string; turn_number: number;
           user_text: string | null; assistant_text: string | null;
           project: string; timestamp_epoch: number; rank: number;
         }>;
 
-        conversationResults = convHits.map((c, rank) => ({
+        conversationResults = convHits.map((c, i) => ({
           id: c.id,
           type: 'conversation_turn',
           summary: [
@@ -174,7 +174,7 @@ server.tool(
           importance: 3,
           project: c.project,
           source: 'conversation',
-          score: 1.0 / (RRF_K + rank),
+          score: 1.0 / (RRF_K + i + 1),
         }));
       }
     } catch { /* FTS on conversation_turns may fail — non-fatal */ }
@@ -186,6 +186,9 @@ server.tool(
       if (embedding) {
         const vectorConvs = await searchConversations(embedding, proj, 3);
         const existingIds = new Set(conversationResults.map(c => c.id));
+        // Rank-normalize vector results after FTS5 results (consistent RRF scale)
+        const vectorRankStart = conversationResults.length + 1;
+        let vectorIdx = 0;
         for (const vc of vectorConvs) {
           if (existingIds.has(vc.id as number)) continue;
           existingIds.add(vc.id as number);
@@ -198,8 +201,9 @@ server.tool(
             importance: 3,
             project: String(payload.project ?? proj),
             source: 'conversation',
-            score: vc.score * (1.0 / (RRF_K + 5)), // Score below top FTS5 matches
+            score: 1.0 / (RRF_K + vectorRankStart + vectorIdx), // Rank-normalized after FTS5
           });
+          vectorIdx++;
         }
       }
     } catch { /* Qdrant/embeddings unavailable — non-fatal */ }
@@ -219,10 +223,10 @@ server.tool(
              AND (l.project = ? OR l.project = '__global__')
            ORDER BY rank
            LIMIT ?`
-        ).all(ftsQuery, proj, Math.min(offset + limit, 10)) as Array<{
+        ).all(ftsQuery, proj, offset + limit) as Array<{
           id: number; content: string; project: string; promotion_count: number; rank: number;
         }>;
-        learningResults = hits.map((l, rank) => ({
+        learningResults = hits.map((l, i) => ({
           id: l.id,
           type: 'learning',
           summary: l.content.slice(0, 300),
@@ -230,7 +234,7 @@ server.tool(
           importance: 5,
           project: l.project,
           source: 'learning',
-          score: 1.0 / (RRF_K + rank), // RRF rank score
+          score: 1.0 / (RRF_K + i + 1),
         }));
       }
     } catch { /* learnings_fts may not exist — non-fatal */ }
@@ -250,10 +254,10 @@ server.tool(
              AND (d.project = ? OR d.project = '__global__')
            ORDER BY rank
            LIMIT ?`
-        ).all(ftsQuery, proj, Math.min(offset + limit, 5)) as Array<{
+        ).all(ftsQuery, proj, offset + limit) as Array<{
           id: number; content: string; project: string; session_id: string; rank: number;
         }>;
-        decisionResults = hits.map((d, rank) => ({
+        decisionResults = hits.map((d, i) => ({
           id: d.id,
           type: 'decision',
           summary: d.content.slice(0, 300),
@@ -261,7 +265,7 @@ server.tool(
           importance: 4,
           project: d.project,
           source: 'decision',
-          score: 1.0 / (RRF_K + rank),
+          score: 1.0 / (RRF_K + i + 1),
         }));
       }
     } catch {
@@ -278,10 +282,10 @@ server.tool(
                AND (${conditions})
              ORDER BY timestamp_epoch DESC
              LIMIT ?`
-          ).all(proj, ...likeParams, Math.min(offset + limit, 5)) as Array<{
+          ).all(proj, ...likeParams, offset + limit) as Array<{
             id: number; content: string; project: string; session_id: string;
           }>;
-          decisionResults = hits.map((d, rank) => ({
+          decisionResults = hits.map((d, i) => ({
             id: d.id,
             type: 'decision',
             summary: d.content.slice(0, 300),
@@ -289,19 +293,20 @@ server.tool(
             importance: 4,
             project: d.project,
             source: 'decision',
-            score: 1.0 / (RRF_K + rank),
+            score: 1.0 / (RRF_K + i + 1),
           }));
         }
       } catch { /* non-fatal */ }
     }
 
-    // Source weight multipliers — tune how much each source contributes to final ranking
+    // Source weight multipliers — narrow spread so relevance rank dominates,
+    // weights act as tiebreaker only (old 0.8–1.3 range let weak decisions outrank strong artifacts)
     const SOURCE_WEIGHTS: Record<string, number> = {
-      decision: 1.3,    // Explicit decisions — highest signal for "what was decided" queries
-      learning: 1.2,    // Behavioral corrections — high signal
-      artifacts: 1.0,   // General content
-      journal: 0.9,     // Breadcrumbs
-      conversation: 0.8, // Raw dialogue — most noise
+      decision: 1.05,    // Explicit decisions — slight boost
+      learning: 1.03,    // Behavioral corrections
+      artifacts: 1.0,    // General content (baseline)
+      journal: 0.97,     // Breadcrumbs
+      conversation: 0.95, // Raw dialogue
     };
 
     // Merge all channels and sort by weighted RRF score
@@ -540,16 +545,21 @@ server.tool(
     source: z.string().optional().describe('Source session name/ID to pick up from (for action=pickup)'),
   },
   async ({ action, session_id, name, signal_type, target, detail, signal_id, source }) => {
-    // Resolve session_id: use provided value, or find the most recent active session for this project.
+    // Resolve session_id: use provided value, or find the most recently ACTIVE session for this project.
     // The MCP server doesn't receive CC's session_id, so we look it up from the DB.
+    // Uses latest activity (session_events) not creation time to handle multi-session correctly.
     // Fallback to mcp:<project> only if no active session exists (shouldn't happen in normal use).
     let sessionId = session_id ?? '';
     if (!sessionId) {
       try {
         const active = cachedPrepare(getDb(),
-          `SELECT session_id FROM sessions
-           WHERE project = ? AND status = 'active'
-           ORDER BY created_at_epoch DESC LIMIT 1`
+          `SELECT s.session_id FROM sessions s
+           LEFT JOIN (
+             SELECT session_id, MAX(timestamp_epoch) as last_activity
+             FROM session_events GROUP BY session_id
+           ) e ON e.session_id = s.session_id
+           WHERE s.project = ? AND s.status = 'active'
+           ORDER BY COALESCE(e.last_activity, s.created_at_epoch) DESC LIMIT 1`
         ).get(defaultProject) as { session_id: string } | undefined;
         sessionId = active?.session_id ?? `mcp:${defaultProject}`;
       } catch {

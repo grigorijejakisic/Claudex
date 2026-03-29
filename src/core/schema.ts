@@ -362,6 +362,8 @@ CREATE TABLE IF NOT EXISTS session_events (
 );
 CREATE INDEX IF NOT EXISTS idx_session_events_session
   ON session_events(session_id);
+CREATE INDEX IF NOT EXISTS idx_session_events_session_ts
+  ON session_events(session_id, timestamp_epoch);
 CREATE INDEX IF NOT EXISTS idx_session_events_project
   ON session_events(project, timestamp_epoch);
 

@@ -381,12 +381,18 @@ export function recordPredictionAccuracy(
  */
 export function determineActualIntent(db: Database, sessionId: string): IntentType {
   try {
+    // Exclude meta event types from counting — they're system bookkeeping, not user actions.
+    // Without this filter, meta events (intent_classification, compaction, etc.) all fall into
+    // the 'continuation' bucket and then intent_classification events get double-counted below.
+    const META_EVENTS = ['intent_prediction', 'intent_prediction_accuracy', 'intent_classification',
+      'session_success_bonus', 'compaction', 'angel_processed'];
     const counts = cachedPrepare(db,
       `SELECT event_type, COUNT(*) as cnt FROM session_events
        WHERE session_id = ?
+         AND event_type NOT IN (${META_EVENTS.map(() => '?').join(',')})
        GROUP BY event_type
        ORDER BY cnt DESC`
-    ).all(sessionId) as Array<{ event_type: string; cnt: number }>;
+    ).all(sessionId, ...META_EVENTS) as Array<{ event_type: string; cnt: number }>;
 
     if (counts.length === 0) return 'continuation';
 

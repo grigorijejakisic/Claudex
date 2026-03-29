@@ -597,7 +597,12 @@ export function assembleFullContext(params: FullAssemblyParams): InjectPayload {
         };
 
         // Recent changes since last session on this project
-        const lastSessionEpoch = Math.floor(Date.now() / 1000) - 86400; // 24h ago
+        const lastSession = cachedPrepare(params.db,
+          `SELECT ended_at_epoch FROM sessions
+           WHERE project = ? AND status = 'completed' AND ended_at_epoch IS NOT NULL
+           ORDER BY ended_at_epoch DESC LIMIT 1`
+        ).get(params.project) as { ended_at_epoch: number } | undefined;
+        const lastSessionEpoch = lastSession?.ended_at_epoch ?? (Math.floor(Date.now() / 1000) - 86400);
         const changed = getChangedFiles(params.db, params.project, lastSessionEpoch);
         if (changed.length > 0) {
           parts.push('**Changed since last session:**');

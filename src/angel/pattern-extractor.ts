@@ -11,7 +11,6 @@
  * Non-throwing — returns empty results on error.
  */
 
-import type Anthropic from '@anthropic-ai/sdk';
 import type { Database } from 'better-sqlite3';
 import { cachedPrepare } from '../core/stmt-cache.js';
 import { createPattern, createTipAndStrategy } from '../intelligence/experience-patterns.js';
@@ -360,6 +359,12 @@ function reviewCandidatePatterns(
       if (candidate.severity !== 'critical') continue;
     }
 
+    // Gate 4: Incomplete sessions produce lower-confidence patterns
+    if (!outcome.completedSuccessfully && candidate.severity !== 'critical') {
+      // Session crashed/abandoned — downgrade severity since correction may not have been validated
+      candidate.severity = candidate.severity === 'important' ? 'minor' : candidate.severity;
+    }
+
     reviewed.push(candidate);
   }
 
@@ -382,8 +387,8 @@ export async function extractPatternsFromSession(
   db: Database,
   sessionId: string,
   project: string,
-  client: Anthropic,
-  model: string,
+  _client?: unknown,
+  _model?: string,
   maxPatterns: number = 5,
   localModel: string = 'llama3.2',
 ): Promise<{ patternsCreated: number; summary: string }> {
@@ -450,10 +455,28 @@ export async function extractPatternsFromSession(
 
     let parsed: { patterns: ExtractedPattern[]; summary: string };
     try {
-      // Extract JSON from response (may have markdown code fences)
-      const jsonMatch = responseText.match(/\{[\s\S]*\}/);
-      if (!jsonMatch) return { patternsCreated: 0, summary: 'no JSON in response' };
-      parsed = JSON.parse(jsonMatch[0]);
+      // Extract JSON from response using balanced brace matching (not greedy regex).
+      // Greedy /\{[\s\S]*\}/ would grab from first { to last } — wrong if response
+      // has text after the JSON object.
+      // Skips braces inside JSON strings to avoid premature termination on {"msg": "}"}.
+      const startIdx = responseText.indexOf('{');
+      if (startIdx === -1) return { patternsCreated: 0, summary: 'no JSON in response' };
+      let depth = 0;
+      let endIdx = -1;
+      let inString = false;
+      for (let i = startIdx; i < responseText.length; i++) {
+        const ch = responseText[i];
+        if (inString) {
+          if (ch === '\\') { i++; continue; } // skip escaped character
+          if (ch === '"') inString = false;
+          continue;
+        }
+        if (ch === '"') { inString = true; continue; }
+        if (ch === '{') depth++;
+        else if (ch === '}') { depth--; if (depth === 0) { endIdx = i; break; } }
+      }
+      if (endIdx === -1) return { patternsCreated: 0, summary: 'no JSON in response' };
+      parsed = JSON.parse(responseText.substring(startIdx, endIdx + 1));
     } catch {
       return { patternsCreated: 0, summary: 'failed to parse response' };
     }

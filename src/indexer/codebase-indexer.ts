@@ -66,10 +66,19 @@ function parseTypeScript(content: string, filePath: string): Omit<IndexedFile, '
   const lines = content.split('\n');
 
   let currentFunction: string | null = null;
+  let braceDepth = 0; // Track brace nesting for accurate scope detection
+  let functionStartDepth = 0; // Depth when current function started
 
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
     const lineNum = i + 1;
+
+    // Count braces on this line (outside strings — rough but avoids most false positives)
+    const strippedLine = line.replace(/\/\/.*$/, '').replace(/'[^']*'|"[^"]*"|`[^`]*`/g, '');
+    for (const ch of strippedLine) {
+      if (ch === '{') braceDepth++;
+      else if (ch === '}') braceDepth--;
+    }
 
     // Imports
     const importMatch = line.match(/^\s*import\s+(?:type\s+)?(?:\{([^}]+)\}|(\w+))\s+from\s+['"]([^'"]+)['"]/);
@@ -84,6 +93,8 @@ function parseTypeScript(content: string, filePath: string): Omit<IndexedFile, '
       symbols.push({ name: exportFuncMatch[1], kind: 'function', line: lineNum, exported: true, params: exportFuncMatch[2].trim(), returnType: exportFuncMatch[3]?.trim() });
       exports.push(exportFuncMatch[1]);
       currentFunction = exportFuncMatch[1];
+      // If { appeared on this line, depth already incremented; if not (Allman style), use current depth
+      functionStartDepth = strippedLine.includes('{') ? braceDepth - 1 : braceDepth;
       continue;
     }
 
@@ -92,6 +103,7 @@ function parseTypeScript(content: string, filePath: string): Omit<IndexedFile, '
     if (funcMatch) {
       symbols.push({ name: funcMatch[1], kind: 'function', line: lineNum, exported: false, params: funcMatch[2].trim() });
       currentFunction = funcMatch[1];
+      functionStartDepth = strippedLine.includes('{') ? braceDepth - 1 : braceDepth;
       continue;
     }
 
@@ -101,6 +113,7 @@ function parseTypeScript(content: string, filePath: string): Omit<IndexedFile, '
       symbols.push({ name: exportArrowMatch[1], kind: 'function', line: lineNum, exported: true });
       exports.push(exportArrowMatch[1]);
       currentFunction = exportArrowMatch[1];
+      functionStartDepth = strippedLine.includes('{') ? braceDepth - 1 : braceDepth;
       continue;
     }
 
@@ -148,8 +161,8 @@ function parseTypeScript(content: string, filePath: string): Omit<IndexedFile, '
       }
     }
 
-    // Track function scope exit (rough: closing brace at column 0)
-    if (line.match(/^}/) && currentFunction) {
+    // Track function scope exit using brace depth (not ^} which misattributes nested blocks)
+    if (currentFunction && braceDepth <= functionStartDepth) {
       currentFunction = null;
     }
   }
@@ -224,7 +237,7 @@ export function indexProject(
   const result = { indexed: 0, skipped: 0, total: 0 };
 
   const skipDirs = new Set(['node_modules', 'dist', '.git', '.claude', '.planning', 'context', 'coverage', '.vite']);
-  const sourceExts = new Set(['.ts', '.tsx', '.js', '.jsx', '.mjs', '.cjs', '.py', '.rs']);
+  const sourceExts = new Set(['.ts', '.tsx', '.js', '.jsx', '.mjs', '.cjs']);
 
   function walk(dir: string): void {
     try {

@@ -421,7 +421,7 @@ export function recordWasReferenced(
       }
 
       // Tokenize summary and check for matching tokens in assistant text.
-      // Use prefix matching (4+ chars) to catch stemming variants:
+      // Use prefix matching (5+ chars) with word boundary to catch stemming variants:
       // "embedding" matches "embed", "modification" matches "modif"
       const summaryTokens = tokenizeQuery(summary, 20);
       let matchCount = 0;
@@ -431,9 +431,11 @@ export function recordWasReferenced(
         if (combinedAssistantText.includes(token)) {
           matchCount++;
         } else if (token.length >= 5) {
-          // Prefix match: check if the first 4 chars appear as a word prefix
-          const prefix = token.substring(0, 4);
-          if (combinedAssistantText.includes(prefix)) {
+          // Prefix match: check if the first 5 chars appear as a word boundary prefix.
+          // Use regex word boundary to prevent "edit" matching "credit".
+          const prefix = token.substring(0, 5);
+          const prefixRe = new RegExp(`\\b${prefix.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`, 'i');
+          if (prefixRe.test(combinedAssistantText)) {
             matchCount += 0.5; // Half-credit for prefix match
           }
         }
