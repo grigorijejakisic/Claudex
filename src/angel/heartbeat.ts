@@ -472,6 +472,39 @@ export async function heartbeatTick(ctx: HeartbeatContext): Promise<TickResult> 
       // Non-critical — quality check failure doesn't break the heartbeat
     }
 
+    // Phase 4d2: Codebase index refresh (Amp Phase 3).
+    // Re-indexes active projects' source files. Incremental — only changed files.
+    // Rate-limited: once per heartbeat cycle (runs fast due to MD5 hash skip).
+    try {
+      const { indexProject } = await import('../indexer/codebase-indexer.js');
+      const activeProjects = cachedPrepare(ctx.db,
+        `SELECT DISTINCT p.project, s.cwd FROM sessions s
+         JOIN (SELECT project, MAX(created_at_epoch) as latest FROM sessions WHERE status = 'active' GROUP BY project) p
+         ON s.project = p.project AND s.created_at_epoch = p.latest
+         LIMIT 3`
+      ).all() as Array<{ project: string; cwd: string | null }>;
+
+      let totalIndexed = 0;
+      for (const p of activeProjects) {
+        if (!p.cwd) continue;
+        const srcPath = path.join(p.cwd, 'src');
+        try {
+          const { indexed } = indexProject(ctx.db, p.project, srcPath);
+          totalIndexed += indexed;
+        } catch { /* individual project failure — continue */ }
+      }
+      if (totalIndexed > 0) {
+        result.codebase_files_indexed = totalIndexed;
+      }
+    } catch { /* non-critical */ }
+
+    // Phase 4d3: MemRL temporal decay (Amp Phase 2).
+    // Decay Q-values for unused artifacts. Runs once per heartbeat.
+    try {
+      const { applyTemporalDecay } = await import('../intelligence/memrl-scorer.js');
+      applyTemporalDecay(ctx.db);
+    } catch { /* non-critical */ }
+
     // Phase 4e: Proactive memory curation.
     // Promotes valuable artifacts, decays unused ones, detects contradictions,
     // manages project lifecycles, sends health reports, prepares away-digests.

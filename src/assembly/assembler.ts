@@ -561,10 +561,16 @@ export function assembleFullContext(params: FullAssemblyParams): InjectPayload {
 
           // 5.1: Record retrieval events for all materialized artifacts
           // 5.3: Spread activation to linked artifacts
+          // 5.4: MemRL retrieval tracking (Amp Phase 2)
           if (params.sessionId) {
             for (const art of materializedArtifacts) {
               recordRetrievalEvent(params.db, art.id, params.sessionId, query ?? undefined);
               spreadActivation(params.db, art.id);
+              // Track retrieval for MemRL Q-value learning
+              try {
+                const { recordRetrieval } = require('../intelligence/memrl-scorer.js');
+                recordRetrieval(params.db, art.id);
+              } catch { /* MemRL not available — non-fatal */ }
             }
           }
 
@@ -575,6 +581,52 @@ export function assembleFullContext(params: FullAssemblyParams): InjectPayload {
         }
       }
     } catch { /* non-fatal */ }
+
+    // === CODEBASE CONTEXT (Amp Phase 3 — structural understanding) ===
+    // Inject relevant symbols and recent changes from the codebase index.
+    // Only at session-start (not post-compaction).
+    if (!params.isPostCompaction) {
+      try {
+        const { findRelevantFiles, getChangedFiles } = require('../indexer/codebase-indexer.js');
+        const query = params.searchQuery ?? checkpoint?.thread?.topic ?? null;
+        const parts: string[] = [];
+
+        // Recent changes since last session on this project
+        const lastSessionEpoch = Math.floor(Date.now() / 1000) - 86400; // 24h ago
+        const changed = getChangedFiles(params.db, params.project, lastSessionEpoch);
+        if (changed.length > 0) {
+          parts.push('**Changed since last session:**');
+          for (const f of changed.slice(0, 5)) {
+            const basename = f.file_path.split(/[\\/]/).pop() ?? f.file_path;
+            const exportedSymbols = f.symbols.filter(s => s.exported).map(s => s.name).join(', ');
+            parts.push(`- \`${basename}\`${exportedSymbols ? ` (exports: ${exportedSymbols})` : ''}`);
+          }
+        }
+
+        // Relevant files for current topic
+        if (query) {
+          const relevant = findRelevantFiles(params.db, params.project, query, 3);
+          if (relevant.length > 0) {
+            parts.push(parts.length > 0 ? '\n**Relevant to current task:**' : '**Relevant files:**');
+            for (const f of relevant) {
+              const basename = f.file_path.split(/[\\/]/).pop() ?? f.file_path;
+              const topSymbols = f.symbols.filter(s => s.exported).slice(0, 5).map(s => `${s.kind} ${s.name}`).join(', ');
+              parts.push(`- \`${basename}\`: ${topSymbols || '(no exports)'}`);
+            }
+          }
+        }
+
+        if (parts.length > 0) {
+          const codeSection = `## Codebase Context\n${parts.join('\n')}`;
+          const cost = estimateTokens(codeSection);
+          if (cost <= budget && cost <= 800) { // Hard cap: 800 tokens for codebase context
+            sections.push(codeSection);
+            budget -= cost;
+            sources.push('codebase_index');
+          }
+        }
+      } catch { /* codebase index unavailable — non-fatal */ }
+    }
 
     // === PREDICTED CONTEXT (Phase 19 — proactive memory) ===
     // Only at session-start (not post-compaction), when prediction passed confidence gate.
