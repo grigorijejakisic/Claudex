@@ -1029,7 +1029,30 @@ export function migrateV11toV12(db: Database): void {
     db.exec("CREATE INDEX IF NOT EXISTS idx_sessions_name ON sessions(name)");
   } catch { /* non-fatal */ }
 
-  // 5. Create entity_aliases table (entity resolution — Tier 2.6)
+  // 5. Create angel_opinions table (CARA reasoning — Tier 3.1)
+  try {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS angel_opinions (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        project TEXT NOT NULL,
+        subject TEXT NOT NULL,
+        opinion TEXT NOT NULL,
+        confidence REAL NOT NULL DEFAULT 0.5,
+        evidence_count INTEGER NOT NULL DEFAULT 1,
+        reinforced_count INTEGER NOT NULL DEFAULT 0,
+        weakened_count INTEGER NOT NULL DEFAULT 0,
+        contradicted_count INTEGER NOT NULL DEFAULT 0,
+        source_type TEXT NOT NULL DEFAULT 'inferred',
+        created_at_epoch INTEGER NOT NULL DEFAULT (unixepoch()),
+        updated_at_epoch INTEGER NOT NULL DEFAULT (unixepoch()),
+        UNIQUE(project, subject)
+      );
+      CREATE INDEX IF NOT EXISTS idx_opinions_project
+        ON angel_opinions(project, confidence DESC);
+    `);
+  } catch { /* non-fatal */ }
+
+  // 6. Create entity_aliases table (entity resolution — Tier 2.6)
   try {
     db.exec(`
       CREATE TABLE IF NOT EXISTS entity_aliases (

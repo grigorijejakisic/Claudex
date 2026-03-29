@@ -452,6 +452,18 @@ export async function heartbeatTick(ctx: HeartbeatContext): Promise<TickResult> 
       // Non-critical
     }
 
+    // Phase 4e3: CARA reasoning — derive opinions from proven patterns.
+    // Angel forms opinions about tools, approaches, and patterns based on evidence.
+    try {
+      const { deriveOpinionsFromPatterns } = await import('./cara-reasoning.js');
+      const projects = cachedPrepare(ctx.db,
+        `SELECT DISTINCT project FROM sessions WHERE status = 'active' LIMIT 5`
+      ).all() as Array<{ project: string }>;
+      for (const p of projects) {
+        if (p.project) deriveOpinionsFromPatterns(ctx.db, p.project);
+      }
+    } catch { /* non-critical */ }
+
     // Phase 4f: Pattern consolidation.
     // Clusters related experience patterns and promotes proven ones to 'always' retrieval mode.
     // Patterns that reach 'proven' maturity with score >= 50 are promoted to always-inject.

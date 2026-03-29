@@ -379,6 +379,29 @@ export function assembleFullContext(params: FullAssemblyParams): InjectPayload {
       }
     } catch { /* non-fatal */ }
 
+    // Priority 4.07: Angel opinions (CARA reasoning layer) — high-confidence insights.
+    try {
+      const opinions = cachedPrepare(params.db,
+        `SELECT * FROM angel_opinions
+         WHERE project IN (?, '__global__') AND confidence >= 0.7
+         ORDER BY confidence DESC, evidence_count DESC LIMIT 5`
+      ).all(params.project) as Array<{ subject: string; opinion: string; confidence: number; evidence_count: number }>;
+      if (opinions.length > 0) {
+        const lines = opinions.map(o => {
+          const conf = Math.round(o.confidence * 100);
+          const evidence = o.evidence_count > 1 ? ` (${o.evidence_count} observations)` : '';
+          return `- **${o.subject}**: ${o.opinion} [${conf}% confidence${evidence}]`;
+        });
+        const opinionSection = `## Angel Insights\n${lines.join('\n')}`;
+        const cost = estimateTokens(opinionSection);
+        if (cost <= budget) {
+          sections.push(opinionSection);
+          budget -= cost;
+          sources.push('angel_opinions');
+        }
+      }
+    } catch { /* non-fatal */ }
+
     // Priority 4.1: Proven principles — proactive injection of established patterns.
     // Unlike experience warnings (keyword-matched per turn), these fire unconditionally
     // at every session start. They represent accumulated wisdom: always-applicable rules.

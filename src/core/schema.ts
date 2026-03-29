@@ -536,6 +536,26 @@ CREATE INDEX IF NOT EXISTS idx_sessmsg_target
 CREATE INDEX IF NOT EXISTS idx_sessmsg_sender
   ON session_messages(sender, created_at_epoch DESC);
 
+-- V12: angel_opinions — CARA reasoning layer (Hindsight-inspired)
+CREATE TABLE IF NOT EXISTS angel_opinions (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  project TEXT NOT NULL,
+  subject TEXT NOT NULL,
+  opinion TEXT NOT NULL,
+  confidence REAL NOT NULL DEFAULT 0.5 CHECK (confidence BETWEEN 0 AND 1),
+  evidence_count INTEGER NOT NULL DEFAULT 1,
+  reinforced_count INTEGER NOT NULL DEFAULT 0,
+  weakened_count INTEGER NOT NULL DEFAULT 0,
+  contradicted_count INTEGER NOT NULL DEFAULT 0,
+  source_type TEXT NOT NULL DEFAULT 'inferred'
+    CHECK (source_type IN ('inferred', 'user_stated', 'pattern_derived', 'observation_derived')),
+  created_at_epoch INTEGER NOT NULL DEFAULT (unixepoch()),
+  updated_at_epoch INTEGER NOT NULL DEFAULT (unixepoch()),
+  UNIQUE(project, subject)
+);
+CREATE INDEX IF NOT EXISTS idx_opinions_project
+  ON angel_opinions(project, confidence DESC);
+
 -- V12: entity_aliases — canonical entity name resolution
 CREATE TABLE IF NOT EXISTS entity_aliases (
   alias TEXT NOT NULL,
