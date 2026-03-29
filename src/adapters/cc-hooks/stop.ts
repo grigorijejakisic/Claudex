@@ -394,6 +394,14 @@ const main = wrapHook('Stop', async (input, ctx) => {
     }
   }, ctx.db, input.session_id);
 
+  // MemRL Q-value update: propagate session outcomes to artifact Q-values
+  runHookStep('memrl_q_update', () => {
+    try {
+      const { processSessionQValues } = require('../../intelligence/memrl-scorer.js');
+      processSessionQValues(ctx.db, input.session_id, flags.correction_flagged);
+    } catch { /* non-fatal — MemRL is supplementary */ }
+  }, ctx.db, input.session_id);
+
   // Load session events ONCE — shared across summary, recall, and idle detection
   let sessionEvents: import('../../core/session-events.js').SessionEvent[] = [];
   try {

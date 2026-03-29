@@ -509,9 +509,13 @@ export function hybridSearchSync(
       // This makes RIF suppression (Phase 14) affect ranking directly, not just packing.
       const activationFactor = Math.max(0.1, artifact.activation_score ?? 1.0);
 
-      // Final score: base_score * retrieval_score * novelty * activation
+      // MemRL Q-value: learned utility from past retrieval outcomes (Phase 2 Amp)
+      const qValue = artifact.q_value ?? 0.5;
+      const qMultiplier = 0.5 + qValue; // Range: 0.55 (low Q) to 1.5 (high Q)
+
+      // Final score: base_score * retrieval_score * novelty * activation * Q-value
       const baseScore = rrfScore * (1 + threeFactor);
-      const hybridScore = baseScore * retrievalMultiplier * noveltyMultiplier * activationFactor;
+      const hybridScore = baseScore * retrievalMultiplier * noveltyMultiplier * activationFactor * qMultiplier;
 
       scored.push({
         ...artifact,

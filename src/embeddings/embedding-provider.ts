@@ -41,9 +41,83 @@ export function isLocalOrPrivateUrl(urlStr: string, opts?: { allowPrivateLan?: b
   }
 }
 
+// ---------------------------------------------------------------------------
+// GPU Embedding Server client (Local Intelligence Amplifier Phase 1)
+// ---------------------------------------------------------------------------
+
+const GPU_EMBED_URL = 'http://127.0.0.1:7441';
+let _gpuAvailable: boolean | null = null;
+
 /**
- * Wraps Ollama embedding API. Lazily checks availability,
- * caches health status, returns null when unavailable.
+ * Try GPU embedding server first. Returns null if unavailable.
+ * Non-throwing.
+ */
+async function gpuEmbed(text: string): Promise<number[] | null> {
+  try {
+    // Lazy health check
+    if (_gpuAvailable === false) return null;
+    if (_gpuAvailable === null) {
+      try {
+        const health = await fetchJsonWithTimeout(`${GPU_EMBED_URL}/health`, { timeoutMs: 2000 }) as { status?: string } | null;
+        _gpuAvailable = health?.status === 'ok';
+      } catch { _gpuAvailable = false; }
+      if (!_gpuAvailable) return null;
+    }
+
+    const data = await fetchJsonWithTimeout(`${GPU_EMBED_URL}/embed`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ texts: [text], prefix: 'search_query: ' }),
+      timeoutMs: 5000,
+    }) as { embeddings?: number[][] } | null;
+
+    return data?.embeddings?.[0] ?? null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Batch GPU embedding. Returns array of same length as input.
+ * Non-throwing.
+ */
+async function gpuEmbedBatch(texts: string[]): Promise<(number[] | null)[]> {
+  try {
+    if (_gpuAvailable === false) return texts.map(() => null);
+    if (_gpuAvailable === null) {
+      const single = await gpuEmbed(texts[0] ?? '');
+      if (!single) return texts.map(() => null);
+      return [single, ...await Promise.all(texts.slice(1).map(t => gpuEmbed(t)))];
+    }
+
+    const data = await fetchJsonWithTimeout(`${GPU_EMBED_URL}/embed`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ texts, prefix: 'search_query: ' }),
+      timeoutMs: Math.min(5000 + texts.length * 500, 30000),
+    }) as { embeddings?: number[][] } | null;
+
+    if (!data?.embeddings) return texts.map(() => null);
+    return texts.map((_, i) => data.embeddings![i] ?? null);
+  } catch {
+    return texts.map(() => null);
+  }
+}
+
+/** Reset GPU availability cache (for testing or reconnect). */
+export function resetGpuAvailability(): void {
+  _gpuAvailable = null;
+}
+
+/** Force GPU unavailable (for testing — prevents GPU timeout adding to test budget). */
+export function disableGpu(): void {
+  _gpuAvailable = false;
+}
+
+/**
+ * Wraps embedding API with GPU-first, Ollama-fallback strategy.
+ * GPU server (BGE-large on CUDA, port 7441) → Ollama (snowflake-arctic-embed2).
+ * Non-throwing class — all public methods return null/false on error.
  */
 export class EmbeddingProvider {
   private baseUrl: string;
@@ -96,10 +170,15 @@ export class EmbeddingProvider {
   }
 
   /**
-   * Compute embedding for text via Ollama /api/embed.
+   * Compute embedding for text. GPU-first, Ollama fallback.
    * Returns null when unavailable or on any error. Non-throwing.
    */
   async embed(text: string): Promise<number[] | null> {
+    // Priority 1: GPU embedding server (BGE-large on CUDA — sub-millisecond)
+    const gpuResult = await gpuEmbed(text);
+    if (gpuResult) return gpuResult;
+
+    // Priority 2: Ollama (CPU-bound, slower but always available)
     try {
       if (this.available === false) return null;
       if (this.available === null) {
@@ -133,21 +212,24 @@ export class EmbeddingProvider {
    * Returns all-null array when unavailable or on error. Non-throwing.
    */
   async embedBatch(texts: string[]): Promise<(number[] | null)[]> {
-    try {
-      if (texts.length === 0) return [];
-      // Single item: delegate to embed() for simplicity
-      if (texts.length === 1) {
-        const result = await this.embed(texts[0]);
-        return [result];
-      }
+    if (texts.length === 0) return [];
+    if (texts.length === 1) {
+      const result = await this.embed(texts[0]);
+      return [result];
+    }
 
+    // Priority 1: GPU batch embedding
+    const gpuResults = await gpuEmbedBatch(texts);
+    if (gpuResults.some(r => r !== null)) return gpuResults;
+
+    // Priority 2: Ollama batch
+    try {
       if (this.available === false) return texts.map(() => null);
       if (this.available === null) {
         const ok = await this.isAvailable();
         if (!ok) return texts.map(() => null);
       }
 
-      // Longer timeout for batch: 5s base + 1s per additional text, capped at 30s
       const timeoutMs = Math.min(5000 + (texts.length - 1) * 1000, 30000);
 
       const data = await fetchJsonWithTimeout(`${this.baseUrl}/api/embed`, {
@@ -162,7 +244,6 @@ export class EmbeddingProvider {
       const embeddings = data.embeddings;
       if (!Array.isArray(embeddings)) return texts.map(() => null);
 
-      // Map results: return null for missing or invalid positions
       return texts.map((_, i) => {
         const emb = embeddings[i];
         if (!Array.isArray(emb) || emb.length === 0) return null;

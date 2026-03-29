@@ -1149,6 +1149,38 @@ export function migrateV11toV12(db: Database): void {
     // Populate FTS from existing data
     db.exec("INSERT OR IGNORE INTO decisions_fts(rowid, content) SELECT id, content FROM decisions");
   } catch { /* non-fatal — FTS5 may already exist */ }
+
+  // 8. MemRL Q-value columns on artifacts (Phase 2: Local Intelligence Amplifier)
+  try {
+    if (hasTable(db, 'artifacts')) {
+      if (!hasColumn(db, 'artifacts', 'q_value'))
+        db.exec("ALTER TABLE artifacts ADD COLUMN q_value REAL DEFAULT 0.5");
+      if (!hasColumn(db, 'artifacts', 'retrieval_count'))
+        db.exec("ALTER TABLE artifacts ADD COLUMN retrieval_count INTEGER DEFAULT 0");
+      if (!hasColumn(db, 'artifacts', 'success_count'))
+        db.exec("ALTER TABLE artifacts ADD COLUMN success_count INTEGER DEFAULT 0");
+    }
+  } catch { /* non-fatal */ }
+
+  // 9. Codebase index table (Phase 3: Local Intelligence Amplifier)
+  try {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS code_index (
+        project TEXT NOT NULL,
+        file_path TEXT NOT NULL,
+        last_indexed_epoch INTEGER NOT NULL DEFAULT (unixepoch()),
+        ast_hash TEXT,
+        symbols TEXT,
+        call_graph TEXT,
+        imports TEXT,
+        exports TEXT,
+        embedding BLOB,
+        PRIMARY KEY (project, file_path)
+      );
+      CREATE INDEX IF NOT EXISTS idx_code_index_project
+        ON code_index(project, last_indexed_epoch DESC);
+    `);
+  } catch { /* non-fatal */ }
 }
 
 /**
