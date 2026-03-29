@@ -701,43 +701,80 @@ export async function hybridSearchAsync(
 
     scored.sort((a, b) => b.hybrid_score - a.hybrid_score);
 
-    // Bi-encoder reranking: embed query and each candidate with a dedicated reranking
-    // model (snowflake-arctic-embed2, 1024d), compute cosine similarity, rerank top-N.
-    // Falls back to nomic-embed-text if snowflake unavailable.
-    // Not a true cross-encoder (would need ms-marco-MiniLM via ONNX) but significantly
-    // better than the previous LLM-as-judge approach with regex parsing.
-    // Non-blocking: skips if embedding unavailable. 3s timeout.
+    // Cross-encoder reranking: ms-marco-MiniLM-L-6-v2 via local Python microservice.
+    // True neural cross-encoder that jointly scores (query, document) pairs — the gold
+    // standard for reranking (Hindsight uses the same model). Runs on GPU (CUDA/ROCm).
+    // Falls back to bi-encoder (snowflake-arctic-embed2 cosine) if service unavailable.
+    // Non-blocking: 3s timeout. Skips if < 2 candidates.
     try {
       const topCandidates = scored.slice(0, Math.min(20, scored.length));
       if (topCandidates.length > 1) {
-        // Embed query + all candidate contents in one batch
-        const texts = [
-          query.substring(0, 500),
-          ...topCandidates.map(c => (c.title + ' ' + (c.content ?? '')).substring(0, 300)),
-        ];
-        const response = await fetch('http://localhost:11434/api/embed', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ model: 'snowflake-arctic-embed2', input: texts }),
-          signal: AbortSignal.timeout(3000),
-        });
-        if (response.ok) {
-          const data = await response.json() as { embeddings: number[][] };
-          if (data.embeddings && data.embeddings.length === texts.length) {
-            const queryEmb = data.embeddings[0];
-            const queryNorm = Math.sqrt(queryEmb.reduce((s, v) => s + v * v, 0)) || 1;
-            for (let i = 0; i < topCandidates.length; i++) {
-              const docEmb = data.embeddings[i + 1];
-              const docNorm = Math.sqrt(docEmb.reduce((s, v) => s + v * v, 0)) || 1;
-              let dot = 0;
-              for (let d = 0; d < queryEmb.length; d++) dot += queryEmb[d] * docEmb[d];
-              const cosine = dot / (queryNorm * docNorm);
-              // Blend: 30% reranker, 70% hybrid (preserves RRF signal)
-              topCandidates[i].hybrid_score = topCandidates[i].hybrid_score * 0.7 + cosine * 0.3;
+        const documents = topCandidates.map(c =>
+          ((c.summary ?? '') + ' ' + (c.content ?? '')).substring(0, 300)
+        );
+
+        // Try cross-encoder service first (port 7439)
+        let reranked = false;
+        try {
+          const ceResponse = await fetch('http://127.0.0.1:7439/rerank', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ query: query.substring(0, 500), documents }),
+            signal: AbortSignal.timeout(3000),
+          });
+          if (ceResponse.ok) {
+            const ceData = await ceResponse.json() as { scores: number[]; indices: number[] };
+            if (ceData.scores && ceData.scores.length > 0) {
+              // Map scores back to candidates by index
+              const scoreMap = new Map<number, number>();
+              for (let i = 0; i < ceData.indices.length; i++) {
+                scoreMap.set(ceData.indices[i], ceData.scores[i]);
+              }
+              // Normalize CE scores to 0-1 range
+              const maxCE = Math.max(...ceData.scores, 0.001);
+              for (let i = 0; i < topCandidates.length; i++) {
+                const ceNorm = (scoreMap.get(i) ?? 0) / maxCE;
+                // Blend: 40% cross-encoder, 60% hybrid (CE gets more weight than bi-encoder)
+                topCandidates[i].hybrid_score = topCandidates[i].hybrid_score * 0.6 + ceNorm * 0.4;
+              }
+              topCandidates.sort((a, b) => b.hybrid_score - a.hybrid_score);
+              scored.splice(0, topCandidates.length, ...topCandidates);
+              reranked = true;
             }
-            topCandidates.sort((a, b) => b.hybrid_score - a.hybrid_score);
-            scored.splice(0, topCandidates.length, ...topCandidates);
           }
+        } catch { /* Cross-encoder service unavailable — try bi-encoder fallback */ }
+
+        // Bi-encoder fallback: snowflake-arctic-embed2 cosine similarity
+        if (!reranked) {
+          try {
+            const texts = [
+              query.substring(0, 500),
+              ...documents,
+            ];
+            const response = await fetch('http://localhost:11434/api/embed', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ model: 'snowflake-arctic-embed2', input: texts }),
+              signal: AbortSignal.timeout(3000),
+            });
+            if (response.ok) {
+              const data = await response.json() as { embeddings: number[][] };
+              if (data.embeddings && data.embeddings.length === texts.length) {
+                const queryEmb = data.embeddings[0];
+                const queryNorm = Math.sqrt(queryEmb.reduce((s, v) => s + v * v, 0)) || 1;
+                for (let i = 0; i < topCandidates.length; i++) {
+                  const docEmb = data.embeddings[i + 1];
+                  const docNorm = Math.sqrt(docEmb.reduce((s, v) => s + v * v, 0)) || 1;
+                  let dot = 0;
+                  for (let d = 0; d < queryEmb.length; d++) dot += queryEmb[d] * docEmb[d];
+                  const cosine = dot / (queryNorm * docNorm);
+                  topCandidates[i].hybrid_score = topCandidates[i].hybrid_score * 0.7 + cosine * 0.3;
+                }
+                topCandidates.sort((a, b) => b.hybrid_score - a.hybrid_score);
+                scored.splice(0, topCandidates.length, ...topCandidates);
+              }
+            }
+          } catch { /* bi-encoder also unavailable */ }
         }
       }
     } catch { /* Reranking unavailable — proceed with RRF-only scores */ }
