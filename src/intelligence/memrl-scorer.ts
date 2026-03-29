@@ -113,9 +113,11 @@ export function propagateQValues(db: Database, artifactId: number): void {
        LIMIT 10`
     ).all(artifactId) as Array<{ target_id: number; link_type: string }>;
 
-    // If no typed links, use 'related' links with reduced discount
+    // If no typed links, use 'related' links with reduced discount (exclude contradicts)
     const links = typedLinks.length > 0 ? typedLinks : cachedPrepare(db,
-      `SELECT target_id, link_type FROM artifact_links WHERE source_id = ? LIMIT 5`
+      `SELECT target_id, link_type FROM artifact_links
+       WHERE source_id = ? AND link_type != 'contradicts'
+       LIMIT 5`
     ).all(artifactId) as Array<{ target_id: number; link_type: string }>;
 
     for (const link of links) {
