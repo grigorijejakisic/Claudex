@@ -16,6 +16,7 @@ import { initializeSchema } from '../core/migrations.js';
 import { cachedPrepare } from '../core/stmt-cache.js';
 import { EmbeddingProvider } from '../embeddings/embedding-provider.js';
 import { EMBED_DIM } from '../embeddings/embed-pipeline.js';
+import { hybridSearchSync } from '../core/hybrid-retrieval.js';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -77,22 +78,36 @@ const USE_CLIPROXY = true;
 // ---------------------------------------------------------------------------
 
 async function cliproxyGenerate(model: string, prompt: string, maxTokens: number = 500): Promise<string> {
-  const resp = await fetch(`${CLIPROXY_BASE}/chat/completions`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': 'Bearer cliproxy-no-key-needed',
-    },
-    body: JSON.stringify({
-      model,
-      messages: [{ role: 'user', content: prompt }],
-      max_tokens: maxTokens,
-      temperature: 0,
-    }),
-    signal: AbortSignal.timeout(60000),
-  });
-  const data = await resp.json() as { choices?: Array<{ message?: { content?: string } }> };
-  return (data.choices?.[0]?.message?.content ?? '').trim();
+  const MAX_RETRIES = 3;
+  for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
+    try {
+      const resp = await fetch(`${CLIPROXY_BASE}/chat/completions`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer cliproxy-no-key-needed',
+        },
+        body: JSON.stringify({
+          model,
+          messages: [{ role: 'user', content: prompt }],
+          max_tokens: maxTokens,
+          temperature: 0,
+        }),
+        signal: AbortSignal.timeout(90000),
+      });
+      const data = await resp.json() as { choices?: Array<{ message?: { content?: string } }> };
+      return (data.choices?.[0]?.message?.content ?? '').trim();
+    } catch (e) {
+      if (attempt < MAX_RETRIES - 1) {
+        // Wait before retry (exponential backoff)
+        await new Promise(r => setTimeout(r, 2000 * (attempt + 1)));
+        continue;
+      }
+      process.stderr.write(`  [WARN] CliProxy failed after ${MAX_RETRIES} retries: ${(e as Error).message}\n`);
+      return '';
+    }
+  }
+  return '';
 }
 
 async function ollamaGenerate(model: string, prompt: string, maxTokens: number = 500): Promise<string> {
@@ -241,122 +256,28 @@ async function embedAllArtifacts(db: Database.Database, provider: EmbeddingProvi
 }
 
 // ---------------------------------------------------------------------------
-// Retrieve: Hybrid FTS5 + vector search
+// Retrieve: Real Claudex hybrid retrieval (FTS5 + recency + three-factor RRF)
 // ---------------------------------------------------------------------------
 
 function retrieveContext(
   db: Database.Database,
   query: string,
   project: string,
-  queryEmbedding: number[] | null,
+  _queryEmbedding: number[] | null,
   topK: number = TOP_K_RETRIEVAL,
 ): Array<{ id: number; content: string; score: number; artifact_type: string }> {
-  const results = new Map<number, { content: string; score: number; artifact_type: string }>();
+  // Use the REAL Claudex hybrid retrieval pipeline — same code that runs in production
+  const results = hybridSearchSync(db, query, project, {
+    limit: topK,
+    globalScope: false, // Stay within this conversation's project scope
+  });
 
-  // Channel 1: FTS5 keyword search
-  try {
-    const safeQuery = query.replace(/['"()*:^~]/g, ' ').trim();
-    const words = safeQuery.split(/\s+/).filter(w => w.length > 2).slice(0, 10);
-    if (words.length > 0) {
-      const ftsQuery = words.join(' OR ');
-      const ftsResults = db.prepare(
-        `SELECT a.id, a.content, a.artifact_type,
-                bm25(artifacts_fts) as rank
-         FROM artifacts a
-         JOIN artifacts_fts fts ON fts.rowid = a.id
-         WHERE artifacts_fts MATCH ?
-           AND a.project = ?
-         ORDER BY rank
-         LIMIT ?`
-      ).all(ftsQuery, project, topK * 2) as Array<{
-        id: number; content: string; artifact_type: string; rank: number;
-      }>;
-
-      for (let i = 0; i < ftsResults.length; i++) {
-        const r = ftsResults[i];
-        results.set(r.id, {
-          content: r.content,
-          score: (results.get(r.id)?.score ?? 0) + 1.0 / (60 + i),
-          artifact_type: r.artifact_type,
-        });
-      }
-    }
-  } catch { /* non-fatal */ }
-
-  // Channel 2: Vector similarity
-  if (queryEmbedding) {
-    try {
-      const candidates = db.prepare(
-        `SELECT id, content, artifact_type, embedding
-         FROM artifacts
-         WHERE project = ? AND embedding IS NOT NULL
-         ORDER BY importance DESC
-         LIMIT 200`
-      ).all(project) as Array<{
-        id: number; content: string; artifact_type: string; embedding: Buffer;
-      }>;
-
-      const scored: Array<{ id: number; content: string; artifact_type: string; sim: number }> = [];
-      for (const c of candidates) {
-        const vec = new Float32Array(c.embedding.buffer, c.embedding.byteOffset, c.embedding.byteLength / 4);
-        scored.push({ id: c.id, content: c.content, artifact_type: c.artifact_type, sim: cosineSimilarity(queryEmbedding, vec) });
-      }
-      scored.sort((a, b) => b.sim - a.sim);
-
-      for (let i = 0; i < Math.min(scored.length, topK * 2); i++) {
-        const r = scored[i];
-        results.set(r.id, {
-          content: r.content,
-          score: (results.get(r.id)?.score ?? 0) + 1.0 / (60 + i),
-          artifact_type: r.artifact_type,
-        });
-      }
-    } catch { /* non-fatal */ }
-  }
-
-  // Channel 3: Multi-hop expansion — extract entities from top results, second FTS pass
-  try {
-    const topResults = [...results.entries()]
-      .sort((a, b) => b[1].score - a[1].score)
-      .slice(0, 5);
-
-    const entities = new Set<string>();
-    for (const [, { content }] of topResults) {
-      const words = content.match(/\b[A-Z][a-z]{2,}\b/g) || [];
-      for (const w of words) entities.add(w);
-    }
-
-    if (entities.size > 0) {
-      const entityQuery = [...entities].slice(0, 5).join(' OR ');
-      try {
-        const hopResults = db.prepare(
-          `SELECT a.id, a.content, a.artifact_type, bm25(artifacts_fts) as rank
-           FROM artifacts a
-           JOIN artifacts_fts fts ON fts.rowid = a.id
-           WHERE artifacts_fts MATCH ? AND a.project = ?
-           ORDER BY rank LIMIT ?`
-        ).all(entityQuery, project, topK) as Array<{
-          id: number; content: string; artifact_type: string; rank: number;
-        }>;
-
-        for (let i = 0; i < hopResults.length; i++) {
-          const r = hopResults[i];
-          if (!results.has(r.id)) {
-            results.set(r.id, {
-              content: r.content,
-              score: 0.5 / (60 + i),
-              artifact_type: r.artifact_type,
-            });
-          }
-        }
-      } catch { /* non-fatal */ }
-    }
-  } catch { /* non-fatal */ }
-
-  return [...results.entries()]
-    .map(([id, { content, score, artifact_type }]) => ({ id, content, score, artifact_type }))
-    .sort((a, b) => b.score - a.score)
-    .slice(0, topK);
+  return results.map(r => ({
+    id: r.id,
+    content: r.content ?? r.summary ?? '',
+    score: r.hybrid_score,
+    artifact_type: r.artifact_type,
+  }));
 }
 
 // ---------------------------------------------------------------------------
@@ -493,11 +414,8 @@ async function main() {
     for (const qa of scorableQa) {
       totalProcessed++;
 
-      // Embed query
-      const queryEmb = embAvailable ? await embedText(provider, qa.question) : null;
-
-      // Retrieve context
-      const retrieved = retrieveContext(db, qa.question, conv.sample_id, queryEmb);
+      // Retrieve context via real Claudex hybrid retrieval
+      const retrieved = retrieveContext(db, qa.question, conv.sample_id, null);
       const contextTexts = retrieved.map(r => r.content);
 
       // Generate answer
