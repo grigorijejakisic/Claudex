@@ -184,18 +184,22 @@ function ingestConversation(
     // Temporal anchor: prefix content with session date so retrieval surfaces dates
     const datePrefix = dateTime ? `[${dateTime}] ` : '';
 
-    // Store each turn as an observation
+    // Store each turn as BOTH observation AND artifact (retrieval searches artifacts)
     for (const turn of turns) {
+      const turnContent = `${datePrefix}${turn.speaker}: ${turn.text}`;
+      const turnEpoch = sessionNum * 86400 + parseInt(turn.dia_id.split(':')[1] || '0');
+
       cachedPrepare(db,
         `INSERT INTO observations (session_id, project, tool_name, category, title, content, importance, timestamp_epoch)
          VALUES (?, ?, 'dialog', 'other', ?, ?, 3, ?)`
-      ).run(
-        sessionId,
-        sampleId,
-        `${turn.speaker} [${turn.dia_id}]`,
-        `${datePrefix}${turn.text}`,
-        sessionNum * 86400 + parseInt(turn.dia_id.split(':')[1] || '0'),
-      );
+      ).run(sessionId, sampleId, `${turn.speaker} [${turn.dia_id}]`, turnContent, turnEpoch);
+
+      // Also store as artifact so hybrid retrieval FTS5 can find it
+      cachedPrepare(db,
+        `INSERT INTO artifacts (project, session_id, artifact_type, content, summary, importance, timestamp_epoch)
+         VALUES (?, ?, 'observation', ?, ?, 3, ?)`
+      ).run(sampleId, sessionId, turnContent, `${turn.speaker}: ${turn.text.substring(0, 200)}`, turnEpoch);
+
       observationCount++;
     }
 
@@ -287,14 +291,22 @@ async function retrieveContext(
 
 async function generateAnswer(question: string, context: string[]): Promise<string> {
   const contextStr = context.map((c, i) => `[${i + 1}] ${c}`).join('\n');
-  const prompt = `You are answering questions about a conversation history. Use ONLY the provided context. If the answer is not in the context, say "I don't know."
+  const prompt = `You are answering questions about a conversation history between two people.
+
+STRICT RULES:
+- Answer ONLY from the provided context. Do not use outside knowledge.
+- If the EXACT answer is not explicitly stated in the context, say "I don't know."
+- Do not infer, guess, or extrapolate. Only state what the context directly says.
+- For "when" questions: only answer if a specific date or time is mentioned in the context.
+- For "what" questions: only answer if the specific thing is named in the context.
+- Be precise: use names, dates, and details exactly as they appear in the context.
 
 Context:
 ${contextStr}
 
 Question: ${question}
 
-Answer concisely in 1-2 sentences:`;
+Answer in 1-2 sentences using only facts from the context:`;
 
   return generate(prompt, 150);
 }

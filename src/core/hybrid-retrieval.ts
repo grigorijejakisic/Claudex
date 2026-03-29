@@ -189,10 +189,16 @@ function searchFts5Channel(
   excludeSuperseded: boolean,
 ): ArtifactRow[] {
   try {
-    const keywords = tokenizeQuery(query, 5);
+    const keywords = tokenizeQuery(query, 10);
     if (keywords.length === 0) return [];
 
-    const ftsQuery = keywords.join(' OR ');
+    // Extract proper nouns (capitalized words) from original query for priority matching
+    const properNouns = query.match(/\b[A-Z][a-z]{2,}\b/g) || [];
+    const uniqueProperNouns = [...new Set(properNouns.map(n => n.toLowerCase()))];
+
+    // Build FTS5 query: proper nouns get double weight via repetition
+    const allTerms = [...uniqueProperNouns, ...keywords];
+    const ftsQuery = [...new Set(allTerms)].join(' OR ');
     const supersededFilter = excludeSuperseded ? 'AND a.superseded_by IS NULL' : '';
     const projectFilter = globalScope ? '' : 'AND a.project = ?';
     const orderPrefix = globalScope
