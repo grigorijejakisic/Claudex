@@ -79,6 +79,9 @@ export interface TickResult {
   patterns_merged?: number;
   entities_summarized?: number;
   entities_updated?: number;
+  // Local Intelligence Amplifier
+  services_down?: string[];
+  codebase_files_indexed?: number;
   duration_ms: number;
   error?: string;
 }

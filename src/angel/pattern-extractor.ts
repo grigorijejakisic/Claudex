@@ -202,24 +202,26 @@ function extractDirectiveCandidates(turns: ConversationTurn[]): string[] {
 function findCrossSessionDirectives(
   db: Database,
   project: string,
+  currentSessionId: string,
   currentDirectives: string[],
 ): string[] {
   if (currentDirectives.length === 0) return [];
   const repeated: string[] = [];
 
   for (const directive of currentDirectives) {
-    // Extract key phrases (3+ word sequences) from the directive
-    const words = directive.toLowerCase().replace(/[^\w\s]/g, '').split(/\s+/).filter(w => w.length > 3);
+    // Strip [DIRECTIVE CANDIDATE] prefix before extracting keywords
+    const cleanDirective = directive.replace(/\[Turn \d+\]\s*\[DIRECTIVE CANDIDATE\]\s*USER:\s*/i, '');
+    const words = cleanDirective.toLowerCase().replace(/[^\w\s]/g, '').split(/\s+/).filter(w => w.length > 3);
     if (words.length < 3) continue;
 
-    // Search for similar phrases in other sessions' conversation turns
+    // Search for similar phrases in OTHER sessions' conversation turns
     const searchTerms = words.slice(0, 5).join(' ');
     try {
       const matches = cachedPrepare(db,
         `SELECT DISTINCT ct.session_id FROM conversation_turns ct
          WHERE ct.project = ? AND ct.user_text LIKE ? AND ct.session_id != ?
          LIMIT 3`
-      ).all(project, `%${searchTerms.substring(0, 30)}%`, 'current') as Array<{ session_id: string }>;
+      ).all(project, `%${searchTerms.substring(0, 30)}%`, currentSessionId) as Array<{ session_id: string }>;
 
       if (matches.length >= 1) {
         repeated.push(`[REPEATED ACROSS ${matches.length + 1} SESSIONS] ${directive}`);
@@ -393,7 +395,7 @@ export async function extractPatternsFromSession(
 
     // Pre-filter: extract directive candidates from user turns BEFORE truncation
     const directiveCandidates = extractDirectiveCandidates(turns);
-    const crossSessionDirectives = findCrossSessionDirectives(db, project, directiveCandidates);
+    const crossSessionDirectives = findCrossSessionDirectives(db, project, sessionId, directiveCandidates);
 
     const transcript = formatTranscript(turns);
     if (transcript.length < 100) {
