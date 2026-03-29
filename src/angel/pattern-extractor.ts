@@ -131,6 +131,106 @@ async function callOllama(prompt: string, model: string): Promise<string> {
 }
 
 /**
+ * Call CliProxy (OpenAI-compatible) for high-quality extraction.
+ * Uses Sonnet via local proxy — no API key needed, uses MAX subscription.
+ */
+async function callCliProxy(system: string, prompt: string, model: string = 'claude-sonnet-4-6'): Promise<string> {
+  const resp = await fetch('http://127.0.0.1:8317/v1/chat/completions', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': 'Bearer cliproxy-no-key-needed',
+    },
+    body: JSON.stringify({
+      model,
+      messages: [
+        { role: 'system', content: system },
+        { role: 'user', content: prompt },
+      ],
+      max_tokens: 2048,
+      temperature: 0,
+    }),
+    signal: AbortSignal.timeout(60000),
+  });
+  if (!resp.ok) throw new Error(`CliProxy ${resp.status}`);
+  const data = await resp.json() as { choices?: Array<{ message?: { content?: string } }> };
+  return (data.choices?.[0]?.message?.content ?? '').trim();
+}
+
+// ---------------------------------------------------------------------------
+// Directive keyword pre-filter
+// ---------------------------------------------------------------------------
+
+/** Phrases that indicate standing user directives (not corrections). */
+const DIRECTIVE_INDICATORS = [
+  // Explicit rules
+  'from now on', 'always', 'never', 'the rule is', 'remember that',
+  'i want you to', 'we always', 'never do', 'stop doing',
+  // Reassurances / role assignments (often missed by LLMs)
+  'i will take care', 'i will manage', 'i will handle', 'i will guard',
+  'don\'t worry about', 'do not worry', 'i got your back', 'i\'ll watch',
+  'my responsibility', 'my job to', 'leave that to me',
+  // Preferences
+  'i prefer', 'we use', 'we don\'t use', 'i like when', 'i hate when',
+  'that\'s how i want', 'the way i work',
+];
+
+/**
+ * Pre-scan user turns for directive keywords. Returns turns that likely
+ * contain standing directives, even if a small LLM would miss them.
+ * These are prepended to the transcript with a [DIRECTIVE CANDIDATE] marker.
+ */
+function extractDirectiveCandidates(turns: ConversationTurn[]): string[] {
+  const candidates: string[] = [];
+  for (const turn of turns) {
+    if (!turn.user_text) continue;
+    const lower = turn.user_text.toLowerCase();
+    for (const indicator of DIRECTIVE_INDICATORS) {
+      if (lower.includes(indicator)) {
+        candidates.push(`[Turn ${turn.turn_number}] [DIRECTIVE CANDIDATE] USER: ${turn.user_text.substring(0, 500)}`);
+        break; // One match per turn is enough
+      }
+    }
+  }
+  return candidates;
+}
+
+/**
+ * Detect repeated user directives across sessions.
+ * If the same phrase pattern appears in 2+ sessions, it's a standing rule.
+ */
+function findCrossSessionDirectives(
+  db: Database,
+  project: string,
+  currentDirectives: string[],
+): string[] {
+  if (currentDirectives.length === 0) return [];
+  const repeated: string[] = [];
+
+  for (const directive of currentDirectives) {
+    // Extract key phrases (3+ word sequences) from the directive
+    const words = directive.toLowerCase().replace(/[^\w\s]/g, '').split(/\s+/).filter(w => w.length > 3);
+    if (words.length < 3) continue;
+
+    // Search for similar phrases in other sessions' conversation turns
+    const searchTerms = words.slice(0, 5).join(' ');
+    try {
+      const matches = cachedPrepare(db,
+        `SELECT DISTINCT ct.session_id FROM conversation_turns ct
+         WHERE ct.project = ? AND ct.user_text LIKE ? AND ct.session_id != ?
+         LIMIT 3`
+      ).all(project, `%${searchTerms.substring(0, 30)}%`, 'current') as Array<{ session_id: string }>;
+
+      if (matches.length >= 1) {
+        repeated.push(`[REPEATED ACROSS ${matches.length + 1} SESSIONS] ${directive}`);
+      }
+    } catch { /* non-fatal */ }
+  }
+
+  return repeated;
+}
+
+/**
  * Extract patterns from a completed session using Claude API.
  * Reads conversation_turns, sends to Claude for analysis, creates experience_patterns.
  *
@@ -151,40 +251,56 @@ export async function extractPatternsFromSession(
       return { patternsCreated: 0, summary: 'too few turns' };
     }
 
+    // Pre-filter: extract directive candidates from user turns BEFORE truncation
+    const directiveCandidates = extractDirectiveCandidates(turns);
+    const crossSessionDirectives = findCrossSessionDirectives(db, project, directiveCandidates);
+
     const transcript = formatTranscript(turns);
     if (transcript.length < 100) {
       return { patternsCreated: 0, summary: 'insufficient content' };
     }
 
+    // Prepend directive candidates to transcript so LLM sees them prominently
+    const directiveSection = [...crossSessionDirectives, ...directiveCandidates].length > 0
+      ? `\n\n--- FLAGGED DIRECTIVE CANDIDATES (pay special attention) ---\n${[...crossSessionDirectives, ...directiveCandidates].join('\n')}\n--- END FLAGGED ---\n\n`
+      : '';
+
+    const enrichedTranscript = directiveSection + transcript;
+
     // Call LLM for pattern extraction
-    // Priority: Anthropic API (CliProxy/MAX or API key) → Ollama fallback
+    // Priority: CliProxy (Sonnet) → Anthropic API → Ollama fallback
     // Never use Claude CLI subprocess — it triggers hooks and creates phantom sessions.
-    const fullPrompt = `${EXTRACTION_SYSTEM_PROMPT}\n\nAnalyze this session transcript for correction patterns:\n\n${transcript}`;
+    const userPrompt = `Analyze this session transcript for correction and directive patterns:\n\n${enrichedTranscript}`;
     let responseText = '';
 
-    // Priority 1: Anthropic API (CliProxy uses MAX subscription, or direct API key)
+    // Priority 1: CliProxy (Sonnet via local proxy — best quality for directive detection)
     try {
-      const response = await client.messages.create({
-        model,
-        max_tokens: 1024,
-        system: EXTRACTION_SYSTEM_PROMPT,
-        messages: [{
-          role: 'user',
-          content: `Analyze this session transcript for correction patterns:\n\n${transcript}`,
-        }],
-      });
-      responseText = response.content
-        .filter((block): block is Anthropic.TextBlock => block.type === 'text')
-        .map(block => block.text)
-        .join('');
-    } catch { /* API failed — fall through to Ollama */ }
+      responseText = await callCliProxy(EXTRACTION_SYSTEM_PROMPT, userPrompt);
+    } catch { /* CliProxy unavailable — fall through */ }
 
-    // Priority 2: Ollama (local, always available)
+    // Priority 2: Anthropic API (direct — CliProxy may be down)
     if (!responseText) {
       try {
+        const response = await client.messages.create({
+          model,
+          max_tokens: 1024,
+          system: EXTRACTION_SYSTEM_PROMPT,
+          messages: [{ role: 'user', content: userPrompt }],
+        });
+        responseText = response.content
+          .filter((block): block is Anthropic.TextBlock => block.type === 'text')
+          .map(block => block.text)
+          .join('');
+      } catch { /* API failed — fall through to Ollama */ }
+    }
+
+    // Priority 3: Ollama (local, always available but lower quality)
+    if (!responseText) {
+      try {
+        const fullPrompt = `${EXTRACTION_SYSTEM_PROMPT}\n\n${userPrompt}`;
         responseText = await callOllama(fullPrompt, localModel);
       } catch {
-        return { patternsCreated: 0, summary: 'no LLM available (API + Ollama both failed)' };
+        return { patternsCreated: 0, summary: 'no LLM available (CliProxy + API + Ollama all failed)' };
       }
     }
 
