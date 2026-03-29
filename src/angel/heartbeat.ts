@@ -37,6 +37,7 @@ import { monitorMemoryFiles } from './memory-monitor.js';
 import { consolidateObservationBatch, shouldConsolidate, markConsolidationRan } from './consolidator.js';
 import { syncUserProfiles } from './user-profile-sync.js';
 import { runRetentionSweep } from './retention-sweep.js';
+import * as path from 'path';
 import { runCrossProjectConsolidation } from './cross-project-consolidator.js';
 import { runDataQualityChecks } from './data-quality.js';
 import { runProactiveCuration } from './proactive-curator.js';
@@ -360,6 +361,61 @@ export async function heartbeatTick(ctx: HeartbeatContext): Promise<TickResult> 
     }
 
     // =========================================================================
+    // Service health checks — warn active sessions if critical services are down
+    // =========================================================================
+    try {
+      const services = [
+        { name: 'CliProxy', url: 'http://127.0.0.1:8317/v1/models', purpose: 'LLM routing (Sonnet/GPT)' },
+        { name: 'Reranker', url: 'http://127.0.0.1:7439/health', purpose: 'Neural cross-encoder (CUDA)' },
+        { name: 'Qdrant', url: 'http://localhost:6333/collections', purpose: 'Vector search' },
+        { name: 'Ollama', url: 'http://localhost:11434/api/tags', purpose: 'Embeddings + local LLM' },
+      ];
+      const downServices: string[] = [];
+      for (const svc of services) {
+        try {
+          const resp = await fetch(svc.url, { signal: AbortSignal.timeout(3000) });
+          if (!resp.ok) downServices.push(`${svc.name} (${svc.purpose})`);
+        } catch {
+          downServices.push(`${svc.name} (${svc.purpose})`);
+        }
+      }
+      if (downServices.length > 0) {
+        result.services_down = downServices;
+
+        // Auto-restart known services
+        try {
+          const { execSync } = await import('child_process');
+          for (const svc of downServices) {
+            if (svc.includes('CliProxy')) {
+              // CliProxy auto-restart — background process, no window
+              try {
+                execSync('start /B cli-proxy-api.exe', { shell: 'cmd.exe', timeout: 5000, windowsHide: true });
+              } catch { /* may not be in PATH — non-fatal */ }
+            }
+            if (svc.includes('Reranker')) {
+              // Reranker auto-restart — Python background process
+              try {
+                const rerankerPath = path.join(process.cwd(), 'services', 'reranker.py');
+                execSync(`start /B python "${rerankerPath}"`, { shell: 'cmd.exe', timeout: 5000, windowsHide: true });
+              } catch { /* non-fatal */ }
+            }
+          }
+        } catch { /* auto-restart is best-effort */ }
+
+        // Warn active sessions about down services
+        const activeSessions = cachedPrepare(ctx.db,
+          `SELECT session_id FROM sessions WHERE status = 'active' ORDER BY created_at_epoch DESC LIMIT 5`
+        ).all() as Array<{ session_id: string }>;
+        const { sendMessage: sendMsg } = await import('./message-sender.js');
+        for (const s of activeSessions) {
+          sendMsg(ctx.db, s.session_id,
+            `⚠ Services down: ${downServices.join(', ')}. Auto-restart attempted.`,
+            'advisory', 'advisory');
+        }
+      }
+    } catch { /* non-critical */ }
+
+    // =========================================================================
     // Guardian of All Memory — Phases 4b-4e
     // All pure SQL, no LLM calls, individually rate-limited and non-throwing.
     // =========================================================================
@@ -498,19 +554,58 @@ export async function heartbeatTick(ctx: HeartbeatContext): Promise<TickResult> 
         _lastConsolidationEpoch = now;
         let promoted = 0;
 
-        // Promote high-confidence proven patterns to 'always' retrieval mode
-        const candidates = cachedPrepare(ctx.db,
-          `SELECT id, score, retrieval_mode FROM experience_patterns
-           WHERE maturity = 'proven' AND score >= 50 AND retrieval_mode = 'reactive'`
-        ).all() as Array<{ id: string; score: number; retrieval_mode: string }>;
+        // Graduate saturated always-inject patterns to CLAUDE.md rules
+        // Patterns triggered 100+ times with 90%+ helpful rate are fully proven —
+        // they belong in permanent rules, not the dynamic injection budget.
+        const MAX_ALWAYS_PATTERNS = 5;
+        const saturated = cachedPrepare(ctx.db,
+          `SELECT id, trigger_context, lesson, times_triggered, helpful_count, harmful_count
+           FROM experience_patterns
+           WHERE retrieval_mode = 'always' AND times_triggered >= 100
+             AND CAST(helpful_count AS REAL) / MAX(helpful_count + harmful_count, 1) >= 0.9
+           ORDER BY times_triggered DESC`
+        ).all() as Array<{ id: string; trigger_context: string; lesson: string; times_triggered: number; helpful_count: number; harmful_count: number }>;
 
-        for (const c of candidates) {
-          try {
-            cachedPrepare(ctx.db,
-              `UPDATE experience_patterns SET retrieval_mode = 'always' WHERE id = ?`
-            ).run(c.id);
-            promoted++;
-          } catch { /* individual promotion failure */ }
+        // Graduate excess saturated patterns to 'categorical' (they're in CLAUDE.md already via Angel-Promoted Rules)
+        const currentAlwaysCount = (cachedPrepare(ctx.db,
+          `SELECT COUNT(*) as c FROM experience_patterns WHERE retrieval_mode = 'always'`
+        ).get() as { c: number }).c;
+
+        if (currentAlwaysCount > MAX_ALWAYS_PATTERNS && saturated.length > 0) {
+          // Graduate the most-triggered saturated patterns to make room
+          const toGraduate = saturated.slice(0, currentAlwaysCount - MAX_ALWAYS_PATTERNS);
+          for (const g of toGraduate) {
+            try {
+              cachedPrepare(ctx.db,
+                `UPDATE experience_patterns SET retrieval_mode = 'categorical' WHERE id = ?`
+              ).run(g.id);
+              promoted++; // Count as a promotion action (graduation)
+            } catch { /* non-fatal */ }
+          }
+        }
+
+        // Promote high-confidence proven patterns to 'always' retrieval mode
+        // Only if we have room (under the cap)
+        const updatedAlwaysCount = (cachedPrepare(ctx.db,
+          `SELECT COUNT(*) as c FROM experience_patterns WHERE retrieval_mode = 'always'`
+        ).get() as { c: number }).c;
+
+        if (updatedAlwaysCount < MAX_ALWAYS_PATTERNS) {
+          const candidates = cachedPrepare(ctx.db,
+            `SELECT id, score, retrieval_mode FROM experience_patterns
+             WHERE maturity = 'proven' AND score >= 50 AND retrieval_mode = 'reactive'
+             ORDER BY score DESC
+             LIMIT ?`
+          ).all(MAX_ALWAYS_PATTERNS - updatedAlwaysCount) as Array<{ id: string; score: number; retrieval_mode: string }>;
+
+          for (const c of candidates) {
+            try {
+              cachedPrepare(ctx.db,
+                `UPDATE experience_patterns SET retrieval_mode = 'always' WHERE id = ?`
+              ).run(c.id);
+              promoted++;
+            } catch { /* individual promotion failure */ }
+          }
         }
 
         if (promoted > 0) {
