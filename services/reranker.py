@@ -38,7 +38,7 @@ def load_model(model_name: str) -> CrossEncoder:
     elif hasattr(torch, "hip") and torch.hip.is_available():
         device = "cuda"  # ROCm uses cuda device string
     log.info(f"Loading {model_name} on {device}")
-    m = CrossEncoder(model_name, device=device)
+    m = CrossEncoder(model_name, device=device, trust_remote_code=True)
     log.info(f"Model loaded. Device: {device}")
     return m
 
@@ -99,7 +99,7 @@ def main():
     parser = argparse.ArgumentParser(description="Claudex cross-encoder reranker")
     parser.add_argument("--port", type=int, default=7439)
     parser.add_argument("--host", default="127.0.0.1")
-    parser.add_argument("--model", default="BAAI/bge-reranker-v2.5-gemma2-lightweight")
+    parser.add_argument("--model", default="BAAI/bge-reranker-v2-m3")
     args = parser.parse_args()
 
     model = load_model(args.model)

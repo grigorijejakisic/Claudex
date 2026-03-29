@@ -716,7 +716,7 @@ export async function hybridSearchAsync(
         // Try cross-encoder service first (port 7439)
         let reranked = false;
         try {
-          const ceResponse = await fetch('http://127.0.0.1:7439/rerank', {
+          const ceResponse = await fetch('http://127.0.0.1:7440/rerank', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ query: query.substring(0, 500), documents }),
