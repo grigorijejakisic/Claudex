@@ -713,10 +713,10 @@ export async function hybridSearchAsync(
           ((c.summary ?? '') + ' ' + (c.content ?? '')).substring(0, 300)
         );
 
-        // Try cross-encoder reranker service (port 7440, CUDA)
+        // Try cross-encoder reranker service (port 7439, CUDA)
         let reranked = false;
         try {
-          const ceResponse = await fetch('http://127.0.0.1:7440/rerank', {
+          const ceResponse = await fetch('http://127.0.0.1:7439/rerank', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ query: query.substring(0, 500), documents }),

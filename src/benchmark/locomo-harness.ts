@@ -16,7 +16,7 @@ import { initializeSchema } from '../core/migrations.js';
 import { cachedPrepare } from '../core/stmt-cache.js';
 import { EmbeddingProvider } from '../embeddings/embedding-provider.js';
 import { EMBED_DIM } from '../embeddings/embed-pipeline.js';
-import { hybridSearchSync } from '../core/hybrid-retrieval.js';
+import { hybridSearchAsync } from '../core/hybrid-retrieval.js';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -259,15 +259,16 @@ async function embedAllArtifacts(db: Database.Database, provider: EmbeddingProvi
 // Retrieve: Real Claudex hybrid retrieval (FTS5 + recency + three-factor RRF)
 // ---------------------------------------------------------------------------
 
-function retrieveContext(
+async function retrieveContext(
   db: Database.Database,
   query: string,
   project: string,
   _queryEmbedding: number[] | null,
   topK: number = TOP_K_RETRIEVAL,
-): Array<{ id: number; content: string; score: number; artifact_type: string }> {
-  // Use the REAL Claudex hybrid retrieval pipeline — same code that runs in production
-  const results = hybridSearchSync(db, query, project, {
+): Promise<Array<{ id: number; content: string; score: number; artifact_type: string }>> {
+  // Use the REAL Claudex hybrid retrieval pipeline — ALL channels:
+  // FTS5 + Qdrant KNN + recency + MPFP graph walk + temporal + cross-encoder reranking
+  const results = await hybridSearchAsync(db, query, project, {
     limit: topK,
     globalScope: false, // Stay within this conversation's project scope
   });
@@ -414,8 +415,8 @@ async function main() {
     for (const qa of scorableQa) {
       totalProcessed++;
 
-      // Retrieve context via real Claudex hybrid retrieval
-      const retrieved = retrieveContext(db, qa.question, conv.sample_id, null);
+      // Retrieve context via FULL Claudex hybrid retrieval (all channels + reranker)
+      const retrieved = await retrieveContext(db, qa.question, conv.sample_id, null);
       const contextTexts = retrieved.map(r => r.content);
 
       // Generate answer
