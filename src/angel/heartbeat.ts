@@ -502,10 +502,14 @@ export async function heartbeatTick(ctx: HeartbeatContext): Promise<TickResult> 
     } catch { /* non-critical */ }
 
     // Phase 4d3: MemRL temporal decay (Amp Phase 2).
-    // Decay Q-values for unused artifacts. Runs once per heartbeat.
+    // Rate-limited to once per 24h — decay is designed as 1%/day.
     try {
-      const { applyTemporalDecay } = await import('../intelligence/memrl-scorer.js');
-      applyTemporalDecay(ctx.db);
+      const nowMs = Date.now();
+      if (nowMs - _lastDecayEpoch >= 86_400_000) { // 24 hours
+        _lastDecayEpoch = nowMs;
+        const { applyTemporalDecay } = await import('../intelligence/memrl-scorer.js');
+        applyTemporalDecay(ctx.db, 1); // exactly 1 day of decay
+      }
     } catch { /* non-critical */ }
 
     // Phase 4e: Proactive memory curation.
@@ -728,6 +732,7 @@ export async function heartbeatTick(ctx: HeartbeatContext): Promise<TickResult> 
 
 /** Rate limit: run pattern consolidation at most once per 30 minutes. */
 let _lastConsolidationEpoch = 0;
+let _lastDecayEpoch = 0;
 const CONSOLIDATION_INTERVAL_MS = 30 * 60 * 1000;
 
 /** Rate limit: run bulk linking at most once per 5 minutes. */

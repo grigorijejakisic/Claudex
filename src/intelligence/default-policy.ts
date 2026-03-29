@@ -117,11 +117,12 @@ export class DefaultMemoryPolicy implements MemoryPolicy {
     const referenced = counts?.referenced ?? 0;
     const correctionCount = counts?.correction_count ?? 0;
 
-    // Correction penalty: artifacts that were injected AND caused corrections
-    // are more severely suppressed than merely unreferenced ones.
-    // -0.3 per correction event, capped at -1.0 (full suppression possible)
-    if (correctionCount > 0) {
-      const correctionPenalty = Math.max(-1.0, -0.3 * correctionCount);
+    // Correction penalty: artifacts where BOTH was_referenced=1 AND correction_followed=1
+    // are more severely suppressed — they were actively used AND caused problems.
+    // Artifacts that were merely present (unreferenced) during a correction aren't penalized
+    // here — they weren't the cause.
+    if (correctionCount > 0 && (counts?.referenced ?? 0) > 0) {
+      const correctionPenalty = Math.max(-0.8, -0.2 * correctionCount);
       return Math.max(MULTIPLIER_FLOOR * 0.5, baseScore * (1.0 + correctionPenalty));
     }
 

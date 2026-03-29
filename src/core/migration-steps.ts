@@ -1145,6 +1145,11 @@ export function migrateV11toV12(db: Database): void {
         INSERT INTO decisions_fts(decisions_fts, rowid, content)
         VALUES ('delete', old.id, old.content);
       END;
+      CREATE TRIGGER IF NOT EXISTS decisions_fts_au AFTER UPDATE ON decisions BEGIN
+        INSERT INTO decisions_fts(decisions_fts, rowid, content)
+        VALUES ('delete', old.id, old.content);
+        INSERT INTO decisions_fts(rowid, content) VALUES (new.id, new.content);
+      END;
     `);
     // Populate FTS from existing data
     db.exec("INSERT OR IGNORE INTO decisions_fts(rowid, content) SELECT id, content FROM decisions");
