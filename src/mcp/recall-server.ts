@@ -540,7 +540,22 @@ server.tool(
     source: z.string().optional().describe('Source session name/ID to pick up from (for action=pickup)'),
   },
   async ({ action, session_id, name, signal_type, target, detail, signal_id, source }) => {
-    const sessionId = session_id ?? `mcp:${defaultProject}`;
+    // Resolve session_id: use provided value, or find the most recent active session for this project.
+    // The MCP server doesn't receive CC's session_id, so we look it up from the DB.
+    // Fallback to mcp:<project> only if no active session exists (shouldn't happen in normal use).
+    let sessionId = session_id ?? '';
+    if (!sessionId) {
+      try {
+        const active = cachedPrepare(getDb(),
+          `SELECT session_id FROM sessions
+           WHERE project = ? AND status = 'active'
+           ORDER BY created_at_epoch DESC LIMIT 1`
+        ).get(defaultProject) as { session_id: string } | undefined;
+        sessionId = active?.session_id ?? `mcp:${defaultProject}`;
+      } catch {
+        sessionId = `mcp:${defaultProject}`;
+      }
+    }
 
     if (action === 'name') {
       if (!name) return { content: [{ type: 'text', text: JSON.stringify({ error: 'name is required' }) }] };
