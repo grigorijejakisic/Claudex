@@ -267,8 +267,8 @@ function predictLayer2(db: Database, project: string): PredictionResult | null {
     const totalCount = transitions.reduce((sum, t) => sum + t.count, 0);
     const topProbability = transitions[0].count / totalCount;
 
-    // Only predict if the top action is dominant (> 40% of transitions)
-    if (topProbability < 0.4) return null;
+    // Predict if top action has meaningful probability (> 20% of transitions)
+    if (topProbability < 0.2) return null;
 
     const intent = inferIntentFromActions([topAction]);
 

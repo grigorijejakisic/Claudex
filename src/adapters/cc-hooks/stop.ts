@@ -38,7 +38,7 @@ import {
   incrementVerificationCount, pruneDeadPatterns, updatePatternScore,
   computeConfidence, checkMaturityPromotion, shouldInvertToWarning,
   updatePatternConfidence, promotePatternMaturity, invertToWarning,
-  decayPatternConfidence, type ExperiencePattern,
+  decayPatternConfidence, escalatePattern, type ExperiencePattern,
 } from '../../intelligence/experience-patterns.js';
 import { applyExperienceFeedback } from '../../intelligence/experience-scoring.js';
 import { getThreadState } from '../../core/thread.js';
@@ -310,6 +310,7 @@ const main = wrapHook('Stop', async (input, ctx) => {
         } else {
           // Harmful path: correction detected -> 4x harmful multiplier (via policy)
           updatePatternScore(ctx.db, pid, -4); // -4 score, +1 harmful_count
+          escalatePattern(ctx.db, pid); // Check if harmful_count triggers escalation
         }
 
         // Recompute confidence and check maturity promotion via policy
