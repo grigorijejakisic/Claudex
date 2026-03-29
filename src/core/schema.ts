@@ -536,6 +536,15 @@ CREATE INDEX IF NOT EXISTS idx_sessmsg_target
 CREATE INDEX IF NOT EXISTS idx_sessmsg_sender
   ON session_messages(sender, created_at_epoch DESC);
 
+-- V12: entity_aliases — canonical entity name resolution
+CREATE TABLE IF NOT EXISTS entity_aliases (
+  alias TEXT NOT NULL,
+  canonical TEXT NOT NULL,
+  created_at_epoch INTEGER NOT NULL DEFAULT (unixepoch()),
+  PRIMARY KEY (alias)
+);
+CREATE INDEX IF NOT EXISTS idx_entity_canonical ON entity_aliases(canonical);
+
 -- V12: solution_outcomes — track whether retrieved knowledge actually helped
 CREATE TABLE IF NOT EXISTS solution_outcomes (
   id INTEGER PRIMARY KEY AUTOINCREMENT,

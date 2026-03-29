@@ -1029,7 +1029,20 @@ export function migrateV11toV12(db: Database): void {
     db.exec("CREATE INDEX IF NOT EXISTS idx_sessions_name ON sessions(name)");
   } catch { /* non-fatal */ }
 
-  // 5. Create solution_outcomes table (outcome tracking — Tier 2.1)
+  // 5. Create entity_aliases table (entity resolution — Tier 2.6)
+  try {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS entity_aliases (
+        alias TEXT NOT NULL,
+        canonical TEXT NOT NULL,
+        created_at_epoch INTEGER NOT NULL DEFAULT (unixepoch()),
+        PRIMARY KEY (alias)
+      );
+      CREATE INDEX IF NOT EXISTS idx_entity_canonical ON entity_aliases(canonical);
+    `);
+  } catch { /* non-fatal */ }
+
+  // 6. Create solution_outcomes table (outcome tracking — Tier 2.1)
   try {
     db.exec(`
       CREATE TABLE IF NOT EXISTS solution_outcomes (

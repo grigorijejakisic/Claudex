@@ -585,10 +585,26 @@ export async function hybridSearchAsync(
     // Channel 3: Recency (sync)
     const recencyResults = searchRecencyChannel(db, project, limit, globalScope, excludeSuperseded);
 
+    // Channel 5: Temporal (sync) — time-range search when query contains temporal expressions
+    let temporalResults: ArtifactRow[] = [];
+    try {
+      const timeRange = parseTemporalExpression(query);
+      if (timeRange) {
+        temporalResults = cachedPrepare(db,
+          `SELECT * FROM artifacts
+           WHERE project = ? AND status = 'active'
+             AND created_at_epoch >= ? AND created_at_epoch <= ?
+           ORDER BY importance DESC, created_at_epoch DESC
+           LIMIT ?`
+        ).all(project, timeRange.start, timeRange.end, limit) as ArtifactRow[];
+      }
+    } catch { /* temporal parse failure — skip channel */ }
+
     // Convert to channel results for RRF
     const fts5Channel: ChannelResult[] = fts5Results.map((a, i) => ({ artifactId: a.id, rank: i + 1, artifact: a }));
     const vectorChannel: ChannelResult[] = vectorResults.map((r, i) => ({ artifactId: r.artifact.id, rank: i + 1, artifact: r.artifact }));
     const recencyChannel: ChannelResult[] = recencyResults.map((a, i) => ({ artifactId: a.id, rank: i + 1, artifact: a }));
+    const temporalChannel: ChannelResult[] = temporalResults.map((a, i) => ({ artifactId: a.id, rank: i + 1, artifact: a }));
 
     // Channel 4: Graph walk — discover related artifacts via artifact_links (Phase 17)
     // Uses top-K seeds from initial 3-channel results, non-throwing
@@ -633,6 +649,7 @@ export async function hybridSearchAsync(
     const channels = [fts5Channel, recencyChannel];
     if (vectorChannel.length > 0) channels.push(vectorChannel);
     if (graphChannel.length > 0) channels.push(graphChannel);
+    if (temporalChannel.length > 0) channels.push(temporalChannel);
     const rrfScores = rrfMerge(channels);
 
     // Build artifact map (include graph walk hydrated artifacts)
@@ -640,6 +657,7 @@ export async function hybridSearchAsync(
     for (const a of fts5Results) artifactMap.set(a.id, a);
     for (const r of vectorResults) artifactMap.set(r.artifact.id, r.artifact);
     for (const a of recencyResults) artifactMap.set(a.id, a);
+    for (const a of temporalResults) artifactMap.set(a.id, a);
     for (const g of graphChannel) {
       if (g.artifact) artifactMap.set(g.artifactId, g.artifact);
     }
@@ -943,4 +961,67 @@ export function spreadActivation(
   } catch {
     // Non-throwing
   }
+}
+
+// ---------------------------------------------------------------------------
+// Temporal expression parser (Channel 5)
+// ---------------------------------------------------------------------------
+
+/**
+ * Parse natural language temporal expressions into epoch time ranges.
+ * Rule-based — no LLM needed. Handles common patterns:
+ *   "yesterday", "last week", "3 days ago", "today", "this week",
+ *   "last month", "past hour", "recent", etc.
+ *
+ * Returns null if no temporal expression detected.
+ */
+function parseTemporalExpression(query: string): { start: number; end: number } | null {
+  const now = Math.floor(Date.now() / 1000);
+  const DAY = 86400;
+  const HOUR = 3600;
+  const lower = query.toLowerCase();
+
+  // "yesterday"
+  if (/\byesterday\b/.test(lower)) {
+    const todayStart = now - (now % DAY);
+    return { start: todayStart - DAY, end: todayStart };
+  }
+
+  // "today"
+  if (/\btoday\b/.test(lower)) {
+    const todayStart = now - (now % DAY);
+    return { start: todayStart, end: now };
+  }
+
+  // "N days ago" / "last N days" / "past N days"
+  const daysMatch = lower.match(/(\d+)\s*days?\s*ago|(?:last|past)\s*(\d+)\s*days?/);
+  if (daysMatch) {
+    const days = parseInt(daysMatch[1] ?? daysMatch[2], 10);
+    if (days > 0 && days <= 365) return { start: now - days * DAY, end: now };
+  }
+
+  // "N hours ago" / "last N hours" / "past N hours"
+  const hoursMatch = lower.match(/(\d+)\s*hours?\s*ago|(?:last|past)\s*(\d+)\s*hours?/);
+  if (hoursMatch) {
+    const hours = parseInt(hoursMatch[1] ?? hoursMatch[2], 10);
+    if (hours > 0 && hours <= 168) return { start: now - hours * HOUR, end: now };
+  }
+
+  // "last week" / "this week" / "past week"
+  if (/\b(?:last|past)\s*week\b/.test(lower)) return { start: now - 7 * DAY, end: now };
+  if (/\bthis\s*week\b/.test(lower)) {
+    const dayOfWeek = new Date().getDay();
+    return { start: now - dayOfWeek * DAY, end: now };
+  }
+
+  // "last month" / "past month"
+  if (/\b(?:last|past)\s*month\b/.test(lower)) return { start: now - 30 * DAY, end: now };
+
+  // "recent" / "recently" / "latest"
+  if (/\b(?:recent(?:ly)?|latest)\b/.test(lower)) return { start: now - 3 * DAY, end: now };
+
+  // "last session" / "previous session"
+  if (/\b(?:last|previous)\s*session\b/.test(lower)) return { start: now - DAY, end: now };
+
+  return null;
 }
