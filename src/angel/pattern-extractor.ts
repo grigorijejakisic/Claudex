@@ -274,25 +274,11 @@ export async function extractPatternsFromSession(
     let responseText = '';
 
     // Priority 1: CliProxy (Sonnet via local proxy — best quality for directive detection)
+    // Note: Angel's Anthropic SDK client already points to CliProxy (baseURL: 127.0.0.1:8317),
+    // so we use the direct fetch for cleaner control over model selection.
     try {
       responseText = await callCliProxy(EXTRACTION_SYSTEM_PROMPT, userPrompt);
-    } catch { /* CliProxy unavailable — fall through */ }
-
-    // Priority 2: Anthropic API (direct — CliProxy may be down)
-    if (!responseText) {
-      try {
-        const response = await client.messages.create({
-          model,
-          max_tokens: 1024,
-          system: EXTRACTION_SYSTEM_PROMPT,
-          messages: [{ role: 'user', content: userPrompt }],
-        });
-        responseText = response.content
-          .filter((block): block is Anthropic.TextBlock => block.type === 'text')
-          .map(block => block.text)
-          .join('');
-      } catch { /* API failed — fall through to Ollama */ }
-    }
+    } catch { /* CliProxy unavailable — fall through to Ollama cloud */ }
 
     // Priority 3: Ollama cloud models (capable, free via Ollama cloud routing)
     if (!responseText) {
