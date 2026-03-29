@@ -294,7 +294,7 @@ describe('EmbeddingProvider', () => {
       expect(await provider.embed('test')).toBeNull();
     });
 
-    it('handles timeout gracefully (returns null)', { timeout: 10000 }, async () => {
+    it('handles timeout gracefully (returns null)', async () => {
       mockFetch(async (_url: string, init?: RequestInit) => {
         // Listen for abort signal and reject immediately when aborted
         return new Promise<Response>((_, reject) => {

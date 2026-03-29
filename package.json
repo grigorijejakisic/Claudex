@@ -17,6 +17,8 @@
     "@qdrant/js-client-rest": "^1.17.0",
     "better-sqlite3": "^11.7.0",
     "js-yaml": "^4.1.1",
+    "tree-sitter": "^0.25.0",
+    "tree-sitter-typescript": "^0.23.2",
     "ulid": "^3.0.2",
     "zod": "^3.23.0"
   },
