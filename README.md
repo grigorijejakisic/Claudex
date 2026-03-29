@@ -26,7 +26,7 @@ No cloud dependency. No external memory service. One SQLite database, one vector
 
 Claudex gives LLM coding agents context continuity across sessions. It hooks into [Claude Code](https://docs.anthropic.com/en/docs/claude-code) and silently captures everything that matters — observations, decisions, artifacts, patterns, conversation history — then surfaces exactly the right context at the right time.
 
-After 530+ sessions and 30,000+ observations in production use, the system knows:
+After 550+ sessions and 30,000+ observations in production use, the system knows:
 - What files you've been editing and why
 - What decisions were made and their context
 - What patterns lead to corrections (and avoids repeating them)
@@ -64,8 +64,11 @@ After 530+ sessions and 30,000+ observations in production use, the system knows
 │   retrieval feedback · capability tracking           │
 │   topic shift detection · cross-session linking      │
 ├─────────────────────────────────────────────────────┤
-│              Hybrid Retrieval (4-channel RRF)         │
-│   FTS5 keyword · Qdrant KNN · recency · graph walk  │
+│         Hybrid Retrieval (5-channel RRF)             │
+│  FTS5 · Qdrant KNN · recency · graph walk · temporal │
+├─────────────────────────────────────────────────────┤
+│         Neural Reranking (bge-reranker-v2-m3)        │
+│   568M params · CUDA · 46 NDCG · bi-encoder fallback │
 └─────────────────────────────────────────────────────┘
 ```
 
@@ -90,7 +93,7 @@ After 530+ sessions and 30,000+ observations in production use, the system knows
 
 **Retrieval**
 - 5-channel Reciprocal Rank Fusion: FTS5 keyword + Qdrant KNN + recency decay + MPFP graph walk + temporal
-- Bi-encoder reranking with Snowflake Arctic Embed 2 (568M params, 1024-dim)
+- Neural cross-encoder reranking: bge-reranker-v2-m3 (568M params) on CUDA, 46 NDCG, with bi-encoder fallback (Snowflake Arctic Embed 2, 1024-dim)
 - Q-value reinforcement learning: patterns earn effectiveness scores from session outcomes (EMA + UCB exploration)
 - Per-event exponential decay with zone-based half-lives (corrections: 60d, architecture: 180d)
 - Budget-aware greedy packing — retrieval stops when token budget is full
@@ -142,13 +145,13 @@ Answer model: `deepseek-coder-v2:16b` (local, 16B params). Published baselines u
 
 Running in daily production use since March 2026:
 
-- **530+ sessions** tracked across 5+ projects
+- **550+ sessions** tracked across 5+ projects
 - **30,000+ observations** captured (with dedup, novelty scoring, stability classification)
-- **4,400+ artifacts** managed (with activation decay and automatic packing)
-- **37 experience patterns** learned from corrections (5 promoted to always-inject)
+- **4,800+ artifacts** managed (with activation decay and automatic packing)
+- **39 experience patterns** learned from corrections (5 promoted to always-inject)
 - **7 CARA opinions** formed by Angel from proven patterns
-- **100 test files**, **2,020 tests**, all passing
-- **~34,000 lines** of TypeScript
+- **108 test files**, **2,076 tests**, all passing
+- **~39,000 lines** of TypeScript (70K+ including tests)
 
 ## Setup
 
@@ -175,9 +178,10 @@ node dist/cli/health.cjs
 - **Build:** esbuild (~70ms)
 - **Database:** SQLite via better-sqlite3 (V12 schema, 27+ tables)
 - **Vector Store:** Qdrant (5 collections, 1024-dim cosine)
-- **Embeddings:** Ollama + Snowflake Arctic Embed 2 (568M params, reranking) + nomic-embed-text (384d, primary)
+- **Embeddings:** Ollama + nomic-embed-text (384d, primary) + Snowflake Arctic Embed 2 (1024d, bi-encoder fallback)
+- **Reranking:** bge-reranker-v2-m3 (568M params, CUDA) — true neural cross-encoder with bi-encoder fallback
 - **LLM:** Claude Code CLI + Ollama fallback
-- **Tests:** Vitest (100 files, 2020 tests)
+- **Tests:** Vitest (108 files, 2076 tests)
 - **MCP:** 6 tools (search, recall, store, events, message, session)
 
 ## Schema
