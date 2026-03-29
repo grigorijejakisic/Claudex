@@ -18,6 +18,7 @@ import { ulid } from 'ulid';
 import { cachedPrepare } from '../core/stmt-cache.js';
 import { tokenizeQuery } from '../shared/search-utils.js';
 import { GLOBAL_PROJECT_SCOPE } from '../shared/constants.js';
+import { getQValueBoosts as getQValueBoostsSync } from './retrieval-rl.js';
 
 /**
  * Per-event exponential decay with zone-based half-lives (CASS + Ori Mnemos inspired).
@@ -536,6 +537,29 @@ export function findMatchingPatterns(
       // Then by composite score descending
       return b.composite - a.composite;
     });
+
+    // Q-value RL reranking: boost composite scores by learned effectiveness.
+    // Preserves severity/escalation ordering — only reranks within same tier.
+    try {
+      const boosts = getQValueBoostsSync(db, ranked.map(r => r.pattern.id));
+      if (boosts.size > 0) {
+        for (const r of ranked) {
+          r.composite *= (boosts.get(r.pattern.id) ?? 1.0);
+        }
+        // Re-sort but preserve severity/escalation tiers
+        const sevOrder = { critical: 0, important: 1, minor: 2 } as const;
+        const escOrder = { circuit_breaker: 0, enforcement: 1, warning: 2, pattern: 3 } as const;
+        ranked.sort((a, b) => {
+          const sevA = sevOrder[a.pattern.severity] ?? 2;
+          const sevB = sevOrder[b.pattern.severity] ?? 2;
+          if (sevA !== sevB) return sevA - sevB;
+          const escA = escOrder[a.pattern.escalation_level as EscalationLevel] ?? 3;
+          const escB = escOrder[b.pattern.escalation_level as EscalationLevel] ?? 3;
+          if (escA !== escB) return escA - escB;
+          return b.composite - a.composite;
+        });
+      }
+    } catch { /* RL unavailable — proceed with base ranking */ }
 
     return ranked.slice(0, safeLimit).map(b => b.pattern);
   } catch {

@@ -38,6 +38,12 @@ const main = wrapHook('SessionEnd', async (input, ctx) => {
     sweepExpiredSignals(ctx.db);
   } catch { /* non-critical */ }
 
+  // Update Q-values from this session's outcomes
+  try {
+    const { updateSessionQValues } = await import('../../intelligence/retrieval-rl.js');
+    updateSessionQValues(ctx.db, input.session_id);
+  } catch { /* non-critical */ }
+
   return {};
 });
 
