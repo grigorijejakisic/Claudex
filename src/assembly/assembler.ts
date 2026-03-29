@@ -60,6 +60,8 @@ import { hybridSearchSync, spreadActivation } from '../core/hybrid-retrieval.js'
 import type { ExperiencePattern } from '../intelligence/experience-patterns.js';
 import { cachedPrepare } from '../core/stmt-cache.js';
 import { recordRetrievalEvent } from '../intelligence/retrieval-feedback.js';
+import { recordRetrieval } from '../intelligence/memrl-scorer.js';
+import { findRelevantFiles, getChangedFiles } from '../indexer/codebase-indexer.js';
 import { getRecentFlow } from '../core/journal.js';
 import { getCheckpointTracking } from '../core/checkpoint-tracking.js';
 import { readGsdState } from '../gsd/state-reader.js';
@@ -567,10 +569,7 @@ export function assembleFullContext(params: FullAssemblyParams): InjectPayload {
               recordRetrievalEvent(params.db, art.id, params.sessionId, query ?? undefined);
               spreadActivation(params.db, art.id);
               // Track retrieval for MemRL Q-value learning
-              try {
-                const { recordRetrieval } = require('../intelligence/memrl-scorer.js');
-                recordRetrieval(params.db, art.id);
-              } catch { /* MemRL not available — non-fatal */ }
+              try { recordRetrieval(params.db, art.id); } catch { /* non-fatal */ }
             }
           }
 
@@ -587,7 +586,7 @@ export function assembleFullContext(params: FullAssemblyParams): InjectPayload {
     // Only at session-start (not post-compaction).
     if (!params.isPostCompaction) {
       try {
-        const { findRelevantFiles, getChangedFiles } = require('../indexer/codebase-indexer.js');
+        // findRelevantFiles and getChangedFiles imported statically at top
         const query = params.searchQuery ?? checkpoint?.thread?.topic ?? null;
         const parts: string[] = [];
 

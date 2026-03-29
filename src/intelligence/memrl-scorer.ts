@@ -86,10 +86,16 @@ export function recordFailure(db: Database, artifactId: number): void {
   } catch { /* non-throwing */ }
 }
 
+/** Link types that carry meaningful causal signal for Q-value propagation. */
+const PROPAGATION_LINK_TYPES = new Set(['caused_by', 'supports', 'supersedes']);
+
 /**
  * Bellman propagation: spread Q-value rewards to linked artifacts.
  * High-Q artifacts boost their neighbors; low-Q artifacts suppress theirs.
- * Uses artifact_links graph for traversal.
+ *
+ * Only propagates through meaningful link types (caused_by, supports, supersedes).
+ * 'related' links are too uniform — propagating through them dilutes signal.
+ * Falls back to direct neighbors if no typed links exist but limits discount.
  */
 export function propagateQValues(db: Database, artifactId: number): void {
   try {
@@ -100,10 +106,17 @@ export function propagateQValues(db: Database, artifactId: number): void {
     if (!source) return;
     const sourceQ = source.q_value ?? 0.5;
 
-    // Find linked artifacts
-    const links = cachedPrepare(db,
-      `SELECT target_id FROM artifact_links WHERE source_id = ? LIMIT 10`
-    ).all(artifactId) as Array<{ target_id: number }>;
+    // Find linked artifacts — prefer typed links (causal signal)
+    const typedLinks = cachedPrepare(db,
+      `SELECT target_id, link_type FROM artifact_links
+       WHERE source_id = ? AND link_type IN ('caused_by', 'supports', 'supersedes')
+       LIMIT 10`
+    ).all(artifactId) as Array<{ target_id: number; link_type: string }>;
+
+    // If no typed links, use 'related' links with reduced discount
+    const links = typedLinks.length > 0 ? typedLinks : cachedPrepare(db,
+      `SELECT target_id, link_type FROM artifact_links WHERE source_id = ? LIMIT 5`
+    ).all(artifactId) as Array<{ target_id: number; link_type: string }>;
 
     for (const link of links) {
       const target = cachedPrepare(db,
@@ -113,8 +126,11 @@ export function propagateQValues(db: Database, artifactId: number): void {
       if (!target) continue;
       const targetQ = target.q_value ?? 0.5;
 
+      // Typed links get full discount, 'related' links get half
+      const effectiveGamma = PROPAGATION_LINK_TYPES.has(link.link_type) ? GAMMA : GAMMA * 0.3;
+
       // Bellman update: target Q-value moves toward discounted source Q-value
-      const bellmanTarget = GAMMA * sourceQ;
+      const bellmanTarget = effectiveGamma * sourceQ;
       const newQ = targetQ + ALPHA_SUCCESS * (bellmanTarget - targetQ);
       const clampedQ = Math.max(Q_MIN, Math.min(Q_MAX, newQ));
 
