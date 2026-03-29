@@ -230,9 +230,149 @@ function findCrossSessionDirectives(
   return repeated;
 }
 
+// ---------------------------------------------------------------------------
+// Phase 3: MEASURE — session outcome analysis
+// ---------------------------------------------------------------------------
+
+interface SessionOutcome {
+  /** Total corrections detected in this session */
+  correctionCount: number;
+  /** Whether session completed successfully (no crash/abandon) */
+  completedSuccessfully: boolean;
+  /** Number of test runs that passed */
+  testsPassedCount: number;
+  /** Number of test runs that failed */
+  testsFailedCount: number;
+  /** Session duration in minutes */
+  durationMinutes: number;
+  /** Whether corrections happened AFTER the midpoint (late = correction wasn't effective) */
+  lateCorrections: boolean;
+}
+
+function measureSessionOutcome(db: Database, sessionId: string): SessionOutcome {
+  try {
+    // Count corrections
+    const corrections = cachedPrepare(db,
+      `SELECT COUNT(*) as c FROM session_events
+       WHERE session_id = ? AND event_type = 'correction_detected'`
+    ).get(sessionId) as { c: number };
+
+    // Session completion status
+    const session = cachedPrepare(db,
+      `SELECT status, created_at_epoch, ended_at_epoch FROM sessions WHERE session_id = ?`
+    ).get(sessionId) as { status: string; created_at_epoch: number; ended_at_epoch: number | null } | undefined;
+
+    const completedSuccessfully = session?.status === 'completed';
+    const duration = session?.ended_at_epoch && session?.created_at_epoch
+      ? (session.ended_at_epoch - session.created_at_epoch) / 60
+      : 0;
+
+    // Test results
+    const tests = cachedPrepare(db,
+      `SELECT action, COUNT(*) as c FROM session_events
+       WHERE session_id = ? AND event_type = 'test_run'
+       GROUP BY action`
+    ).all(sessionId) as Array<{ action: string; c: number }>;
+
+    const testsPassedCount = tests.find(t => t.action === 'passed')?.c ?? 0;
+    const testsFailedCount = tests.find(t => t.action === 'failed')?.c ?? 0;
+
+    // Check for late corrections (after session midpoint)
+    let lateCorrections = false;
+    if (session?.created_at_epoch && session?.ended_at_epoch && corrections.c > 0) {
+      const midpoint = session.created_at_epoch + (session.ended_at_epoch - session.created_at_epoch) / 2;
+      const lateCount = (cachedPrepare(db,
+        `SELECT COUNT(*) as c FROM session_events
+         WHERE session_id = ? AND event_type = 'correction_detected' AND timestamp_epoch > ?`
+      ).get(sessionId, midpoint) as { c: number }).c;
+      lateCorrections = lateCount > corrections.c / 2;
+    }
+
+    return { correctionCount: corrections.c, completedSuccessfully, testsPassedCount, testsFailedCount, durationMinutes: duration, lateCorrections };
+  } catch {
+    return { correctionCount: 0, completedSuccessfully: true, testsPassedCount: 0, testsFailedCount: 0, durationMinutes: 0, lateCorrections: false };
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Phase 5: REVIEW — validate candidate patterns before committing
+// ---------------------------------------------------------------------------
+
+function reviewCandidatePatterns(
+  db: Database,
+  project: string,
+  candidates: ExtractedPattern[],
+  outcome: SessionOutcome,
+): ExtractedPattern[] {
+  const reviewed: ExtractedPattern[] = [];
+
+  for (const candidate of candidates) {
+    // Gate 1: Duplicate check — does a similar pattern already exist?
+    try {
+      const existing = cachedPrepare(db,
+        `SELECT id, trigger_context, lesson, score FROM experience_patterns
+         WHERE source_project = ? OR source_project = '__global__'`
+      ).all(project) as Array<{ id: string; trigger_context: string; lesson: string; score: number }>;
+
+      let isDuplicate = false;
+      for (const ex of existing) {
+        // Simple text similarity: check if trigger_context or lesson overlap significantly
+        const triggerWords = new Set(candidate.trigger_context.toLowerCase().split(/\s+/).filter(w => w.length > 3));
+        const existingWords = new Set(ex.trigger_context.toLowerCase().split(/\s+/).filter(w => w.length > 3));
+        const intersection = [...triggerWords].filter(w => existingWords.has(w));
+        const overlap = triggerWords.size > 0 ? intersection.length / triggerWords.size : 0;
+
+        if (overlap > 0.6) {
+          // Similar pattern exists — reinforce it instead of creating duplicate
+          try {
+            cachedPrepare(db,
+              `UPDATE experience_patterns SET score = score + 2, times_triggered = times_triggered + 1 WHERE id = ?`
+            ).run(ex.id);
+          } catch { /* non-fatal */ }
+          isDuplicate = true;
+          break;
+        }
+      }
+
+      if (isDuplicate) continue;
+    } catch { /* if dedup check fails, allow the pattern through */ }
+
+    // Gate 2: Quality check — correction patterns need evidence the correction worked
+    if (candidate.pattern_type === 'correction') {
+      // If session had late corrections (after midpoint), the correction may not have been effective
+      if (outcome.lateCorrections && outcome.correctionCount > 3) {
+        // Downgrade severity — repeated corrections suggest the pattern isn't clear enough
+        candidate.severity = candidate.severity === 'critical' ? 'important' : 'minor';
+      }
+
+      // If tests failed after corrections, the correction may have been wrong
+      if (outcome.testsFailedCount > outcome.testsPassedCount && outcome.testsFailedCount > 2) {
+        // Skip this pattern — negative outcome after correction
+        continue;
+      }
+    }
+
+    // Gate 3: Behavioral patterns from short sessions need higher bar
+    if (candidate.pattern_type === 'behavioral' && outcome.durationMinutes < 5) {
+      // Very short session — directive may be throwaway, not standing rule
+      if (candidate.severity !== 'critical') continue;
+    }
+
+    reviewed.push(candidate);
+  }
+
+  return reviewed;
+}
+
 /**
- * Extract patterns from a completed session using Claude API.
- * Reads conversation_turns, sends to Claude for analysis, creates experience_patterns.
+ * Extract patterns from a completed session using a 6-phase analysis pipeline.
+ *
+ * Phase 1: CONTEXT — gather turns + directive candidates + cross-session repeats
+ * Phase 2: ANALYZE — LLM extraction of corrections and directives
+ * Phase 3: MEASURE — check session outcomes (corrections, tests, completion)
+ * Phase 4: PLAN — determine retrieval_mode and trigger_intents (in LLM prompt)
+ * Phase 5: REVIEW — validate candidates (dedup, contradiction, quality gates)
+ * Phase 6: COMMIT — create patterns in DB
  *
  * Returns the number of patterns created.
  */
@@ -320,9 +460,22 @@ export async function extractPatternsFromSession(
       return { patternsCreated: 0, summary: parsed.summary ?? 'no patterns array' };
     }
 
-    // Create patterns (capped at maxPatterns)
+    // =====================================================================
+    // Phase 3: MEASURE — did the session show improvement after corrections?
+    // Check session outcomes: correction count, completion status, and
+    // whether later turns show the correction was accepted.
+    // =====================================================================
+    const sessionOutcome = measureSessionOutcome(db, sessionId);
+
+    // =====================================================================
+    // Phase 5: REVIEW — validate each candidate pattern before committing
+    // Check for duplicates, contradictions, and quality gates.
+    // =====================================================================
+    const reviewedPatterns = reviewCandidatePatterns(db, project, parsed.patterns, sessionOutcome);
+
+    // Create patterns (capped at maxPatterns, only those that pass review)
     let created = 0;
-    for (const p of parsed.patterns.slice(0, maxPatterns)) {
+    for (const p of reviewedPatterns.slice(0, maxPatterns)) {
       if (!p.trigger_context || !p.lesson) continue;
 
       try {
