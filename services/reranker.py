@@ -99,7 +99,7 @@ def main():
     parser = argparse.ArgumentParser(description="Claudex cross-encoder reranker")
     parser.add_argument("--port", type=int, default=7439)
     parser.add_argument("--host", default="127.0.0.1")
-    parser.add_argument("--model", default="cross-encoder/ms-marco-MiniLM-L-6-v2")
+    parser.add_argument("--model", default="BAAI/bge-reranker-v2.5-gemma2-lightweight")
     args = parser.parse_args()
 
     model = load_model(args.model)
