@@ -463,7 +463,20 @@ export async function heartbeatTick(ctx: HeartbeatContext): Promise<TickResult> 
       }
     } catch { /* non-critical */ }
 
-    // Phase 4e3b: CARA reasoning — derive opinions from proven patterns.
+    // Phase 4e3b: Autonomous investigation — Angel reasons about uncertain opinions.
+    // Picks low-confidence or contradicted opinions, searches memory for evidence,
+    // and updates confidence based on what it finds. CARA "Reflect" operation.
+    try {
+      const { runAutonomousInvestigation } = await import('./autonomous-investigator.js');
+      const activeProject = cachedPrepare(ctx.db,
+        `SELECT project FROM sessions WHERE status = 'active' ORDER BY created_at_epoch DESC LIMIT 1`
+      ).get() as { project: string } | undefined;
+      if (activeProject?.project) {
+        runAutonomousInvestigation(ctx.db, activeProject.project);
+      }
+    } catch { /* non-critical */ }
+
+    // Phase 4e3c: CARA reasoning — derive opinions from proven patterns.
     // Angel forms opinions about tools, approaches, and patterns based on evidence.
     try {
       const { deriveOpinionsFromPatterns } = await import('./cara-reasoning.js');
