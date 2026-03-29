@@ -31,6 +31,7 @@ const optionalEntryPoints = [
   'src/benchmark/longmemeval-harness.ts',
   'src/benchmark/debug-locomo.ts',
   'src/benchmark/analyze-results.ts',
+  'src/indexer/codebase-indexer.ts',
 ];
 
 /** Hook entry points to smoke test after build.
