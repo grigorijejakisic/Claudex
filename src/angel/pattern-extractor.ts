@@ -294,13 +294,25 @@ export async function extractPatternsFromSession(
       } catch { /* API failed — fall through to Ollama */ }
     }
 
-    // Priority 3: Ollama (local, always available but lower quality)
+    // Priority 3: Ollama cloud models (capable, free via Ollama cloud routing)
+    if (!responseText) {
+      const cloudModels = ['deepseek-v3.2:cloud', 'cogito-2.1:671b-cloud', 'qwen3.5:397b-cloud'];
+      for (const cloudModel of cloudModels) {
+        try {
+          const fullPrompt = `${EXTRACTION_SYSTEM_PROMPT}\n\n${userPrompt}`;
+          responseText = await callOllama(fullPrompt, cloudModel);
+          if (responseText) break;
+        } catch { /* try next model */ }
+      }
+    }
+
+    // Priority 4: Ollama local (last resort — small model, lower quality)
     if (!responseText) {
       try {
         const fullPrompt = `${EXTRACTION_SYSTEM_PROMPT}\n\n${userPrompt}`;
         responseText = await callOllama(fullPrompt, localModel);
       } catch {
-        return { patternsCreated: 0, summary: 'no LLM available (CliProxy + API + Ollama all failed)' };
+        return { patternsCreated: 0, summary: 'no LLM available (CliProxy + API + Ollama cloud + local all failed)' };
       }
     }
 
