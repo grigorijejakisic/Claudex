@@ -420,17 +420,30 @@ export function recordWasReferenced(
         continue;
       }
 
-      // Tokenize summary and check for 2+ matching tokens in assistant text
+      // Tokenize summary and check for matching tokens in assistant text.
+      // Use prefix matching (4+ chars) to catch stemming variants:
+      // "embedding" matches "embed", "modification" matches "modif"
       const summaryTokens = tokenizeQuery(summary, 20);
       let matchCount = 0;
       for (const token of summaryTokens) {
-        if (token.length >= 3 && combinedAssistantText.includes(token)) {
+        if (token.length < 3) continue;
+        // Exact match
+        if (combinedAssistantText.includes(token)) {
           matchCount++;
+        } else if (token.length >= 5) {
+          // Prefix match: check if the first 4 chars appear as a word prefix
+          const prefix = token.substring(0, 4);
+          if (combinedAssistantText.includes(prefix)) {
+            matchCount += 0.5; // Half-credit for prefix match
+          }
         }
-        if (matchCount >= 2) break; // Early exit — already matched
+        if (matchCount >= 1.5) break; // Early exit — 2 exact or 1 exact + 1 prefix
       }
 
-      updateStmt.run(matchCount >= 2 ? 1 : 0, event.id);
+      // Threshold: 1 exact match + 1 prefix, or 2 exact matches, or
+      // for short summaries (≤5 tokens), 1 exact match suffices
+      const threshold = summaryTokens.length <= 5 ? 1 : 1.5;
+      updateStmt.run(matchCount >= threshold ? 1 : 0, event.id);
     }
   } catch {
     // Non-throwing

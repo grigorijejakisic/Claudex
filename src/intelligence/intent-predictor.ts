@@ -411,17 +411,18 @@ export function determineActualIntent(db: Database, sessionId: string): IntentTy
       }
     }
 
-    // Check if intent_classification event was recorded (from user-prompt-submit)
-    // Note: recordEvent stores the intent type as `entity` (5th param), not `detail`
-    const classified = cachedPrepare(db,
-      `SELECT entity FROM session_events
+    // Use MODE of all per-turn intent classifications (not just the last one)
+    // This gives the true dominant intent of the session
+    const classifiedAll = cachedPrepare(db,
+      `SELECT entity, COUNT(*) as cnt FROM session_events
        WHERE session_id = ? AND event_type = 'intent_classification'
-       ORDER BY timestamp_epoch DESC LIMIT 1`
-    ).get(sessionId) as { entity: string | null } | undefined;
+       GROUP BY entity ORDER BY cnt DESC`
+    ).all(sessionId) as Array<{ entity: string; cnt: number }>;
 
-    if (classified?.entity) {
-      const intent = classified.entity as IntentType;
-      if (intent in intentCounts) return intent;
+    for (const row of classifiedAll) {
+      if (row.entity in intentCounts) {
+        intentCounts[row.entity as IntentType] += row.cnt * 2; // Boost classified intents
+      }
     }
 
     // Find the dominant intent

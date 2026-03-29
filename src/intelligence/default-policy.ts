@@ -107,13 +107,23 @@ export class DefaultMemoryPolicy implements MemoryPolicy {
     const counts = cachedPrepare(db,
       `SELECT
          SUM(CASE WHEN was_referenced = 0 THEN 1 ELSE 0 END) AS unreferenced,
-         SUM(CASE WHEN was_referenced = 1 THEN 1 ELSE 0 END) AS referenced
+         SUM(CASE WHEN was_referenced = 1 THEN 1 ELSE 0 END) AS referenced,
+         SUM(CASE WHEN correction_followed = 1 THEN 1 ELSE 0 END) AS correction_count
        FROM retrieval_events
        WHERE artifact_id = ? AND was_referenced IS NOT NULL`
-    ).get(artifactId) as { unreferenced: number | null; referenced: number | null } | undefined;
+    ).get(artifactId) as { unreferenced: number | null; referenced: number | null; correction_count: number | null } | undefined;
 
     const unreferenced = counts?.unreferenced ?? 0;
     const referenced = counts?.referenced ?? 0;
+    const correctionCount = counts?.correction_count ?? 0;
+
+    // Correction penalty: artifacts that were injected AND caused corrections
+    // are more severely suppressed than merely unreferenced ones.
+    // -0.3 per correction event, capped at -1.0 (full suppression possible)
+    if (correctionCount > 0) {
+      const correctionPenalty = Math.max(-1.0, -0.3 * correctionCount);
+      return Math.max(MULTIPLIER_FLOOR * 0.5, baseScore * (1.0 + correctionPenalty));
+    }
 
     // No suppression if below threshold
     if (unreferenced < NEGATIVE_LEARNING_THRESHOLD) {
