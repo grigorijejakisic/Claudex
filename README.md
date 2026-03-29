@@ -26,7 +26,7 @@ No cloud dependency. No external memory service. One SQLite database, one vector
 
 Claudex gives LLM coding agents context continuity across sessions. It hooks into [Claude Code](https://docs.anthropic.com/en/docs/claude-code) and silently captures everything that matters — observations, decisions, artifacts, patterns, conversation history — then surfaces exactly the right context at the right time.
 
-After 233 sessions and 21,000+ observations in production use, the system knows:
+After 530+ sessions and 30,000+ observations in production use, the system knows:
 - What files you've been editing and why
 - What decisions were made and their context
 - What patterns lead to corrections (and avoids repeating them)
@@ -49,9 +49,9 @@ After 233 sessions and 21,000+ observations in production use, the system knows:
 │    observations · artifacts · decisions · threads    │
 ├────────────────────┬────────────────────────────────┤
 │   SQLite (truth)   │      Qdrant (acceleration)     │
-│   V11 schema       │      5 collections             │
+│   V12 schema       │      5 collections             │
 │   FTS5 full-text   │      1024-dim vectors           │
-│   21 tables        │      snowflake-arctic-embed2   │
+│   27+ tables       │      snowflake-arctic-embed2   │
 ├────────────────────┴────────────────────────────────┤
 │                  Angel Guardian                       │
 │   pattern extraction · session monitoring            │
@@ -71,8 +71,8 @@ After 233 sessions and 21,000+ observations in production use, the system knows:
 
 **Three runtime components:**
 - **CC Hooks** — 6 ephemeral scripts that fire on Claude Code events. Fast, mechanical, DB-only state. Never call the API from a hook (deadlock).
-- **Angel** — Persistent guardian process. Extracts patterns from completed sessions via LLM. Monitors idle sessions and auto-closes them with state preservation. Runs 8 heartbeat phases.
-- **Assembly** — Context injection engine. Assembles the right memories into the right prompt at the right time, with token budgeting and 3-tier degradation.
+- **Angel** — Persistent guardian process. Extracts patterns, forms opinions (CARA reasoning), monitors sessions, indexes cross-agent sessions (Codex/Gemini/Aider), promotes proven rules to CLAUDE.md, runs retention sweeps. 12+ heartbeat phases.
+- **Assembly** — Context injection engine. Assembles the right memories into the right prompt at the right time, with token budgeting, 5-channel retrieval, and priority cascade.
 
 ## Key Features
 
@@ -89,10 +89,18 @@ After 233 sessions and 21,000+ observations in production use, the system knows:
 - RL policy system: 6 SimpleMLP models (278 lines, ~34K parameters, pure TypeScript) learn optimal memory decisions
 
 **Retrieval**
-- 4-channel Reciprocal Rank Fusion: FTS5 keyword + Qdrant KNN + recency decay + artifact graph walk
-- Snowflake Arctic Embed 2 (568M params, 1024-dim, 8K context)
-- Content-length-aware embedding backfill
-- Activation spreading across artifact links
+- 5-channel Reciprocal Rank Fusion: FTS5 keyword + Qdrant KNN + recency decay + MPFP graph walk + temporal
+- Bi-encoder reranking with Snowflake Arctic Embed 2 (568M params, 1024-dim)
+- Q-value reinforcement learning: patterns earn effectiveness scores from session outcomes (EMA + UCB exploration)
+- Per-event exponential decay with zone-based half-lives (corrections: 60d, architecture: 180d)
+- Budget-aware greedy packing — retrieval stops when token budget is full
+
+**Cross-Session Communication**
+- Stigmergic signals: sessions coordinate by modifying the shared environment (wip, failure, danger, claim, discovery) with temporal decay
+- Session-to-session messaging: request/response/notify/transfer via `claudex_message` MCP tool
+- SBAR-structured context transfer with mandatory commander's intent and receiver read-back
+- Named sessions (project-sN-pid) addressable by other sessions
+- 6 MCP tools: search, recall, store, events, message, session
 
 **Resilience**
 - Angel auto-closes idle sessions (warn at 15min, close at 30min with summary + recall capture)
@@ -134,12 +142,13 @@ Answer model: `deepseek-coder-v2:16b` (local, 16B params). Published baselines u
 
 Running in daily production use since March 2026:
 
-- **233 sessions** tracked
-- **21,219 observations** captured (with dedup, novelty scoring, stability classification)
-- **2,945 artifacts** managed (with activation decay and automatic packing)
-- **10 experience patterns** learned from corrections
-- **99 test files**, **1,968 tests**, all passing
-- **~29,000 lines** of TypeScript
+- **530+ sessions** tracked across 5+ projects
+- **30,000+ observations** captured (with dedup, novelty scoring, stability classification)
+- **4,400+ artifacts** managed (with activation decay and automatic packing)
+- **37 experience patterns** learned from corrections (5 promoted to always-inject)
+- **7 CARA opinions** formed by Angel from proven patterns
+- **100 test files**, **2,020 tests**, all passing
+- **~34,000 lines** of TypeScript
 
 ## Setup
 
@@ -163,18 +172,19 @@ node dist/cli/health.cjs
 ## Tech Stack
 
 - **Runtime:** Node.js 22 + TypeScript 5.8 (strict)
-- **Build:** esbuild (~60ms)
-- **Database:** SQLite via better-sqlite3 (V11 schema, 21 tables)
+- **Build:** esbuild (~70ms)
+- **Database:** SQLite via better-sqlite3 (V12 schema, 27+ tables)
 - **Vector Store:** Qdrant (5 collections, 1024-dim cosine)
-- **Embeddings:** Ollama + Snowflake Arctic Embed 2 (568M params)
+- **Embeddings:** Ollama + Snowflake Arctic Embed 2 (568M params, reranking) + nomic-embed-text (384d, primary)
 - **LLM:** Claude Code CLI + Ollama fallback
-- **Tests:** Vitest (99 files, 1968 tests)
+- **Tests:** Vitest (100 files, 2020 tests)
+- **MCP:** 6 tools (search, recall, store, events, message, session)
 
 ## Schema
 
-V11 schema with 21 core tables:
+V12 schema with 27+ tables:
 
-`observations` · `artifacts` · `sessions` · `thread_state` · `conversation_turns` · `session_events` · `experience_patterns` · `decisions` · `learnings` · `retrieval_events` · `artifact_links` · `temporal_profile` · `action_transitions` · `session_journal` · `session_messages` · `pressure_scores` · `checkpoint_tracking` · `schema_versions` · `telemetry` · `artifact_access_log` · `knowledge_gaps`
+`observations` · `artifacts` · `sessions` · `thread_state` · `conversation_turns` · `session_events` · `experience_patterns` · `decisions` · `learnings` · `retrieval_events` · `artifact_links` · `temporal_profile` · `action_transitions` · `session_journal` · `session_messages` · `pressure_scores` · `checkpoint_tracking` · `schema_versions` · `telemetry` · `artifact_access_log` · `knowledge_gaps` · `session_signals` · `angel_opinions` · `solution_outcomes` · `entity_aliases` · `policy_weights` · `file_leases` · `artifact_claims`
 
 Dual-write: SQLite is the source of truth. Qdrant accelerates semantic search. FTS5 handles keyword search. The system degrades gracefully — if Qdrant or Ollama are down, everything still works via FTS5.
 
@@ -182,11 +192,13 @@ Dual-write: SQLite is the source of truth. Qdrant accelerates semantic search. F
 
 Most memory systems are wrappers around a vector database with an LLM summarizer. Claudex is different:
 
-1. **It runs locally.** No cloud memory service, no API keys for memory operations, no data leaving your machine.
-2. **It learns from mistakes.** Experience patterns detect when you correct the AI, extract what went wrong, and inject warnings before the same mistake happens again.
-3. **It predicts what you need.** Intent classification and prediction pre-fetch relevant context before you finish asking.
-4. **It has a guardian.** The Angel process watches over sessions, extracts patterns holistically (not from 2-second snapshots), auto-closes abandoned sessions, and continuously improves retrieval quality through RL training.
-5. **It's built for one user.** Not a multi-tenant SaaS product. A personal memory system that gets better the more you use it.
+1. **It runs locally.** No cloud memory service, no API keys for memory operations, no data leaving your machine. Single SQLite file is the entire database.
+2. **It learns from mistakes.** Experience patterns detect when you correct the AI, extract what went wrong, and inject warnings before the same mistake happens again. Q-value RL learns which patterns actually help.
+3. **It predicts what you need.** Intent classification and prediction pre-fetch relevant context before you finish asking. 5-channel retrieval with temporal expression parsing.
+4. **It has a guardian.** Angel watches sessions, extracts patterns, forms opinions (CARA reasoning), indexes cross-agent sessions, promotes proven rules, runs retention sweeps, and auto-closes abandoned sessions.
+5. **Sessions talk to each other.** Stigmergic signals let sessions coordinate without direct messaging. One session's "this approach failed" warning appears in every other session on the same project. Direct messaging for explicit cross-session requests.
+6. **It learns from other agents.** Cross-agent indexer reads sessions from Codex, Gemini CLI, and Aider — extracting user directives and corrections that Claudex can apply in future sessions.
+7. **It's built for one user.** Not a multi-tenant SaaS product. A personal memory system that gets better the more you use it.
 
 ## License
 
