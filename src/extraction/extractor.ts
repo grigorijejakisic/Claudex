@@ -194,9 +194,11 @@ export function processToolObservation(input: ProcessToolObservationInput): numb
 
     // 7. Dedup — skip if same tool+file+category+project+session within 5 minutes (300 seconds)
     const fiveMinutesAgo = Math.floor(Date.now() / 1000) - 300;
+    // Sort files for order-independent dedup (same set in different order = same observation)
+    const sortedFiles = [...sanitizedFiles].sort();
 
     let existing: { id: number } | undefined;
-    if (sanitizedFiles.length > 0) {
+    if (sortedFiles.length > 0) {
       // Match on exact files_modified JSON string for precise dedup
       existing = db
         .prepare(
@@ -206,7 +208,7 @@ export function processToolObservation(input: ProcessToolObservationInput): numb
              AND deleted_at_epoch IS NULL
            LIMIT 1`
         )
-        .get(toolName, category, project, sessionId, fiveMinutesAgo, JSON.stringify(sanitizedFiles)) as { id: number } | undefined;
+        .get(toolName, category, project, sessionId, fiveMinutesAgo, JSON.stringify(sortedFiles)) as { id: number } | undefined;
     } else {
       // No files — dedup on tool+category+project+session+title+content+time window
       // (empty files_modified means tools like Bash; include title to avoid collapsing
@@ -246,7 +248,7 @@ export function processToolObservation(input: ProcessToolObservationInput): numb
       title: redactedTitle,
       content: redactedContent,
       importance: adjustedImportance,
-      files_modified: sanitizedFiles,
+      files_modified: sortedFiles,
       obs_type: storedObsType,
     });
 
@@ -312,9 +314,10 @@ export async function processToolObservationAsync(input: ProcessToolObservationI
 
     // 7. Dedup — skip if same tool+file+category+project+session within 5 minutes (300 seconds)
     const fiveMinutesAgo = Math.floor(Date.now() / 1000) - 300;
+    const sortedFiles = [...sanitizedFiles].sort();
 
     let existing: { id: number } | undefined;
-    if (sanitizedFiles.length > 0) {
+    if (sortedFiles.length > 0) {
       existing = db
         .prepare(
           `SELECT id FROM observations
@@ -323,7 +326,7 @@ export async function processToolObservationAsync(input: ProcessToolObservationI
              AND deleted_at_epoch IS NULL
            LIMIT 1`
         )
-        .get(toolName, category, project, sessionId, fiveMinutesAgo, JSON.stringify(sanitizedFiles)) as { id: number } | undefined;
+        .get(toolName, category, project, sessionId, fiveMinutesAgo, JSON.stringify(sortedFiles)) as { id: number } | undefined;
     } else {
       const canonTitle = redactedTitle.replace(/\[REDACTED_\w+\]/g, '[REDACTED]');
       const canonContent = truncateText(
@@ -358,7 +361,7 @@ export async function processToolObservationAsync(input: ProcessToolObservationI
       title: redactedTitle,
       content: redactedContent,
       importance: adjustedImportance,
-      files_modified: sanitizedFiles,
+      files_modified: sortedFiles,
       obs_type: storedObsType,
     });
 

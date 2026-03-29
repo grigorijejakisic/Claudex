@@ -113,17 +113,6 @@ export async function getQdrantClient(config?: Partial<QdrantConfig>): Promise<Q
       try {
         await _client.getCollections();
         _available = true;
-        // Qdrant returns { title: 'qdrant - vector engine' } on GET /healthz
-        // Be lenient: if we got any response, it's alive
-        if (!_available) {
-          // Try alternative: just check if we can list collections
-          try {
-            await _client.getCollections();
-            _available = true;
-          } catch {
-            _available = false;
-          }
-        }
       } catch {
         _available = false;
       }

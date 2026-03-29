@@ -1119,7 +1119,7 @@ export async function runCompactionSequence(params: CompactionParams): Promise<v
       const learnings = getLearningsByProject(params.db, params.project, { limit: 50 });
       for (const learning of learnings) {
         const ref = String(learning.id);
-        const exists = params.db.prepare(
+        const exists = cachedPrepare(params.db,
           "SELECT 1 FROM artifacts WHERE artifact_type = 'learning' AND artifact_ref = ? AND project = ? LIMIT 1"
         ).get(ref, params.project);
         if (!exists) {

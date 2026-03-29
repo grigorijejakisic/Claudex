@@ -417,7 +417,7 @@ export function pruneObservations(db: Database, config: RetentionConfig): number
       `DELETE FROM observations
        WHERE importance <= 2
          AND timestamp_epoch < ?
-         AND id NOT IN (SELECT DISTINCT artifact_id FROM retrieval_events WHERE artifact_id IS NOT NULL)
+         AND id NOT IN (SELECT CAST(a.artifact_ref AS INTEGER) FROM artifacts a JOIN retrieval_events re ON a.id = re.artifact_id WHERE a.artifact_type = 'observation')
        LIMIT 500`
     ).run(lowCutoff);
     totalDeleted += lowResult.changes;
@@ -428,7 +428,7 @@ export function pruneObservations(db: Database, config: RetentionConfig): number
       `DELETE FROM observations
        WHERE importance = 3
          AND timestamp_epoch < ?
-         AND id NOT IN (SELECT DISTINCT artifact_id FROM retrieval_events WHERE artifact_id IS NOT NULL)
+         AND id NOT IN (SELECT CAST(a.artifact_ref AS INTEGER) FROM artifacts a JOIN retrieval_events re ON a.id = re.artifact_id WHERE a.artifact_type = 'observation')
        LIMIT 500`
     ).run(medCutoff);
     totalDeleted += medResult.changes;
@@ -439,7 +439,7 @@ export function pruneObservations(db: Database, config: RetentionConfig): number
       `DELETE FROM observations
        WHERE importance >= 4
          AND timestamp_epoch < ?
-         AND id NOT IN (SELECT DISTINCT artifact_id FROM retrieval_events WHERE artifact_id IS NOT NULL)
+         AND id NOT IN (SELECT CAST(a.artifact_ref AS INTEGER) FROM artifacts a JOIN retrieval_events re ON a.id = re.artifact_id WHERE a.artifact_type = 'observation')
        LIMIT 500`
     ).run(highCutoff);
     totalDeleted += highResult.changes;

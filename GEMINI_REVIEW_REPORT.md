@@ -1,239 +1,128 @@
-# Gemini-Powered Architectural Diff Review: Angel Guardian System
+# CLAUDEXv3 Full Codebase Architectural Review
 
-**Scope**: `src/angel/` (13 files), with focus on 4 new Guardian of All Memory modules
-**Reviewer**: Crux (Opus 4.6 1M)
-**Date**: 2026-03-28
-**Grade: B+**
-
----
-
-## Executive Summary
-
-The Angel Guardian system is a well-architected persistent memory optimizer for Claudex. The 4 new guardian modules (retention-sweep, cross-project-consolidator, data-quality, proactive-curator) are cleanly integrated into the heartbeat with proper rate limiting, non-throwing contracts, batch bounds, and correct phase ordering. The code is production-quality with one genuine bug (FTS desync on skeletal pruning) and several design-level concerns worth addressing.
+**Reviewer:** Gemini CLI (2.5 Pro)
+**Date:** 2026-03-29
+**Codebase:** CLAUDEXv3 (Persistent Memory System for LLMs)
+**Schema:** V12, 27+ tables
+**Scope:** Full `src/` directory
 
 ---
 
-## Detailed Findings
+## Grade: A- (92/100)
 
-### CRITICAL (1)
-
-#### C1: FTS Desync on Conversation Turns Skeletal Pruning
-
-**File**: `src/angel/retention-sweep.ts:78-94`
-**Schema**: `src/core/schema.ts:495-510`
-
-The skeletal tier NULLs `assistant_text` on conversation_turns via UPDATE. The schema defines FTS triggers for INSERT (`convturns_fts_ai`) and DELETE (`convturns_fts_ad`) but **no AFTER UPDATE trigger**. This means:
-
-- After skeletal pruning, `conversation_turns_fts` still indexes the old (now-NULL) `assistant_text`
-- FTS queries will return phantom matches against content that no longer exists in the base table
-- The data-quality module's `validateSchemaIntegrity()` does NOT check `conversation_turns_fts`, so this drift is invisible
-
-**Fix**: Add an `AFTER UPDATE OF assistant_text ON conversation_turns` trigger to the schema DDL, and add `conversation_turns` to the FTS integrity check in `data-quality.ts`.
+The codebase exhibits high structural integrity, adhering to a "Plain Functions + Direct DB" philosophy that minimizes indirection. The V12 schema is correctly implemented with active production paths for all 27+ tables. However, the transition from a persistent process model (OpenClaw) to an ephemeral one (CC Hooks) has introduced several "process-boundary leaks" where state or initialization logic assumes a long-lived process that does not exist in the hook runtime.
 
 ---
 
-### HIGH (3)
+## CRITICAL FINDINGS
 
-#### H1: Redundant Importance Guard in Artifact Cold-Delete
-
-**File**: `src/angel/retention-sweep.ts:149-165`
-
-Target 2 (cold unaccessed packed artifacts) has `importance < 3 AND importance < 5`. The `importance < 5` clause is completely redundant -- if `importance < 3`, it is already less than 5. This suggests copy-paste from another query without cleanup.
-
-#### H2: No Test Coverage for Guardian Modules
-
-The test suite at `src/tests/angel/` covers `session-monitor`, `message-sender`, `pattern-extractor`, and `consolidator` -- but **none** of the 4 new guardian modules have tests:
-
-- `retention-sweep.ts` -- no tests
-- `cross-project-consolidator.ts` -- no tests
-- `data-quality.ts` -- no tests
-- `proactive-curator.ts` -- no tests
-
-These modules perform destructive operations (DELETE, UPDATE SET NULL, activation_score halving). Without tests, the safety contracts (e.g., "never delete importance >= 5", "never touch non-angel_processed sessions") are assertions, not verified invariants.
-
-#### H3: Abandoned Projects Query Can Produce False Positives
-
-**File**: `src/angel/proactive-curator.ts:227-238`
-
-The `archiveAbandonedProjects` query finds projects with ANY sessions but no RECENT sessions. However, the outer `SELECT DISTINCT project FROM sessions` has no `created_at_epoch` lower bound. A project with a single session from 2 years ago would be returned on every curation run. Since it is already packed from a previous run, the UPDATE is a no-op, but it is wasted work repeated every 60 minutes.
-
-The same structural issue appears in `prepareAwayDigests` (line 389-406). The "away 3-30 days" query correctly excludes projects with recent activity, but there is no dedup mechanism to prevent creating duplicate digest artifacts on successive runs.
+*None.*
 
 ---
 
-### MEDIUM (5)
+## HIGH SEVERITY FINDINGS
 
-#### M1: Cross-Project Consolidation Rate Limit Uses Seconds, Others Use Milliseconds
+### 1. Qdrant Vector Search Initialization Race (Architecture/Performance)
 
-**File**: `src/angel/cross-project-consolidator.ts:474-476`
-
-The rate limit comparison uses `Math.floor(Date.now() / 1000)` (epoch seconds), while `retention-sweep.ts:382` and `proactive-curator.ts:495` use `Date.now()` (epoch milliseconds). Both approaches work, but the inconsistency is a maintenance hazard. A future developer copying rate-limit logic from one module to another could mix the units.
-
-#### M2: Health Report Delivery Has No Fallback When No Active Session Exists
-
-**File**: `src/angel/proactive-curator.ts:347-354`
-
-`generateHealthReport()` targets the most recently active session. If no sessions are active (common when the user is not working), the report is silently dropped. The `_lastHealthReportEpoch` is NOT updated on failure, so the next tick will retry -- which is correct. But the report content is recomputed from scratch each time, doing 7 COUNT(*) queries against potentially large tables.
-
-Consider: store the computed report in a buffer and only recompute if stale. Or accept this as fine given the 24h interval.
-
-#### M3: Pattern Dedup Uses GROUP_CONCAT(id) Which Can Truncate
-
-**File**: `src/angel/cross-project-consolidator.ts:228-235`
-
-`GROUP_CONCAT(id)` in SQLite has a default maximum length of ~1,000,000 bytes. With ULID pattern IDs (26 chars each + comma), this limits to ~38,000 patterns per trigger_context group. In practice this is fine, but the code then splits by comma and uses all IDs in an `IN (${placeholders})` clause. If truncation occurs, some patterns would be silently missed.
-
-#### M4: Stale Embedding Detection Has No Modified-Content Check
-
-**File**: `src/angel/data-quality.ts:222-243`
-
-`detectStaleEmbeddings()` nulls embeddings on all artifacts modified in the last 24 hours. The heuristic is correct but aggressive -- an artifact could be modified without its content changing (e.g., state change from 'fresh' to 'packed'), triggering unnecessary re-embedding. The `timestamp_epoch` column does not distinguish content modifications from metadata modifications.
-
-#### M5: archiveAbandonedProjects Packs All Artifacts Including Importance 5
-
-**File**: `src/angel/proactive-curator.ts:246-250`
-
-The query `UPDATE artifacts SET state = 'packed' ... WHERE project = ? AND state != 'packed'` does not exclude `importance >= 5`. The retention-sweep correctly protects importance >= 5 artifacts from deletion, but archiving packs them, which changes their state. This conflicts with the user-profile-sync module which creates importance-5 global artifacts. If a project is abandoned and then revived, its importance-5 artifacts will have been packed.
+- **Files:** `src/intelligence/thread-tracker.ts`, `src/embeddings/qdrant-client.ts`
+- **Description:** The `isQdrantAvailable()` check in `findSimilarThreadsAsync` returns `false` on the first call in a fresh process because the health-check flag `_available` is initialized to `null`. Since `getQdrantClient()` (which performs the actual health check) is only called *after* this check passes, Qdrant is effectively deadlocked for ephemeral CC hooks.
+- **Impact:** Every turn in a CC-based session unnecessarily falls back to SQLite FTS5 for thread search, bypassing the superior semantic retrieval provided by Qdrant. This degrades retrieval quality in the most common adapter path.
+- **Fix:** Call `getQdrantClient()` early in the hook lifecycle (e.g., in `wrapHook` or at the start of `main()`) so that `isQdrantAvailable()` returns the correct value for subsequent calls.
 
 ---
 
-### LOW (4)
+## MEDIUM SEVERITY FINDINGS
 
-#### L1: Ancient Packed Artifacts Hardcoded to 90-Day Cutoff
+### 2. Unawaited Entry Point in Ephemeral Hooks (Production Readiness)
 
-**File**: `src/angel/retention-sweep.ts:171`
+- **Files:** `src/adapters/cc-hooks/*.ts` (all 6 hook entry points)
+- **Description:** The `main()` async entry point is called at the bottom of the script files without being awaited (e.g., `main();`). While the Node.js event loop typically processes the async work before exiting, this "floating promise" pattern is dangerous in ephemeral processes.
+- **Impact:** Unhandled rejections during the setup phase (database opening, config loading) may result in silent failures or "dirty" process exits that are difficult for the host to diagnose. Violates the project's own rule that ephemeral hooks must await everything.
+- **Fix:** Await `main()` in all hook entry points, or wrap in a top-level handler that catches and logs rejections with proper exit codes.
 
-`pruneArtifacts` Target 3 uses `cutoff(90)` -- a hardcoded 90-day constant. All other retention windows are configurable via `RetentionConfig`. This should either be added to the config or documented as intentionally fixed.
+### 3. Behavioral Data Loss in Ephemeral Hooks (Functional/Consistency)
 
-#### L2: deduplicateDecisions Keeps Newest But Does Not Merge Context
-
-**File**: `src/angel/cross-project-consolidator.ts:149-200`
-
-When deduplicating decisions with the same fingerprint across projects, the code keeps the newest by `timestamp_epoch` and deletes the rest. Unlike learnings (which merge `promotion_count`) and patterns (which sum counters), decisions lose their cross-project session linkage. The `session_id` of deleted copies is lost. For decisions this is probably acceptable since the fingerprint proves identity, but it is a design asymmetry worth noting.
-
-#### L3: Contradiction Detection Uses Description String as Dedup Key
-
-**File**: `src/angel/proactive-curator.ts:145-148`
-
-Contradiction dedup checks `WHERE description = ?` using a formatted string like `"Artifact contradiction: artifact 42 contradicts artifact 17 (strength=0.85)"`. If the strength changes on a subsequent link update, a new knowledge_gap is created for the same pair. Consider deduping on the artifact pair IDs instead.
-
-#### L4: Rate Limit State Is Module-Level (Process Memory)
-
-All 4 guardian modules use module-level `let _lastXxxEpoch = 0` variables for rate limiting. If the Angel process restarts, all rate limits reset and all phases run immediately on the first tick. This is by design (documented in the heartbeat comment), but could cause a brief burst of DB write pressure on Angel restart. The 500-row batch limits adequately bound this.
+- **Files:** `src/adapters/cc-hooks/post-tool-use.ts`, `src/intelligence/thread-tracker.ts`
+- **Description:** As documented in the code comments, `ThreadTracker` relies on in-memory accumulation of tool exchanges. In the CC hooks adapter, this memory is wiped every few seconds when the process exits.
+- **Impact:** Thread summarization and "gist" extraction are significantly degraded for CC users compared to the persistent OpenClaw bridge, as the system loses the "connective tissue" between tool calls within a single turn.
+- **Fix:** Consider persisting ThreadTracker state to SQLite between hook invocations to recover behavioral data continuity for CC sessions.
 
 ---
 
-## Verification of Specific Review Questions
+## LOW SEVERITY FINDINGS
 
-### Are the 4 new guardian modules properly wired into the heartbeat runtime?
+### 4. Useless Sliding Window in TopicShiftDetector (Efficiency)
 
-**Yes.** Lines 337-411 of `heartbeat.ts` wire all four in sequence:
-- Phase 4b: `runRetentionSweep(ctx.db, ctx.config.retention)`
-- Phase 4c: `runCrossProjectConsolidation(ctx.db, ctx.config.retention)`
-- Phase 4d: `runDataQualityChecks(ctx.db, ctx.config.retention)`
-- Phase 4e: `runProactiveCuration(ctx.db, ctx.config.retention)`
+- **File:** `src/intelligence/topic-shift.ts`
+- **Description:** `TopicShiftDetector` uses a private `recentPromptEmbeddings` array to smooth out noise in topic shift detection. In CC hooks, this detector is re-instantiated on every call, rendering the sliding window (and its benefit) non-functional.
+- **Impact:** Topic shift detection is more prone to "flickering" on ambiguous prompts in CC sessions. The sliding window logic executes but provides no value, adding minor CPU overhead.
+- **Fix:** Either persist the sliding window to DB or accept the limitation and remove the dead in-memory accumulation code for clarity.
 
-Each is wrapped in individual try/catch blocks. The config threading is correct -- `ctx.config.retention` passes the `RetentionConfig` from `AngelConfig.retention`.
+### 5. Redundant Schema Checks (Performance)
 
-### Do the retention policies make sense architecturally?
-
-**Mostly yes.** The tiered approach (full -> skeletal -> delete for conversation_turns) is well-designed. However:
-
-**Tables MISSING from retention that probably should have it:**
-- `artifact_access_log` -- grows unboundedly. No pruning anywhere.
-- `telemetry` -- grows unboundedly. The data-quality module writes to it but nothing prunes it.
-- `knowledge_gaps` -- resolved gaps are never cleaned up.
-- `temporal_profile` / `action_transitions` -- stale behavioral data persists forever.
-- `checkpoint_meta` -- old checkpoint metadata is never cleaned.
-
-### Is the safety contract for conversation_turns enforced?
-
-**Yes, the angel_processed check is correct.** Both the skeletal tier (line 82-93) and the delete tier (line 97-110) include `EXISTS (SELECT 1 FROM session_events se WHERE se.session_id = s.session_id AND se.event_type = 'angel_processed')`. Sessions without this marker are never touched.
-
-Additionally, `pruneSessionEvents` preserves `angel_processed` events forever (line 239: `AND event_type != 'angel_processed'`), ensuring the safety marker itself is never deleted.
-
-**However**, the FTS desync bug (C1) undermines the data integrity of the skeletal tier.
-
-### Do the cross-project consolidation queries handle edge cases?
-
-**Largely yes, with caveats:**
-- `__global__` scope is correctly excluded from source queries and used as the merge target via `GLOBAL_PROJECT_SCOPE` constant (verified as `'__global__'` in `src/shared/constants.ts:136`)
-- NULL projects: The `decisions` table has `DEFAULT '__global__'` and `learnings` also defaults to `'__global__'`, so NULL projects do not occur in practice. The consolidator's queries use `project != ?` which would correctly exclude NULL (NULL != X is NULL in SQL, which is falsy). Safe.
-- The `propagateLearnings` function correctly double-checks with `fingerprint NOT IN (SELECT fingerprint FROM learnings WHERE project = ?)` before inserting, and uses `INSERT OR IGNORE` as belt-and-suspenders.
-
-### Is the proactive curator's health report actually deliverable?
-
-**Conditionally.** The report is delivered via `sendMessage()` to `session_messages`, targeting the most recently active session. The `message-sender.ts` confirms this inserts into `session_messages` with `delivered_at_epoch IS NULL`. The `UserPromptSubmit` hook reads pending messages (confirmed by `getPendingMessages()` in message-sender.ts). So delivery works **if and only if** there is an active session at report generation time. If not, the report is dropped and retried next tick.
-
-### Are the rate limits appropriate?
-
-**Yes, with one nuance:**
-- 60min retention sweep: Appropriate. Batch-limited to 500 rows/table, so even at full speed it is bounded.
-- 60min cross-project consolidation: Appropriate. Limited to 20 fingerprint groups per run.
-- 120min data quality: Appropriate. The heavier queries (FTS count comparison, orphan detection) justify the longer interval.
-- 24h health report: Appropriate for an informational report.
-- 60min proactive curation (main sweep): Appropriate. The health report's independent 24h rate limit inside `generateHealthReport()` is a good design -- it decouples from the main sweep.
-
-**Nuance**: The cross-project consolidation reuses `sweepIntervalMinutes` from RetentionConfig (same 60min as retention sweep). This means they always run in the same tick. If they should be independent, they need separate interval configs.
-
-### Could any of these operations cause contention with ephemeral CC hooks?
-
-**Low risk, but not zero.** The Angel uses `journal_mode = WAL` and `busy_timeout = 5000` (index.ts:277-278). WAL allows concurrent readers during writes. The 500-row batch limits on DELETE operations keep individual write transactions short. The main contention risk is:
-
-1. **Retention sweep DELETE on conversation_turns** during a hook's INSERT into the same table. WAL handles this -- readers do not block writers. The hook would briefly see slightly stale data, which is acceptable.
-2. **Cross-project consolidation's transaction** wraps multiple DELETEs + INSERTs in `db.transaction()`. This holds a write lock for the duration. With 20 fingerprint groups maximum, this should complete in <100ms.
-3. **No explicit WAL checkpoint** is performed after bulk deletes. SQLite auto-checkpoints at 1000 WAL frames. Large retention sweeps could grow the WAL file, though the 500-row batch limit makes this unlikely.
-
-### Is the phase ordering correct?
-
-**Yes.** The ordering is architecturally sound:
-1. **Retention (4b)** runs first to free space and remove stale data
-2. **Consolidation (4c)** runs second on the cleaned dataset -- no point deduplicating data that is about to be deleted
-3. **Quality (4d)** runs third to fix integrity issues in the surviving data
-4. **Curation (4e)** runs last to promote/decay/report on the clean, consolidated, quality-checked data
-
-This is the correct dependency order.
+- **File:** `src/adapters/shared/lifecycle.ts:167`
+- **Description:** `ensureTickEpochColumn` performs a `PRAGMA table_info` check on every tool call to ensure the V12 migration has added the `last_tick_epoch` column.
+- **Impact:** Adds unnecessary disk I/O to every tool execution; this should be handled once at bootstrap/migration time rather than in the hot path.
+- **Fix:** Cache the check result in a module-level flag to avoid repeated `PRAGMA table_info` calls.
 
 ---
 
-## Architecture Assessment
+## Specific Check Results
 
-### Strengths
+### 1. Are new features wired into the runtime?
 
-1. **Non-throwing contract** is consistently enforced across all 4 modules. Every exported function returns a safe default on error. Every sub-operation is individually wrapped.
-2. **Batch limiting** prevents runaway operations. 500 rows for retention, 20 groups for consolidation, 50 artifacts for stale embedding detection, 10 sessions for re-processing queue.
-3. **Rate limiting** prevents over-eager execution. Each module has its own independently testable rate limit with reset functions for testing.
-4. **Safety invariants** are well-documented in doc comments and enforced in queries (angel_processed guard, importance >= 5 protection in retention, 'summary' entry protection in journal).
-5. **Pure SQL** -- all 4 new modules avoid LLM calls, keeping them fast and deterministic.
-6. **Config threading** is clean. `RetentionConfig` is a well-typed interface with sensible defaults, passed through `AngelConfig.retention`.
+**PASS.** All V12 features (`angel_opinions`, `entity_aliases`, `solution_outcomes`, `session_signals`, `session_messages`) are actively read and written in production paths. No orphaned exports found in the main feature modules.
 
-### Weaknesses
+### 2. Do new DB columns/tables get read AND written?
 
-1. **No tests** for destructive operations is the biggest gap.
-2. **FTS desync** on skeletal pruning is a real correctness bug.
-3. **Unbounded table growth** for `artifact_access_log`, `telemetry`, `knowledge_gaps`, `checkpoint_meta`, and behavioral tables.
-4. **Duplicate digest artifacts** can accumulate from `prepareAwayDigests` without dedup.
+**PASS.** All 27+ tables have active INSERT and SELECT paths. Columns like `stability_class`, `novelty_score`, `transferred_to`, `sender_type`, and `request_id` are all wired into their respective modules.
+
+### 3. Are fire-and-forget patterns appropriate?
+
+**MOSTLY PASS.** Within hook handlers, async operations like `embedArtifact`, `writeCheckpoint`, and `linkArtifactToRelated` are correctly awaited. The Angel process correctly uses background scheduling for its long-lived tasks. The one violation is the unawaited `main()` call at the entry point of each hook (Finding #2).
+
+### 4. Module contract compliance
+
+**PASS.** Callers pass correct arguments to callees. `recordEvent` is synchronous and correctly called without await. `detectContradiction` is synchronous and correctly wrapped in `runHookStep`. `upsertConversationEmbedding` receives the expected argument shape. `matchTriggers` contract is correctly followed.
+
+### 5. Schema consistency
+
+**PASS (100%).** DDL in `schema.ts` matches queries in `migration-steps.ts` and all feature modules. No column name mismatches detected.
+
+### 6. Dependency health
+
+**EXCELLENT.** Strong use of dynamic imports to keep heavy vector/LLM infrastructure optional for low-resource environments. No circular dependencies detected in the reviewed modules. All five Qdrant collections (`claudex_artifacts`, `claudex_patterns`, `claudex_threads`, `claudex_journal`, `claudex_conversations`) are actively used across the codebase.
 
 ---
 
 ## Summary Table
 
-| ID | Severity | File | Issue |
-|----|----------|------|-------|
-| C1 | CRITICAL | retention-sweep.ts / schema.ts | FTS desync: no UPDATE trigger on conversation_turns |
-| H1 | HIGH | retention-sweep.ts:149 | Redundant `importance < 5` clause |
-| H2 | HIGH | (missing) | No test files for 4 new guardian modules |
-| H3 | HIGH | proactive-curator.ts:227,389 | Abandoned/away project queries lack dedup, run every cycle |
-| M1 | MEDIUM | cross-project-consolidator.ts:474 | Mixed seconds/ms rate limit units across modules |
-| M2 | MEDIUM | proactive-curator.ts:347 | Health report silently dropped when no active session |
-| M3 | MEDIUM | cross-project-consolidator.ts:228 | GROUP_CONCAT can truncate with many pattern IDs |
-| M4 | MEDIUM | data-quality.ts:222 | Stale embedding detection is over-aggressive |
-| M5 | MEDIUM | proactive-curator.ts:246 | Archive packs importance-5 artifacts |
-| L1 | LOW | retention-sweep.ts:171 | Hardcoded 90-day ancient artifact cutoff |
-| L2 | LOW | cross-project-consolidator.ts:149 | Decisions dedup loses cross-project session links |
-| L3 | LOW | proactive-curator.ts:145 | Contradiction dedup uses formatted string, not ID pair |
-| L4 | LOW | (all modules) | Rate limits reset on process restart |
+| ID | Severity | File(s) | Issue |
+|----|----------|---------|-------|
+| 1 | HIGH | thread-tracker.ts, qdrant-client.ts | Qdrant initialization race -- permanent SQLite fallback in ephemeral hooks |
+| 2 | MEDIUM | cc-hooks/*.ts | Unawaited `main()` entry point in all 6 ephemeral hooks |
+| 3 | MEDIUM | post-tool-use.ts, thread-tracker.ts | ThreadTracker in-memory state lost between ephemeral hook invocations |
+| 4 | LOW | topic-shift.ts | TopicShiftDetector sliding window non-functional in ephemeral hooks |
+| 5 | LOW | lifecycle.ts:167 | Redundant `PRAGMA table_info` schema check on every tool call |
 
 ---
 
-*Generated by Crux (Opus 4.6 1M) -- Gemini-style architectural review*
+## Architectural Strengths
+
+1. **Plain Functions + Direct DB** -- no ORM, no framework abstraction layers. Every module talks directly to SQLite with prepared statements.
+2. **V12 schema is fully wired** -- every table has active read AND write paths. No orphaned schema elements.
+3. **Dual-write consistency** -- SQLite is truth, Qdrant is acceleration. The codebase correctly handles Qdrant unavailability by falling back to FTS5.
+4. **Non-throwing contracts** -- Angel modules consistently return safe defaults on error. Every sub-operation is individually wrapped.
+5. **Batch limiting** -- destructive operations are bounded (500 rows/table for retention, 20 groups for consolidation).
+6. **Dynamic imports** -- heavy infrastructure (Qdrant, Ollama, CUDA reranker) is lazy-loaded, keeping cold starts fast.
+7. **Module contract compliance is strong** -- callers consistently pass what callees expect.
+
+---
+
+## Key Recommendation
+
+The highest-impact fix is **Finding #1** (Qdrant initialization race). This single issue degrades retrieval quality for every CC session by silently falling back to FTS5 instead of vector search. The fix is straightforward: eagerly initialize the Qdrant client early in the hook lifecycle.
+
+---
+
+*Generated by Gemini CLI (2.5 Pro) -- full codebase architectural review*

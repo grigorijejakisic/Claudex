@@ -92,6 +92,7 @@ export function getUnconsolidatedObservations(
  */
 export async function buildClusters(
   observations: ObservationRow[],
+  db?: Database,
 ): Promise<ObservationRow[][]> {
   try {
     // Dynamic imports to avoid circular deps
@@ -113,6 +114,27 @@ export async function buildClusters(
     const batchIds = new Set(observations.map(o => o.id));
     const adjacency = new Map<number, Set<number>>();
 
+    // Pre-build artifact_id → observation_id mapping for batch observations.
+    // Qdrant stores artifact_id (artifacts table PK) in payload. We need observation IDs.
+    // artifacts.artifact_ref stores the observation ID as text for type='observation'.
+    // Scoped to batch IDs to avoid loading the entire artifacts table.
+    const artifactToObsId = new Map<number, number>();
+    if (db && batchIds.size > 0) {
+      try {
+        // Look up artifacts whose artifact_ref matches a batch observation ID
+        const placeholders = [...batchIds].map(() => '?').join(',');
+        const rows = db.prepare(
+          `SELECT id, CAST(artifact_ref AS INTEGER) as obs_id
+           FROM artifacts
+           WHERE artifact_type = 'observation' AND artifact_ref IS NOT NULL
+             AND CAST(artifact_ref AS INTEGER) IN (${placeholders})`
+        ).all(...batchIds) as Array<{ id: number; obs_id: number }>;
+        for (const row of rows) {
+          if (row.obs_id > 0) artifactToObsId.set(row.id, row.obs_id);
+        }
+      } catch { /* non-fatal — clustering degrades gracefully */ }
+    }
+
     for (const obs of observations) {
       const embedding = embeddings.get(obs.id);
       if (!embedding || !obs.project) continue;
@@ -127,13 +149,13 @@ export async function buildClusters(
       for (const r of results) {
         if (r.score < CLUSTER_COSINE_THRESHOLD) continue;
 
-        // Extract the observation ID from the artifact payload
-        // Qdrant payload uses artifact_id (number), not artifact_ref
-        const candidateId = (r.payload?.artifact_id as number) ?? 0;
+        // Map artifact_id back to observation_id via artifact_ref
+        const artId = (r.payload?.artifact_id as number) ?? 0;
+        const obsId = artifactToObsId.get(artId) ?? 0;
 
         // Only cluster with observations in this batch
-        if (candidateId > 0 && candidateId !== obs.id && batchIds.has(candidateId)) {
-          neighbors.add(candidateId);
+        if (obsId > 0 && obsId !== obs.id && batchIds.has(obsId)) {
+          neighbors.add(obsId);
         }
       }
 
@@ -408,7 +430,7 @@ export async function consolidateObservationBatch(
     }
 
     // 2-3. Build clusters
-    const clusters = await buildClusters(observations);
+    const clusters = await buildClusters(observations, db);
     result.clusters = clusters.length;
 
     if (clusters.length === 0) {

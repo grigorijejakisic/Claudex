@@ -200,15 +200,16 @@ const main = wrapHook('SessionStart', async (input, ctx) => {
     // Cross-project cleanup prevents stale sessions from accumulating (e.g. Oracle/Nexus
     // sessions that were never closed because the user switched projects).
     const orphans = cachedPrepare(ctx.db,
-      `SELECT session_id FROM sessions WHERE status = 'active' AND created_at_epoch < ? AND session_id != ?`
-    ).all(cutoff, input.session_id) as Array<{ session_id: string }>;
+      `SELECT session_id, project FROM sessions WHERE status = 'active' AND created_at_epoch < ? AND session_id != ?`
+    ).all(cutoff, input.session_id) as Array<{ session_id: string; project: string | null }>;
 
     for (const orphan of orphans) {
       // Generate recall metadata BEFORE closing — captures user framings,
       // topic chain, decisions as searchable recall aliases
       try {
+        const orphanProject = orphan.project || ctx.project;
         const events = getSessionEvents(ctx.db, orphan.session_id);
-        captureRecallFlowEntry(ctx.db, orphan.session_id, ctx.project, events);
+        captureRecallFlowEntry(ctx.db, orphan.session_id, orphanProject, events);
         const summary = synthesizeSessionSummary(events);
         if (summary) saveSessionSummary(ctx.db, orphan.session_id, summary);
       } catch { /* non-fatal per orphan */ }

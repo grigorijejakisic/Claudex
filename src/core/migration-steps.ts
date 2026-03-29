@@ -1151,4 +1151,42 @@ export function upgradeV2SchemaInPlace(db: Database): void {
   try {
     db.exec("UPDATE pressure_scores SET temperature = 'COLD' WHERE temperature NOT IN ('HOT', 'COLD')");
   } catch { /* table may not exist */ }
+
+  // Repair: sessions CHECK constraint missing 'transferred' (introduced in V12 session-transfer)
+  // Historical migrations rebuilt sessions without 'transferred'; schema.ts has it for fresh DBs.
+  // Only runs on V12+ databases that already have name/transferred_to columns.
+  try {
+    const sessCols = new Set((db.pragma('table_info(sessions)') as Array<{ name: string }>).map(c => c.name));
+    if (!sessCols.has('name') || !sessCols.has('transferred_to')) {
+      // Pre-V12 DB — skip repair; V12 migration will add columns properly
+    } else {
+      const ddl = db.prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name='sessions'").get() as { sql: string } | undefined;
+      if (ddl?.sql && ddl.sql.includes('CHECK') && !ddl.sql.includes('transferred')) {
+        db.exec('BEGIN');
+        db.exec(`CREATE TABLE sessions_repair (
+          session_id TEXT PRIMARY KEY,
+          scope TEXT NOT NULL DEFAULT 'unknown',
+          project TEXT NOT NULL DEFAULT '__global__',
+          cwd TEXT NOT NULL DEFAULT '.',
+          source TEXT,
+          status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'completed', 'failed', 'transferred')),
+          observation_count INTEGER NOT NULL DEFAULT 0,
+          created_at_epoch INTEGER NOT NULL DEFAULT (unixepoch()),
+          ended_at_epoch INTEGER,
+          adapter TEXT DEFAULT 'unknown',
+          session_summary TEXT,
+          name TEXT,
+          transferred_to TEXT
+        )`);
+        db.exec('INSERT INTO sessions_repair SELECT session_id, scope, project, cwd, source, status, observation_count, created_at_epoch, ended_at_epoch, adapter, session_summary, name, transferred_to FROM sessions');
+        db.exec('DROP TABLE sessions');
+        db.exec('ALTER TABLE sessions_repair RENAME TO sessions');
+        db.exec('CREATE INDEX IF NOT EXISTS idx_sessions_project ON sessions(project)');
+        db.exec('CREATE INDEX IF NOT EXISTS idx_sessions_status ON sessions(status)');
+        db.exec('CREATE INDEX IF NOT EXISTS idx_sessions_active ON sessions(status, created_at_epoch DESC)');
+        db.exec('CREATE INDEX IF NOT EXISTS idx_sessions_name ON sessions(name)');
+        db.exec('COMMIT');
+      }
+    }
+  } catch { /* non-fatal — CHECK repair can be retried */ }
 }

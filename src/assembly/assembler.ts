@@ -584,10 +584,14 @@ export function assembleFullContext(params: FullAssemblyParams): InjectPayload {
         if (predSection) {
           const cost = estimateTokens(predSection);
           // Budget cap: max 2000 tokens for predicted context
-          const predBudget = Math.min(cost, 2000);
-          if (predBudget <= budget) {
-            sections.push(predSection);
-            budget -= predBudget;
+          const cappedCost = Math.min(cost, 2000);
+          if (cappedCost <= budget) {
+            // Truncate section if over budget cap to prevent budget leak
+            const injected = cost > 2000
+              ? predSection.slice(0, Math.floor(predSection.length * (2000 / cost)))
+              : predSection;
+            sections.push(injected);
+            budget -= Math.min(estimateTokens(injected), 2000);
             sources.push('predicted_context');
           }
         }

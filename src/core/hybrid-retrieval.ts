@@ -592,9 +592,9 @@ export async function hybridSearchAsync(
       if (timeRange) {
         temporalResults = cachedPrepare(db,
           `SELECT * FROM artifacts
-           WHERE project = ? AND status = 'active'
-             AND created_at_epoch >= ? AND created_at_epoch <= ?
-           ORDER BY importance DESC, created_at_epoch DESC
+           WHERE project = ? AND state = 'active'
+             AND timestamp_epoch >= ? AND timestamp_epoch <= ?
+           ORDER BY importance DESC, timestamp_epoch DESC
            LIMIT ?`
         ).all(project, timeRange.start, timeRange.end, limit) as ArtifactRow[];
       }
@@ -713,7 +713,7 @@ export async function hybridSearchAsync(
           ((c.summary ?? '') + ' ' + (c.content ?? '')).substring(0, 300)
         );
 
-        // Try cross-encoder service first (port 7439)
+        // Try cross-encoder reranker service (port 7440, CUDA)
         let reranked = false;
         try {
           const ceResponse = await fetch('http://127.0.0.1:7440/rerank', {

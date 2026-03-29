@@ -461,10 +461,20 @@ export async function findSimilarThreadsAsync(
   excludeSessionId?: string,
 ): Promise<SimilarThread[]> {
   try {
-    const { isQdrantAvailable, searchThreads } = await import('../embeddings/qdrant-client.js');
-    if (isQdrantAvailable()) {
-      const embedding = Array.from(queryEmbedding);
-      const qdrantResults = await searchThreads(embedding, project, 10);
+    // Initialize Qdrant availability on first call (resolves init race in ephemeral hooks).
+    // getQdrantClient() has a 30s cache — subsequent calls within the same process are free.
+    // If Qdrant is down, getQdrantClient() returns null quickly (cached after first 3s timeout).
+    const { getQdrantClient, isQdrantAvailable, searchThreads } = await import('../embeddings/qdrant-client.js');
+    if (!isQdrantAvailable()) {
+      // First call in this process: trigger the health check
+      await getQdrantClient();
+      // After init, re-check — if still unavailable, skip to SQLite immediately
+      if (!isQdrantAvailable()) {
+        return findSimilarThreadsSQLite(db, queryEmbedding, project, threshold, excludeSessionId);
+      }
+    }
+    const embedding = Array.from(queryEmbedding);
+    const qdrantResults = await searchThreads(embedding, project, 10);
 
       const results: SimilarThread[] = [];
       for (const r of qdrantResults) {
@@ -491,8 +501,7 @@ export async function findSimilarThreadsAsync(
         });
       }
 
-      if (results.length > 0) return results.slice(0, 3);
-    }
+    if (results.length > 0) return results.slice(0, 3);
   } catch { /* Qdrant unavailable — fall through to SQLite */ }
 
   return findSimilarThreadsSQLite(db, queryEmbedding, project, threshold, excludeSessionId);

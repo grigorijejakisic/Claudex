@@ -190,7 +190,8 @@ server.tool(
         const vectorConvs = await searchConversations(embedding, proj, 3);
         const existingIds = new Set(conversationResults.map(c => c.id));
         for (const vc of vectorConvs) {
-          if (existingIds.has(vc.id as number)) continue; // skip FTS5 duplicates
+          if (existingIds.has(vc.id as number)) continue;
+          existingIds.add(vc.id as number); // track to prevent duplicates within vector results
           const payload = vc.payload ?? {};
           conversationResults.push({
             id: vc.id as number,
@@ -400,8 +401,8 @@ server.tool(
       return { content: [{ type: 'text', text: JSON.stringify(events, null, 2) }] };
     }
 
-    // When no session_id given, find latest active session.
-    // Try project-scoped first, then fall back to latest across all projects.
+    // When no session_id given, find latest session for project (any status).
+    // Fall back to latest active session across all projects.
     const proj = project ?? defaultProject;
     let session = cachedPrepare(getDb(),
       `SELECT session_id FROM sessions WHERE project = ? ORDER BY created_at_epoch DESC LIMIT 1`
@@ -521,7 +522,10 @@ server.tool(
     if (action === 'signal') {
       if (!signal_type || !target) return { content: [{ type: 'text', text: JSON.stringify({ error: 'signal_type and target are required' }) }] };
       const { createSignal } = await import('../core/session-signals.js');
-      const id = createSignal(getDb(), sessionId, defaultProject, signal_type, target, detail);
+      // Resolve project from session if available, fallback to default
+      const sessionRow = cachedPrepare(getDb(), 'SELECT project FROM sessions WHERE session_id = ?').get(sessionId) as { project: string } | undefined;
+      const signalProject = sessionRow?.project || defaultProject;
+      const id = createSignal(getDb(), sessionId, signalProject, signal_type, target, detail);
       return { content: [{ type: 'text', text: JSON.stringify({ created: id > 0, signal_id: id, signal_type, target }) }] };
     }
 

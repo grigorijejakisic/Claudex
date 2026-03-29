@@ -27,10 +27,14 @@ import {
 
 let _provider: EmbeddingProvider | null = null;
 let _providerChecked = false;
+let _providerCheckTime = 0;
+const PROVIDER_RECHECK_MS = 60_000; // Re-check availability every 60s if unavailable
 
 /**
  * Get the shared EmbeddingProvider instance. Returns null if embeddings
- * are unavailable (Ollama not running). Caches result.
+ * are unavailable (Ollama not running). Caches result with TTL re-check
+ * so that a temporarily-down Ollama doesn't permanently disable embeddings
+ * in long-lived processes (Angel).
  * Non-throwing.
  */
 export async function getEmbeddingProvider(config?: {
@@ -38,7 +42,11 @@ export async function getEmbeddingProvider(config?: {
   model?: string;
 }): Promise<EmbeddingProvider | null> {
   try {
-    if (_providerChecked && _provider === null) return null;
+    // If previously unavailable, re-check after TTL expires
+    if (_providerChecked && _provider === null) {
+      if (Date.now() - _providerCheckTime < PROVIDER_RECHECK_MS) return null;
+      _providerChecked = false; // TTL expired — re-check
+    }
 
     if (!_provider) {
       _provider = new EmbeddingProvider({
@@ -50,6 +58,7 @@ export async function getEmbeddingProvider(config?: {
     if (!_providerChecked) {
       const ok = await _provider.isAvailable();
       _providerChecked = true;
+      _providerCheckTime = Date.now();
       if (!ok) {
         _provider = null;
         return null;
@@ -59,6 +68,7 @@ export async function getEmbeddingProvider(config?: {
     return _provider;
   } catch {
     _providerChecked = true;
+    _providerCheckTime = Date.now();
     _provider = null;
     return null;
   }
