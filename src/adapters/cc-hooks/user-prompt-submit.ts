@@ -242,9 +242,12 @@ const main = wrapHook('UserPromptSubmit', async (input, ctx) => {
   // Correction signal detection — flag the turn for Stop hook extraction.
   // Pattern matching and injection is handled exclusively by the assembler;
   // the hook only detects corrections to avoid double injection and inflated counts.
+  // Strip system-injected tags before detection to prevent false positives
+  // from <task-notification>, <system-reminder>, <experience-data> content.
   if (prompt) {
     try {
-      const correctionFlagged = detectCorrectionSignal(prompt);
+      const userText = prompt.replace(/<(?:task-notification|system-reminder|experience-data|local-command-caveat|command-message|command-name|command-args|local-command-stdout|file-content)[^>]*>[\s\S]*?<\/(?:task-notification|system-reminder|experience-data|local-command-caveat|command-message|command-name|command-args|local-command-stdout|file-content)>/gi, '').trim();
+      const correctionFlagged = detectCorrectionSignal(userText);
       if (correctionFlagged) {
         setExperienceFlags(ctx.db, input.session_id, {
           correction_flagged: true,
