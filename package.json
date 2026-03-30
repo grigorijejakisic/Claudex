@@ -12,7 +12,6 @@
     "recall": "node dist/cli/recall.cjs"
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.80.0",
     "@modelcontextprotocol/sdk": "^1.27.1",
     "@qdrant/js-client-rest": "^1.17.0",
     "better-sqlite3": "^11.7.0",

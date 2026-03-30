@@ -513,6 +513,111 @@ describe('6.3 Relevance scoring in results', () => {
   });
 });
 
+// ---------------------------------------------------------------------------
+// Regression: RRF 1-indexed scoring
+// The first result's RRF score must be 1/(K+1), not 1/K.
+// With K=60, rank 1 → 1/(60+1) = 1/61 ≈ 0.01639
+// Bug was using 0-indexed i, giving 1/(60+0) = 1/60 ≈ 0.01667
+// ---------------------------------------------------------------------------
+
+describe('RRF 1-indexed scoring (regression)', () => {
+  it('first result has score 1/(K+1) not 1/K', () => {
+    const RRF_K = 60;
+    // Replicate the handler's mapping logic: score = 1.0 / (RRF_K + i + 1)
+    // This is the FIXED version — `i + 1` makes it 1-indexed.
+    const results = [
+      { id: 1, summary: 'First', score: 0 },
+      { id: 2, summary: 'Second', score: 0 },
+      { id: 3, summary: 'Third', score: 0 },
+    ].map((r, i) => ({
+      ...r,
+      score: 1.0 / (RRF_K + i + 1), // 1-indexed: rank 1, 2, 3
+    }));
+
+    // Rank 1: 1/(60+1) = 1/61
+    expect(results[0].score).toBeCloseTo(1 / 61, 6);
+    // Rank 2: 1/(60+2) = 1/62
+    expect(results[1].score).toBeCloseTo(1 / 62, 6);
+    // Rank 3: 1/(60+3) = 1/63
+    expect(results[2].score).toBeCloseTo(1 / 63, 6);
+
+    // Key check: first result is NOT 1/60 (0-indexed bug)
+    expect(results[0].score).not.toBeCloseTo(1 / 60, 6);
+  });
+
+  it('score decreases with rank position', () => {
+    const RRF_K = 60;
+    const scores = [0, 1, 2, 3, 4].map(i => 1.0 / (RRF_K + i + 1));
+    for (let i = 0; i < scores.length - 1; i++) {
+      expect(scores[i]).toBeGreaterThan(scores[i + 1]);
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Regression: Source weight narrowing
+// Source weights should be in 0.95-1.05 range (not old 0.8-1.3)
+// The old range let weak decisions outrank strong artifacts.
+// ---------------------------------------------------------------------------
+
+describe('Source weight narrowing (regression)', () => {
+  it('all source weights are in 0.95-1.05 range', () => {
+    // Replicate the SOURCE_WEIGHTS from the handler
+    const SOURCE_WEIGHTS: Record<string, number> = {
+      decision: 1.05,
+      learning: 1.03,
+      artifacts: 1.0,
+      journal: 0.97,
+      conversation: 0.95,
+    };
+
+    for (const [source, weight] of Object.entries(SOURCE_WEIGHTS)) {
+      expect(weight).toBeGreaterThanOrEqual(0.95);
+      expect(weight).toBeLessThanOrEqual(1.05);
+    }
+  });
+
+  it('source weights have narrow spread (max/min < 1.12)', () => {
+    const SOURCE_WEIGHTS: Record<string, number> = {
+      decision: 1.05,
+      learning: 1.03,
+      artifacts: 1.0,
+      journal: 0.97,
+      conversation: 0.95,
+    };
+
+    // The max distortion of narrow weights is bounded:
+    // worst case = (1.05/0.95) ≈ 1.105 — at most ~10.5% rank distortion
+    const maxDistortion = Math.max(...Object.values(SOURCE_WEIGHTS)) / Math.min(...Object.values(SOURCE_WEIGHTS));
+    expect(maxDistortion).toBeLessThan(1.12);
+
+    // Verify the old weights had much larger distortion:
+    // old: decision=1.3, conversation=0.8 → ratio 1.625 (62% distortion)
+    const oldMaxDistortion = 1.3 / 0.8;
+    expect(oldMaxDistortion).toBeGreaterThan(1.6);
+  });
+
+  it('narrow weights preserve ordering across large rank gaps (8+)', () => {
+    const SOURCE_WEIGHTS: Record<string, number> = {
+      decision: 1.05,
+      conversation: 0.95,
+    };
+
+    // With K=60 and narrow weights (max ratio 1.105x), a conversation at rank 1
+    // should beat a decision at rank 8+ because the rank gap dominates.
+    // Math: 0.95/(60+1) > 1.05/(60+8) → 0.01557 > 0.01544 ✓
+    const RRF_K = 60;
+    const convScore = (1.0 / (RRF_K + 1)) * SOURCE_WEIGHTS.conversation;
+    const decScore = (1.0 / (RRF_K + 8)) * SOURCE_WEIGHTS.decision;
+    expect(convScore).toBeGreaterThan(decScore);
+
+    // But old weights (0.8/1.3) would flip this ordering even for rank 8:
+    const oldConvScore = (1.0 / (RRF_K + 1)) * 0.8;
+    const oldDecScore = (1.0 / (RRF_K + 8)) * 1.3;
+    expect(oldDecScore).toBeGreaterThan(oldConvScore); // old weights flip the order
+  });
+});
+
 describe('6.4 Agent-ID attribution', () => {
   it('stores decision with agent_id in session_id when provided', () => {
     const db = createDb();

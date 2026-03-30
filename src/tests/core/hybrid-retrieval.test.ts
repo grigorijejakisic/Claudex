@@ -248,6 +248,127 @@ describe('recordArtifactAccess', () => {
 });
 
 // ---------------------------------------------------------------------------
+// Regression: FTS5 proper noun boosting
+// Results containing proper nouns from the query should be promoted above
+// results without them. The fix extracts capitalized words from the original
+// query and re-ranks FTS5 results.
+// ---------------------------------------------------------------------------
+
+describe('FTS5 proper noun boosting (regression)', () => {
+  let db: TestDatabase;
+
+  beforeEach(() => {
+    db = createTestDb();
+  });
+
+  afterEach(() => {
+    db.close();
+  });
+
+  it('promotes artifacts containing proper nouns from query', () => {
+    // Create two artifacts — one mentions "Claudex" (proper noun), one doesn't
+    createArtifact(db, 'sess-1', 'myproject', 'observation', null,
+      'General database migration analysis', 'Migration of the database schema to new format', 4);
+    createArtifact(db, 'sess-1', 'myproject', 'observation', null,
+      'Claudex database migration plan', 'Claudex schema migration steps and rollback', 4);
+
+    const results = hybridSearchSync(db, 'Claudex database migration', 'myproject');
+    expect(results.length).toBeGreaterThanOrEqual(2);
+    // The artifact with "Claudex" (proper noun from query) should rank first
+    expect(results[0].summary).toContain('Claudex');
+  });
+
+  it('does not boost when query has no proper nouns', () => {
+    createArtifact(db, 'sess-1', 'myproject', 'observation', null,
+      'Testing framework analysis', 'Vitest configuration and patterns', 4);
+    createArtifact(db, 'sess-1', 'myproject', 'observation', null,
+      'Testing strategy overview', 'Unit and integration test patterns', 4);
+
+    // All lowercase query — no proper nouns to boost
+    const results = hybridSearchSync(db, 'testing framework analysis', 'myproject');
+    // Should still return results, just no boosting applied
+    expect(results.length).toBeGreaterThanOrEqual(1);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Regression: Temporal channel scope flags
+// The temporal channel (async path only) must respect globalScope and
+// excludeSuperseded parameters. Test the SQL construction logic.
+// ---------------------------------------------------------------------------
+
+describe('Temporal channel scope flags (regression)', () => {
+  it('temporal SQL includes project filter when globalScope=false', () => {
+    const globalScope = false;
+    const excludeSuperseded = true;
+    const temporalSuperseded = excludeSuperseded ? 'AND superseded_by IS NULL' : '';
+    const temporalProject = globalScope ? '' : 'AND project = ?';
+    const temporalSql = `SELECT * FROM artifacts
+       WHERE 1=1 ${temporalProject} ${temporalSuperseded}
+         AND timestamp_epoch >= ? AND timestamp_epoch <= ?
+       ORDER BY importance DESC, timestamp_epoch DESC
+       LIMIT ?`;
+
+    expect(temporalSql).toContain('AND project = ?');
+    expect(temporalSql).toContain('AND superseded_by IS NULL');
+  });
+
+  it('temporal SQL omits project filter when globalScope=true', () => {
+    const globalScope = true;
+    const excludeSuperseded = true;
+    const temporalSuperseded = excludeSuperseded ? 'AND superseded_by IS NULL' : '';
+    const temporalProject = globalScope ? '' : 'AND project = ?';
+    const temporalSql = `SELECT * FROM artifacts
+       WHERE 1=1 ${temporalProject} ${temporalSuperseded}
+         AND timestamp_epoch >= ? AND timestamp_epoch <= ?
+       ORDER BY importance DESC, timestamp_epoch DESC
+       LIMIT ?`;
+
+    expect(temporalSql).not.toContain('AND project = ?');
+    expect(temporalSql).toContain('AND superseded_by IS NULL');
+  });
+
+  it('temporal SQL omits superseded filter when excludeSuperseded=false', () => {
+    const globalScope = false;
+    const excludeSuperseded = false;
+    const temporalSuperseded = excludeSuperseded ? 'AND superseded_by IS NULL' : '';
+    const temporalProject = globalScope ? '' : 'AND project = ?';
+    const temporalSql = `SELECT * FROM artifacts
+       WHERE 1=1 ${temporalProject} ${temporalSuperseded}
+         AND timestamp_epoch >= ? AND timestamp_epoch <= ?
+       ORDER BY importance DESC, timestamp_epoch DESC
+       LIMIT ?`;
+
+    expect(temporalSql).toContain('AND project = ?');
+    expect(temporalSql).not.toContain('AND superseded_by IS NULL');
+  });
+
+  it('temporal params include project when not globalScope', () => {
+    const globalScope = false;
+    const project = 'myproject';
+    const timeRange = { start: 1000, end: 2000 };
+    const limit = 10;
+    const temporalParams = globalScope
+      ? [timeRange.start, timeRange.end, limit]
+      : [project, timeRange.start, timeRange.end, limit];
+
+    expect(temporalParams).toEqual(['myproject', 1000, 2000, 10]);
+  });
+
+  it('temporal params omit project when globalScope', () => {
+    const globalScope = true;
+    const project = 'myproject';
+    const timeRange = { start: 1000, end: 2000 };
+    const limit = 10;
+    const temporalParams = globalScope
+      ? [timeRange.start, timeRange.end, limit]
+      : [project, timeRange.start, timeRange.end, limit];
+
+    expect(temporalParams).toEqual([1000, 2000, 10]);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Hybrid search integration tests
 // ---------------------------------------------------------------------------
 

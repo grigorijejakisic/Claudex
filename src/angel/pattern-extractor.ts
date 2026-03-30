@@ -6,7 +6,7 @@
  * multiple turns, understand the context of why something was corrected, and
  * create high-confidence patterns.
  *
- * Uses Claude API for analysis — the Angel has time and the user has MAX subscription.
+ * Uses CliProxy (local HTTP proxy) or Ollama for LLM analysis.
  *
  * Non-throwing — returns empty results on error.
  */
@@ -238,8 +238,6 @@ function findCrossSessionDirectives(
 interface SessionOutcome {
   /** Total corrections detected in this session */
   correctionCount: number;
-  /** Whether session completed successfully (no crash/abandon) */
-  completedSuccessfully: boolean;
   /** Number of test runs that passed */
   testsPassedCount: number;
   /** Number of test runs that failed */
@@ -258,12 +256,11 @@ function measureSessionOutcome(db: Database, sessionId: string): SessionOutcome 
        WHERE session_id = ? AND event_type = 'correction_detected'`
     ).get(sessionId) as { c: number };
 
-    // Session completion status
+    // Session timing
     const session = cachedPrepare(db,
-      `SELECT status, created_at_epoch, ended_at_epoch FROM sessions WHERE session_id = ?`
-    ).get(sessionId) as { status: string; created_at_epoch: number; ended_at_epoch: number | null } | undefined;
+      `SELECT created_at_epoch, ended_at_epoch FROM sessions WHERE session_id = ?`
+    ).get(sessionId) as { created_at_epoch: number; ended_at_epoch: number | null } | undefined;
 
-    const completedSuccessfully = session?.status === 'completed';
     const duration = session?.ended_at_epoch && session?.created_at_epoch
       ? (session.ended_at_epoch - session.created_at_epoch) / 60
       : 0;
@@ -289,9 +286,9 @@ function measureSessionOutcome(db: Database, sessionId: string): SessionOutcome 
       lateCorrections = lateCount > corrections.c / 2;
     }
 
-    return { correctionCount: corrections.c, completedSuccessfully, testsPassedCount, testsFailedCount, durationMinutes: duration, lateCorrections };
+    return { correctionCount: corrections.c, testsPassedCount, testsFailedCount, durationMinutes: duration, lateCorrections };
   } catch {
-    return { correctionCount: 0, completedSuccessfully: true, testsPassedCount: 0, testsFailedCount: 0, durationMinutes: 0, lateCorrections: false };
+    return { correctionCount: 0, testsPassedCount: 0, testsFailedCount: 0, durationMinutes: 0, lateCorrections: false };
   }
 }
 
@@ -359,11 +356,12 @@ function reviewCandidatePatterns(
       if (candidate.severity !== 'critical') continue;
     }
 
-    // Gate 4: Incomplete sessions produce lower-confidence patterns
-    if (!outcome.completedSuccessfully && candidate.severity !== 'critical') {
-      // Session crashed/abandoned — downgrade severity since correction may not have been validated
-      candidate.severity = candidate.severity === 'important' ? 'minor' : candidate.severity;
-    }
+    // Gate 4 removed: completedSuccessfully is not a useful signal for pattern quality.
+    // The pipeline (getUnprocessedSessions) only feeds completed sessions, making this
+    // gate dead code. Even if expanded to non-completed sessions, downgrading severity
+    // for incomplete sessions would suppress exactly the corrections that matter most —
+    // user frustration strong enough to abandon a session often indicates critical patterns.
+    // Quality is better handled by Gates 1-3 (dedup, evidence, short-session bar).
 
     reviewed.push(candidate);
   }
@@ -387,8 +385,6 @@ export async function extractPatternsFromSession(
   db: Database,
   sessionId: string,
   project: string,
-  _client?: unknown,
-  _model?: string,
   maxPatterns: number = 5,
   localModel: string = 'llama3.2',
 ): Promise<{ patternsCreated: number; summary: string }> {
@@ -415,14 +411,12 @@ export async function extractPatternsFromSession(
     const enrichedTranscript = directiveSection + transcript;
 
     // Call LLM for pattern extraction
-    // Priority: CliProxy (Sonnet) → Anthropic API → Ollama fallback
+    // Priority: CliProxy (Sonnet) → Ollama cloud → Ollama local
     // Never use Claude CLI subprocess — it triggers hooks and creates phantom sessions.
     const userPrompt = `Analyze this session transcript for correction and directive patterns:\n\n${enrichedTranscript}`;
     let responseText = '';
 
     // Priority 1: CliProxy (Sonnet via local proxy — best quality for directive detection)
-    // Note: Angel's Anthropic SDK client already points to CliProxy (baseURL: 127.0.0.1:8317),
-    // so we use the direct fetch for cleaner control over model selection.
     try {
       responseText = await callCliProxy(EXTRACTION_SYSTEM_PROMPT, userPrompt);
     } catch { /* CliProxy unavailable — fall through to Ollama cloud */ }

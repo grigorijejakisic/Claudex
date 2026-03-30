@@ -385,7 +385,7 @@ export function determineActualIntent(db: Database, sessionId: string): IntentTy
     // Without this filter, meta events (intent_classification, compaction, etc.) all fall into
     // the 'continuation' bucket and then intent_classification events get double-counted below.
     const META_EVENTS = ['intent_prediction', 'intent_prediction_accuracy', 'intent_classification',
-      'session_success_bonus', 'compaction', 'angel_processed'];
+      'session_success_bonus', 'compaction', 'angel_processed', 'correction_detected', 'memrl_q_update'];
     const counts = cachedPrepare(db,
       `SELECT event_type, COUNT(*) as cnt FROM session_events
        WHERE session_id = ?

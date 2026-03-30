@@ -13,8 +13,6 @@
  * Non-throwing throughout.
  */
 
-import type Anthropic from '@anthropic-ai/sdk';
-import type { TextBlock } from '@anthropic-ai/sdk/resources/messages/messages.js';
 import type { Database } from 'better-sqlite3';
 import { cachedPrepare } from '../core/stmt-cache.js';
 import { ulid } from 'ulid';
@@ -102,7 +100,6 @@ function getExistingSummary(
  */
 export async function generateEntitySummaries(
   db: Database,
-  client: Anthropic | null,
   model: string,
 ): Promise<EntitySummaryResult> {
   const result: EntitySummaryResult = { entities_summarized: 0, entities_updated: 0 };
@@ -132,27 +129,35 @@ export async function generateEntitySummaries(
 
         const trend = computeTrend(entity.earliest_epoch, entity.latest_epoch, entity.mention_count);
 
-        // Try LLM synthesis
+        // Try LLM synthesis via CliProxy
         let summary = '';
-        if (client) {
-          try {
-            const evidenceText = evidence.map(e =>
-              `[${e.project}] ${e.action}: ${(e.detail ?? '').substring(0, 100)}`
-            ).join('\n');
+        try {
+          const evidenceText = evidence.map(e =>
+            `[${e.project}] ${e.action}: ${(e.detail ?? '').substring(0, 100)}`
+          ).join('\n');
 
-            const resp = await client.messages.create({
+          const resp = await fetch('http://127.0.0.1:8317/v1/chat/completions', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': 'Bearer cliproxy-no-key-needed',
+            },
+            body: JSON.stringify({
               model,
-              max_tokens: 200,
               messages: [{
                 role: 'user',
                 content: `Summarize this entity in 2-3 sentences based on the evidence. Entity: "${entity.entity_name}"\nEvidence:\n${evidenceText}\n\nOutput only the summary.`,
               }],
-            });
-            summary = resp.content
-              .filter((b): b is TextBlock => b.type === 'text')
-              .map(b => b.text).join('');
-          } catch { /* LLM failed — use template */ }
-        }
+              max_tokens: 200,
+              temperature: 0,
+            }),
+            signal: AbortSignal.timeout(30000),
+          });
+          if (resp.ok) {
+            const data = await resp.json() as { choices?: Array<{ message?: { content?: string } }> };
+            summary = (data.choices?.[0]?.message?.content ?? '').trim();
+          }
+        } catch { /* LLM failed — use template */ }
 
         if (!summary) {
           summary = `${entity.entity_name}: mentioned in ${entity.session_count} sessions across projects ${entity.projects}. Trend: ${trend}.`;

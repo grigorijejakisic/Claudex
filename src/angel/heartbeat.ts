@@ -24,8 +24,6 @@
  * Non-throwing — individual tick failures don't kill the loop.
  */
 
-import type Anthropic from '@anthropic-ai/sdk';
-import type { TextBlock } from '@anthropic-ai/sdk/resources/messages/messages.js';
 import type { Database } from 'better-sqlite3';
 import { cachedPrepare } from '../core/stmt-cache.js';
 import type { AngelConfig } from './types.js';
@@ -46,7 +44,6 @@ import { captureRecallFlowEntry } from '../adapters/shared/lifecycle.js';
 
 export interface HeartbeatContext {
   db: Database;
-  client: Anthropic;
   config: AngelConfig;
 }
 
@@ -182,8 +179,6 @@ export async function heartbeatTick(ctx: HeartbeatContext): Promise<TickResult> 
           ctx.db,
           session.session_id,
           session.project,
-          undefined,
-          undefined,
           ctx.config.maxPatternsPerSession,
           ctx.config.localModel,
         );
@@ -560,7 +555,7 @@ export async function heartbeatTick(ctx: HeartbeatContext): Promise<TickResult> 
       const now = Date.now();
       if (now - _lastConsolidationEpoch >= CONSOLIDATION_INTERVAL_MS * 0.5) { // Run at half the consolidation interval
         const { generateEntitySummaries } = await import('./entity-summarizer.js');
-        const entityResult = await generateEntitySummaries(ctx.db, ctx.client, ctx.config.cloudModel);
+        const entityResult = await generateEntitySummaries(ctx.db, ctx.config.cloudModel);
         if (entityResult.entities_summarized > 0 || entityResult.entities_updated > 0) {
           result.entities_summarized = entityResult.entities_summarized;
           result.entities_updated = entityResult.entities_updated;
@@ -698,15 +693,25 @@ export async function heartbeatTick(ctx: HeartbeatContext): Promise<TickResult> 
               const lessons = [target.lesson, ...toMerge.map(m => m.lesson)].join('\n- ');
               const prompt = `These are related learnings from a coding assistant's experience:\n- ${lessons}\n\nSynthesize ONE concise abstract principle (max 200 chars) that captures the common rule. Output only the principle, nothing else.`;
 
-              if (ctx.client) {
-                const resp = await ctx.client.messages.create({
+              const resp = await fetch('http://127.0.0.1:8317/v1/chat/completions', {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                  'Authorization': 'Bearer cliproxy-no-key-needed',
+                },
+                body: JSON.stringify({
                   model: ctx.config.cloudModel,
-                  max_tokens: 256,
                   messages: [{ role: 'user', content: prompt }],
-                });
-                const text = resp.content.filter((b): b is TextBlock => b.type === 'text').map(b => b.text).join('');
+                  max_tokens: 256,
+                  temperature: 0,
+                }),
+                signal: AbortSignal.timeout(30000),
+              });
+              if (resp.ok) {
+                const data = await resp.json() as { choices?: Array<{ message?: { content?: string } }> };
+                const text = (data.choices?.[0]?.message?.content ?? '').trim();
                 if (text.length > 10 && text.length < 300) {
-                  synthesizedLesson = text.trim();
+                  synthesizedLesson = text;
                 }
               }
             } catch { /* LLM failed — keep original lesson */ }

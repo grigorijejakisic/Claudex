@@ -416,6 +416,108 @@ describe('recordWasReferenced', () => {
   });
 });
 
+// ---------------------------------------------------------------------------
+// Regression: Prefix matching word boundary check
+// Short prefixes like "edit" must NOT match "credit" — word boundary required.
+// 5+ char prefixes WITH word boundary DO match correctly.
+// ---------------------------------------------------------------------------
+
+describe('recordWasReferenced — prefix matching word boundary (regression)', () => {
+  it('5+ char prefix requires word boundary — "embed" does NOT match "preembedding"', () => {
+    const db = createDb();
+    try {
+      // Artifact with 6+ tokens so threshold is 1.5 (not the short-summary 1.0).
+      // "embed" is 5 chars — only prefix match path used.
+      // Other tokens are deliberately non-matching with assistant text.
+      const id = createArtifact(db, 'test-sess', 'proj', 'learning', null,
+        'embed qdrant vector cosine arctic snowflake', 'content', 4);
+
+      db.prepare(
+        `INSERT INTO retrieval_events (artifact_id, session_id, was_referenced)
+         VALUES (?, 'test-sess', NULL)`
+      ).run(id);
+
+      // Assistant text does NOT contain any of the summary tokens at word boundaries.
+      // "preembedding" contains "embed" but NOT at a word boundary — the \b prefix
+      // regex should NOT match it because "pre" precedes "embed".
+      db.prepare(
+        `INSERT INTO conversation_turns (session_id, project, turn_number, assistant_text)
+         VALUES ('test-sess', 'proj', 1, 'The preembedding step was skipped during training preparation.')`
+      ).run();
+
+      recordWasReferenced(db, 'test-sess');
+
+      const event = db.prepare(
+        `SELECT was_referenced FROM retrieval_events WHERE artifact_id = ?`
+      ).get(id) as { was_referenced: number };
+      // "embed" prefix with \b word boundary should NOT match "preembedding"
+      // (word boundary fails because 'e' in 'embed' follows 'r' in 'pre')
+      // No other tokens match. matchCount = 0, threshold = 1.5 → was_referenced = 0
+      expect(event.was_referenced).toBe(0);
+    } finally {
+      db.close();
+    }
+  });
+
+  it('5+ char prefix "embed" matches "embedding" via word boundary prefix', () => {
+    const db = createDb();
+    try {
+      const id = createArtifact(db, 'test-sess', 'proj', 'learning', null,
+        'embedding vectors configuration pipeline', 'content', 4);
+
+      db.prepare(
+        `INSERT INTO retrieval_events (artifact_id, session_id, was_referenced)
+         VALUES (?, 'test-sess', NULL)`
+      ).run(id);
+
+      // "embedding" should match summary token "embed" (5+ chars prefix with word boundary)
+      // Plus "configuration" and "pipeline" are exact matches
+      db.prepare(
+        `INSERT INTO conversation_turns (session_id, project, turn_number, assistant_text)
+         VALUES ('test-sess', 'proj', 1, 'The embedding pipeline configuration is working.')`
+      ).run();
+
+      recordWasReferenced(db, 'test-sess');
+
+      const event = db.prepare(
+        `SELECT was_referenced FROM retrieval_events WHERE artifact_id = ?`
+      ).get(id) as { was_referenced: number };
+      expect(event.was_referenced).toBe(1);
+    } finally {
+      db.close();
+    }
+  });
+
+  it('prefix "modif" matches "modification" but not "unmodified" (word boundary)', () => {
+    const db = createDb();
+    try {
+      const id = createArtifact(db, 'test-sess', 'proj', 'learning', null,
+        'modification tracking system database', 'content', 4);
+
+      db.prepare(
+        `INSERT INTO retrieval_events (artifact_id, session_id, was_referenced)
+         VALUES (?, 'test-sess', NULL)`
+      ).run(id);
+
+      // "modification" starts with "modif" at a word boundary — should match.
+      // "database" is an exact match token too.
+      db.prepare(
+        `INSERT INTO conversation_turns (session_id, project, turn_number, assistant_text)
+         VALUES ('test-sess', 'proj', 1, 'The modification to the database was tracked properly.')`
+      ).run();
+
+      recordWasReferenced(db, 'test-sess');
+
+      const event = db.prepare(
+        `SELECT was_referenced FROM retrieval_events WHERE artifact_id = ?`
+      ).get(id) as { was_referenced: number };
+      expect(event.was_referenced).toBe(1);
+    } finally {
+      db.close();
+    }
+  });
+});
+
 describe('applyRetrievalInducedSuppression (RIF)', () => {
   it('decrements activation for non-selected candidates above RRF threshold', () => {
     const db = createDb();

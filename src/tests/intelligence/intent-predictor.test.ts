@@ -512,5 +512,42 @@ describe('intent-predictor', () => {
 
       expect(determineActualIntent(db, 'sess-1')).toBe('recall');
     });
+
+    // Regression: meta events were not filtered from first-pass counting,
+    // causing intent_classification/compaction/angel_processed events to
+    // inflate the 'continuation' bucket and double-count classifications.
+    it('excludes meta events from first-pass counting', () => {
+      insertSession(db, 'sess-1', 'proj', 'active');
+      // Real user actions: all file_edit → should be "implementation"
+      insertSessionEvent(db, 'sess-1', 'proj', 'file_edit');
+      insertSessionEvent(db, 'sess-1', 'proj', 'file_edit');
+      insertSessionEvent(db, 'sess-1', 'proj', 'file_edit');
+      // Meta events that should be excluded from first-pass counting
+      insertSessionEvent(db, 'sess-1', 'proj', 'intent_classification', 'continuation', 'classified');
+      insertSessionEvent(db, 'sess-1', 'proj', 'session_success_bonus');
+      insertSessionEvent(db, 'sess-1', 'proj', 'compaction');
+      insertSessionEvent(db, 'sess-1', 'proj', 'angel_processed');
+
+      // Without filtering, the 4 meta events all fall into 'continuation' bucket (4)
+      // and intent_classification gets double-counted (2x boost), overwhelming
+      // the 3 file_edit events in 'implementation'. With filtering, only the
+      // 3 file_edit events count + the 1 intent_classification gets its 2x boost
+      // on 'continuation' (2), so implementation (3) > continuation (2).
+      expect(determineActualIntent(db, 'sess-1')).toBe('implementation');
+    });
+
+    it('does not count intent_prediction events in first pass', () => {
+      insertSession(db, 'sess-1', 'proj', 'active');
+      insertSessionEvent(db, 'sess-1', 'proj', 'decision');
+      insertSessionEvent(db, 'sess-1', 'proj', 'decision');
+      // intent_prediction and intent_prediction_accuracy are meta events
+      insertSessionEvent(db, 'sess-1', 'proj', 'intent_prediction');
+      insertSessionEvent(db, 'sess-1', 'proj', 'intent_prediction_accuracy');
+      insertSessionEvent(db, 'sess-1', 'proj', 'intent_prediction');
+
+      // Without filtering, 3 meta events → continuation(3) vs planning(2).
+      // With filtering, only decision events → planning(2) wins.
+      expect(determineActualIntent(db, 'sess-1')).toBe('planning');
+    });
   });
 });

@@ -10,18 +10,15 @@
  *
  * Usage: node dist/angel/index.cjs [--interval <minutes>] [--model <model>]
  *
- * Auth: Reads OAuth token from ~/.claude/.credentials.json (MAX subscription).
- * Fallback: ANTHROPIC_API_KEY env var.
+ * LLM: Uses CliProxy (localhost:8317, MAX subscription) or Ollama for all LLM tasks.
  *
  * Environment:
  *   CLAUDEX_DB_PATH — optional, overrides default DB location
  */
 
 import Database from 'better-sqlite3';
-import Anthropic from '@anthropic-ai/sdk';
 import * as fs from 'fs';
 import * as path from 'path';
-import * as os from 'os';
 import { getDbPath, getClaudexHome } from '../shared/paths.js';
 import { initializeSchema, runMigrations } from '../core/migrations.js';
 import { ensureCollections } from '../embeddings/qdrant-client.js';
@@ -84,38 +81,8 @@ function parseArgs(argv: string[]): Partial<AngelConfig> {
 }
 
 // ---------------------------------------------------------------------------
-// OAuth credential loading (MAX subscription)
+// CliProxy detection
 // ---------------------------------------------------------------------------
-
-interface ClaudeCredentials {
-  claudeAiOauth?: {
-    accessToken?: string;
-    refreshToken?: string;
-    expiresAt?: string;
-    subscriptionType?: string;
-  };
-}
-
-/**
- * Read OAuth token from ~/.claude/.credentials.json (MAX subscription).
- * Returns the access token or null if not available.
- */
-function loadOAuthToken(): string | null {
-  try {
-    const credPath = path.join(os.homedir(), '.claude', '.credentials.json');
-    if (!fs.existsSync(credPath)) return null;
-
-    const raw = fs.readFileSync(credPath, 'utf-8');
-    const creds: ClaudeCredentials = JSON.parse(raw);
-
-    if (creds.claudeAiOauth?.accessToken) {
-      return creds.claudeAiOauth.accessToken;
-    }
-    return null;
-  } catch {
-    return null;
-  }
-}
 
 /**
  * Check if CliProxy is available on localhost:8317.
@@ -132,33 +99,6 @@ async function isCliProxyAvailable(): Promise<boolean> {
   } catch {
     return false;
   }
-}
-
-/**
- * Create Anthropic client with the best available auth method.
- * Priority: CliProxy (localhost:8317) > OAuth token > ANTHROPIC_API_KEY.
- * CliProxy exposes MAX subscription OAuth as a standard API — best option.
- * OAuth token from ~/.claude/.credentials.json works directly with Anthropic API.
- */
-function createAnthropicClient(useCliProxy: boolean): { client: Anthropic; authMethod: string } | null {
-  // Priority 1: CliProxy on localhost:8317 (uses MAX subscription OAuth internally)
-  if (useCliProxy) {
-    return {
-      client: new Anthropic({ apiKey: 'cliproxy', baseURL: 'http://127.0.0.1:8317' }),
-      authMethod: 'cliproxy (MAX subscription via localhost:8317)',
-    };
-  }
-
-  // Priority 2: API key env var
-  const apiKey = process.env.ANTHROPIC_API_KEY;
-  if (apiKey) {
-    return {
-      client: new Anthropic({ apiKey }),
-      authMethod: 'api_key',
-    };
-  }
-
-  return null;
 }
 
 // ---------------------------------------------------------------------------
@@ -266,14 +206,13 @@ async function main(): Promise<void> {
     process.exit(0);
   }
 
-  // Create Anthropic client
-  // Priority: CliProxy (localhost:8317, MAX subscription) > API key
+  // Check LLM availability
+  // Priority: CliProxy (localhost:8317, MAX subscription) > Ollama
   // If neither available, Angel runs Ollama-only for all LLM tasks.
   // Never uses Claude CLI subprocess — it triggers hooks and creates phantom sessions.
   const cliProxyAvailable = await isCliProxyAvailable();
-  const auth = createAnthropicClient(cliProxyAvailable);
-  if (!auth) {
-    log('warn', 'No API auth available — Angel will use Ollama for all LLM tasks');
+  if (!cliProxyAvailable) {
+    log('warn', 'CliProxy not available — Angel will use Ollama for all LLM tasks');
   }
 
   // Parse config
@@ -301,14 +240,11 @@ async function main(): Promise<void> {
   // Write PID file
   writePidFile();
 
-  // Create a fallback client if no auth available (pattern-extractor falls back to Ollama)
-  const client = auth?.client ?? new Anthropic({ apiKey: 'no-auth-ollama-only', baseURL: 'http://127.0.0.1:0' });
-
   // Log startup
   const intervalMin = Math.round(config.heartbeatIntervalMs / 60000);
   log('info', `Angel started`, {
     pid: process.pid,
-    auth: auth?.authMethod ?? 'none (Ollama only)',
+    auth: cliProxyAvailable ? 'cliproxy (MAX subscription via localhost:8317)' : 'none (Ollama only)',
     cloudModel: config.cloudModel,
     localModel: config.localModel,
     interval_minutes: intervalMin,
@@ -317,7 +253,7 @@ async function main(): Promise<void> {
 
   // Start heartbeat
   const heartbeat = startHeartbeat(
-    { db, client, config },
+    { db, config },
     logTickResult,
   );
 

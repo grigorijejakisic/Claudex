@@ -252,6 +252,9 @@ const main = wrapHook('UserPromptSubmit', async (input, ctx) => {
           // per-pattern scoring. Cap at 500 chars to bound storage size.
           correction_prompt: prompt.slice(0, 500),
         });
+        // Record correction_detected event — consumed by Angel's pattern extractor
+        // (measureSessionOutcome) and session summary synthesis.
+        recordEvent(ctx.db, input.session_id, routedProject, 'correction_detected', 'user', 'corrected', prompt.slice(0, 200));
       }
     } catch (e) {
       emitErrorTelemetry(ctx.db, input.session_id, 'exp_correction_detect', e);

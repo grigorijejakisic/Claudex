@@ -76,7 +76,7 @@ async function build() {
     target: 'node20',
     outdir: 'dist',
     outExtension: { '.js': '.cjs' },
-    external: ['better-sqlite3', '@modelcontextprotocol/sdk', 'zod', '@anthropic-ai/sdk'],
+    external: ['better-sqlite3', '@modelcontextprotocol/sdk', 'zod'],
     logLevel: 'info',
   });
 }
