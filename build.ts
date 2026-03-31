@@ -24,6 +24,7 @@ const requiredEntryPoints = [
 
 /** Optional/scaffolding entry points — warn-and-skip if missing. */
 const optionalEntryPoints = [
+  'src/adapters/cc-hooks/pre-tool-use.ts',
   'src/adapters/openclaw-bridge/plugin-entry.ts',
   'src/mcp/recall-server.ts',
   'src/angel/index.ts',
