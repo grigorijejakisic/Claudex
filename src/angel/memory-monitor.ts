@@ -20,6 +20,14 @@ import { cachedPrepare } from '../core/stmt-cache.js';
 /** Max MEMORY.md entries before migration triggers. */
 const MAX_ENTRIES = 5;
 
+/**
+ * CC hard limits (from memdir.ts in Claude Code v2.1.88 source).
+ * CC truncates MEMORY.md at these thresholds and appends a warning.
+ * Claudex should migrate entries BEFORE CC's truncation mangles the index.
+ */
+const CC_MAX_ENTRYPOINT_LINES = 200;
+const CC_MAX_ENTRYPOINT_BYTES = 25_000;
+
 const CC_PROJECTS_DIR = path.join(os.homedir(), '.claude', 'projects');
 const CLAUDEX_PROJECTS_JSON = path.join(os.homedir(), '.claudex', 'projects.json');
 
@@ -254,8 +262,13 @@ export function monitorMemoryFiles(db: Database): MemoryMonitorResult {
       const { entries } = parseMemoryMd(content);
       const unpinnedEntries = entries.filter(e => !e.pinned);
 
-      // Only trigger if total unpinned entries exceed threshold
-      if (unpinnedEntries.length <= MAX_ENTRIES) continue;
+      // Check CC budget limits (line count and byte size)
+      const lineCount = content.split('\n').length;
+      const byteCount = Buffer.byteLength(content, 'utf-8');
+      const exceedsCcBudget = lineCount > CC_MAX_ENTRYPOINT_LINES || byteCount > CC_MAX_ENTRYPOINT_BYTES;
+
+      // Trigger migration if entry count exceeds threshold OR CC budget is at risk
+      if (unpinnedEntries.length <= MAX_ENTRIES && !exceedsCcBudget) continue;
 
       // Resolve project name for DB storage
       const projectName = slugToProject.get(slug) ?? 'unknown';

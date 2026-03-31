@@ -56,11 +56,15 @@ function sanitizeTopicText(text: string | null | undefined, maxLen: number = 100
 /**
  * Priority 1.1: Claudex navigation reinforcement.
  * Reminds the agent that Claudex MCP tools exist and should be used before filesystem exploration.
- * Intentionally tiny (~40 tokens) — the full reference is in global CLAUDE.md.
+ * Also overrides CC's built-in "Searching past context" section (memdir.ts) which tells the model
+ * to Grep through memory/*.md files — Claudex's semantic search is strictly superior.
+ * ~70 tokens — the full reference is in global CLAUDE.md.
  */
 export function formatClaudexReadySection(): string {
   return `## Claudex Active
-Memory system is live. Use \`claudex_search\`, \`claudex_recall\`, \`claudex_events\` MCP tools to find context — don't explore the filesystem for it. All projects are in \`~/Desktop/Projects/\`.`;
+Memory system is live. Use \`claudex_search\`, \`claudex_recall\`, \`claudex_events\` MCP tools to find context — don't explore the filesystem for it. All projects are in \`~/Desktop/Projects/\`.
+
+When searching past context: use \`claudex_search\` (semantic search across all sessions and projects) instead of Grep-based memory file search. Claudex has 26K+ indexed observations with relevance ranking — flat-file grep will miss context that semantic search finds.`;
 }
 
 /**

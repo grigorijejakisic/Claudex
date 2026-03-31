@@ -297,6 +297,30 @@ const main = wrapHook('SessionStart', async (input, ctx) => {
   const model = (input.model as string) ?? undefined;
   const contextWindowTokens = detectWindowSize({ model });
 
+  // CC environment detection — log CC version and memory mode for adaptive behavior.
+  // Source: Claude Code v2.1.88 leak revealed feature flags (KAIROS, TEAMMEM,
+  // EXTRACT_MEMORIES, COMPACTION_REMINDERS) that change how CC handles memory.
+  // Claudex must detect and adapt to avoid conflicts.
+  try {
+    const ccVersion = (input.version as string) ?? 'unknown';
+    const ccAutoMemDir = path.join(os.homedir(), '.claude', 'projects',
+      ctx.scope ?? ctx.project, 'memory');
+    const ccMemoryMdExists = fs.existsSync(path.join(ccAutoMemDir, 'MEMORY.md'));
+    const ccKairosLogDir = path.join(ccAutoMemDir, 'logs');
+    const ccKairosActive = fs.existsSync(ccKairosLogDir);
+
+    recordEvent(ctx.db, input.session_id, ctx.project,
+      'cc_environment', 'session_start', 'detected',
+      JSON.stringify({
+        cc_version: ccVersion,
+        model,
+        auto_memory_active: ccMemoryMdExists,
+        kairos_mode: ccKairosActive,
+        context_window: contextWindowTokens,
+      }),
+    );
+  } catch { /* non-fatal — detection is best-effort */ }
+
   const payload = assembleFullContext({
     db: ctx.db,
     project: ctx.project,
