@@ -356,11 +356,24 @@ const main = wrapHook('SessionStart', async (input, ctx) => {
     emitErrorTelemetry(ctx.db, input.session_id, 'session_start/last_session_summary', e);
   }
 
+  // Build watchPaths — CC will notify the model if these files change mid-session.
+  // Discovered in CC v2.1.88 source (hooks.ts:632): SessionStart hooks can return
+  // watchPaths[] and CC sets up file watchers via fileChangedWatcher.ts.
+  const watchPaths: string[] = [];
+  try {
+    const handoffPath = path.join(input.cwd, 'context', 'handoffs', 'ACTIVE.md');
+    if (fs.existsSync(handoffPath)) watchPaths.push(handoffPath);
+    // Watch CLAUDE.md for live config changes
+    const claudeMdPath = path.join(input.cwd, 'CLAUDE.md');
+    if (fs.existsSync(claudeMdPath)) watchPaths.push(claudeMdPath);
+  } catch { /* non-fatal */ }
+
   if (fullContent) {
     return {
       hookSpecificOutput: {
         hookEventName: 'SessionStart',
         additionalContext: fullContent,
+        ...(watchPaths.length > 0 ? { watchPaths } : {}),
       },
     };
   }
