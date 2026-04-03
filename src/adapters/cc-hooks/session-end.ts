@@ -1,6 +1,9 @@
 /**
  * SessionEnd hook -> session_end event.
  * Writes final checkpoint, runs decay, ends session, prunes telemetry.
+ *
+ * B7: Must use command-type (wrapHook), NOT agent-type.
+ * Agent-type hooks silently fail on SessionEnd events (CC #40010).
  */
 
 import { wrapHook, getTranscriptPath } from './infrastructure.js';

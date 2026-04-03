@@ -24,6 +24,17 @@ const HOOK_FILES: Record<string, string> = {
   Stop: path.join('adapters', 'cc-hooks', 'stop.cjs'),
   PreCompact: path.join('adapters', 'cc-hooks', 'pre-compact.cjs'),
   SessionEnd: path.join('adapters', 'cc-hooks', 'session-end.cjs'),
+  PostCompact: path.join('adapters', 'cc-hooks', 'post-compact.cjs'),
+  SubagentStart: path.join('adapters', 'cc-hooks', 'subagent-start.cjs'),
+  SubagentStop: path.join('adapters', 'cc-hooks', 'subagent-stop.cjs'),
+  TaskCreated: path.join('adapters', 'cc-hooks', 'task-created.cjs'),
+  TaskCompleted: path.join('adapters', 'cc-hooks', 'task-completed.cjs'),
+  PermissionRequest: path.join('adapters', 'cc-hooks', 'permission-request.cjs'),
+  PermissionDenied: path.join('adapters', 'cc-hooks', 'permission-denied.cjs'),
+  Elicitation: path.join('adapters', 'cc-hooks', 'elicitation.cjs'),
+  ElicitationResult: path.join('adapters', 'cc-hooks', 'elicitation-result.cjs'),
+  PostToolUseFailure: path.join('adapters', 'cc-hooks', 'post-tool-use-failure.cjs'),
+  StopFailure: path.join('adapters', 'cc-hooks', 'stop-failure.cjs'),
 };
 
 /**
@@ -217,7 +228,7 @@ export async function main(): Promise<void> {
   console.log(`\nSetup complete! Claudex v3 is ready.`);
   console.log(`  - Database: ${dbPath}`);
   console.log(`  - Config: ${configPath}`);
-  console.log(`  - Hooks: 6 registered in ${settingsPath}`);
+  console.log(`  - Hooks: 17 registered in ${settingsPath}`);
 
   process.exit(0);
 }

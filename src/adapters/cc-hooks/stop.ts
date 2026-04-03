@@ -1,6 +1,9 @@
 /**
  * Stop hook -> after_turn event.
  *
+ * B7: Must use command-type (wrapHook), NOT agent-type.
+ * Agent-type hooks silently fail on Stop events (CC #40010).
+ *
  * MECHANICAL operations only — fast, deterministic, no LLM calls:
  *   Decision capture, thread tracking, conversation turn storage,
  *   checkpoint check, retrieval feedback, activation decay, session summary.
@@ -561,6 +564,55 @@ const main = wrapHook('Stop', async (input, ctx) => {
     }
   }, ctx.db, input.session_id);
 
+  // ---------------------------------------------------------------------------
+  // Critical Reminders: deterministic meta-rule enforcement (Phase 2)
+  // These are behavioral checks that would degrade into ceremonial compliance
+  // if injected as prompt text. Enforced as hook-level warnings instead.
+  // ---------------------------------------------------------------------------
+
+  let readBeforeEditWarning = '';
+  runHookStep('read_before_edit_check', () => {
+    const edits = cachedPrepare(ctx.db,
+      `SELECT DISTINCT entity FROM session_events
+       WHERE session_id = ? AND event_type = 'file' AND action = 'edit'`
+    ).all(input.session_id) as Array<{ entity: string }>;
+
+    for (const edit of edits) {
+      const readExists = cachedPrepare(ctx.db,
+        `SELECT 1 FROM session_events
+         WHERE session_id = ? AND event_type = 'file' AND action = 'read' AND entity = ?
+         LIMIT 1`
+      ).get(input.session_id, edit.entity);
+      if (!readExists) {
+        readBeforeEditWarning = `## Behavioral Warning\nFile "${edit.entity}" was edited without being read first this session. Read before editing to understand existing code.`;
+        break;
+      }
+    }
+  }, ctx.db, input.session_id);
+
+  let testWarning = '';
+  runHookStep('tests_before_done_check', () => {
+    const stopReason = (input.stop_reason as string) ?? '';
+    if (stopReason !== 'end_turn') return;
+
+    const hasTests = cachedPrepare(ctx.db,
+      `SELECT 1 FROM session_events
+       WHERE session_id = ? AND event_type = 'command'
+         AND (entity LIKE '%test%' OR entity LIKE '%vitest%')
+       LIMIT 1`
+    ).get(input.session_id);
+
+    const hasEdits = cachedPrepare(ctx.db,
+      `SELECT 1 FROM session_events
+       WHERE session_id = ? AND event_type = 'file' AND action IN ('edit', 'write')
+       LIMIT 1`
+    ).get(input.session_id);
+
+    if (hasEdits && !hasTests) {
+      testWarning = '## Behavioral Warning\nCode was modified this session but no tests were run. Consider running tests before concluding.';
+    }
+  }, ctx.db, input.session_id);
+
   // Build gate warning
   let gateWarning = '';
   try {
@@ -589,7 +641,7 @@ const main = wrapHook('Stop', async (input, ctx) => {
     }
   } catch { /* non-throwing */ }
 
-  const warnings = [gateWarning, idleWarning].filter(Boolean).join('\n\n');
+  const warnings = [gateWarning, idleWarning, readBeforeEditWarning, testWarning].filter(Boolean).join('\n\n');
   if (warnings) {
     return { systemMessage: warnings };
   }

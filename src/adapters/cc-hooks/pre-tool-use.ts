@@ -1,44 +1,78 @@
 /**
  * PreToolUse hook — modifies tool inputs before execution.
  *
- * Discovered in CC v2.1.88 source (hooks.ts:618): PreToolUse hooks can return
- * `updatedInput` to modify tool inputs before execution.
+ * Fires for ALL tools (matcher: ""). Two responsibilities:
+ * 1. Agent tool: inject Claudex awareness into subagent prompts (existing)
+ * 2. All tools: permission decision lookup (X8 — currently pass-through)
  *
- * Current use: inject Claudex awareness into Agent tool prompts so subagents
- * know about MCP tools. Without this, subagents are "blind" to Claudex.
- *
- * Performance: matcher is set to "Agent" in settings.json so this hook
- * ONLY fires for Agent tool calls, not every tool invocation.
+ * X8: permissionDecision infrastructure wired but defaults to undefined
+ * (pass-through to normal CC permission flow). Future: Angel promotes
+ * auto-allow rules based on H5/H6 data.
  */
 
 import { wrapHook } from './infrastructure.js';
+
+/**
+ * Looks up permission decision for a tool call.
+ * Currently always returns undefined (pass-through).
+ * Future: Angel promotes auto-allow rules based on H5/H6 data.
+ */
+function lookupPermissionDecision(
+  _toolName: string,
+  _toolInput: unknown,
+): { decision: 'allow' | 'deny' | 'ask'; reason?: string } | undefined {
+  return undefined;
+}
 
 const main = wrapHook('PreToolUse', async (input, _ctx) => {
   const toolName = (input.tool_name as string) || '';
   const toolInput = (input.tool_input as Record<string, unknown>) || {};
 
-  // Only modify Agent tool prompts
-  if (toolName !== 'Agent') return {};
+  // X8: Permission decision lookup (all tools)
+  const permissionResult = lookupPermissionDecision(toolName, toolInput);
 
-  const prompt = (toolInput.prompt as string) || '';
-  if (!prompt) return {};
+  // Agent tool: inject Claudex MCP hint into subagent prompts
+  if (toolName === 'Agent') {
+    const prompt = (toolInput.prompt as string) || '';
+    if (!prompt) {
+      return permissionResult
+        ? { hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: permissionResult.decision, permissionDecisionReason: permissionResult.reason } }
+        : {};
+    }
 
-  // Don't double-inject if already contains Claudex reference
-  if (prompt.includes('claudex_search') || prompt.includes('claudex_recall')) {
-    return {};
+    // Don't double-inject if already contains Claudex reference
+    if (prompt.includes('claudex_search') || prompt.includes('claudex_recall')) {
+      return permissionResult
+        ? { hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: permissionResult.decision, permissionDecisionReason: permissionResult.reason } }
+        : {};
+    }
+
+    const claudexHint = `\n\nNote: This project uses Claudex for persistent memory. If you need project history or past decisions, the MCP tools claudex_search and claudex_recall are available.`;
+
+    return {
+      hookSpecificOutput: {
+        hookEventName: 'PreToolUse',
+        ...(permissionResult ? { permissionDecision: permissionResult.decision, permissionDecisionReason: permissionResult.reason } : {}),
+        updatedInput: {
+          ...toolInput,
+          prompt: prompt + claudexHint,
+        },
+      },
+    };
   }
 
-  const claudexHint = `\n\nNote: This project uses Claudex for persistent memory. If you need project history or past decisions, the MCP tools claudex_search and claudex_recall are available.`;
-
-  return {
-    hookSpecificOutput: {
-      hookEventName: 'PreToolUse',
-      updatedInput: {
-        ...toolInput,
-        prompt: prompt + claudexHint,
+  // Non-Agent tools: return permission decision if any, otherwise {}
+  if (permissionResult) {
+    return {
+      hookSpecificOutput: {
+        hookEventName: 'PreToolUse',
+        permissionDecision: permissionResult.decision,
+        permissionDecisionReason: permissionResult.reason,
       },
-    },
-  };
+    };
+  }
+
+  return {};
 });
 
 main();

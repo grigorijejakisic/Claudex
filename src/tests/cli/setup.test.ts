@@ -21,17 +21,28 @@ function createTmpDir(): string {
 // --- getHookPaths tests ---
 
 describe('getHookPaths', () => {
-  it('returns correct absolute paths for all 6 hooks', () => {
+  it('returns correct absolute paths for all 17 hooks', () => {
     const installDir = '/opt/claudex';
     const paths = getHookPaths(installDir);
 
-    expect(Object.keys(paths)).toHaveLength(6);
+    expect(Object.keys(paths)).toHaveLength(17);
     expect(paths.SessionStart).toContain('session-start.cjs');
     expect(paths.UserPromptSubmit).toContain('user-prompt-submit.cjs');
     expect(paths.PostToolUse).toContain('post-tool-use.cjs');
     expect(paths.Stop).toContain('stop.cjs');
     expect(paths.PreCompact).toContain('pre-compact.cjs');
     expect(paths.SessionEnd).toContain('session-end.cjs');
+    expect(paths.PostCompact).toContain('post-compact.cjs');
+    expect(paths.SubagentStart).toContain('subagent-start.cjs');
+    expect(paths.SubagentStop).toContain('subagent-stop.cjs');
+    expect(paths.TaskCreated).toContain('task-created.cjs');
+    expect(paths.TaskCompleted).toContain('task-completed.cjs');
+    expect(paths.PermissionRequest).toContain('permission-request.cjs');
+    expect(paths.PermissionDenied).toContain('permission-denied.cjs');
+    expect(paths.Elicitation).toContain('elicitation.cjs');
+    expect(paths.ElicitationResult).toContain('elicitation-result.cjs');
+    expect(paths.PostToolUseFailure).toContain('post-tool-use-failure.cjs');
+    expect(paths.StopFailure).toContain('stop-failure.cjs');
 
     // Verify hook paths include correct dist subdirectory
     for (const hookPath of Object.values(paths)) {

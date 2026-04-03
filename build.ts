@@ -33,6 +33,17 @@ const optionalEntryPoints = [
   'src/benchmark/debug-locomo.ts',
   'src/benchmark/analyze-results.ts',
   'src/indexer/codebase-indexer.ts',
+  'src/adapters/cc-hooks/post-compact.ts',
+  'src/adapters/cc-hooks/subagent-start.ts',
+  'src/adapters/cc-hooks/subagent-stop.ts',
+  'src/adapters/cc-hooks/task-created.ts',
+  'src/adapters/cc-hooks/task-completed.ts',
+  'src/adapters/cc-hooks/permission-request.ts',
+  'src/adapters/cc-hooks/permission-denied.ts',
+  'src/adapters/cc-hooks/elicitation.ts',
+  'src/adapters/cc-hooks/elicitation-result.ts',
+  'src/adapters/cc-hooks/post-tool-use-failure.ts',
+  'src/adapters/cc-hooks/stop-failure.ts',
 ];
 
 /** Hook entry points to smoke test after build.
@@ -43,6 +54,15 @@ const hookEntryPoints = [
   'dist/adapters/cc-hooks/post-tool-use.cjs',
   'dist/adapters/cc-hooks/stop.cjs',
   'dist/adapters/cc-hooks/session-end.cjs',
+  'dist/adapters/cc-hooks/subagent-start.cjs',
+  'dist/adapters/cc-hooks/subagent-stop.cjs',
+  'dist/adapters/cc-hooks/task-created.cjs',
+  'dist/adapters/cc-hooks/task-completed.cjs',
+  'dist/adapters/cc-hooks/permission-request.cjs',
+  'dist/adapters/cc-hooks/permission-denied.cjs',
+  'dist/adapters/cc-hooks/elicitation.cjs',
+  'dist/adapters/cc-hooks/elicitation-result.cjs',
+  'dist/adapters/cc-hooks/post-tool-use-failure.cjs',
 ];
 
 const allEntryPoints = [...requiredEntryPoints, ...optionalEntryPoints];
@@ -103,6 +123,16 @@ async function smokeTest(): Promise<boolean> {
     'stop': { session_id: '__smoke__', last_assistant_message: 'smoke', stop_assistant_turn: 'smoke', cwd },
     'pre-compact': { session_id: '__smoke__', cwd },
     'session-end': { session_id: '__smoke__', cwd },
+    'subagent-start': { session_id: '__smoke__', agent_id: 'smoke-agent', agent_type: 'general-purpose', cwd },
+    'subagent-stop': { session_id: '__smoke__', agent_id: 'smoke-agent', agent_type: 'general-purpose', agent_transcript_path: '', cwd },
+    'task-created': { session_id: '__smoke__', task_id: 'smoke-task', task_subject: 'smoke test', cwd },
+    'task-completed': { session_id: '__smoke__', task_id: 'smoke-task', task_subject: 'smoke test', cwd },
+    'permission-request': { session_id: '__smoke__', tool_name: 'Bash', tool_input: { command: 'ls' }, cwd },
+    'permission-denied': { session_id: '__smoke__', tool_name: 'Bash', tool_input: { command: 'rm -rf /' }, tool_use_id: 'smoke-id', reason: 'User denied', cwd },
+    'elicitation': { session_id: '__smoke__', mcp_server_name: 'test-server', message: 'Enter value', cwd },
+    'elicitation-result': { session_id: '__smoke__', mcp_server_name: 'test-server', action: 'accept', cwd },
+    'post-tool-use-failure': { session_id: '__smoke__', tool_name: 'Bash', tool_input: { command: 'fail' }, tool_use_id: 'smoke-id', error: 'command failed', cwd },
+    'stop-failure': { session_id: '__smoke__', error: 'rate_limit', error_details: 'Rate limited', cwd },
   };
 
   for (const hookPath of hookEntryPoints) {

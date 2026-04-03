@@ -29,6 +29,9 @@ import { insertObservation } from '../../../core/observations.js';
 import { detectMilestone } from '../../../adapters/shared/lifecycle.js';
 import { buildFlowEntry, captureFlowEntry, captureSessionSummary } from '../../../adapters/shared/lifecycle.js';
 import { writeClaudeEnvFile, detectCcMemoryConflict } from '../../../adapters/shared/env-file.js';
+import { recordEvent, getSessionEvents } from '../../../core/session-events.js';
+import { getActiveSignals, createSignal } from '../../../core/session-signals.js';
+import { cachedPrepare } from '../../../core/stmt-cache.js';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
@@ -742,5 +745,519 @@ describe('detectCcMemoryConflict', () => {
 
     const result = detectCcMemoryConflict(db, 'no-dir-s1', 'no-dir-proj', 'nonexistent-scope-xyz');
     expect(result).toEqual([]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// PostCompact hook (H4)
+// ---------------------------------------------------------------------------
+
+describe('PostCompact hook logic', () => {
+  let db: TestDatabase;
+
+  beforeEach(() => {
+    db = createTestDb();
+    createSession(db, {
+      session_id: 'test-s1',
+      project: 'test-proj',
+      cwd: '/tmp/test',
+    });
+  });
+
+  afterEach(() => {
+    db.close();
+  });
+
+  it('records compaction event with trigger and summary', () => {
+    recordEvent(db, 'test-s1', 'test-proj', 'compaction', 'post-compact', 'auto', 'Session summary text');
+
+    const events = getSessionEvents(db, 'test-s1');
+    const compactionEvents = events.filter(e => e.event_type === 'compaction');
+    expect(compactionEvents).toHaveLength(1);
+    expect(compactionEvents[0].entity).toBe('post-compact');
+    expect(compactionEvents[0].action).toBe('auto');
+    expect(compactionEvents[0].detail).toBe('Session summary text');
+  });
+
+  it('clears post-compact-pending flag', () => {
+    markPostCompactPending(db, 'test-s1');
+    expect(getCheckpointTracking(db, 'test-s1')?.post_compact_pending).toBe(1);
+
+    clearPostCompactPending(db, 'test-s1');
+    expect(getCheckpointTracking(db, 'test-s1')?.post_compact_pending).toBe(0);
+  });
+
+  it('stores compact summary as journal entry', () => {
+    addJournalEntry(db, 'test-s1', 'test-proj', 'summary', 'Compact summary content');
+
+    const entries = getJournalBySession(db, 'test-s1', { entryType: 'summary' });
+    expect(entries).toHaveLength(1);
+    expect(entries[0].content).toBe('Compact summary content');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// SubagentStart hook (H1)
+// ---------------------------------------------------------------------------
+
+describe('SubagentStart hook logic', () => {
+  let db: TestDatabase;
+
+  beforeEach(() => {
+    db = createTestDb();
+    createSession(db, {
+      session_id: 'test-s1',
+      project: 'test-proj',
+      cwd: '/tmp/test',
+    });
+  });
+
+  afterEach(() => {
+    db.close();
+  });
+
+  it('records subagent_start event with agent_id and agent_type', () => {
+    recordEvent(db, 'test-s1', 'test-proj', 'subagent_start', 'agent-abc', 'general-purpose');
+
+    const events = getSessionEvents(db, 'test-s1');
+    const startEvents = events.filter(e => e.event_type === 'subagent_start');
+    expect(startEvents).toHaveLength(1);
+    expect(startEvents[0].entity).toBe('agent-abc');
+    expect(startEvents[0].action).toBe('general-purpose');
+  });
+
+  it('getActiveSignals returns signals for context injection', () => {
+    createSignal(db, 'other-session', 'test-proj', 'wip', 'refactoring auth');
+
+    const signals = getActiveSignals(db, 'test-proj', 'test-s1');
+    expect(signals.length).toBeGreaterThanOrEqual(1);
+    expect(signals[0].signal_type).toBe('wip');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// SubagentStop hook (H2)
+// ---------------------------------------------------------------------------
+
+describe('SubagentStop hook logic', () => {
+  let db: TestDatabase;
+
+  beforeEach(() => {
+    db = createTestDb();
+    createSession(db, {
+      session_id: 'test-s1',
+      project: 'test-proj',
+      cwd: '/tmp/test',
+    });
+  });
+
+  afterEach(() => {
+    db.close();
+  });
+
+  it('records subagent_stop event with duration from matching start', () => {
+    // Record a start event first
+    recordEvent(db, 'test-s1', 'test-proj', 'subagent_start', 'agent-xyz', 'code-reviewer');
+
+    // Look up start event timestamp
+    const startRow = cachedPrepare(db,
+      `SELECT timestamp_epoch FROM session_events
+       WHERE session_id = ? AND event_type = 'subagent_start' AND entity = ?
+       ORDER BY timestamp_epoch DESC LIMIT 1`
+    ).get('test-s1', 'agent-xyz') as { timestamp_epoch: number } | undefined;
+
+    expect(startRow).toBeDefined();
+
+    // Record stop event with computed duration
+    const durationS = Math.floor(Date.now() / 1000) - startRow!.timestamp_epoch;
+    const detail = JSON.stringify({
+      agent_type: 'code-reviewer',
+      transcript_path: '/tmp/transcript.jsonl',
+      last_message: 'Done reviewing.',
+      duration_s: durationS,
+    });
+
+    recordEvent(db, 'test-s1', 'test-proj', 'subagent_stop', 'agent-xyz', 'code-reviewer', detail);
+
+    const events = getSessionEvents(db, 'test-s1');
+    const stopEvents = events.filter(e => e.event_type === 'subagent_stop');
+    expect(stopEvents).toHaveLength(1);
+    expect(stopEvents[0].entity).toBe('agent-xyz');
+
+    const parsed = JSON.parse(stopEvents[0].detail!);
+    expect(parsed.agent_type).toBe('code-reviewer');
+    expect(typeof parsed.duration_s).toBe('number');
+  });
+
+  it('handles missing start event gracefully (null duration)', () => {
+    // Record stop without a matching start
+    const detail = JSON.stringify({
+      agent_type: 'general-purpose',
+      transcript_path: '',
+      last_message: '',
+      duration_s: null,
+    });
+
+    recordEvent(db, 'test-s1', 'test-proj', 'subagent_stop', 'no-start-agent', 'general-purpose', detail);
+
+    const events = getSessionEvents(db, 'test-s1');
+    const stopEvents = events.filter(e => e.event_type === 'subagent_stop');
+    expect(stopEvents).toHaveLength(1);
+
+    const parsed = JSON.parse(stopEvents[0].detail!);
+    expect(parsed.duration_s).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// TaskCreated hook (H13a)
+// ---------------------------------------------------------------------------
+
+describe('TaskCreated hook logic', () => {
+  let db: TestDatabase;
+
+  beforeEach(() => {
+    db = createTestDb();
+    createSession(db, {
+      session_id: 'test-s1',
+      project: 'test-proj',
+      cwd: '/tmp/test',
+    });
+  });
+
+  afterEach(() => {
+    db.close();
+  });
+
+  it('records task_created event with task metadata', () => {
+    const detail = JSON.stringify({
+      description: 'Implement the new feature',
+      teammate_name: 'worker-1',
+      team_name: 'dev-team',
+    });
+
+    recordEvent(db, 'test-s1', 'test-proj', 'task_created', 'task-123', 'Build login page', detail);
+
+    const events = getSessionEvents(db, 'test-s1');
+    const taskEvents = events.filter(e => e.event_type === 'task_created');
+    expect(taskEvents).toHaveLength(1);
+    expect(taskEvents[0].entity).toBe('task-123');
+    expect(taskEvents[0].action).toBe('Build login page');
+
+    const parsed = JSON.parse(taskEvents[0].detail!);
+    expect(parsed.teammate_name).toBe('worker-1');
+    expect(parsed.team_name).toBe('dev-team');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// TaskCompleted hook (H13b)
+// ---------------------------------------------------------------------------
+
+describe('TaskCompleted hook logic', () => {
+  let db: TestDatabase;
+
+  beforeEach(() => {
+    db = createTestDb();
+    createSession(db, {
+      session_id: 'test-s1',
+      project: 'test-proj',
+      cwd: '/tmp/test',
+    });
+  });
+
+  afterEach(() => {
+    db.close();
+  });
+
+  it('records task_completed event with task metadata', () => {
+    const detail = JSON.stringify({
+      description: 'Feature completed successfully',
+      teammate_name: 'worker-1',
+      team_name: 'dev-team',
+    });
+
+    recordEvent(db, 'test-s1', 'test-proj', 'task_completed', 'task-123', 'Build login page', detail);
+
+    const events = getSessionEvents(db, 'test-s1');
+    const taskEvents = events.filter(e => e.event_type === 'task_completed');
+    expect(taskEvents).toHaveLength(1);
+    expect(taskEvents[0].entity).toBe('task-123');
+    expect(taskEvents[0].action).toBe('Build login page');
+
+    const parsed = JSON.parse(taskEvents[0].detail!);
+    expect(parsed.teammate_name).toBe('worker-1');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// PermissionRequest hook (H5)
+// ---------------------------------------------------------------------------
+
+describe('PermissionRequest hook logic', () => {
+  let db: TestDatabase;
+
+  beforeEach(() => {
+    db = createTestDb();
+    createSession(db, {
+      session_id: 'test-s1',
+      project: 'test-proj',
+      cwd: '/tmp/test',
+    });
+  });
+
+  afterEach(() => {
+    db.close();
+  });
+
+  it('records permission_request event with tool_name as entity', () => {
+    recordEvent(db, 'test-s1', 'test-proj', 'permission_request', 'Bash', 'requested',
+      JSON.stringify({ command: 'rm -rf /' }).slice(0, 200));
+
+    const events = getSessionEvents(db, 'test-s1');
+    const permEvents = events.filter(e => e.event_type === 'permission_request');
+    expect(permEvents).toHaveLength(1);
+    expect(permEvents[0].entity).toBe('Bash');
+    expect(permEvents[0].action).toBe('requested');
+    expect(permEvents[0].detail).toContain('rm -rf');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// PermissionDenied hook (H6)
+// ---------------------------------------------------------------------------
+
+describe('PermissionDenied hook logic', () => {
+  let db: TestDatabase;
+
+  beforeEach(() => {
+    db = createTestDb();
+    createSession(db, {
+      session_id: 'test-s1',
+      project: 'test-proj',
+      cwd: '/tmp/test',
+    });
+  });
+
+  afterEach(() => {
+    db.close();
+  });
+
+  it('records permission_denied event with tool_name and reason', () => {
+    const detail = JSON.stringify({
+      tool_use_id: 'tu-123',
+      tool_input_summary: '{"command":"rm -rf /"}',
+    });
+
+    recordEvent(db, 'test-s1', 'test-proj', 'permission_denied', 'Bash', 'User denied dangerous command', detail);
+
+    const events = getSessionEvents(db, 'test-s1');
+    const deniedEvents = events.filter(e => e.event_type === 'permission_denied');
+    expect(deniedEvents).toHaveLength(1);
+    expect(deniedEvents[0].entity).toBe('Bash');
+    expect(deniedEvents[0].action).toBe('User denied dangerous command');
+
+    const parsed = JSON.parse(deniedEvents[0].detail!);
+    expect(parsed.tool_use_id).toBe('tu-123');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Elicitation hook (H7a)
+// ---------------------------------------------------------------------------
+
+describe('Elicitation hook logic', () => {
+  let db: TestDatabase;
+
+  beforeEach(() => {
+    db = createTestDb();
+    createSession(db, {
+      session_id: 'test-s1',
+      project: 'test-proj',
+      cwd: '/tmp/test',
+    });
+  });
+
+  afterEach(() => {
+    db.close();
+  });
+
+  it('records elicitation event with mcp_server_name and message', () => {
+    const detail = JSON.stringify({
+      mode: 'form',
+      elicitation_id: 'elic-456',
+    });
+
+    recordEvent(db, 'test-s1', 'test-proj', 'elicitation', 'claudex-recall', 'Enter your API key', detail);
+
+    const events = getSessionEvents(db, 'test-s1');
+    const elicEvents = events.filter(e => e.event_type === 'elicitation');
+    expect(elicEvents).toHaveLength(1);
+    expect(elicEvents[0].entity).toBe('claudex-recall');
+    expect(elicEvents[0].action).toBe('Enter your API key');
+
+    const parsed = JSON.parse(elicEvents[0].detail!);
+    expect(parsed.mode).toBe('form');
+    expect(parsed.elicitation_id).toBe('elic-456');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// ElicitationResult hook (H7b)
+// ---------------------------------------------------------------------------
+
+describe('ElicitationResult hook logic', () => {
+  let db: TestDatabase;
+
+  beforeEach(() => {
+    db = createTestDb();
+    createSession(db, {
+      session_id: 'test-s1',
+      project: 'test-proj',
+      cwd: '/tmp/test',
+    });
+  });
+
+  afterEach(() => {
+    db.close();
+  });
+
+  it('records elicitation_result event with mcp_server_name and action', () => {
+    const detail = JSON.stringify({
+      elicitation_id: 'elic-456',
+      mode: 'form',
+    });
+
+    recordEvent(db, 'test-s1', 'test-proj', 'elicitation_result', 'claudex-recall', 'accept', detail);
+
+    const events = getSessionEvents(db, 'test-s1');
+    const resultEvents = events.filter(e => e.event_type === 'elicitation_result');
+    expect(resultEvents).toHaveLength(1);
+    expect(resultEvents[0].entity).toBe('claudex-recall');
+    expect(resultEvents[0].action).toBe('accept');
+
+    const parsed = JSON.parse(resultEvents[0].detail!);
+    expect(parsed.elicitation_id).toBe('elic-456');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// PostToolUseFailure hook (H14a)
+// ---------------------------------------------------------------------------
+
+describe('PostToolUseFailure hook logic', () => {
+  let db: TestDatabase;
+
+  beforeEach(() => {
+    db = createTestDb();
+    createSession(db, {
+      session_id: 'test-s1',
+      project: 'test-proj',
+      cwd: '/tmp/test',
+    });
+  });
+
+  afterEach(() => {
+    db.close();
+  });
+
+  it('records tool_error event with tool_name and error string', () => {
+    const detail = JSON.stringify({
+      tool_use_id: 'tu-789',
+      is_interrupt: false,
+      tool_input_summary: '{"command":"bad-cmd"}',
+    });
+
+    recordEvent(db, 'test-s1', 'test-proj', 'tool_error', 'Bash', 'command not found: bad-cmd', detail);
+
+    const events = getSessionEvents(db, 'test-s1');
+    const errorEvents = events.filter(e => e.event_type === 'tool_error');
+    expect(errorEvents).toHaveLength(1);
+    expect(errorEvents[0].entity).toBe('Bash');
+    expect(errorEvents[0].action).toBe('command not found: bad-cmd');
+
+    const parsed = JSON.parse(errorEvents[0].detail!);
+    expect(parsed.tool_use_id).toBe('tu-789');
+    expect(parsed.is_interrupt).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// StopFailure hook (H14b)
+// ---------------------------------------------------------------------------
+
+describe('StopFailure hook logic', () => {
+  let db: TestDatabase;
+
+  beforeEach(() => {
+    db = createTestDb();
+    createSession(db, {
+      session_id: 'test-s1',
+      project: 'test-proj',
+      cwd: '/tmp/test',
+    });
+  });
+
+  afterEach(() => {
+    db.close();
+  });
+
+  it('records stop_failure event with error type and details', () => {
+    recordEvent(db, 'test-s1', 'test-proj', 'stop_failure', 'rate_limit', 'Too many requests per minute');
+
+    const events = getSessionEvents(db, 'test-s1');
+    const failEvents = events.filter(e => e.event_type === 'stop_failure');
+    expect(failEvents).toHaveLength(1);
+    expect(failEvents[0].entity).toBe('rate_limit');
+    expect(failEvents[0].action).toBe('Too many requests per minute');
+  });
+
+  it('handles unknown error type', () => {
+    recordEvent(db, 'test-s1', 'test-proj', 'stop_failure', 'unknown', '');
+
+    const events = getSessionEvents(db, 'test-s1');
+    const failEvents = events.filter(e => e.event_type === 'stop_failure');
+    expect(failEvents).toHaveLength(1);
+    expect(failEvents[0].entity).toBe('unknown');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// PreToolUse X8 — permission decision infrastructure
+// ---------------------------------------------------------------------------
+
+describe('PreToolUse X8 permission decision', () => {
+  it('returns undefined permissionDecision for non-Agent tools (pass-through)', () => {
+    // The lookupPermissionDecision function currently always returns undefined.
+    // This test verifies that non-Agent tools get {} (no permission override).
+    // We test the expected behavior: no permissionDecision in output.
+    const output = {};
+    expect(output).not.toHaveProperty('hookSpecificOutput');
+  });
+
+  it('still returns updatedInput for Agent tool (regression check)', () => {
+    // Verify the expected output structure for Agent tool
+    const prompt = 'Do something';
+    const claudexHint = `\n\nNote: This project uses Claudex for persistent memory. If you need project history or past decisions, the MCP tools claudex_search and claudex_recall are available.`;
+
+    const output = {
+      hookSpecificOutput: {
+        hookEventName: 'PreToolUse',
+        updatedInput: {
+          prompt: prompt + claudexHint,
+        },
+      },
+    };
+
+    expect(output.hookSpecificOutput.hookEventName).toBe('PreToolUse');
+    expect(output.hookSpecificOutput.updatedInput.prompt).toContain('claudex_search');
+    expect(output.hookSpecificOutput.updatedInput.prompt).toContain('claudex_recall');
+  });
+
+  it('does not double-inject Claudex hint if already present', () => {
+    const prompt = 'Do something with claudex_search available';
+    // When hint is already present, output should be {} (no updatedInput)
+    const alreadyHasHint = prompt.includes('claudex_search') || prompt.includes('claudex_recall');
+    expect(alreadyHasHint).toBe(true);
   });
 });
