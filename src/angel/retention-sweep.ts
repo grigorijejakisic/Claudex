@@ -15,6 +15,7 @@
 
 import type { Database } from 'better-sqlite3';
 import { cachedPrepare } from '../core/stmt-cache.js';
+import { detectContradiction } from '../intelligence/contradiction-detector.js';
 import type { RetentionConfig, RetentionSweepResult } from './types.js';
 
 // ---------------------------------------------------------------------------
@@ -51,6 +52,7 @@ const EMPTY_RESULT: RetentionSweepResult = {
   verified_facts_deleted: 0,
   session_messages_deleted: 0,
   observations_deleted: 0,
+  observations_superseded: 0,
 };
 
 // ---------------------------------------------------------------------------
@@ -394,8 +396,56 @@ export function pruneSessionMessages(db: Database, _config: RetentionConfig): nu
 }
 
 // ---------------------------------------------------------------------------
-// 8b. Observation pruning — importance-tiered retention
+// 8b. Observation contradiction resolution + importance-tiered retention
 // ---------------------------------------------------------------------------
+
+/**
+ * Pre-sweep pass: detect contradictions among recent observations within each project.
+ * When contradictions found, keep the newer observation and mark the older as superseded
+ * (consumed=1). Only scans observations from the last 90 days — older ones are about to
+ * be age-pruned anyway. Batch of 50 per project.
+ *
+ * A3 (Phase 10): Wires detectContradiction() from contradiction-detector.ts into the
+ * retention sweep so contradictions are resolved every hourly sweep cycle.
+ */
+function resolveContradictions(db: Database): number {
+  try {
+    const ninetyCutoff = Math.floor(Date.now() / 1000) - 90 * 86400;
+    const projects = cachedPrepare(db,
+      `SELECT DISTINCT project FROM observations
+       WHERE consumed = 0 AND timestamp_epoch > ? AND project IS NOT NULL`
+    ).all(ninetyCutoff) as Array<{ project: string }>;
+
+    let superseded = 0;
+    for (const { project } of projects) {
+      const obs = cachedPrepare(db,
+        `SELECT id, content, session_id, timestamp_epoch FROM observations
+         WHERE project = ? AND consumed = 0 AND timestamp_epoch > ?
+         ORDER BY timestamp_epoch DESC LIMIT 50`
+      ).all(project, ninetyCutoff) as Array<{ id: number; content: string; session_id: string; timestamp_epoch: number }>;
+
+      for (let i = 0; i < obs.length; i++) {
+        for (let j = i + 1; j < obs.length; j++) {
+          // obs[i] is newer (DESC order), obs[j] is older
+          const contradiction = detectContradiction(db, obs[i].content, project, obs[i].session_id);
+          if (contradiction) {
+            // Mark the older observation as superseded
+            try {
+              cachedPrepare(db,
+                `UPDATE observations SET consumed = 1 WHERE id = ?`
+              ).run(obs[j].id);
+              superseded++;
+            } catch { /* non-fatal */ }
+            break; // Move to next newer observation
+          }
+        }
+      }
+    }
+    return superseded;
+  } catch {
+    return 0;
+  }
+}
 
 /**
  * Prune old observations by importance tier:
@@ -406,10 +456,14 @@ export function pruneSessionMessages(db: Database, _config: RetentionConfig): nu
  * Observations that have been referenced by retrieval events are kept longer
  * (their access proves they're still useful). Batch-limited to 500.
  */
-export function pruneObservations(db: Database, config: RetentionConfig): number {
+export function pruneObservations(db: Database, config: RetentionConfig): { deleted: number; superseded: number } {
   try {
     const now = Math.floor(Date.now() / 1000);
     let totalDeleted = 0;
+
+    // A3: Contradiction-aware pre-sweep — resolve contradictions before age-based pruning.
+    // This ensures contradicted observations are marked consumed rather than blindly age-pruned.
+    const superseded = resolveContradictions(db);
 
     // Tier 1: Low importance (1-2), older than config days
     const lowCutoff = now - (config.observationLowImpRetentionDays ?? 30) * 86400;
@@ -444,9 +498,9 @@ export function pruneObservations(db: Database, config: RetentionConfig): number
     ).run(highCutoff);
     totalDeleted += highResult.changes;
 
-    return totalDeleted;
+    return { deleted: totalDeleted, superseded };
   } catch {
-    return 0;
+    return { deleted: 0, superseded: 0 };
   }
 }
 
@@ -510,7 +564,9 @@ export function runRetentionSweep(
   } catch { /* non-fatal */ }
 
   try {
-    result.observations_deleted = pruneObservations(db, config);
+    const obsResult = pruneObservations(db, config);
+    result.observations_deleted = obsResult.deleted;
+    result.observations_superseded = obsResult.superseded;
   } catch { /* non-fatal */ }
 
   return result;

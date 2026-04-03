@@ -48,14 +48,26 @@ export interface IndexResult {
 
 const HOME = os.homedir();
 
+/**
+ * Sort file paths by mtime ascending (oldest first) so aging transcripts
+ * approaching CC's 30-day cleanup window are processed before fresh ones.
+ * A13 (Phase 10): Prevents data loss when transcripts are cleaned up before indexing.
+ */
+function sortByMtimeOldestFirst(files: string[]): string[] {
+  return files
+    .map(f => ({ path: f, mtime: fs.statSync(f).mtimeMs }))
+    .sort((a, b) => a.mtime - b.mtime)
+    .map(f => f.path);
+}
+
 function detectCodexSessions(): string[] {
   try {
     const dir = path.join(HOME, '.codex', 'sessions');
     if (!fs.existsSync(dir)) return [];
-    return fs.readdirSync(dir)
+    const files = fs.readdirSync(dir)
       .filter(f => f.endsWith('.jsonl') || f.endsWith('.json'))
-      .map(f => path.join(dir, f))
-      .slice(-20); // Last 20 sessions
+      .map(f => path.join(dir, f));
+    return sortByMtimeOldestFirst(files).slice(0, 20);
   } catch { return []; }
 }
 
@@ -63,10 +75,10 @@ function detectGeminiSessions(): string[] {
   try {
     const dir = path.join(HOME, '.gemini', 'sessions');
     if (!fs.existsSync(dir)) return [];
-    return fs.readdirSync(dir)
+    const files = fs.readdirSync(dir)
       .filter(f => f.endsWith('.json') || f.endsWith('.jsonl'))
-      .map(f => path.join(dir, f))
-      .slice(-20);
+      .map(f => path.join(dir, f));
+    return sortByMtimeOldestFirst(files).slice(0, 20);
   } catch { return []; }
 }
 
@@ -243,8 +255,22 @@ export function indexCrossAgentSessions(
       const paths = provider.detectPaths();
       result.sessionsFound = paths.length;
 
+      // A13 (Phase 10): 25-day threshold — warn about aging unindexed transcripts
+      // approaching CC's 30-day cleanup window.
+      const AGING_THRESHOLD_MS = 25 * 24 * 3600 * 1000;
+
       for (const filePath of paths) {
         if (isAlreadyIndexed(db, filePath)) continue;
+
+        // Warn about aging transcripts that haven't been indexed yet
+        try {
+          const mtime = fs.statSync(filePath).mtimeMs;
+          const age = Date.now() - mtime;
+          if (age > AGING_THRESHOLD_MS) {
+            const daysOld = Math.floor(age / (24 * 3600 * 1000));
+            console.warn(`[cross-agent-indexer] Aging transcript (${daysOld}d old, unindexed): ${path.basename(filePath)}`);
+          }
+        } catch { /* stat failure — continue */ }
 
         const turns = provider.parseTranscript(filePath);
         if (turns.length === 0) continue;

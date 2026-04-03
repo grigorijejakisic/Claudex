@@ -65,6 +65,7 @@ import { findRelevantFiles, getChangedFiles } from '../indexer/codebase-indexer.
 import { getRecentFlow } from '../core/journal.js';
 import { getCheckpointTracking } from '../core/checkpoint-tracking.js';
 import { readGsdState } from '../gsd/state-reader.js';
+import { assembleCriticalReminders } from '../intelligence/critical-reminders.js';
 import { getPressureZone, scaleBudget, GLOBAL_PROJECT_SCOPE } from '../shared/constants.js';
 import { getHandoffsDir, getSessionsDir } from '../shared/paths.js';
 import * as path from 'path';
@@ -552,6 +553,22 @@ export function assembleFullContext(params: FullAssemblyParams): InjectPayload {
         a.artifact_type !== 'observation' || a.timestamp_epoch >= STALE_OBS_CUTOFF
       );
 
+      // A9 extension (Phase 10): Per-session observation dedup.
+      // Prevents the same observation from being surfaced on multiple turns within
+      // a session. Equivalent to CC's alreadySurfaced set in findRelevantMemories.ts.
+      // Observation IDs are prefixed with "obs:" to distinguish from pattern ULIDs.
+      // A12 note: File race with CC memory prevented by CLAUDE_CODE_DISABLE_AUTO_MEMORY
+      // + detectCcMemoryConflict() in env-file.ts.
+      if (params.sessionId) {
+        try {
+          const flags = getExperienceFlags(params.db, params.sessionId);
+          const seen = new Set(flags.session_injected_ids);
+          materializedArtifacts = materializedArtifacts.filter(a =>
+            a.artifact_type !== 'observation' || !seen.has(`obs:${a.artifact_ref ?? a.id}`)
+          );
+        } catch { /* non-fatal — skip dedup */ }
+      }
+
       const rationale = query ? `hybrid search on "${query}"` : undefined;
       const matSection = formatMaterializationLayer(materializedArtifacts, rationale, params.sessionId);
       if (matSection) {
@@ -570,6 +587,20 @@ export function assembleFullContext(params: FullAssemblyParams): InjectPayload {
               spreadActivation(params.db, art.id);
               // Track retrieval for MemRL Q-value learning
               try { recordRetrieval(params.db, art.id); } catch { /* non-fatal */ }
+            }
+          }
+
+          // A9 extension: accumulate observation IDs into session_injected_ids
+          if (params.sessionId) {
+            const obsIds = materializedArtifacts
+              .filter(a => a.artifact_type === 'observation')
+              .map(a => `obs:${a.artifact_ref ?? a.id}`);
+            if (obsIds.length > 0) {
+              try {
+                const currentFlags = getExperienceFlags(params.db, params.sessionId);
+                const accumulated = [...new Set([...currentFlags.session_injected_ids, ...obsIds])];
+                setExperienceFlags(params.db, params.sessionId, { session_injected_ids: accumulated });
+              } catch { /* non-fatal */ }
             }
           }
 
@@ -733,6 +764,15 @@ export function assembleFullContext(params: FullAssemblyParams): InjectPayload {
  * Queries DB for session start time and last compaction time.
  * Non-throwing — returns empty context on error.
  */
+function getTurnCount(db: Database, sessionId: string): number {
+  try {
+    const row = cachedPrepare(db,
+      'SELECT COUNT(*) as cnt FROM conversation_turns WHERE session_id = ?'
+    ).get(sessionId) as { cnt: number } | undefined;
+    return row?.cnt ?? 0;
+  } catch { return 0; }
+}
+
 function buildGaugeTiming(db: Database, sessionId?: string): GaugeTimingContext {
   const timing: GaugeTimingContext = {};
   if (!sessionId) return timing;
@@ -757,19 +797,42 @@ function buildGaugeTiming(db: Database, sessionId?: string): GaugeTimingContext 
  */
 export function assembleRegularPrompt(params: RegularPromptParams): InjectPayload {
   try {
-    // 1. Post-compaction -> full assembly (sans identity/project — already in system prompt)
+    // 1. Post-compaction -> light injection only.
+    // CC fires processSessionStartHooks('compact') after compaction, which
+    // triggers assembleFullContext via SessionStart hook. UPS post-compact
+    // only needs truly new per-turn content (Critical Reminders with decay TTL).
     if (params.isPostCompaction) {
-      return assembleFullContext({
-        db: params.db,
-        project: params.project,
-        projectDir: params.projectDir,
-        config: params.config,
-        searchQuery: params.prompt,
-        identityDir: params.identityDir,
-        sessionId: params.sessionId,
-        isPostCompaction: true,
-        contextWindowTokens: params.gauge?.contextWindowTokens,
-      });
+      const parts: string[] = [];
+      const srcs: string[] = [];
+      let commitFn: (() => void) | undefined;
+
+      // Critical reminders still fire (decay-based TTL is per-turn)
+      if (params.sessionId) {
+        try {
+          const crFlags = getExperienceFlags(params.db, params.sessionId);
+          const turnCount = getTurnCount(params.db, params.sessionId);
+          const reminders = assembleCriticalReminders(
+            params.db, params.sessionId, turnCount, params.project,
+            crFlags.critical_activity_gate, crFlags.seen_rule_domains,
+            params.gauge?.contextWindowTokens,
+          );
+          if (reminders && reminders.tokenCost <= scaleBudget(300, params.gauge?.contextWindowTokens)) {
+            parts.push(reminders.section);
+            srcs.push('critical_reminders');
+            commitFn = reminders.applyEffects;
+          }
+        } catch { /* non-fatal */ }
+      }
+
+      if (parts.length > 0) {
+        return {
+          content: parts.join('\n\n'),
+          tokenEstimate: estimateTokens(parts.join('\n\n')),
+          sources: srcs,
+          commitEffects: commitFn,
+        };
+      }
+      return { ...EMPTY_PAYLOAD };
     }
 
     // 2. Topic-shift -> micro-injection
@@ -832,6 +895,35 @@ export function assembleRegularPrompt(params: RegularPromptParams): InjectPayloa
           }
         }
       } catch { /* non-fatal */ }
+
+      // 4a.5: Critical Reminders — conditional re-injection of CLAUDE.md behavioral rules.
+      // Fires on decay TTL expiry, activity gate (phase transitions), or first-encounter domains.
+      // Separate from proven principles (experience patterns) — these are CLAUDE.md rules.
+      if (params.sessionId) {
+        try {
+          const crFlags = getExperienceFlags(params.db, params.sessionId);
+          const turnCount = getTurnCount(params.db, params.sessionId);
+          const reminders = assembleCriticalReminders(
+            params.db,
+            params.sessionId,
+            turnCount,
+            params.project,
+            crFlags.critical_activity_gate,
+            crFlags.seen_rule_domains,
+            params.gauge?.contextWindowTokens,
+          );
+          if (reminders && reminders.tokenCost <= scaleBudget(300, params.gauge?.contextWindowTokens)) {
+            parts.push(reminders.section);
+            totalTokens += reminders.tokenCost;
+            srcs.push('critical_reminders');
+            const prevCommit = commitFn;
+            commitFn = () => {
+              prevCommit?.();
+              reminders.applyEffects();
+            };
+          }
+        } catch { /* non-fatal */ }
+      }
 
       // 4b. Categorical: intent-triggered patterns.
       // Matches patterns tagged with trigger_intents against the classified intent.

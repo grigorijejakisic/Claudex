@@ -491,6 +491,8 @@ describe('Retention Sweep', () => {
         'artifact_links_deleted',
         'verified_facts_deleted',
         'session_messages_deleted',
+        'observations_deleted',
+        'observations_superseded',
       ];
       for (const key of keys) {
         expect(typeof result[key]).toBe('number');

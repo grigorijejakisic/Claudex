@@ -9,6 +9,17 @@
  * Uses CliProxy (local HTTP proxy) or Ollama for LLM analysis.
  *
  * Non-throwing — returns empty results on error.
+ *
+ * A1/A2 (Phase 10): Angel owns ALL extraction and consolidation.
+ * CC's extractMemories (cc-source/04-memory-system.md) is disabled via
+ * CLAUDE_CODE_DISABLE_AUTO_MEMORY=1. Angel cannot adopt CC's forked-agent-with-
+ * cache-sharing pattern because Angel runs as a separate process (different PID),
+ * not a CC subagent — cache sharing only works within CC's conversation fork.
+ * Angel uses CliProxy (Sonnet) or Ollama for LLM extraction instead.
+ *
+ * A5 (Phase 10): Angel reads conversation_turns which naturally contains any CC
+ * away summaries (appended as system messages). No special integration needed.
+ * CC's Away Summary is also feature-flagged (AWAY_SUMMARY + tengu_sedge_lantern).
  */
 
 import type { Database } from 'better-sqlite3';

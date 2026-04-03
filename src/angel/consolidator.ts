@@ -9,6 +9,13 @@
  *
  * NEVER deletes originals. Sets consumed=1, consolidated_into=<new_id>.
  * Non-throwing — consolidation failure must never crash the heartbeat.
+ *
+ * A1 (Phase 10): Angel is the SOLE consolidator. CC's Dream consolidation
+ * (4-phase: orient → gather → consolidate → prune, see cc-source/06-dream-kairos.md)
+ * is disabled via CLAUDE_CODE_DISABLE_AUTO_MEMORY=1 set in Phase 1. Angel's
+ * 6-phase pipeline (CONTEXT → ANALYZE → MEASURE → PLAN → REVIEW → COMMIT) in
+ * pattern-extractor.ts is more sophisticated. If Dream is ever re-enabled,
+ * detectCcMemoryConflict() in env-file.ts will log a warning.
  */
 
 import type { Database } from 'better-sqlite3';

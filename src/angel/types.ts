@@ -97,6 +97,7 @@ export interface RetentionSweepResult {
   verified_facts_deleted: number;
   session_messages_deleted: number;
   observations_deleted: number;
+  observations_superseded: number;
 }
 
 export interface CrossProjectResult {
