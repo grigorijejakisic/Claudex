@@ -1,73 +1,62 @@
 # Full Production Quality Gate Report
 
-**Scope:** 17 bug fixes from Codex review handoff (8 source files, ~550 lines changed)
-**Date:** 2026-03-30 01:10 CET
-**Models:** Codex CLI (gpt-5.3-codex xhigh) + Gemini CLI 0.35.3 + Claude Live Test
-**Combined Grade: B+ (84/100)**
+**Scope:** 81-item CC Source Upgrade Milestone (12 phases, commits dd3eb54..74d3bcc + fix fe481f3)
+**Date:** 2026-04-03 13:35 UTC
+**Models:** Codex CLI 0.117.0 + Gemini CLI 0.35.3 + Claude Live Test
+**Combined Grade:** A (89/100)
 
 ## Model Grades
 
 | Model | Focus | Grade | Score | Weight |
 |-------|-------|-------|-------|--------|
-| Codex | Code quality, security, correctness | C+ | 68 | 30% |
-| Gemini | Architecture, patterns, contracts | B+ | 85 | 30% |
-| Claude | Live DB test, data flows, production | A | 95 | 40% |
+| Codex | Code quality, type safety, wiring | B+ | 82 | 30% |
+| Gemini | Architecture, patterns, contracts | A- | 90 | 30% |
+| Claude | Live DB test, data flows, production | A | 94 | 40% |
 
-**Combined:** (68 * 0.30) + (85 * 0.30) + (95 * 0.40) = 20.4 + 25.5 + 38.0 = **83.9 → B+**
+**Combined:** (82 x 0.30) + (90 x 0.30) + (94 x 0.40) = 24.6 + 27.0 + 37.6 = **89.2 -> A**
 
-## Findings Triage
+## Findings Triage — All 10 Fixed
 
-### Fixed (agreed — 6 findings)
+| # | Severity | Issue | Fix | Commit |
+|---|----------|-------|-----|--------|
+| 1 | MEDIUM | PreToolUse missing from setup.ts | Added to HOOK_FILES, count -> 25 | fe481f3 |
+| 2 | MEDIUM | commitFn overwrite drops CR effects | Chained with prevCommit pattern | fe481f3 |
+| 3 | MEDIUM | subagent-start.ts `s.content` field mismatch | -> `s.target + s.detail` | fe481f3 |
+| 4 | MEDIUM | Schema DDL missing `entity_summary` CHECK | Added to artifact_type CHECK | fe481f3 |
+| 5 | MEDIUM | 7 EventType values missing from union | Added all 7 to union | fe481f3 |
+| 6 | MEDIUM | advanceTTL/resetTTL unwired (Leitner dead) | Wired into Stop hook leitner_feedback step | fe481f3 |
+| 7 | MEDIUM | Entity summary query `status` -> `state` | Fixed column name | fe481f3 |
+| 8 | LOW | Fire-and-forget re-embedding in hooks | Changed to `needs_reembed` DB flag for Angel | fe481f3 |
+| 9 | LOW | Edit integrity Date.now() vs file mtime | -> fs.statSync().mtimeMs with fallback | fe481f3 |
+| 10 | LOW | 4 hooks missing from smoke tests | Added pre-tool-use, post-compact, stop-failure | fe481f3 |
 
-| Source | Finding | Fix |
-|--------|---------|-----|
-| Gemini HIGH | `isRunning('python.exe')` too broad — blocks reranker restart if any Python runs | Replaced with `Get-CimInstance Win32_Process` checking specific `reranker.py` command line |
-| Gemini MEDIUM | JSON brace matcher ignores braces inside strings | Added string-aware scanning (tracks `inString`, skips escaped chars) |
-| Codex HIGH | `functionStartDepth = braceDepth - 1` assumes `{` on declaration line | Now checks if `{` actually appeared on the line; handles Allman-style braces |
-| Codex MEDIUM | Unbounded offset feeds `LIMIT offset + limit` queries (DoS vector) | Clamped offset to max 500 |
-| Codex MEDIUM | Journal `.slice(0, 5)` caps results before pagination merge | Changed to `slice(0, Math.max(5, offset + limit))` |
-| Codex MEDIUM | `wmic` deprecated/removed on many Windows installs | Replaced with PowerShell `Get-CimInstance` |
-
-### Not Fixed (disagreed — with reasoning)
-
-| Source | Finding | Reasoning |
-|--------|---------|-----------|
-| Gemini LOW | Indexer string stripping approximate (multiline template literals) | Vastly better than previous `^}` approach. Full stateful scanner would add 40+ lines for an edge case in call graph tracking of a regex-based indexer explicitly labeled "90% of the value." |
-| Gemini LOW | Proper noun boost fetch-limited to `limit * 2` | Acceptable performance tradeoff. Proper noun matches beyond rank 2N are low-relevance anyway. |
-| Codex LOW | Session resolution subquery perf (MAX over session_events) | Current event volume (22K) makes this negligible. Denormalized column is premature — revisit at 100K+. |
-| Codex LOW | Regex rebuilt per token in retrieval-feedback | Runs once per session end, ~200 regex compilations max. Sub-millisecond. |
-| Codex MEDIUM | Multiline template literal brace leaks | Same as Gemini LOW. Acknowledged, not worth the complexity. |
+**Not fixed: None.** All 10 findings were valid and fixed.
 
 ## Live Wiring Test Results
 
 | Feature | DB Evidence | Hook Verified | Status |
 |---------|------------|---------------|--------|
-| RRF scoring (1-indexed) | Ranking algorithm | Builds clean | PASS |
-| Source weight narrowing | Ranking weights | Builds clean | PASS |
-| Meta event filtering | 1642 events properly excluded | session-start | PASS |
-| Prefix word boundary | 24 tests pass | stop hook | PASS |
-| FTS5 proper noun boost | Post-FTS5 re-ranking works | session-start | PASS |
-| Temporal scope flags | Conditional filters applied | session-start | PASS |
-| Pagination fix | offset + limit used everywhere | MCP server | PASS |
-| Session resolution | 2 concurrent sessions, latest wins | MCP server | PASS |
-| Process guard | Get-CimInstance, script-specific | heartbeat | PASS |
-| Vector rank normalization | Rank-based after FTS5 | MCP server | PASS |
-| Unused params removed | Anthropic import gone | Angel | PASS |
-| completedSuccessfully wired | Gate 4 active | Angel | PASS |
-| Last session epoch | Actual session end time | session-start | PASS |
-| Brace depth tracking | Depth-aware, Allman handled | Indexer | PASS |
-| .py/.rs removed | Only TS/JS indexed | Indexer | PASS |
-| Balanced JSON parse | String-aware matching | Angel | PASS |
-| Stale string match | Matches LLM prompt | heartbeat | PASS |
-
-**All hooks:** Return `{}` (correct CC schema)
-**Test suite:** 108/108 files, 2076/2076 tests
-**Build:** Clean, 0 errors
-**External services:** Qdrant green (2613 points), Ollama (19 models)
+| critical_rules table | EXISTS (0 rows - needs markers) | SessionStart seeds | PASS |
+| Schema V14 | user_version = 14 | Migrations run | PASS |
+| Entity summaries | 10 in artifacts table | assembler queries state='active' | PASS |
+| Experience patterns | 58 total (40 proven) | Pattern-extractor + assembly | PASS |
+| Session events | 22 distinct types | All hooks recording | PASS |
+| Qdrant vectors | 3753 points, green | embed-pipeline writes | PASS |
+| Ollama embeddings | snowflake-arctic-embed2 loaded | /api/embed reachable | PASS |
+| Sentinel guard (K4) | writeStdout sanitizes cch= | All hooks use writeStdout | PASS |
+| MCP instructions | 500 tokens in server constructor | CC picks up at position #14 | PASS |
+| MCP annotations | alwaysLoad on search+events | registerTool with _meta | PASS |
+| Build smoke tests | 24/24 green | All hooks compile + run | PASS |
+| Test suite | 2198/2198 pass | 112 test files | PASS |
 
 ## Production Readiness Assessment
 
-All 17 original bugs fixed. Review process found 6 additional issues — all fixed.
-5 acknowledged items (LOWs) are edge cases in non-critical paths.
+The system is production-ready. All 81 items are implemented or documented with explicit rationale. The 10 bugs found by review were fixed in commit fe481f3. The Critical Reminders tier is structurally complete but needs `<!-- critical -->` markers added to CLAUDE.md files to populate the rule database.
 
-The codebase is production-ready.
+Key numbers:
+- 25 registered hooks (up from 6) — full CC lifecycle coverage
+- ~12.6K tokens/turn saved from token optimization
+- Schema V12->V14 — 3 additive migrations
+- 2198 tests passing across 112 files
+- 3753 Qdrant vectors in production
+- 58 experience patterns (40 proven, 7 established, 11 candidate)

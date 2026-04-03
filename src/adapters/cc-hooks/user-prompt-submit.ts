@@ -184,52 +184,57 @@ const main = wrapHook('UserPromptSubmit', async (input, ctx) => {
     }
   }
 
-  // Materialize artifacts on assembly turns (post-compaction, topic shift) and
-  // on regular turns when the prompt strongly matches high-importance artifacts.
-  // Phase 18: intent-driven limit adjusts how many artifacts we materialize.
-  if (isPostCompaction || topicShift?.shifted) {
-    // Full materialization on assembly turns
-    try {
-      const query = prompt || topicShift?.newTopic;
-      if (query) {
-        const materializeLimit = intentConfig.limit ?? 10;
-        const matches = searchArtifactsGlobal(ctx.db, routedProject, query, materializeLimit);
-        if (matches.length > 0) {
-          materializeArtifacts(ctx.db, matches.map(a => a.id), ctx.project);
-        }
-      }
-    } catch (e) {
-      emitErrorTelemetry(ctx.db, input.session_id, 'artifact_materialize', e);
-    }
-  } else if (prompt && prompt.length >= 30) {
-    // Lightweight importance probe on regular turns — only materialize
-    // high-importance artifacts (decisions, learnings) that strongly match.
-    // This catches cases where the user mentions a topic with existing artifacts
-    // but the topic-shift detector didn't fire.
-    try {
-      const probeLimit = Math.min(intentConfig.limit ?? 5, 5);
-      const probeResults = searchArtifactsGlobal(ctx.db, routedProject, prompt, probeLimit);
-      const highImportance = probeResults.filter(a => a.importance >= 4);
-      if (highImportance.length > 0) {
-        materializeArtifacts(ctx.db, highImportance.map(a => a.id), ctx.project);
-      }
-    } catch { /* non-fatal — regular turn materialization is supplementary */ }
-  }
-
-  // ---------------------------------------------------------------------------
-  // Experience pattern detection
-  // ---------------------------------------------------------------------------
-
-  // Run hybrid pattern search (FTS5 + Qdrant vector) on EVERY turn.
-  // Previously only ran on assembly turns (post-compaction/topic-shift).
-  // Vector search catches semantically similar patterns that keyword matching misses —
-  // this is the primary fix for the "broad rules never surface" problem.
-  // Results are passed to assembleRegularPrompt to avoid re-querying sync FTS5.
+  // Skip expensive operations post-compaction — SessionStart just did full assembly.
+  // Materialization, experience patterns, cross-session linking, and batch reflection
+  // are all redundant immediately after compaction.
   let hybridPatterns: Awaited<ReturnType<typeof findMatchingPatternsHybrid>> | undefined;
-  if (prompt && prompt.length >= 20) {
-    try {
-      hybridPatterns = await findMatchingPatternsHybrid(ctx.db, prompt, routedProject, 5);
-    } catch { /* non-fatal — FTS5 path is the safety net */ }
+  if (!isPostCompaction) {
+    // Materialize artifacts on assembly turns (topic shift) and
+    // on regular turns when the prompt strongly matches high-importance artifacts.
+    // Phase 18: intent-driven limit adjusts how many artifacts we materialize.
+    if (topicShift?.shifted) {
+      // Full materialization on topic-shift assembly turns
+      try {
+        const query = prompt || topicShift?.newTopic;
+        if (query) {
+          const materializeLimit = intentConfig.limit ?? 10;
+          const matches = searchArtifactsGlobal(ctx.db, routedProject, query, materializeLimit);
+          if (matches.length > 0) {
+            materializeArtifacts(ctx.db, matches.map(a => a.id), ctx.project);
+          }
+        }
+      } catch (e) {
+        emitErrorTelemetry(ctx.db, input.session_id, 'artifact_materialize', e);
+      }
+    } else if (prompt && prompt.length >= 30) {
+      // Lightweight importance probe on regular turns — only materialize
+      // high-importance artifacts (decisions, learnings) that strongly match.
+      // This catches cases where the user mentions a topic with existing artifacts
+      // but the topic-shift detector didn't fire.
+      try {
+        const probeLimit = Math.min(intentConfig.limit ?? 5, 5);
+        const probeResults = searchArtifactsGlobal(ctx.db, routedProject, prompt, probeLimit);
+        const highImportance = probeResults.filter(a => a.importance >= 4);
+        if (highImportance.length > 0) {
+          materializeArtifacts(ctx.db, highImportance.map(a => a.id), ctx.project);
+        }
+      } catch { /* non-fatal — regular turn materialization is supplementary */ }
+    }
+
+    // ---------------------------------------------------------------------------
+    // Experience pattern detection
+    // ---------------------------------------------------------------------------
+
+    // Run hybrid pattern search (FTS5 + Qdrant vector) on EVERY turn.
+    // Previously only ran on assembly turns (post-compaction/topic-shift).
+    // Vector search catches semantically similar patterns that keyword matching misses —
+    // this is the primary fix for the "broad rules never surface" problem.
+    // Results are passed to assembleRegularPrompt to avoid re-querying sync FTS5.
+    if (prompt && prompt.length >= 20) {
+      try {
+        hybridPatterns = await findMatchingPatternsHybrid(ctx.db, prompt, routedProject, 5);
+      } catch { /* non-fatal — FTS5 path is the safety net */ }
+    }
   }
 
   // Reset correction flags at turn start — stale flags from a previous turn
@@ -265,12 +270,11 @@ const main = wrapHook('UserPromptSubmit', async (input, ctx) => {
   }
 
   // ---------------------------------------------------------------------------
-  // Cross-session thread linking (4.3)
-  // Detect if this prompt continues a thread from a previous session.
-  // Only runs on first prompt of a session (no existing topic in thread_state).
+  // Cross-session thread linking (4.3) + batch reflection
+  // Skip post-compaction — SessionStart already has session continuity context.
   // ---------------------------------------------------------------------------
   let crossSessionContext = '';
-  if (prompt && !topicShift?.shifted) {
+  if (!isPostCompaction && prompt && !topicShift?.shifted) {
     try {
       const existingThread = getThreadState(ctx.db, input.session_id);
       const isFirstPrompt = !existingThread?.topic;
@@ -316,24 +320,27 @@ const main = wrapHook('UserPromptSubmit', async (input, ctx) => {
   }
 
   // Cross-session coordination — detect file conflicts with other active sessions (BossCat pattern)
-  try {
-    const { getCrossSessionActivity, detectFileConflicts, formatCrossSessionAwareness } = await import('../../intelligence/cross-session-coordination.js');
-    const activities = getCrossSessionActivity(ctx.db, ctx.project, input.session_id);
-    const conflicts = detectFileConflicts(ctx.db, ctx.project, input.session_id);
-    const awareness = formatCrossSessionAwareness(activities, conflicts);
-    if (awareness) {
-      crossSessionContext = crossSessionContext
-        ? crossSessionContext + '\n\n' + awareness
-        : awareness;
-    }
-  } catch { /* non-fatal */ }
+  // Skip post-compaction — conflicts were resolved before compaction.
+  if (!isPostCompaction) {
+    try {
+      const { getCrossSessionActivity, detectFileConflicts, formatCrossSessionAwareness } = await import('../../intelligence/cross-session-coordination.js');
+      const activities = getCrossSessionActivity(ctx.db, ctx.project, input.session_id);
+      const conflicts = detectFileConflicts(ctx.db, ctx.project, input.session_id);
+      const awareness = formatCrossSessionAwareness(activities, conflicts);
+      if (awareness) {
+        crossSessionContext = crossSessionContext
+          ? crossSessionContext + '\n\n' + awareness
+          : awareness;
+      }
+    } catch { /* non-fatal */ }
 
-  // 4.4 Batch reflection — every 10 sessions, synthesize cross-session insights
-  try {
-    if (shouldRunReflection(ctx.db, ctx.project)) {
-      runBatchReflection(ctx.db, ctx.project, input.session_id);
-    }
-  } catch { /* non-fatal */ }
+    // 4.4 Batch reflection — every 10 sessions, synthesize cross-session insights
+    try {
+      if (shouldRunReflection(ctx.db, ctx.project)) {
+        runBatchReflection(ctx.db, ctx.project, input.session_id);
+      }
+    } catch { /* non-fatal */ }
+  }
 
   // Session messages consumer — read pending messages from the Angel
   // NOTE: Messages are marked delivered AFTER confirmed injection (below),

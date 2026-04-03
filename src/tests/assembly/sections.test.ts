@@ -586,12 +586,15 @@ describe('formatReferenceLayer', () => {
     expect(result).toContain('[decision] "REST over GraphQL"');
   });
 
-  it('includes relative time for each artifact', () => {
+  it('does not include variable timestamps (cache-stable)', () => {
     const artifacts = [
       makeArtifactForRef('Recent item', 'observation'),
     ];
     const result = formatReferenceLayer(artifacts);
-    expect(result).toContain('just now');
+    // T5: relative timestamps removed for cache stability
+    expect(result).not.toContain('just now');
+    expect(result).not.toContain('ago');
+    expect(result).toContain('Recent item');
   });
 
   it('includes provenance header', () => {
@@ -645,10 +648,13 @@ describe('formatMaterializationLayer', () => {
     expect(result).toContain("selected by: \"FTS5 match on 'auth'\"");
   });
 
-  it('includes freshness indicator (relative time)', () => {
+  it('does not include variable timestamps (cache-stable)', () => {
     const artifacts = [makeArtifactRow('Test', 'observation', 'Content')];
     const result = formatMaterializationLayer(artifacts);
-    expect(result).toContain('just now');
+    // T5: relative timestamps removed for cache stability
+    expect(result).not.toContain('just now');
+    expect(result).not.toContain('ago');
+    expect(result).toContain('Test');
   });
 
   it('shows "current session" for matching session ID', () => {

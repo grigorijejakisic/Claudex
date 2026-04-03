@@ -239,17 +239,6 @@ export function formatGsdSection(gsd: GsdState | null): string | null {
 }
 
 /**
- * Internal helper: formats a timestamp as relative time.
- */
-function formatRelativeTime(epochSeconds: number): string {
-  const ageSec = Math.floor(Date.now() / 1000) - epochSeconds;
-  if (ageSec < 60) return 'just now';
-  if (ageSec < 3600) return `${Math.floor(ageSec / 60)}m ago`;
-  if (ageSec < 86400) return `${Math.floor(ageSec / 3600)}h ago`;
-  return `${Math.floor(ageSec / 86400)}d ago`;
-}
-
-/**
  * Priority 2.5: Session continuity — compressed handoff + latest session log.
  * Reads ACTIVE.md and the most recent session log, compresses into ~300 tokens.
  * Returns null if no handoff exists (cost: 0). Non-throwing.
@@ -623,11 +612,9 @@ export function formatProjectsOverview(
 
     const lines: string[] = ['## Other Active Projects'];
     for (const p of others.slice(0, 5)) {
-      const ago = Math.floor((Date.now() / 1000 - p.last_active) / 3600);
-      const timeStr = ago < 1 ? '<1h ago' : ago < 24 ? `${ago}h ago` : `${Math.floor(ago / 24)}d ago`;
       const handoff = p.has_handoff ? ' [handoff pending]' : '';
       const topic = p.topic ? ` — ${p.topic}` : '';
-      lines.push(`- **${p.project}**${topic}${handoff} (${timeStr})`);
+      lines.push(`- **${p.project}**${topic}${handoff}`);
     }
     return lines.join('\n');
   } catch {
@@ -729,10 +716,7 @@ export function formatFlowSection(entries: JournalEntry[]): string | null {
     // Sort chronologically (oldest first) for narrative flow
     const sorted = [...entries].sort((a, b) => a.timestamp_epoch - b.timestamp_epoch);
 
-    const bullets = sorted.map(e => {
-      const date = new Date(e.timestamp_epoch * 1000);
-      const hh = String(date.getHours()).padStart(2, '0');
-      const mm = String(date.getMinutes()).padStart(2, '0');
+    const bullets = sorted.map((e, i) => {
       const prefix = e.entry_type !== 'flow' ? `[${e.entry_type}] ` : '';
 
       // Append structured metadata hints when available
@@ -751,7 +735,9 @@ export function formatFlowSection(entries: JournalEntry[]): string | null {
         } catch { /* ignore parse errors */ }
       }
 
-      return `- [${hh}:${mm}] ${prefix}${e.content}${metaHint}`;
+      // Use ordinal index instead of HH:MM timestamp for cache stability —
+      // temporal ordering is implicit in the list order.
+      return `- ${i + 1}. ${prefix}${e.content}${metaHint}`;
     });
 
     return `### Session Flow\n${bullets.join('\n')}`;
@@ -790,9 +776,8 @@ export function formatReferenceLayer(artifacts: ArtifactRow[]): string | null {
 
     for (const a of artifacts) {
       const abbrev = ARTIFACT_TYPE_ABBREV[a.artifact_type] ?? a.artifact_type;
-      const timePart = a.timestamp_epoch ? ` — ${formatRelativeTime(a.timestamp_epoch)}` : '';
       const importancePart = a.importance > 0 ? ` (importance: ${a.importance})` : '';
-      lines.push(`- [${abbrev}] "${a.summary}"${timePart}${importancePart}`);
+      lines.push(`- [${abbrev}] "${a.summary}"${importancePart}`);
     }
 
     return lines.join('\n');
@@ -834,7 +819,6 @@ export function formatMaterializationLayer(
 
     for (const a of withContent) {
       const abbrev = ARTIFACT_TYPE_ABBREV[a.artifact_type] ?? a.artifact_type;
-      const age = a.timestamp_epoch ? formatRelativeTime(a.timestamp_epoch) : 'unknown';
       const sessionAttr = getSessionAttribution(a.session_id, currentSessionId);
       const projectTag = a.project ? ` [${a.project}]` : '';
 
@@ -844,7 +828,7 @@ export function formatMaterializationLayer(
         ? ` (from: ${path.basename(a.artifact_ref)})`
         : '';
 
-      lines.push(`### [${abbrev}]${projectTag}${provenance} ${a.summary} — ${age}, ${sessionAttr}`);
+      lines.push(`### [${abbrev}]${projectTag}${provenance} ${a.summary} — ${sessionAttr}`);
       if (a.content) {
         // File artifacts are untrusted content — wrap in data boundary markers
         // to prevent prompt injection (same guard as identity/primer files)
@@ -906,8 +890,7 @@ export function formatPredictedContextSection(prediction: {
       lines.push('**Pre-materialized artifacts:**');
       for (const a of prediction.artifacts.slice(0, 5)) {
         const abbrev = ARTIFACT_TYPE_ABBREV[a.artifact_type] ?? a.artifact_type;
-        const age = a.timestamp_epoch ? formatRelativeTime(a.timestamp_epoch) : 'unknown';
-        lines.push(`- [${abbrev}] ${a.summary} — ${age}`);
+        lines.push(`- [${abbrev}] ${a.summary}`);
       }
     }
 

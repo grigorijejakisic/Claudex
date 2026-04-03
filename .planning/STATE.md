@@ -1,40 +1,35 @@
-# Project State
+# STATE: CC Source-Informed Upgrades
 
-## Project Reference
+**Current Phase:** Not started
+**Last Updated:** 2026-04-03
 
-See: .planning/PROJECT.md (updated 2026-03-10)
+## Phase Status
 
-**Core value:** LLMs retain operational context across sessions and compaction events without manual effort
-**Current focus:** Milestone 2: Proactive Memory — Phase 12 (Write-Time Deduplication)
+| Phase | Status | Notes |
+|-------|--------|-------|
+| 1 — Environment Flags | NOT STARTED | |
+| 2 — Critical Reminders Tier | NOT STARTED | |
+| 3 — Injection Architecture | NOT STARTED | |
+| 4 — Core Lifecycle Hooks | NOT STARTED | |
+| 5 — Permission & Error Hooks | NOT STARTED | |
+| 6 — Config & Environment Hooks | NOT STARTED | |
+| 7 — Advanced Hook Execution | NOT STARTED | |
+| 8 — MCP & Injection Points | NOT STARTED | |
+| 9 — Bug Workarounds & Defense | NOT STARTED | |
+| 10 — Angel Memory Integration | NOT STARTED | |
+| 11 — Angel Intelligence Integration | NOT STARTED | |
+| 12 — Patterns, Extensions, Polish | NOT STARTED | |
 
-## Current Position
+## Item Tracking
 
-Milestone: 2 (Proactive Memory)
-Phase: 12 of 19 (Write-Time Deduplication) -- IN PROGRESS
-Status: Wave 5 starting (Phases 12-15 parallel)
-Last activity: 2026-03-24 — Research complete (21 agents), spec written, GSD infrastructure set up
+### Completed Items
+(none yet)
 
-Research: context/research/proactive-memory-research-2026-03.md
-Spec: context/specs/PROACTIVE_MEMORY.md
+### Blocked Items
+(none yet)
 
-Progress: [▓▓▓▓▓▓▓▓▓▓░░░░░░░░░░] 60% (M1 complete, M2 starting)
+## Decisions Log
+(none yet)
 
-## Milestone 2 Phases
-
-| Phase | Spec Part | Wave | Status |
-|-------|-----------|------|--------|
-| 12. Write-Time Dedup | Part 1 | Wave 5 | Not started |
-| 13. Category-Aware Decay | Part 2 | Wave 5 | Not started |
-| 14. Negative Retrieval Learning | Part 4 | Wave 5 | Not started |
-| 15. Pattern Maturity | Part 7 | Wave 5 | Not started |
-| 16. Observation Consolidation | Part 3 | Wave 6 | Not started |
-| 17. Artifact Graph | Part 5 | Wave 6 | Not started |
-| 18. Intent Classification | Part 6 | Wave 6 | Not started |
-| 19. Intent Prediction | Part 8 | Wave 7 | Not started |
-
-## Session Continuity
-
-Last session: 2026-03-24 (Session 34)
-Research: 21 parallel agents completed. Unified synthesis saved.
-Spec: 8-part implementation spec with dependency chain, wiring map, schema changes.
-Next: Execute Wave 5 (Parts 1, 2, 4, 7 — all parallel).
+## Key Files Modified
+(none yet)

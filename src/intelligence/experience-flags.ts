@@ -120,6 +120,10 @@ export interface ExperienceFlags {
    * Used for per-session suppression — don't re-inject a pattern already shown.
    */
   session_injected_ids: string[];
+  /** True when a phase-transition activity was detected — consumed by next UPS turn. */
+  critical_activity_gate: boolean;
+  /** Rule domains seen this session. Set grows monotonically — never cleared. */
+  seen_rule_domains: string[];
 }
 
 export interface BehavioralCounters {
@@ -152,6 +156,8 @@ export function getExperienceFlags(
     correction_prompt: '',
     pending_trigger_domains: [],
     session_injected_ids: [],
+    critical_activity_gate: false,
+    seen_rule_domains: [],
   };
   try {
     const parsed = readRoleExchange<Record<string, unknown>>(db, sessionId, EXP_FLAGS_ROLE, {});
@@ -177,6 +183,10 @@ export function getExperienceFlags(
         : [],
       session_injected_ids: Array.isArray(parsed.session_injected_ids)
         ? parsed.session_injected_ids as string[]
+        : [],
+      critical_activity_gate: parsed.critical_activity_gate === true,
+      seen_rule_domains: Array.isArray(parsed.seen_rule_domains)
+        ? parsed.seen_rule_domains as string[]
         : [],
     };
   } catch {
@@ -209,6 +219,8 @@ export function setExperienceFlags(
       correction_prompt: updates.correction_prompt ?? current.correction_prompt,
       pending_trigger_domains: updates.pending_trigger_domains ?? current.pending_trigger_domains,
       session_injected_ids: updates.session_injected_ids ?? current.session_injected_ids,
+      critical_activity_gate: updates.critical_activity_gate ?? current.critical_activity_gate,
+      seen_rule_domains: updates.seen_rule_domains ?? current.seen_rule_domains,
     };
     writeRoleExchange(db, sessionId, EXP_FLAGS_ROLE, merged);
   } catch (e) {

@@ -1,269 +1,229 @@
-# Roadmap: Claudex v3
+# ROADMAP: CC Source-Informed Upgrades
 
-## Overview
-
-Claudex v3 is a unified context management system delivering persistent LLM memory across sessions and compaction events, targeting both Claude Code (hooks) and OpenClaw (bridge plugin) from a single codebase. The roadmap progresses from foundational infrastructure (repo setup, storage) through core intelligence and assembly pipelines, into adapter-specific deployment, and concludes with integration testing and live deployment. Phases are organized into waves enabling parallel execution where dependencies allow.
-
-## Phases
-
-**Phase Numbering:**
-- Integer phases (0-11): Planned implementation work aligned with ARCHITECTURE.md Section 14
-- Decimal phases (e.g., 3.1): Urgent insertions if needed (marked with INSERTED)
-
-**Wave Structure (parallel execution):**
-- Wave 1: Phase 0 + Phase 1 (sequential foundation)
-- Wave 2: Phase 2 + Phase 3 + Phase 6 + Phase 7 (4 parallel streams after storage)
-- Wave 3: Phase 4 + Phase 5 (2 parallel streams after Wave 2)
-- Wave 4: Phase 8 + Phase 9 (2 parallel streams after core complete)
-- Sequential: Phase 10 then Phase 11
-
-- [x] **Phase 0: Repository Setup** - Project scaffolding, shared utilities, type system, build tooling (completed 2026-03-10)
-- [x] **Phase 1: Storage Layer** - SQLite database, full schema, CRUD modules, FTS5, telemetry (completed 2026-03-10)
-- [ ] **Phase 2: Extraction Pipeline** - Per-tool observation extractors, redaction, quality gates
-- [x] **Phase 3: Intelligence Core** - Decision capture (regex stage), dedup, thread tracking, learnings (completed 2026-03-12)
-- [x] **Phase 4: Intelligence v1.2** - Embeddings, enrichment, topic-shift detection, embedding classification (completed 2026-03-12)
-- [x] **Phase 5: Assembly Pipeline** - Boundary-only injection, priority-budgeted sections, token estimation (completed 2026-03-12)
-- [x] **Phase 6: Checkpoint System** - ULID IDs, DB-first state machine, 3-hop recovery, atomic writes (completed 2026-03-12)
-- [x] **Phase 7: Supporting Subsystems** - Token gauge, decay engine, GSD state reader (completed 2026-03-12)
-- [x] **Phase 8: CC Hook Adapter** - 6 hook entry points, stdin/stdout protocol, claudex setup CLI (completed 2026-03-12)
-- [x] **Phase 9: OpenClaw Bridge Adapter** - globalThis registration, plugin activate(), bridge callbacks (completed 2026-03-12)
-- [x] **Phase 10: Integration Testing** - End-to-end flows, performance SLAs, observability validation (completed 2026-03-12)
-- [x] **Phase 11: Deployment** - Fresh install verification, optional v2 migration, monitoring (completed 2026-03-12)
+**Milestone:** CC Source Upgrades (81 items, 10 categories)
+**Phases:** 12
 
 ---
 
-**Milestone 2: Proactive Memory (V11 Schema Evolution)**
-Research: `context/research/proactive-memory-research-2026-03.md` (21 parallel research agents)
-Spec: `context/specs/PROACTIVE_MEMORY.md`
+## Phase 1 — Environment Flags & CLAUDE_ENV_FILE (7 items)
+**Items:** X3, T1, T2, T8, C1, C2, B6
+**Focus:** Establish CLAUDE_ENV_FILE injection in SessionStart hook. Disable CC auto-memory. Set transcript preservation. Add GrowthBook flag monitoring and auto-dream prevention. Work around session ID mismatch.
 
-**Wave Structure:**
-- Wave 5: Phase 12 + Phase 13 + Phase 14 + Phase 15 (4 parallel independent foundations)
-- Wave 6: Phase 16 + Phase 17 + Phase 18 (3 parallel, depend on Wave 5)
-- Wave 7: Phase 19 (depends on all above — the proactive capstone)
+**Why first:** X3 (CLAUDE_ENV_FILE) is the delivery mechanism for T1, T2, T8. All are env var writes. C1/C2 are defensive checks that should activate at session start. B6 awareness prevents using broken env file session IDs.
 
-- [ ] **Phase 12: Write-Time Deduplication** - Check Qdrant for semantic duplicates before inserting observations. Prevents bloat at source.
-- [ ] **Phase 13: Category-Aware Decay** - Stability classification on observations. Error traces decay fast; architecture decisions persist. Continuous decay in Angel heartbeat.
-- [ ] **Phase 14: Negative Retrieval Learning** - Track surfaced-but-unreferenced artifacts. Demote consistently-ignored items. Retrieval-induced suppression.
-- [ ] **Phase 15: Pattern Maturity + Harmful Multiplier** - candidate→established→proven lifecycle. 4× negative weight. Anti-pattern inversion. Confidence scoring.
-- [ ] **Phase 16: Observation Consolidation** - Angel heartbeat consolidation using Mem0 ADD/UPDATE/DELETE/NOOP model. Reduce 22K to ~5K. Never delete originals.
-- [ ] **Phase 17: Artifact Relationship Graph** - Two-stage linking (cosine→LLM validation). 2-hop graph walks as 4th RRF channel. Fan-effect normalization.
-- [ ] **Phase 18: Intent Classification** - Classify prompt intent (continuation/investigation/implementation/planning/recall). Route to different retrieval strategies.
-- [ ] **Phase 19: Intent Prediction** - Layered prediction at session-start (strong anticipation → weak → pattern matching). Confidence-gated injection. The proactive leap.
+**Deliverables:**
+- SessionStart hook writes env vars to CLAUDE_ENV_FILE
+- CC auto-memory disabled (T1/T2 — ~11K tokens/turn saved)
+- GrowthBook flag detection (C1)
+- Auto-dream guard (C2)
+- Session ID sourced from hook payload, not env file (B6)
+- Tests for all env injection paths
 
-## Phase Details
+---
 
-### Phase 0: Repository Setup
-**Goal**: A buildable, testable TypeScript project with the shared type system and utilities that all subsequent phases depend on
-**Depends on**: Nothing (first phase)
-**Requirements**: QUAL-01, QUAL-05
-**Success Criteria** (what must be TRUE):
-  1. `bun test` runs and passes on an empty test suite (build toolchain works)
-  2. Shared types (RuntimeEvent, RuntimeCapabilities, InjectPayload) compile and are importable by any module
-  3. Utility modules (paths, scope-detector, fs-helpers, text-utils) exist with defensive non-throwing error handling
-  4. Project builds on both Windows and Linux without platform-specific workarounds (2-3 process.platform checks only)
-**Plans**: 2 plans
+## Phase 2 — Critical Reminders Tier (1 spec = many items)
+**Items:** T3 (partial — defines budgets), Critical Reminders spec (full implementation)
+**Focus:** Build the Critical Reminders injection tier per `CRITICAL_REMINDERS_TIER.md` spec. New `critical_rules` table, decay-based TTL with jitter, activity-gated injection, first-encounter gating, varied phrasing renderer, 200-300 token cap.
 
-Plans:
-- [ ] 00-01-PLAN.md -- Project scaffolding, build toolchain, core type system, constants
-- [ ] 00-02-PLAN.md -- Shared utility modules (paths, scope-detector, fs-helpers, text-utils, config)
+**Why second:** Hard constraint on token optimization work. T3 (injection minimization) requires knowing the budget split: proven principles (500), critical reminders (300), experience patterns (500). Must be built before T3 restructuring.
 
-### Phase 1: Storage Layer
-**Goal**: A fully operational SQLite database that any subsystem can store and query data against, with complete v3 schema and structured observability
-**Depends on**: Phase 0
-**Requirements**: STOR-01, STOR-02, STOR-03, STOR-04, STOR-05, STOR-06, STOR-07, STOR-08, OBSV-01, OBSV-02, OBSV-04, QUAL-04
-**Success Criteria** (what must be TRUE):
-  1. Running `claudex setup` on a clean machine creates a SQLite database with all v3 tables, indexes, and FTS5 virtual table
-  2. Multi-step writes are atomic (interrupted mid-transaction produces zero partial state)
-  3. FTS5 search returns relevant observations ranked by BM25 with temporal re-ranking
-  4. Telemetry events can be emitted from any module and queried via standard SQL
-  5. All queries filter by project scope (no cross-project data leakage)
-**Plans**: 3 plans
+**Deliverables:**
+- `critical_rules` DDL + migration
+- `assembleCriticalReminders()` function
+- Decay trigger with variable-interval jitter
+- Activity gate in PostToolUse (multi-file, git, agent spawning, topic shift)
+- First-encounter gate (track seen tool domains per session)
+- Phrasing variation renderer
+- Integration in UserPromptSubmit assembly cascade (priority 4a.5)
+- Deterministic meta-rule enforcement in Stop hook
+- 6 success criteria from spec verified
+- Tests for all trigger conditions and budget limits
 
-Plans:
-- [ ] 01-01-PLAN.md -- Database foundation: SQLite connection lifecycle, complete v3 schema DDL, v2 migration SQL
-- [ ] 01-02-PLAN.md -- Observation CRUD with FTS5 temporal search + telemetry subsystem
-- [ ] 01-03-PLAN.md -- Remaining CRUD modules: sessions, decisions, learnings, thread, pressure, checkpoint-tracking
+---
 
-### Phase 2: Extraction Pipeline
-**Goal**: Tool usage observations are automatically captured, scored, redacted, and stored with quality filtering
-**Depends on**: Phase 1
-**Requirements**: EXTR-01, EXTR-02, EXTR-03, EXTR-04, EXTR-05
-**Success Criteria** (what must be TRUE):
-  1. Each of the 10 tool types produces structured observations with correct category and importance score
-  2. Secrets, absolute paths, and PII are redacted before storage (three-layer redaction)
-  3. Low-signal observations (empty results, trivial reads) are filtered out by quality gates
-  4. Stored observations include files_modified as valid JSON arrays
-**Plans**: 2 plans
+## Phase 3 — Injection Architecture Restructure (5 items)
+**Items:** T3, T5, T6, T7, I3
+**Focus:** Move bulk context from UserPromptSubmit to SessionStart. Make all injected content cache-stable. Audit CLAUDE.md footprint. Add post-compact duplication avoidance. Create conditional rules in `.claude/rules/`.
 
-Plans:
-- [ ] 02-01-PLAN.md -- Redaction engine, quality gates, importance scoring, category classification
-- [ ] 02-02-PLAN.md -- Per-tool extractors (10 tools) + dispatcher pipeline with dedup
+**Why third:** With Critical Reminders tier built (Phase 2) and env flags set (Phase 1), we know the full budget structure. Now restructure the injection architecture for minimum token cost.
 
-### Phase 3: Intelligence Core
-**Goal**: The system captures decisions, tracks conversation threads, deduplicates content, and promotes cross-session learnings -- all without requiring embeddings
-**Depends on**: Phase 1
-**Requirements**: INTL-01, INTL-03, INTL-04, INTL-05, INTL-06, INTL-07, INTL-09
-**Success Criteria** (what must be TRUE):
-  1. Regex-based decision capture identifies confirmed decisions across Claude, MiniMax, GLM, and DeepSeek model outputs
-  2. Filler actions (reading, checking, navigation) are rejected as non-decisions
-  3. Thread tracker maintains rolling topic, summary, and 8-exchange key_exchanges window
-  4. Duplicate observations and decisions are detected and merged via 3-tier dedup (normalized exact, Jaccard, substring)
-  5. Learnings accumulate promotion counts across sessions with max 50 per project
-**Plans**: 2 plans
+**Deliverables:**
+- UserPromptSubmit payload under 1KB (dynamic content only)
+- SessionStart carries bulk context (no truncation limit)
+- All timestamps/counts/IDs removed from injected text (cache-stable)
+- CLAUDE.md trimmed, conditional content in `.claude/rules/`
+- Post-compact flag prevents double-injection on next UPS turn
+- Cache hit rate measurement before/after
 
-Plans:
-- [ ] 03-01-PLAN.md -- 3-tier semantic deduplication engine (normalized exact, keyword Jaccard with Porter stemmer, substring containment)
-- [ ] 03-02-PLAN.md -- Decision capture (Stage 1 regex, 4 tiers), thread tracker (exchange accumulation, gist extraction), learnings promoter (dedup + 50-cap)
+---
 
-### Phase 4: Intelligence v1.2
-**Goal**: Embedding-powered intelligence enhances decision classification, topic-shift detection, and checkpoint enrichment when Ollama is available, with full graceful fallback
-**Depends on**: Phase 3
-**Requirements**: INTL-02, INTL-08, INTL-10, INTL-11, EMBD-01, EMBD-02, EMBD-03, EMBD-04
-**Success Criteria** (what must be TRUE):
-  1. With Ollama running, decision capture Stage 2 filters false positives via embedding classification (0.15 confidence threshold)
-  2. Topic-shift detection fires when embedding similarity drops below 0.35 with avgRecent below 0.40
-  3. LLM enrichment refines heuristic checkpoint data without dropping any heuristic entries (safety-net merge)
-  4. When Ollama is unavailable, all embedding/enrichment features degrade gracefully (system still works, uses regex-only and Jaccard fallback)
-**Plans**: 2 plans
+## Phase 4 — Core New Hooks: Compaction & Subagent Lifecycle (6 items)
+**Items:** H1, H2, H3, H4, H13, H17
+**Focus:** Register the highest-impact new hooks: SubagentStart/Stop, PreCompact/PostCompact, TaskCreated/Completed, SessionEnd. These are the lifecycle hooks that other features depend on.
 
-Plans:
-- [ ] 04-01-PLAN.md -- Embedding foundation: Ollama nomic-embed-text client, cosine similarity, decision template embeddings
-- [ ] 04-02-PLAN.md -- Topic-shift detection, decision capture Stage 2, LLM enrichment with safety-net merge
+**Why fourth:** H4 (PostCompact) is needed by T7 (Phase 3 wired it, this provides the signal). H1/H2 enable subagent tracking. H17 enables proper session cleanup. H13 enables task lifecycle analytics.
 
-### Phase 5: Assembly Pipeline
-**Goal**: Context is injected at session boundaries and topic shifts only, with priority-budgeted sections and near-zero overhead on regular turns
-**Depends on**: Phase 4, Phase 6, Phase 7
-**Requirements**: ASMB-01, ASMB-02, ASMB-03, ASMB-04, ASMB-05, ASMB-06, QUAL-02
-**Success Criteria** (what must be TRUE):
-  1. Full context assembly fires at session-start and post-compaction only (boundary-only injection)
-  2. Topic-shift produces a micro-injection of max 800 tokens (pivot block)
-  3. Assembly sections follow priority order: identity, checkpoint, learnings, decisions, pressure, GSD, FTS5, recent
-  4. Most turns produce zero injection (gauge-only or empty), verified by telemetry
-  5. Three-tier degradation works: full assembly, checkpoint-only, identity-only (never crashes)
-**Plans**: 2 plans
+**Deliverables:**
+- 6 new hook entry points registered in settings.json
+- SubagentStart: injects Claudex awareness into subagent context
+- SubagentStop: captures results, duration, success/failure to DB
+- PreCompact: captures pre-compact state, injects preservation hints
+- PostCompact: triggers full re-assembly, sets post-compact flag
+- TaskCreated/TaskCompleted: logs to session_events
+- SessionEnd: runs final cleanup, summary, handoff creation
+- Tests for each hook's core behavior
 
-Plans:
-- [ ] 05-01-PLAN.md -- Token estimator (re-export) and 10 stateless section formatters (identity, project, checkpoint, learnings, hot files, GSD, FTS5, recent, gauge, topic pivot)
-- [ ] 05-02-PLAN.md -- Assembly orchestrator: priority-budgeted full assembly, regular prompt (boundary-only), topic-shift pivot, gauge injection, three-tier degradation, post-redaction reclaim
+---
 
-### Phase 6: Checkpoint System
-**Goal**: Session state is reliably persisted and recoverable across crashes, compaction events, and session restarts
-**Depends on**: Phase 1
-**Requirements**: CHKP-01, CHKP-02, CHKP-03, CHKP-04, CHKP-05, CHKP-06, CHKP-07, CHKP-08, QUAL-03
-**Success Criteria** (what must be TRUE):
-  1. Checkpoint IDs are ULIDs (monotonic, collision-free under concurrent writers)
-  2. DB-first write flow completes: INSERT pending, build YAML, UPDATE committed, enrich, write file, UPDATE mirrored
-  3. Recovery chain restores state: DB first, then latest.yaml, then directory scan, then hop chain (3-hop)
-  4. Checkpoint writes are debounced (60-second minimum between non-compaction writes)
-  5. File writes are atomic (tmp + rename with Windows EPERM fallback)
-**Plans**: 2 plans
+## Phase 5 — Permission & Error Hooks (6 items)
+**Items:** H5, H6, H7, H14, X8, B7
+**Focus:** Permission lifecycle hooks (request/denied), elicitation hooks, failure hooks. Wire X8 (permissionDecision) into H5. Enforce command-type for stop events (B7).
 
-Plans:
-- [ ] 06-01-PLAN.md -- Checkpoint types (CheckpointV3 schema) and DB-first writer (ULID IDs, state machine, thresholds, debounce, YAML, enrichment)
-- [ ] 06-02-PLAN.md -- Two-layer recovery loader (DB-first + file fallback + 3-hop chain, selective presets) and inject renderer (checkpoint-to-markdown)
+**Deliverables:**
+- PermissionRequest hook with behavioral pattern-based auto-allow/deny
+- PermissionDenied hook with denial pattern tracking
+- Elicitation/ElicitationResult hooks for MCP auto-response
+- PostToolUseFailure/StopFailure hooks capture errors to DB
+- X8 permissionDecision wired into PreToolUse
+- All stop/end hooks use command type, not agent type (B7)
+- Tests for permission flow and error capture
 
-### Phase 7: Supporting Subsystems
-**Goal**: Token utilization is tracked, stale data decays, and GSD planning state is surfaced in context
-**Depends on**: Phase 1
-**Requirements**: SUPP-01, SUPP-02, SUPP-03, SUPP-04, SUPP-05, SUPP-06
-**Success Criteria** (what must be TRUE):
-  1. Token gauge reports utilization from transcript JSONL (CC) or SDK (OpenClaw) with auto-detected context window size
-  2. Token gauge injection appears at >= 70% utilization
-  3. Decay engine calculates EI scores (importance * recency * access * co-occurrence) and soft-deletes entries over threshold
-  4. GSD state reader surfaces .planning/ phase and plan status with +0.10 priority boost
-**Plans**: 2 plans
+---
 
-Plans:
-- [ ] 07-01-PLAN.md -- Token gauge (transcript/SDK), window detector (200k/1M), decay engine (EI formula + pruning + retention), stratified pressure decay
-- [ ] 07-02-PLAN.md -- GSD state reader (.planning/ filesystem) + types
+## Phase 6 — Environment & Config Hooks (5 items)
+**Items:** H8, H9, H10, H15, H16
+**Focus:** Configuration lifecycle hooks: ConfigChange, InstructionsLoaded, CwdChanged, Setup, WorktreeCreate/Remove.
 
-### Phase 8: CC Hook Adapter
-**Goal**: Claudex v3 runs as Claude Code lifecycle hooks with a working setup CLI for fresh installs
-**Depends on**: Phase 2, Phase 3, Phase 5, Phase 6, Phase 7
-**Requirements**: ADPT-01, ADPT-02, ADPT-03, ADPT-07, ADPT-08
-**Success Criteria** (what must be TRUE):
-  1. All 6 CC hooks (SessionStart, UserPromptSubmit, PostToolUse, Stop, PreCompact, SessionEnd) fire correctly and map to RuntimeEvent
-  2. Each hook reads stdin JSON, processes via core pipeline, writes stdout JSON, and exits (ephemeral process lifecycle)
-  3. `claudex setup` creates DB, patches ~/.claude/settings.json with hook paths, and offers optional v2 migration
-  4. Adapter auto-detection correctly identifies CC environment
-**Plans**: TBD
+**Deliverables:**
+- ConfigChange: detects settings.json changes, logs and adapts
+- InstructionsLoaded: detects CLAUDE.md reloads (with B3 awareness — not reliable post-compact)
+- CwdChanged: detects project switches, reloads project context
+- Setup: auto-configures Claudex on first-time CC setup
+- WorktreeCreate/Remove: tracks worktrees for multi-workspace sessions
+- Tests for each hook
 
-Plans:
-- [ ] 08-01-PLAN.md -- Hook infrastructure (stdin/stdout protocol, bootstrap, wrapHook) + 6 entry points (session-start, user-prompt-submit, post-tool-use, stop, pre-compact, session-end)
-- [ ] 08-02-PLAN.md -- Setup CLI (claudex setup: directory creation, DB init, config write, settings.json hook patching, optional v2 migration)
+---
 
-### Phase 9: OpenClaw Bridge Adapter
-**Goal**: Claudex v3 runs as an OpenClaw plugin via globalThis bridge registration
-**Depends on**: Phase 2, Phase 3, Phase 5, Phase 6, Phase 7
-**Requirements**: ADPT-04, ADPT-05, ADPT-06
-**Success Criteria** (what must be TRUE):
-  1. Bridge adapter registers via globalThis Symbol and receives callbacks from OpenClaw gateway
-  2. Plugin activate() function installs correctly as a standard OpenClaw plugin
-  3. OpenClaw capabilities are declared correctly (all fields from Section 3.1)
-**Plans**: TBD
+## Phase 7 — Advanced Hook Execution (7 items)
+**Items:** X1, X2, X4, X5, X6, X7, X9, X10
+**Focus:** Advanced hook execution capabilities: async protocol, interactive prompts, once flag, agent/http/prompt execution types, MCP output rewriting, input modification with matchers.
 
-Plans:
-- [ ] 09-01-PLAN.md -- Bridge types (BRIDGE_KEY, Pi SDK stubs), adapter callbacks (5 callbacks mapping Pi SDK to core), plugin entry (activate + globalThis registration + session_end cleanup)
+**Deliverables:**
+- X1: Async hook support (output `{"async": true}`, asyncRewake exit-code-2)
+- X2: Interactive prompt protocol for user input during hooks
+- X4: `once: true` flag support for one-time hooks
+- X5/X6/X7: Agent, HTTP, prompt execution types (infrastructure awareness)
+- X9: PostToolUse MCP output rewriting
+- X10: PreToolUse input modification with matcher patterns
+- Tests for async protocol, prompt protocol, output/input modification
 
-### Phase 10: Integration Testing
-**Goal**: The complete system works end-to-end on both adapters, meets performance SLAs, and produces queryable observability data
-**Depends on**: Phase 8, Phase 9
-**Requirements**: OBSV-03, PERF-01, PERF-02, PERF-03, PERF-04, QUAL-06
-**Success Criteria** (what must be TRUE):
-  1. Full CC hook flow (session-start through session-end) completes without errors and produces correct context injection
-  2. Full OpenClaw bridge flow (init through compact) completes without errors
-  3. Per-turn overhead stays under 600ms common case; injection turns under 1000ms
-  4. Telemetry is queryable via SQL and answers "what did Claudex do on this turn?"
-  5. Full vitest test suite passes covering all modules
-**Plans**: TBD
+---
 
-Plans:
-- [ ] 10-01-PLAN.md -- End-to-end flow tests (CC hooks + OpenClaw bridge + fresh install) and performance SLA assertions (PERF-01-04)
-- [ ] 10-02-PLAN.md -- Cross-cutting integration scenarios (learnings persistence, checkpoint recovery, topic-shift, FTS5, telemetry queryability, pressure scoring, decay)
+## Phase 8 — Injection Points & MCP Upgrades (5 items)
+**Items:** T4, I1, I2, I4, K1
+**Focus:** MCP-level injection (system-prompt instructions, tool annotations, skills). Auto-priming via initialUserMessage. Measure MCP cache trade-off.
 
-### Phase 11: Deployment
-**Goal**: Claudex v3 is running in production on both adapters, verified on fresh installs, with predecessor systems archived
-**Depends on**: Phase 10
-**Requirements**: (no unmapped requirements -- deployment validates all prior phases)
-**Success Criteria** (what must be TRUE):
-  1. Fresh `claudex setup` on a clean Windows machine produces a fully operational CC hook system
-  2. Fresh OpenClaw plugin install produces a fully operational bridge adapter
-  3. Optional v2 migration completes successfully for existing Claudex users (data preserved, backup created)
-  4. Both adapters verified independently for one week of real usage
-**Plans**: TBD
+**Deliverables:**
+- T4: Claudex MCP server `instructions` field for system-prompt injection
+- I1: SessionStart returns `initialUserMessage` for auto-priming with handoff
+- I2: MCP tool annotations (searchHint, alwaysLoad) on all 6 Claudex tools
+- I4: MCP skills serving SKILL.md resources
+- K1: Measured cache trade-off (global→org scope downgrade vs injection benefit)
+- Tests for MCP injection and auto-priming
 
-Plans:
-- [x] 11-01-PLAN.md -- Build verification, deployment checklist, monitoring protocol
+---
 
-## Progress
+## Phase 9 — Bug Workarounds & Defensive Measures (10 items)
+**Items:** B1, B2, B3, B4, B5, B8, C3, C4, C5, K4
+**Focus:** All remaining bug workarounds and conflict prevention. KAIROS detection, compaction race awareness, VERIFICATION_AGENT readiness, billing sentinel guard.
 
-**Execution Order:**
-Wave 1: Phase 0 then Phase 1 (sequential)
-Wave 2: Phase 2, Phase 3, Phase 6, Phase 7 (parallel after Phase 1)
-Wave 3: Phase 4, Phase 5 (after Wave 2 dependencies met)
-Wave 4: Phase 8, Phase 9 (parallel after core complete)
-Then: Phase 10 then Phase 11 (sequential)
+**Deliverables:**
+- B1: Documented — reinforces T1 (no MEMORY.md writes)
+- B2: Resume cost awareness in session logging
+- B3: PostCompact used instead of InstructionsLoaded for post-compact detection
+- B4: Duplicate compaction agent detection + logging
+- B5: Edit tracking + post-compact verification
+- B8: chmod after plugin install
+- C3: KAIROS mode detection
+- C4: Lean post-compact injections (verified in Phase 3)
+- C5: `solution_outcomes` ready for VERIFICATION_AGENT verdicts
+- K4: `cch=` pattern guard in all hook output paths
+- Tests for sentinel guard, edit tracking, KAIROS detection
 
-| Phase | Plans Complete | Status | Completed |
-|-------|----------------|--------|-----------|
-| 0. Repository Setup | 2/2 | Complete   | 2026-03-10 |
-| 1. Storage Layer | 3/3 | Complete   | 2026-03-10 |
-| 2. Extraction Pipeline | 0/2 | Not started | - |
-| 3. Intelligence Core | 2/2 | Complete   | 2026-03-12 |
-| 4. Intelligence v1.2 | 2/2 | Complete   | 2026-03-12 |
-| 5. Assembly Pipeline | 2/2 | Complete   | 2026-03-12 |
-| 6. Checkpoint System | 2/2 | Complete   | 2026-03-12 |
-| 7. Supporting Subsystems | 2/2 | Complete   | 2026-03-12 |
-| 8. CC Hook Adapter | 2/2 | Complete   | 2026-03-12 |
-| 9. OpenClaw Bridge Adapter | 1/1 | Complete   | 2026-03-12 |
-| 10. Integration Testing | 2/2 | Complete   | 2026-03-12 |
-| 11. Deployment | 1/1 | Complete   | 2026-03-12 |
-| **Milestone 2: Proactive Memory** | | | |
-| 12. Write-Time Dedup | 0/1 | Not started | - |
-| 13. Category-Aware Decay | 0/1 | Not started | - |
-| 14. Negative Retrieval Learning | 0/1 | Not started | - |
-| 15. Pattern Maturity | 0/1 | Not started | - |
-| 16. Observation Consolidation | 0/1 | Not started | - |
-| 17. Artifact Graph | 0/1 | Not started | - |
-| 18. Intent Classification | 0/1 | Not started | - |
-| 19. Intent Prediction | 0/1 | Not started | - |
+---
+
+## Phase 10 — Angel/CC Integration: Memory & Consolidation (8 items)
+**Items:** A1, A2, A3, A4, A5, A9, A12, A13
+**Focus:** Align Angel with CC memory features. Disable/bridge extractMemories, Dream consolidation, retention sweep. Dedup injection tracking. Race prevention. Transcript indexing window.
+
+**Deliverables:**
+- A1: Angel adopts Dream's 4-phase structure or disables Dream (sole consolidator decision)
+- A2: CC extractMemories disabled (aligns with T1). Angel adopts forked-agent pattern awareness
+- A3: Angel retention sweep enhanced with /remember taxonomy
+- A4: Angel reads CC session memory summaries as input
+- A5: Angel session monitor consumes CC away summaries
+- A9: Deduplication tracking — what's been surfaced, avoid re-injection
+- A12: File race prevention (with T1, races eliminated; defensive guard remains)
+- A13: Angel indexes within 30-day cleanup window
+- Tests for dedup tracking, retention sweep enhancements
+
+---
+
+## Phase 11 — Angel/CC Integration: Skills & Intelligence (7 items)
+**Items:** A6, A7, A8, A10, A11, A14, A15
+**Focus:** Higher-level Angel/CC intelligence integration. Magic Docs awareness, agent summary consumption, skill improvement bridge, /skillify pipeline, /stuck auto-trigger, Angel-Dream symbiosis, Buddy notification UI.
+
+**Deliverables:**
+- A6: Magic Docs conflict prevention (different output targets)
+- A7: Angel consumes CC agent summaries for cross-session state
+- A8: Angel correction detection → CC skill rewrite trigger
+- A10: Angel pattern → /skillify pipeline
+- A11: Angel stuck detection → /stuck auto-trigger
+- A14: Angel-Dream symbiosis architecture (Angel curates input, Dream consolidates, Angel consumes output)
+- A15: Buddy companionReaction for Angel notifications, transfers, signals
+- Tests for pipeline connections, Buddy integration
+
+---
+
+## Phase 12 — Engineering Patterns, Extension Surfaces & Cache Polish (11 items)
+**Items:** P1, P2, P3, P4, P5, P6, E1, E2, E3, K2, K3, H11, H12
+**Focus:** Angel engineering pattern adoption, Claudex plugin packaging, channel MCP, remaining cache and hook items.
+
+**Deliverables:**
+- P1: Forked agent with cache sharing pattern documented + infrastructure
+- P2: Cursor-based incremental extraction in Angel pattern extractor
+- P3: Pre-injected manifests for Angel LLM reasoning
+- P4: 10-minute debounce on Angel monitoring loops
+- P5: Hard 5-turn cap on Angel background processes
+- P6: Mutual exclusion skip logic for Angel/CC shared writes
+- E1: Claudex plugin manifest (hooks, MCP, skills, config)
+- E2: Channel MCP server for cross-session messaging
+- E3: searchHint/alwaysLoad annotations (supplements I2)
+- K2: TTL awareness in session management
+- K3: Latched header awareness documented
+- H11: Extended file watching via watchPaths
+- H12: TeammateIdle detection
+- Tests for cursor extraction, throttling, plugin manifest
+
+---
+
+## Phase Summary
+
+| Phase | Items | Count | Focus |
+|-------|-------|-------|-------|
+| 1 | X3, T1, T2, T8, C1, C2, B6 | 7 | Environment flags |
+| 2 | Critical Reminders spec | ~8* | Critical Reminders tier |
+| 3 | T3, T5, T6, T7, I3 | 5 | Injection restructure |
+| 4 | H1, H2, H3, H4, H13, H17 | 6 | Core lifecycle hooks |
+| 5 | H5, H6, H7, H14, X8, B7 | 6 | Permission & error hooks |
+| 6 | H8, H9, H10, H15, H16 | 5 | Config & environment hooks |
+| 7 | X1, X2, X4, X5, X6, X7, X9, X10 | 8 | Advanced hook execution |
+| 8 | T4, I1, I2, I4, K1 | 5 | MCP & injection points |
+| 9 | B1-B5, B8, C3, C4, C5, K4 | 10 | Bug workarounds & defense |
+| 10 | A1-A5, A9, A12, A13 | 8 | Angel memory integration |
+| 11 | A6-A8, A10, A11, A14, A15 | 7 | Angel intelligence integration |
+| 12 | P1-P6, E1-E3, K2, K3, H11, H12 | 12 | Patterns, extensions, polish |
+
+*Phase 2 implements the Critical Reminders spec which touches T3 budget definition and multiple new subsystems. The spec itself is counted as a unit.
+
+**Total: 81 items across 12 phases.**
