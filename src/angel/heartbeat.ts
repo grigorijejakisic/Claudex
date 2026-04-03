@@ -436,10 +436,19 @@ export async function heartbeatTick(ctx: HeartbeatContext): Promise<TickResult> 
                 execSync('start /B cli-proxy-api.exe', { shell: 'cmd.exe', timeout: 5000, windowsHide: true });
               } catch { /* may not be in PATH — non-fatal */ }
             }
-            if (svc.includes('Reranker') && !isPythonScriptRunning('reranker.py')) {
-              // Reranker auto-restart — Python background process
+            if (svc.includes('Reranker')) {
+              // Reranker auto-restart — kill zombie first if health check failed but process exists
               try {
                 const rerankerPath = path.join(process.cwd(), 'services', 'reranker.py');
+                if (isPythonScriptRunning('reranker.py')) {
+                  // Zombie: process alive but HTTP server dead — kill it to free the port
+                  execSync(
+                    `powershell -NoProfile -Command "Get-CimInstance Win32_Process -Filter \\"name='python.exe'\\" | Where-Object { $_.CommandLine -like '*reranker.py*' } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force }"`,
+                    { timeout: 5000, windowsHide: true },
+                  );
+                  // Brief pause to let port release
+                  execSync('timeout /t 2 /nobreak >nul', { shell: 'cmd.exe', timeout: 5000, windowsHide: true });
+                }
                 execSync(`start /B python "${rerankerPath}"`, { shell: 'cmd.exe', timeout: 5000, windowsHide: true });
               } catch { /* non-fatal */ }
             }
@@ -462,11 +471,27 @@ export async function heartbeatTick(ctx: HeartbeatContext): Promise<TickResult> 
     // =========================================================================
     // Guardian of All Memory — Phases 4b-4e
     // All pure SQL, no LLM calls, individually rate-limited and non-throwing.
+    // KAIROS-inspired triple gate: time + session-count + mutual exclusion.
     // =========================================================================
+
+    // Triple gate check: skip heavy consolidation unless enough new sessions exist.
+    const totalCompletedSessions = (cachedPrepare(ctx.db,
+      `SELECT COUNT(*) as cnt FROM sessions WHERE status = 'completed'`
+    ).get() as { cnt: number }).cnt;
+    const sessionsSinceLastConsolidation = totalCompletedSessions - _sessionsAtLastConsolidation;
+    const heavyConsolidationTimeElapsed = Date.now() - _lastHeavyConsolidationEpoch >= CONSOLIDATION_INTERVAL_MS;
+    const heavyConsolidationGatePassed = sessionsSinceLastConsolidation >= HEAVY_CONSOLIDATION_MIN_SESSIONS
+      && heavyConsolidationTimeElapsed;
+
+    if (heavyConsolidationGatePassed) {
+      _lastHeavyConsolidationEpoch = Date.now();
+      _sessionsAtLastConsolidation = totalCompletedSessions;
+    }
 
     // Phase 4b: Data retention sweep — per-table lifecycle enforcement.
     // Prunes conversation_turns (3-tier), artifacts, journal, events, etc.
     // Rate-limited internally (default: once per 60 min). Batch: 500 rows/table.
+    // Retention sweep always runs (time-gated internally) — not session-gated.
     try {
       const sweepResult = runRetentionSweep(ctx.db, ctx.config.retention);
       const totalDeleted = sweepResult.conversation_turns_skeletal
@@ -487,8 +512,8 @@ export async function heartbeatTick(ctx: HeartbeatContext): Promise<TickResult> 
 
     // Phase 4c: Cross-project knowledge consolidation — fingerprint-based dedup.
     // Merges identical learnings/decisions/patterns into __global__ scope.
-    // Rate-limited internally (default: once per 60 min).
-    try {
+    // Triple-gated: only runs when enough new sessions exist.
+    if (heavyConsolidationGatePassed) try {
       const consolidation = runCrossProjectConsolidation(ctx.db, ctx.config.retention);
       const totalDeduped = consolidation.learnings_deduped
         + consolidation.decisions_deduped
@@ -503,8 +528,8 @@ export async function heartbeatTick(ctx: HeartbeatContext): Promise<TickResult> 
 
     // Phase 4d: Data quality & integrity checks.
     // Fixes 0-observation sessions, cleans orphans, detects stale embeddings.
-    // Rate-limited internally (default: once per 120 min).
-    try {
+    // Triple-gated: only runs when enough new sessions exist.
+    if (heavyConsolidationGatePassed) try {
       const qualityResult = runDataQualityChecks(ctx.db, ctx.config.retention);
       const totalFixed = qualityResult.zero_obs_sessions_queued
         + qualityResult.orphaned_records_deleted
@@ -556,8 +581,8 @@ export async function heartbeatTick(ctx: HeartbeatContext): Promise<TickResult> 
     // Phase 4e: Proactive memory curation.
     // Promotes valuable artifacts, decays unused ones, detects contradictions,
     // manages project lifecycles, sends health reports, prepares away-digests.
-    // Rate-limited internally (default: once per 60 min, health reports per 24h).
-    try {
+    // Triple-gated: only runs when enough new sessions exist.
+    if (heavyConsolidationGatePassed) try {
       const curationResult = runProactiveCuration(ctx.db, ctx.config.retention);
       if (curationResult.artifacts_promoted > 0) {
         result.artifacts_promoted = curationResult.artifacts_promoted;
@@ -574,10 +599,10 @@ export async function heartbeatTick(ctx: HeartbeatContext): Promise<TickResult> 
 
     // Phase 4e2: Entity summary generation (Hindsight-inspired observation layer).
     // Generates consolidated summaries for recurring entities with trend computation.
-    // Rate-limited by consolidation interval (same as pattern consolidation).
-    try {
+    // Triple-gated + time-gated: only runs when enough new sessions AND time has passed.
+    if (heavyConsolidationGatePassed) try {
       const now = Date.now();
-      if (now - _lastConsolidationEpoch >= CONSOLIDATION_INTERVAL_MS * 0.5) { // Run at half the consolidation interval
+      if (now - _lastConsolidationEpoch >= CONSOLIDATION_INTERVAL_MS * 0.5) {
         const { generateEntitySummaries } = await import('./entity-summarizer.js');
         const entityResult = await generateEntitySummaries(ctx.db, ctx.config.cloudModel);
         if (entityResult.entities_summarized > 0 || entityResult.entities_updated > 0) {
@@ -798,6 +823,18 @@ let _lastConsolidationEpoch = 0;
 let _lastDecayEpoch = 0;
 const CONSOLIDATION_INTERVAL_MS = 30 * 60 * 1000;
 
+/**
+ * KAIROS-inspired triple gate for heavy consolidation phases (4b-4f, entity summarization).
+ * Gate 1: Time — minimum interval since last heavy consolidation (CONSOLIDATION_INTERVAL_MS).
+ * Gate 2: Session count — at least N sessions completed since last consolidation run.
+ * Gate 3: Mutual exclusion — single-threaded tick loop already enforces this.
+ *
+ * Prevents wasteful consolidation when there's no new data to process.
+ */
+let _lastHeavyConsolidationEpoch = 0;
+let _sessionsAtLastConsolidation = 0;
+const HEAVY_CONSOLIDATION_MIN_SESSIONS = 3;
+
 /** Rate limit: run bulk linking at most once per 5 minutes. */
 let _lastLinkingEpoch = 0;
 const LINKING_INTERVAL_MS = 5 * 60 * 1000;
@@ -905,6 +942,12 @@ export async function linkUnlinkedArtifacts(
 /** Reset linking rate limit (for testing). */
 export function resetLinkingRateLimit(): void {
   _lastLinkingEpoch = 0;
+}
+
+/** Reset heavy consolidation gate (for testing). */
+export function resetHeavyConsolidationGate(): void {
+  _lastHeavyConsolidationEpoch = 0;
+  _sessionsAtLastConsolidation = 0;
 }
 
 /** Adaptive interval bounds (ms). */

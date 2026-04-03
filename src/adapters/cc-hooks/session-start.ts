@@ -374,6 +374,11 @@ const main = wrapHook('SessionStart', async (input, ctx) => {
     }
   } catch { /* non-fatal — detection is best-effort */ }
 
+  // Detect post-compaction re-fire: CC fires SessionStart with type='compact' after
+  // compaction completes. The assembler's isPostCompaction path skips identity/project/
+  // continuity (already in context from CLAUDE.md) and adds P4.5 Rules Reminder.
+  const isCompactResume = ((input.type as string) ?? '') === 'compact';
+
   const payload = assembleFullContext({
     db: ctx.db,
     project: ctx.project,
@@ -381,7 +386,8 @@ const main = wrapHook('SessionStart', async (input, ctx) => {
     config: ctx.config,
     identityDir: getIdentityDir(),
     sessionId: input.session_id,
-    predictedContext,
+    isPostCompaction: isCompactResume,
+    predictedContext: isCompactResume ? undefined : predictedContext,
     contextWindowTokens,
   });
 
