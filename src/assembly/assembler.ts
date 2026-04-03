@@ -875,20 +875,24 @@ export function assembleRegularPrompt(params: RegularPromptParams): InjectPayloa
       let totalTokens = 0;
       let commitFn: (() => void) | undefined;
 
-      // 4a. Always-inject: proven principles (mid-session reinforcement).
-      // These are high-score proven patterns injected on EVERY turn, not just session start.
-      // Bypasses retrieval entirely — they've earned unconditional injection.
-      // Hard cap: 500 tokens (~5 patterns × ~40 tokens each). Injection budget is 8K.
+      // 4a. Proven principles — periodic reinforcement (every 5 turns).
+      // Already injected at session-start and post-compaction. Re-injecting every turn
+      // wastes ~150-250 tokens/turn with identical content. Cooldown-based: inject every
+      // 5 turns to maintain anti-drift value while saving ~80% of token cost.
+      // Hard cap: 500 tokens (~5 patterns × ~40 tokens each).
       try {
-        const principles = getProvenPrinciples(params.db, params.project, 5);
-        if (principles.length > 0) {
-          const section = formatProvenPrinciplesSection(principles);
-          if (section) {
-            const cost = estimateTokens(section);
-            if (cost <= 500) { // Hard cap — proven principles should be concise
-              parts.push(section);
-              totalTokens += cost;
-              srcs.push('proven_principles');
+        const turnCount = params.sessionId ? getTurnCount(params.db, params.sessionId) : 0;
+        if (turnCount % 5 === 0) { // Fire on turns 0, 5, 10, 15, ...
+          const principles = getProvenPrinciples(params.db, params.project, 5);
+          if (principles.length > 0) {
+            const section = formatProvenPrinciplesSection(principles);
+            if (section) {
+              const cost = estimateTokens(section);
+              if (cost <= 500) {
+                parts.push(section);
+                totalTokens += cost;
+                srcs.push('proven_principles');
+              }
             }
           }
         }

@@ -46,6 +46,21 @@ const HOOK_FILES: Record<string, string> = {
 };
 
 /**
+ * Hook matchers — CC regex-matches these against tool names (PreToolUse/PostToolUse),
+ * session trigger types (SessionStart), or other event-specific fields.
+ * Empty string = fire for all events (default). Non-empty = only fire on match.
+ *
+ * Optimization: hooks that only do meaningful work for specific events should have
+ * a matcher to avoid unnecessary process spawns (~100ms each).
+ */
+const HOOK_MATCHERS: Partial<Record<string, string>> = {
+  // PreToolUse only does work for Agent tool (injects Claudex MCP hint into prompts).
+  // Permission decision is currently pass-through for all tools.
+  // Saves ~95% of unnecessary spawns (50-200 tool calls/session, ~5-10 are Agent).
+  PreToolUse: 'Agent',
+};
+
+/**
  * Returns absolute paths to all hook dist files for the given install directory.
  */
 export function getHookPaths(installDir: string): Record<string, string> {
@@ -88,7 +103,7 @@ export function patchSettingsJson(
   for (const [hookName, hookPath] of Object.entries(hookPaths)) {
     const command = `node '${hookPath.replace(/'/g, "'\\''")}'`;
     const newEntry = {
-      matcher: '',
+      matcher: HOOK_MATCHERS[hookName] ?? '',
       hooks: [{ type: 'command', command }],
     };
 
