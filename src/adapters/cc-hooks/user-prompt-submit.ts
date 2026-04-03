@@ -404,11 +404,18 @@ const main = wrapHook('UserPromptSubmit', async (input, ctx) => {
     }
   } catch { /* non-fatal */ }
 
-  // 3.8 Domain advisory — inject warning when correction rate is high for current topic
+  // 3.8 Domain advisory — inject warning when correction rate is high for current topic.
+  // TTL: inject every 10 turns to avoid repeating identical advisory (~50-100 tokens/turn).
+  // Always inject on topic shift or post-compaction (context boundaries).
   let domainAdvisory = '';
   try {
     const thread = getThreadState(ctx.db, input.session_id);
-    if (thread?.topic) {
+    const turnCount = (cachedPrepare(ctx.db,
+      `SELECT COUNT(*) as cnt FROM conversation_turns WHERE session_id = ?`
+    ).get(input.session_id) as { cnt: number })?.cnt ?? 0;
+    const domainCooldownPassed = turnCount % 10 === 0 || isPostCompaction || topicShift?.shifted;
+
+    if (thread?.topic && domainCooldownPassed) {
       const domain = extractDomain(thread.topic);
       if (domain) {
         const advisory = generateDomainAdvisory(ctx.db, ctx.project, domain);

@@ -847,19 +847,26 @@ export function assembleRegularPrompt(params: RegularPromptParams): InjectPayloa
     }
 
     // 3. Gauge + graduated pressure response at advisory+ zone (Upgrade 7)
+    // Cooldown: inject every 5 turns in advisory zone to avoid repeating identical
+    // gauge lines (~40-80 tokens/turn). Always inject on zone escalation or critical+.
     const zone = params.gauge ? getPressureZone(params.gauge.utilization) : 'normal';
     if (zone !== 'normal') {
-      const timing = buildGaugeTiming(params.db, params.sessionId);
-      const gaugeSection = formatGaugeSection(params.gauge, undefined, timing);
-      const pressureSection = formatPressureResponse(params.gauge, zone);
-      const parts = [gaugeSection, pressureSection].filter(Boolean) as string[];
-      if (parts.length > 0) {
-        const content = parts.join('\n');
-        return {
-          content,
-          tokenEstimate: estimateTokens(content),
-          sources: ['gauge', 'pressure_response'],
-        };
+      const gaugeTurnCount = params.sessionId ? getTurnCount(params.db, params.sessionId) : 0;
+      const isEscalation = zone === 'critical' || zone === 'warning';
+      const cooldownPassed = gaugeTurnCount % 5 === 0;
+      if (isEscalation || cooldownPassed) {
+        const timing = buildGaugeTiming(params.db, params.sessionId);
+        const gaugeSection = formatGaugeSection(params.gauge, undefined, timing);
+        const pressureSection = formatPressureResponse(params.gauge, zone);
+        const parts = [gaugeSection, pressureSection].filter(Boolean) as string[];
+        if (parts.length > 0) {
+          const content = parts.join('\n');
+          return {
+            content,
+            tokenEstimate: estimateTokens(content),
+            sources: ['gauge', 'pressure_response'],
+          };
+        }
       }
     }
 
