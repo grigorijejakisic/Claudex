@@ -20,6 +20,7 @@ import { buildToolSignature } from '../../intelligence/behavioral-signals.js';
 import { matchTriggers } from '../../intelligence/trigger-engine.js';
 import { extractEventsFromToolUse, recordEvent, recordEventDeduped } from '../../core/session-events.js';
 import { mapToolToDomain } from '../../intelligence/critical-reminders.js';
+import * as fs from 'fs';
 
 // ---------------------------------------------------------------------------
 // Behavioral signal thresholds (spec-defined)
@@ -289,9 +290,15 @@ const main = wrapHook('PostToolUse', async (input, ctx) => {
           relative.startsWith('context/');
 
         if (isClaudexRelevant) {
+          let mtime: number;
+          try {
+            mtime = fs.statSync(filePath).mtimeMs;
+          } catch {
+            mtime = Date.now(); // fallback for newly created files
+          }
           recordEvent(ctx.db, input.session_id, routedProject,
             'claudex_file_edit', filePath, toolName,
-            JSON.stringify({ mtime: Date.now() }),
+            JSON.stringify({ mtime }),
           );
         }
       }

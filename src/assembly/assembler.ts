@@ -219,16 +219,14 @@ function renderExperienceWarnings(
               ).run(conf, p.id);
 
               // Re-embed if lesson was updated (e.g., by LLM consolidation).
-              // Fire-and-forget — non-blocking.
+              // Deferred to Angel via needs_reembed flag — hooks are ephemeral,
+              // fire-and-forget async dies when the process exits.
               if (fresh.lesson !== p.lesson) {
-                import('../embeddings/embed-pipeline.js').then(({ embedPattern: ep }) => {
-                  ep(db, p.id, p.trigger_context, fresh.lesson, {
-                    project,
-                    pattern_type: p.pattern_type,
-                    severity: p.severity ?? 'important',
-                    score: p.score,
-                  }).catch(() => {});
-                }).catch(() => {});
+                try {
+                  cachedPrepare(db,
+                    `UPDATE experience_patterns SET needs_reembed = 1 WHERE id = ?`
+                  ).run(p.id);
+                } catch { /* non-fatal — column may not exist yet */ }
               }
             }
           } catch { /* non-fatal */ }
@@ -366,7 +364,7 @@ export function assembleFullContext(params: FullAssemblyParams): InjectPayload {
     try {
       const entitySummaries = cachedPrepare(params.db,
         `SELECT title, content FROM artifacts
-         WHERE artifact_type = 'entity_summary' AND project = ? AND status = 'active'
+         WHERE artifact_type = 'entity_summary' AND project = ? AND state = 'active'
          ORDER BY importance DESC, created_at_epoch DESC LIMIT 5`
       ).all(params.project) as Array<{ title: string; content: string }>;
 
@@ -955,7 +953,8 @@ export function assembleRegularPrompt(params: RegularPromptParams): InjectPayloa
           parts.push(expWarnings.section);
           totalTokens += expWarnings.tokenCost;
           srcs.push('experience_warnings');
-          commitFn = expWarnings.applyEffects;
+          const prevCommit = commitFn;
+          commitFn = () => { prevCommit?.(); expWarnings.applyEffects(); };
         }
       }
 

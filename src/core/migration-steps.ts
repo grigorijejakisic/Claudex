@@ -1296,4 +1296,12 @@ export function migrateV13toV14(db: Database): void {
       db.exec('ALTER TABLE sessions ADD COLUMN extraction_cursor INTEGER');
     }
   } catch { /* non-fatal — column may already exist */ }
+
+  // Add needs_reembed flag to experience_patterns for deferred re-embedding by Angel.
+  // Hooks set this flag; Angel picks it up on next heartbeat.
+  try {
+    if (!hasColumn(db, 'experience_patterns', 'needs_reembed')) {
+      db.exec('ALTER TABLE experience_patterns ADD COLUMN needs_reembed INTEGER NOT NULL DEFAULT 0');
+    }
+  } catch { /* non-fatal — column may already exist */ }
 }

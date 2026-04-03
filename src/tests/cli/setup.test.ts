@@ -21,11 +21,11 @@ function createTmpDir(): string {
 // --- getHookPaths tests ---
 
 describe('getHookPaths', () => {
-  it('returns correct absolute paths for all 24 hooks', () => {
+  it('returns correct absolute paths for all 25 hooks', () => {
     const installDir = '/opt/claudex';
     const paths = getHookPaths(installDir);
 
-    expect(Object.keys(paths)).toHaveLength(24);
+    expect(Object.keys(paths)).toHaveLength(25);
     expect(paths.SessionStart).toContain('session-start.cjs');
     expect(paths.UserPromptSubmit).toContain('user-prompt-submit.cjs');
     expect(paths.PostToolUse).toContain('post-tool-use.cjs');
@@ -49,6 +49,7 @@ describe('getHookPaths', () => {
     expect(paths.Setup).toContain('setup.cjs');
     expect(paths.WorktreeCreate).toContain('worktree-create.cjs');
     expect(paths.WorktreeRemove).toContain('worktree-remove.cjs');
+    expect(paths.PreToolUse).toContain('pre-tool-use.cjs');
 
     // Verify hook paths include correct dist subdirectory
     for (const hookPath of Object.values(paths)) {

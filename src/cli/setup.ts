@@ -42,6 +42,7 @@ const HOOK_FILES: Record<string, string> = {
   WorktreeCreate: path.join('adapters', 'cc-hooks', 'worktree-create.cjs'),
   WorktreeRemove: path.join('adapters', 'cc-hooks', 'worktree-remove.cjs'),
   TeammateIdle: path.join('adapters', 'cc-hooks', 'teammate-idle.cjs'),
+  PreToolUse: path.join('adapters', 'cc-hooks', 'pre-tool-use.cjs'),
 };
 
 /**
@@ -235,7 +236,7 @@ export async function main(): Promise<void> {
   console.log(`\nSetup complete! Claudex v3 is ready.`);
   console.log(`  - Database: ${dbPath}`);
   console.log(`  - Config: ${configPath}`);
-  console.log(`  - Hooks: 24 registered in ${settingsPath}`);
+  console.log(`  - Hooks: 25 registered in ${settingsPath}`);
 
   process.exit(0);
 }

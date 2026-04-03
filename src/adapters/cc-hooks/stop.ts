@@ -58,6 +58,7 @@ import {
   determineActualIntent,
 } from '../../intelligence/intent-predictor.js';
 import { getPolicy } from '../../intelligence/policy-registry.js';
+import { advanceTTL, resetTTL } from '../../intelligence/critical-reminders.js';
 import type { Database } from 'better-sqlite3';
 
 // ---------------------------------------------------------------------------
@@ -629,6 +630,26 @@ const main = wrapHook('Stop', async (input, ctx) => {
 
     if (hasEdits && !hasTests) {
       testWarning = '## Behavioral Warning\nCode was modified this session but no tests were run. Consider running tests before concluding.';
+    }
+  }, ctx.db, input.session_id);
+
+  // Leitner feedback loop — advance or reset TTL on critical rules based on session compliance.
+  // Rules injected this session (last_injected_turn > 0) get Leitner advancement if no violations
+  // were detected, or reset if corrections/violations occurred.
+  runHookStep('leitner_feedback', () => {
+    const leitnerFlags = getExperienceFlags(ctx.db, input.session_id);
+    // Find critical rules that were injected during this session
+    const injectedRules = cachedPrepare(ctx.db,
+      `SELECT id FROM critical_rules
+       WHERE project = ? AND last_injected_turn IS NOT NULL AND last_injected_turn > 0`
+    ).all(routedProject) as Array<{ id: number }>;
+
+    for (const rule of injectedRules) {
+      if (leitnerFlags.correction_flagged) {
+        resetTTL(ctx.db, rule.id);
+      } else {
+        advanceTTL(ctx.db, rule.id);
+      }
     }
   }, ctx.db, input.session_id);
 

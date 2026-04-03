@@ -70,6 +70,7 @@ const hookEntryPoints = [
   'dist/adapters/cc-hooks/elicitation.cjs',
   'dist/adapters/cc-hooks/elicitation-result.cjs',
   'dist/adapters/cc-hooks/post-tool-use-failure.cjs',
+  'dist/adapters/cc-hooks/stop-failure.cjs',
   'dist/adapters/cc-hooks/config-change.cjs',
   'dist/adapters/cc-hooks/instructions-loaded.cjs',
   'dist/adapters/cc-hooks/cwd-changed.cjs',
@@ -77,6 +78,8 @@ const hookEntryPoints = [
   'dist/adapters/cc-hooks/worktree-create.cjs',
   'dist/adapters/cc-hooks/worktree-remove.cjs',
   'dist/adapters/cc-hooks/teammate-idle.cjs',
+  'dist/adapters/cc-hooks/pre-tool-use.cjs',
+  'dist/adapters/cc-hooks/post-compact.cjs',
 ];
 
 const allEntryPoints = [...requiredEntryPoints, ...optionalEntryPoints];
@@ -154,6 +157,8 @@ async function smokeTest(): Promise<boolean> {
     'worktree-create': { session_id: '__smoke__', name: 'smoke-worktree', cwd },
     'worktree-remove': { session_id: '__smoke__', worktree_path: '/tmp/smoke-worktree', cwd },
     'teammate-idle': { session_id: '__smoke__', teammate_name: 'smoke-teammate', team_name: 'smoke-team', cwd },
+    'pre-tool-use': { session_id: '__smoke__', tool_name: 'Read', tool_input: { file_path: 'README.md' }, cwd },
+    'post-compact': { session_id: '__smoke__', trigger: 'auto', compact_summary: 'smoke compaction', cwd },
   };
 
   for (const hookPath of hookEntryPoints) {

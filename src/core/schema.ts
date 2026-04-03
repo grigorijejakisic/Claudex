@@ -288,7 +288,7 @@ CREATE TABLE IF NOT EXISTS artifacts (
   project TEXT NOT NULL,
   artifact_type TEXT NOT NULL CHECK (artifact_type IN (
     'observation', 'learning', 'decision', 'hot_file', 'flow', 'milestone',
-    'memory_file', 'session_log', 'handoff'
+    'memory_file', 'session_log', 'handoff', 'entity_summary'
   )),
   artifact_ref TEXT,
   summary TEXT NOT NULL,
@@ -412,7 +412,8 @@ CREATE TABLE IF NOT EXISTS experience_patterns (
   confidence REAL DEFAULT 0.5,
   retrieval_mode TEXT DEFAULT 'reactive'
     CHECK (retrieval_mode IN ('always', 'categorical', 'reactive')),
-  trigger_intents TEXT DEFAULT '[]'
+  trigger_intents TEXT DEFAULT '[]',
+  needs_reembed INTEGER NOT NULL DEFAULT 0
 );
 
 CREATE INDEX IF NOT EXISTS idx_expat_project_score
