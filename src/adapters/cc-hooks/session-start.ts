@@ -16,6 +16,7 @@ import { cachedPrepare } from '../../core/stmt-cache.js';
 import { captureRecallFlowEntry } from '../shared/lifecycle.js';
 import { writeClaudeEnvFile, detectCcMemoryConflict } from '../shared/env-file.js';
 import { predictSessionIntent, CONFIDENCE_THRESHOLD } from '../../intelligence/intent-predictor.js';
+import { seedCriticalRules, promoteFromCapabilityTracker } from '../../intelligence/critical-reminders.js';
 import { detectWindowSize } from '../../gauge/window-detector.js';
 import * as path from 'path';
 import * as os from 'os';
@@ -281,6 +282,12 @@ const main = wrapHook('SessionStart', async (input, ctx) => {
     emitErrorTelemetry(ctx.db, input.session_id, 'session_start/file_ingest', e);
   }
 
+  // Seed critical rules from CLAUDE.md markers (Phase 2: Critical Reminders Tier)
+  try {
+    seedCriticalRules(ctx.db, ctx.project, input.cwd);
+    promoteFromCapabilityTracker(ctx.db, ctx.project);
+  } catch { /* non-fatal — critical reminders are best-effort */ }
+
   // Intent prediction — predict what user will need BEFORE their first prompt (Phase 19).
   // Runs AFTER checkpoint recovery, BEFORE assembly. Non-throwing.
   let predictedContext: {
@@ -390,12 +397,64 @@ const main = wrapHook('SessionStart', async (input, ctx) => {
     if (fs.existsSync(claudeMdPath)) watchPaths.push(claudeMdPath);
   } catch { /* non-fatal */ }
 
+  // I1: Auto-priming via initialUserMessage — opt-in, startup-only.
+  // When enabled and a handoff exists, injects a short directive as the first user
+  // message so the model auto-responds with handoff priorities without user typing.
+  let initialMessage: string | undefined;
+  try {
+    const sessionType = (input.type as string) ?? '';
+    if (sessionType === 'startup' || sessionType === '') {
+      // Check opt-in: read auto_prime from config.json (default: false)
+      const configPath = path.join(os.homedir(), '.claudex', 'config.json');
+      let autoPrime = false;
+      if (fs.existsSync(configPath)) {
+        try {
+          const raw = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
+          autoPrime = raw?.auto_prime === true;
+        } catch { /* malformed config — default false */ }
+      }
+
+      if (autoPrime) {
+        const handoffPath = path.join(input.cwd, 'context', 'handoffs', 'ACTIVE.md');
+        if (fs.existsSync(handoffPath)) {
+          const handoffContent = fs.readFileSync(handoffPath, 'utf-8');
+          // Check for active status in frontmatter
+          const frontmatterMatch = handoffContent.match(/^---\s*\n([\s\S]*?)\n---/);
+          const isActive = frontmatterMatch
+            ? /status:\s*active/i.test(frontmatterMatch[1])
+            : true; // No frontmatter — assume active
+
+          if (isActive) {
+            // Extract priorities from ## Priority or ## What I Was Working On
+            const priorityMatch = handoffContent.match(
+              /##\s*(?:Priority|What I Was Working On|Priorities)\s*\n([\s\S]*?)(?=\n##|\n---|\Z)/i,
+            );
+            if (priorityMatch) {
+              const lines = priorityMatch[1].trim().split('\n')
+                .filter(l => l.trim().startsWith('-') || l.trim().startsWith('1'))
+                .slice(0, 3)
+                .map((l, i) => `${i + 1}) ${l.replace(/^[\s-]*\d*[.)]*\s*/, '').trim()}`);
+              if (lines.length > 0) {
+                initialMessage = `A handoff is active. Priorities: ${lines.join(' ')}. Run /starthere for full context.`;
+              }
+            }
+            // Fallback: if no priorities section found, still prime with generic message
+            if (!initialMessage) {
+              initialMessage = 'A handoff is active from the previous session. Run /starthere for full context.';
+            }
+          }
+        }
+      }
+    }
+  } catch { /* non-fatal — auto-priming is best-effort */ }
+
   if (fullContent) {
     return {
       hookSpecificOutput: {
         hookEventName: 'SessionStart',
         additionalContext: fullContent,
         ...(watchPaths.length > 0 ? { watchPaths } : {}),
+        ...(initialMessage ? { initialUserMessage: initialMessage } : {}),
       },
     };
   }

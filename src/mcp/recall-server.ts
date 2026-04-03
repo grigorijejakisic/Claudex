@@ -43,26 +43,62 @@ function getDb(): Database.Database {
 const defaultProject = getProjectId(process.cwd());
 
 // ---------------------------------------------------------------------------
+// MCP Instructions — stable identity/navigation content injected into CC's
+// system prompt as a DANGEROUS_uncachedSystemPromptSection (position #14).
+// Recomputed every turn but content is static, so org-scope cache hits normally.
+//
+// K1: Cache trade-off — any non-deferred MCP tool connected to CC downgrades
+// the system prompt cache from `global` scope (shared across all users) to `org`
+// scope (shared within org only). This is a CC architectural constraint, not a
+// Claudex bug. With claude-teams and other MCP servers already connected, the
+// downgrade is already in effect — removing Claudex MCP would NOT restore global
+// scope. The benefit of direct memory access far outweighs the cache difference.
+// ---------------------------------------------------------------------------
+
+const CLAUDEX_INSTRUCTIONS = `Claudex is active on this machine — a persistent memory system giving you context continuity across sessions.
+
+## When to Use Claudex Tools
+- claudex_search: FIRST CHOICE for any question about past work, decisions, learnings, or project knowledge. Searches across all sessions and projects with relevance ranking.
+- claudex_events: Session history — what happened, what was built, timeline of recent work.
+- claudex_recall: Retrieve a specific artifact by ID or file path when you have an exact reference.
+- claudex_store: Persist a decision or learning for future sessions after key decisions or user directives.
+- claudex_message: Send messages to other active sessions (cross-session coordination).
+- claudex_session: Session management — name sessions, list active sessions, create/clear signals.
+
+## Navigation Rule
+Query Claudex before exploring the filesystem for context. Only read code files when you need to MODIFY them.
+All projects live in ~/Desktop/Projects/. The project registry is at ~/.claudex/projects.json.
+
+## Safety
+Never call CC's CLIProxyAPI from a hook (deadlock). The "cross-encoder" reranking uses bi-encoder cosine similarity, not a true neural cross-encoder.`;
+
+// ---------------------------------------------------------------------------
 // Server setup
 // ---------------------------------------------------------------------------
 
 const server = new McpServer(
   { name: 'claudex-recall', version: '1.0.0' },
-  { capabilities: { tools: {} } },
+  { capabilities: { tools: {} }, instructions: CLAUDEX_INSTRUCTIONS },
 );
 
 // ---------------------------------------------------------------------------
 // Tools
 // ---------------------------------------------------------------------------
 
-server.tool(
+server.registerTool(
   'claudex_search',
-  'Search Claudex memory — decisions, learnings, observations, project knowledge. Use for conceptual questions ("What decisions were made about auth?", "What is Nexus?"). Returns ranked results with provenance.',
   {
-    query: z.string().describe('Search query text'),
-    project: z.string().optional().describe('Project scope (defaults to CWD project)'),
-    limit: z.number().optional().describe('Max results (default 10, max 50)'),
-    offset: z.number().optional().describe('Result offset for pagination (default 0)'),
+    description: 'Search Claudex memory — decisions, learnings, observations, project knowledge. Use for conceptual questions ("What decisions were made about auth?", "What is Nexus?"). Returns ranked results with provenance.',
+    inputSchema: {
+      query: z.string().describe('Search query text'),
+      project: z.string().optional().describe('Project scope (defaults to CWD project)'),
+      limit: z.number().optional().describe('Max results (default 10, max 50)'),
+      offset: z.number().optional().describe('Result offset for pagination (default 0)'),
+    },
+    _meta: {
+      'anthropic/searchHint': 'memory recall knowledge decisions learnings observations project history past sessions',
+      'anthropic/alwaysLoad': true,
+    },
   },
   async ({ query, project, limit: rawLimit, offset: rawOffset }) => {
     const proj = project ?? defaultProject;
@@ -335,12 +371,17 @@ server.tool(
   },
 );
 
-server.tool(
+server.registerTool(
   'claudex_recall',
-  'Retrieve a specific artifact by ID or file path. Use when you have an exact reference ("Get artifact #3074", "Show me the handoff").',
   {
-    id: z.number().optional().describe('Artifact ID'),
-    artifact_ref: z.string().optional().describe('Artifact reference (file path)'),
+    description: 'Retrieve a specific artifact by ID or file path. Use when you have an exact reference ("Get artifact #3074", "Show me the handoff").',
+    inputSchema: {
+      id: z.number().optional().describe('Artifact ID'),
+      artifact_ref: z.string().optional().describe('Artifact reference (file path)'),
+    },
+    _meta: {
+      'anthropic/searchHint': 'artifact file specific ID reference lookup get retrieve',
+    },
   },
   async ({ id, artifact_ref }) => {
     const validId = id != null && Number.isInteger(id) && id > 0 ? id : null;
@@ -378,15 +419,20 @@ server.tool(
   },
 );
 
-server.tool(
+server.registerTool(
   'claudex_store',
-  'Persist a decision or learning for future sessions. Use after key decisions or user directives that should survive across sessions.',
   {
-    content: z.string().describe('Content to store'),
-    type: z.enum(['decision', 'learning']).describe('Memory type'),
-    project: z.string().optional().describe('Project scope (defaults to CWD project)'),
-    agent_id: z.string().optional().describe('Agent identifier for multi-agent attribution'),
-    topic_key: z.string().optional().describe('Topic key for upsert (e.g., "architecture/auth-model"). Evolving decisions with the same topic key update in place instead of creating duplicates.'),
+    description: 'Persist a decision or learning for future sessions. Use after key decisions or user directives that should survive across sessions.',
+    inputSchema: {
+      content: z.string().describe('Content to store'),
+      type: z.enum(['decision', 'learning']).describe('Memory type'),
+      project: z.string().optional().describe('Project scope (defaults to CWD project)'),
+      agent_id: z.string().optional().describe('Agent identifier for multi-agent attribution'),
+      topic_key: z.string().optional().describe('Topic key for upsert (e.g., "architecture/auth-model"). Evolving decisions with the same topic key update in place instead of creating duplicates.'),
+    },
+    _meta: {
+      'anthropic/searchHint': 'save persist remember decision learning directive store',
+    },
   },
   async ({ content, type, project, agent_id, topic_key }) => {
     const proj = project ?? defaultProject;
@@ -429,12 +475,18 @@ server.tool(
   },
 );
 
-server.tool(
+server.registerTool(
   'claudex_events',
-  'Query session history — what happened last session, what was built, what tools were used. Use for ANY question about recent work or session state.',
   {
-    project: z.string().optional().describe('Project scope (defaults to CWD project)'),
-    session_id: z.string().optional().describe('Specific session ID (defaults to latest)'),
+    description: 'Query session history — what happened last session, what was built, what tools were used. Use for ANY question about recent work or session state.',
+    inputSchema: {
+      project: z.string().optional().describe('Project scope (defaults to CWD project)'),
+      session_id: z.string().optional().describe('Specific session ID (defaults to latest)'),
+    },
+    _meta: {
+      'anthropic/searchHint': 'session history recent work what happened last session events timeline activity',
+      'anthropic/alwaysLoad': true,
+    },
   },
   async ({ project, session_id }) => {
     if (session_id) {
@@ -465,14 +517,19 @@ server.tool(
   },
 );
 
-server.tool(
+server.registerTool(
   'claudex_message',
-  'Send a message to another active session by name, topic, or project. Use when: asking another session a question, notifying about changes, or transferring work. The target receives it on their next turn.',
   {
-    target: z.string().describe('Session name, topic fragment, project name, or session ID'),
-    content: z.string().describe('Message content'),
-    type: z.enum(['request', 'notify', 'transfer']).default('request').describe('Message type: request (expects response), notify (FYI), transfer (handoff)'),
-    session_id: z.string().optional().describe('Current session ID (for sender attribution)'),
+    description: 'Send a message to another active session by name, topic, or project. Use when: asking another session a question, notifying about changes, or transferring work. The target receives it on their next turn.',
+    inputSchema: {
+      target: z.string().describe('Session name, topic fragment, project name, or session ID'),
+      content: z.string().describe('Message content'),
+      type: z.enum(['request', 'notify', 'transfer']).default('request').describe('Message type: request (expects response), notify (FYI), transfer (handoff)'),
+      session_id: z.string().optional().describe('Current session ID (for sender attribution)'),
+    },
+    _meta: {
+      'anthropic/searchHint': 'cross-session message send notify transfer communicate other session teammate',
+    },
   },
   async ({ target, content, type, session_id }) => {
     const { resolveSession, listActiveSessions } = await import('../core/session-discovery.js');
@@ -531,18 +588,23 @@ server.tool(
   },
 );
 
-server.tool(
+server.registerTool(
   'claudex_session',
-  'Manage sessions and signals. Actions: "list" (show active sessions), "name" (name this session), "signal" (create wip/failure/danger/claim/discovery signal), "clear_signal" (remove a signal), "pickup" (grab context from another session).',
   {
-    action: z.enum(['name', 'list', 'signal', 'clear_signal', 'pickup']).describe('Action to perform'),
-    session_id: z.string().optional().describe('Current session ID'),
-    name: z.string().optional().describe('Session name (for action=name)'),
-    signal_type: z.enum(['wip', 'failure', 'danger', 'claim', 'discovery']).optional().describe('Signal type (for action=signal)'),
-    target: z.string().optional().describe('Signal target — file path, task, or topic (for action=signal)'),
-    detail: z.string().optional().describe('Signal detail (for action=signal)'),
-    signal_id: z.number().optional().describe('Signal ID to clear (for action=clear_signal)'),
-    source: z.string().optional().describe('Source session name/ID to pick up from (for action=pickup)'),
+    description: 'Manage sessions and signals. Actions: "list" (show active sessions), "name" (name this session), "signal" (create wip/failure/danger/claim/discovery signal), "clear_signal" (remove a signal), "pickup" (grab context from another session).',
+    inputSchema: {
+      action: z.enum(['name', 'list', 'signal', 'clear_signal', 'pickup']).describe('Action to perform'),
+      session_id: z.string().optional().describe('Current session ID'),
+      name: z.string().optional().describe('Session name (for action=name)'),
+      signal_type: z.enum(['wip', 'failure', 'danger', 'claim', 'discovery']).optional().describe('Signal type (for action=signal)'),
+      target: z.string().optional().describe('Signal target — file path, task, or topic (for action=signal)'),
+      detail: z.string().optional().describe('Signal detail (for action=signal)'),
+      signal_id: z.number().optional().describe('Signal ID to clear (for action=clear_signal)'),
+      source: z.string().optional().describe('Source session name/ID to pick up from (for action=pickup)'),
+    },
+    _meta: {
+      'anthropic/searchHint': 'session management name list signal active sessions coordination stigmergic',
+    },
   },
   async ({ action, session_id, name, signal_type, target, detail, signal_id, source }) => {
     // Resolve session_id: use provided value, or find the most recently ACTIVE session for this project.
