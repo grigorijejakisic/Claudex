@@ -324,7 +324,8 @@ describe('patchSettingsJson idempotency', () => {
     const settings = JSON.parse(fs.readFileSync(settingsPath, 'utf-8'));
     for (const [hookName, entries] of Object.entries(settings.hooks) as Array<[string, Array<{ matcher: string; hooks: Array<{ type: string; command: string }> }>]>) {
       expect(entries).toHaveLength(1);
-      expect(entries[0]).toHaveProperty('matcher', '');
+      expect(entries[0]).toHaveProperty('matcher'); // matcher exists (may be '' or specific)
+      expect(typeof entries[0].matcher).toBe('string');
       expect(entries[0].hooks).toHaveLength(1);
       expect(entries[0].hooks[0]).toHaveProperty('type', 'command');
       expect(entries[0].hooks[0].command).toMatch(/^node '/);

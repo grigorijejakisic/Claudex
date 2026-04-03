@@ -186,6 +186,8 @@ function logTickResult(result: TickResult): void {
   if (result.artifacts_promoted) parts.push(`promoted=${result.artifacts_promoted}`);
   if (result.artifacts_decayed) parts.push(`decayed=${result.artifacts_decayed}`);
   if (result.health_report_sent) parts.push('health_report=sent');
+  if (result.dream_contradictions_resolved) parts.push(`dream_contradictions=${result.dream_contradictions_resolved}`);
+  if (result.dream_stale_flagged) parts.push(`dream_stale=${result.dream_stale_flagged}`);
 
   if (parts.length > 0) {
     log('info', `tick: ${parts.join(', ')} (${result.duration_ms}ms)`);

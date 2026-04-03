@@ -602,13 +602,16 @@ export function runDreamConsolidation(db: Database, projectDir: string): DreamRe
 
     const filePathRegex = /(?:src|dist|context|services)\/[\w\-./]+\.(?:ts|js|json|md|py|yaml)/g;
 
-    // Learnings with file path references
+    // Learnings with file path references — scoped to current project only.
+    // process.cwd() resolves paths, so only check learnings from this project.
+    const projectName = path.basename(projectDir);
     const fileRefLearnings = cachedPrepare(db,
       `SELECT id, content FROM learnings
        WHERE promotion_count > 0
+       AND project IN (?, '__global__')
        AND (content LIKE '%src/%' OR content LIKE '%dist/%' OR content LIKE '%context/%')
        LIMIT 100`
-    ).all() as Array<{ id: number; content: string }>;
+    ).all(projectName) as Array<{ id: number; content: string }>;
 
     for (const learning of fileRefLearnings) {
       const matches = learning.content.match(filePathRegex);
@@ -628,12 +631,13 @@ export function runDreamConsolidation(db: Database, projectDir: string): DreamRe
       }
     }
 
-    // Decisions with file path references
+    // Decisions with file path references — scoped to current project only.
     const fileRefDecisions = cachedPrepare(db,
       `SELECT id, content FROM decisions
-       WHERE content LIKE '%src/%' OR content LIKE '%dist/%' OR content LIKE '%context/%'
+       WHERE project IN (?, '__global__')
+       AND (content LIKE '%src/%' OR content LIKE '%dist/%' OR content LIKE '%context/%')
        LIMIT 100`
-    ).all() as Array<{ id: number; content: string }>;
+    ).all(projectName) as Array<{ id: number; content: string }>;
 
     for (const decision of fileRefDecisions) {
       const matches = decision.content.match(filePathRegex);
