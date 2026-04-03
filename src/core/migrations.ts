@@ -31,6 +31,8 @@ import {
   migrateV9toV10,
   migrateV10toV11,
   migrateV11toV12,
+  migrateV12toV13,
+  migrateV13toV14,
   migrateSchemaFixes,
   cleanupOrphanTables,
   upgradeV2SchemaInPlace,
@@ -66,7 +68,7 @@ export function runMigrations(db: Database): void {
   const row = db.pragma('user_version') as Array<{ user_version: number }>;
   let version = row[0]?.user_version ?? 0;
 
-  const TARGET_VERSION = 12;
+  const TARGET_VERSION = 14;
 
   if (version >= TARGET_VERSION) return;
 
@@ -82,6 +84,8 @@ export function runMigrations(db: Database): void {
     [9, () => migrateV9toV10(db)],
     [10, () => migrateV10toV11(db)],
     [11, () => migrateV11toV12(db)],
+    [12, () => migrateV12toV13(db)],
+    [13, () => migrateV13toV14(db)],
   ];
 
   // Handle special cases for version 0 and 1
@@ -157,7 +161,7 @@ export function initializeSchema(db: Database): void {
   } else {
     db.prepare('INSERT OR IGNORE INTO schema_versions (version) VALUES (?)').run(SCHEMA_VERSION);
   }
-  db.pragma('user_version = 12');
+  db.pragma('user_version = 14');
 }
 
 // ---------------------------------------------------------------------------

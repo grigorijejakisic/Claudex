@@ -1248,3 +1248,52 @@ export function upgradeV2SchemaInPlace(db: Database): void {
     }
   } catch { /* non-fatal — CHECK repair can be retried */ }
 }
+
+// ---------------------------------------------------------------------------
+// V12 → V13: Critical Reminders Tier
+// ---------------------------------------------------------------------------
+
+/**
+ * V12 → V13: Creates critical_rules table for behavioral rule re-injection.
+ * Anti-drift backbone: re-injects CLAUDE.md rules at strategic moments.
+ */
+export function migrateV12toV13(db: Database): void {
+  try {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS critical_rules (
+        id INTEGER PRIMARY KEY,
+        project TEXT NOT NULL,
+        rule_text TEXT NOT NULL,
+        variants TEXT,
+        source TEXT NOT NULL CHECK (source IN ('author', 'system-promoted')),
+        drift_risk TEXT NOT NULL CHECK (drift_risk IN ('safety', 'working-method', 'style')),
+        domain_tags TEXT,
+        base_ttl INTEGER NOT NULL,
+        current_ttl INTEGER,
+        last_injected_turn INTEGER,
+        injection_count INTEGER DEFAULT 0,
+        violation_count INTEGER DEFAULT 0,
+        compliance_count INTEGER DEFAULT 0,
+        created_at TEXT NOT NULL DEFAULT (datetime('now')),
+        updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+      );
+      CREATE INDEX IF NOT EXISTS idx_critical_rules_project_source
+        ON critical_rules(project, source);
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_critical_rules_dedup
+        ON critical_rules(project, rule_text);
+    `);
+  } catch { /* non-fatal — table may exist from SCHEMA_V3 */ }
+}
+
+/**
+ * V13 → V14: Adds extraction_cursor column to sessions table.
+ * Enables cursor-based incremental pattern extraction in Angel.
+ * NULL = never extracted (process all turns). Integer = last processed turn_number.
+ */
+export function migrateV13toV14(db: Database): void {
+  try {
+    if (!hasColumn(db, 'sessions', 'extraction_cursor')) {
+      db.exec('ALTER TABLE sessions ADD COLUMN extraction_cursor INTEGER');
+    }
+  } catch { /* non-fatal — column may already exist */ }
+}

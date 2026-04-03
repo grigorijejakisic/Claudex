@@ -32,13 +32,23 @@ import { findSkillByDomain, writeSkillFile } from './skill-writer.js';
 import * as os from 'os';
 
 /**
- * Get all conversation turns for a session, ordered by turn number.
+ * Get conversation turns for a session, ordered by turn number.
+ * If afterTurn is provided, only returns turns with turn_number > afterTurn.
  */
 export function getSessionTurns(
   db: Database,
   sessionId: string,
+  afterTurn?: number,
 ): ConversationTurn[] {
   try {
+    if (afterTurn != null && afterTurn > 0) {
+      return cachedPrepare(db,
+        `SELECT id, session_id, project, turn_number, user_text, assistant_text, timestamp_epoch
+         FROM conversation_turns
+         WHERE session_id = ? AND turn_number > ?
+         ORDER BY turn_number ASC`
+      ).all(sessionId, afterTurn) as ConversationTurn[];
+    }
     return cachedPrepare(db,
       `SELECT id, session_id, project, turn_number, user_text, assistant_text, timestamp_epoch
        FROM conversation_turns
@@ -428,6 +438,72 @@ function reviewCandidatePatterns(
   return reviewed;
 }
 
+// ---------------------------------------------------------------------------
+// P3: Extraction manifest — existing context for dedup-aware LLM extraction
+// ---------------------------------------------------------------------------
+
+/**
+ * Build a manifest of existing patterns and CARA opinions for the LLM.
+ * Prevents re-extraction of already-known patterns. Capped at ~1000 chars.
+ */
+function buildExtractionManifest(
+  db: Database,
+  project: string,
+  sessionId: string,
+): string {
+  const sections: string[] = [];
+
+  // Recent patterns for this project (top 10 by score)
+  try {
+    const patterns = cachedPrepare(db,
+      `SELECT trigger_context, lesson FROM experience_patterns
+       WHERE source_project = ? OR source_project = '__global__'
+       ORDER BY score DESC LIMIT 10`
+    ).all(project) as Array<{ trigger_context: string; lesson: string }>;
+
+    if (patterns.length > 0) {
+      const patternLines = patterns.map(p =>
+        `- [${p.trigger_context.substring(0, 50)}] ${p.lesson.substring(0, 80)}`
+      );
+      sections.push(`Known patterns (do NOT re-extract):\n${patternLines.join('\n')}`);
+    }
+  } catch { /* non-fatal */ }
+
+  // Active CARA opinions (top 5 by confidence)
+  try {
+    const opinions = cachedPrepare(db,
+      `SELECT subject, opinion, confidence FROM angel_opinions
+       WHERE project = ?
+       ORDER BY confidence DESC LIMIT 5`
+    ).all(project) as Array<{ subject: string; opinion: string; confidence: number }>;
+
+    if (opinions.length > 0) {
+      const opinionLines = opinions.map(o =>
+        `- ${o.subject}: ${o.opinion.substring(0, 60)} (conf=${o.confidence.toFixed(2)})`
+      );
+      sections.push(`Active opinions:\n${opinionLines.join('\n')}`);
+    }
+  } catch { /* non-fatal */ }
+
+  // Session metadata
+  try {
+    const session = cachedPrepare(db,
+      `SELECT name, created_at_epoch FROM sessions WHERE session_id = ?`
+    ).get(sessionId) as { name: string | null; created_at_epoch: number } | undefined;
+
+    const turnCount = cachedPrepare(db,
+      `SELECT COUNT(*) as c FROM conversation_turns WHERE session_id = ?`
+    ).get(sessionId) as { c: number };
+
+    if (session) {
+      sections.push(`Session: ${session.name || sessionId.substring(0, 8)}, ${turnCount.c} turns, project=${project}`);
+    }
+  } catch { /* non-fatal */ }
+
+  const manifest = sections.join('\n\n');
+  return manifest.length > 1000 ? manifest.substring(0, 1000) + '...' : manifest;
+}
+
 /**
  * Extract patterns from a completed session using a 6-phase analysis pipeline.
  *
@@ -448,9 +524,28 @@ export async function extractPatternsFromSession(
   localModel: string = 'llama3.2',
 ): Promise<{ patternsCreated: number; summary: string }> {
   try {
-    const turns = getSessionTurns(db, sessionId);
+    // P2: Read extraction cursor — only process turns after last extraction
+    let cursor: number | null = null;
+    try {
+      const row = cachedPrepare(db,
+        `SELECT extraction_cursor FROM sessions WHERE session_id = ?`
+      ).get(sessionId) as { extraction_cursor: number | null } | undefined;
+      cursor = row?.extraction_cursor ?? null;
+    } catch { /* cursor column may not exist yet — process all turns */ }
+
+    // Fetch turns after cursor (with 2-turn overlap for LLM context continuity)
+    const overlapStart = cursor != null && cursor > 2 ? cursor - 2 : undefined;
+    const turns = getSessionTurns(db, sessionId, overlapStart);
     if (turns.length < 2) {
       return { patternsCreated: 0, summary: 'too few turns' };
+    }
+
+    // Skip if no new turns since cursor
+    const newTurns = cursor != null
+      ? turns.filter(t => t.turn_number > cursor)
+      : turns;
+    if (newTurns.length === 0) {
+      return { patternsCreated: 0, summary: 'no new turns since cursor' };
     }
 
     // Pre-filter: extract directive candidates from user turns BEFORE truncation
@@ -467,7 +562,13 @@ export async function extractPatternsFromSession(
       ? `\n\n--- FLAGGED DIRECTIVE CANDIDATES (pay special attention) ---\n${[...crossSessionDirectives, ...directiveCandidates].join('\n')}\n--- END FLAGGED ---\n\n`
       : '';
 
-    const enrichedTranscript = directiveSection + transcript;
+    // P3: Build extraction manifest with existing patterns + CARA opinions
+    const manifest = buildExtractionManifest(db, project, sessionId);
+    const manifestSection = manifest
+      ? `\n\n--- EXISTING CONTEXT (do NOT re-extract patterns that overlap with these) ---\n${manifest}\n--- END EXISTING CONTEXT ---\n\n`
+      : '';
+
+    const enrichedTranscript = manifestSection + directiveSection + transcript;
 
     // Call LLM for pattern extraction
     // Priority: CliProxy (Sonnet) → Ollama cloud → Ollama local
@@ -608,6 +709,14 @@ export async function extractPatternsFromSession(
         // Individual pattern creation failure — continue with others
       }
     }
+
+    // P2: Update extraction cursor to max turn_number processed
+    try {
+      const maxTurn = Math.max(...turns.map(t => t.turn_number));
+      cachedPrepare(db,
+        `UPDATE sessions SET extraction_cursor = ? WHERE session_id = ?`
+      ).run(maxTurn, sessionId);
+    } catch { /* non-fatal — cursor update failure doesn't invalidate extraction */ }
 
     // Record that the Angel processed this session
     recordEvent(db, sessionId, project, 'angel_processed', 'angel', 'extracted',

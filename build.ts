@@ -44,6 +44,13 @@ const optionalEntryPoints = [
   'src/adapters/cc-hooks/elicitation-result.ts',
   'src/adapters/cc-hooks/post-tool-use-failure.ts',
   'src/adapters/cc-hooks/stop-failure.ts',
+  'src/adapters/cc-hooks/config-change.ts',
+  'src/adapters/cc-hooks/instructions-loaded.ts',
+  'src/adapters/cc-hooks/cwd-changed.ts',
+  'src/adapters/cc-hooks/setup.ts',
+  'src/adapters/cc-hooks/worktree-create.ts',
+  'src/adapters/cc-hooks/worktree-remove.ts',
+  'src/adapters/cc-hooks/teammate-idle.ts',
 ];
 
 /** Hook entry points to smoke test after build.
@@ -63,6 +70,13 @@ const hookEntryPoints = [
   'dist/adapters/cc-hooks/elicitation.cjs',
   'dist/adapters/cc-hooks/elicitation-result.cjs',
   'dist/adapters/cc-hooks/post-tool-use-failure.cjs',
+  'dist/adapters/cc-hooks/config-change.cjs',
+  'dist/adapters/cc-hooks/instructions-loaded.cjs',
+  'dist/adapters/cc-hooks/cwd-changed.cjs',
+  'dist/adapters/cc-hooks/setup.cjs',
+  'dist/adapters/cc-hooks/worktree-create.cjs',
+  'dist/adapters/cc-hooks/worktree-remove.cjs',
+  'dist/adapters/cc-hooks/teammate-idle.cjs',
 ];
 
 const allEntryPoints = [...requiredEntryPoints, ...optionalEntryPoints];
@@ -133,6 +147,13 @@ async function smokeTest(): Promise<boolean> {
     'elicitation-result': { session_id: '__smoke__', mcp_server_name: 'test-server', action: 'accept', cwd },
     'post-tool-use-failure': { session_id: '__smoke__', tool_name: 'Bash', tool_input: { command: 'fail' }, tool_use_id: 'smoke-id', error: 'command failed', cwd },
     'stop-failure': { session_id: '__smoke__', error: 'rate_limit', error_details: 'Rate limited', cwd },
+    'config-change': { session_id: '__smoke__', source: 'project_settings', file_path: '/tmp/CLAUDE.md', cwd },
+    'instructions-loaded': { session_id: '__smoke__', file_path: '/tmp/CLAUDE.md', memory_type: 'Project', load_reason: 'session_start', cwd },
+    'cwd-changed': { session_id: '__smoke__', old_cwd: cwd, new_cwd: cwd, cwd },
+    'setup': { session_id: '__smoke__', trigger: 'init', cwd },
+    'worktree-create': { session_id: '__smoke__', name: 'smoke-worktree', cwd },
+    'worktree-remove': { session_id: '__smoke__', worktree_path: '/tmp/smoke-worktree', cwd },
+    'teammate-idle': { session_id: '__smoke__', teammate_name: 'smoke-teammate', team_name: 'smoke-team', cwd },
   };
 
   for (const hookPath of hookEntryPoints) {

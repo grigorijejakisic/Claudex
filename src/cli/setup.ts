@@ -35,6 +35,13 @@ const HOOK_FILES: Record<string, string> = {
   ElicitationResult: path.join('adapters', 'cc-hooks', 'elicitation-result.cjs'),
   PostToolUseFailure: path.join('adapters', 'cc-hooks', 'post-tool-use-failure.cjs'),
   StopFailure: path.join('adapters', 'cc-hooks', 'stop-failure.cjs'),
+  ConfigChange: path.join('adapters', 'cc-hooks', 'config-change.cjs'),
+  InstructionsLoaded: path.join('adapters', 'cc-hooks', 'instructions-loaded.cjs'),
+  CwdChanged: path.join('adapters', 'cc-hooks', 'cwd-changed.cjs'),
+  Setup: path.join('adapters', 'cc-hooks', 'setup.cjs'),
+  WorktreeCreate: path.join('adapters', 'cc-hooks', 'worktree-create.cjs'),
+  WorktreeRemove: path.join('adapters', 'cc-hooks', 'worktree-remove.cjs'),
+  TeammateIdle: path.join('adapters', 'cc-hooks', 'teammate-idle.cjs'),
 };
 
 /**
@@ -228,7 +235,7 @@ export async function main(): Promise<void> {
   console.log(`\nSetup complete! Claudex v3 is ready.`);
   console.log(`  - Database: ${dbPath}`);
   console.log(`  - Config: ${configPath}`);
-  console.log(`  - Hooks: 17 registered in ${settingsPath}`);
+  console.log(`  - Hooks: 24 registered in ${settingsPath}`);
 
   process.exit(0);
 }

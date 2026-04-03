@@ -109,7 +109,8 @@ CREATE TABLE IF NOT EXISTS sessions (
   adapter TEXT DEFAULT 'unknown',
   session_summary TEXT,
   name TEXT,
-  transferred_to TEXT
+  transferred_to TEXT,
+  extraction_cursor INTEGER
 );
 
 -- getActiveSession: WHERE status='active' AND project=? ORDER BY created_at_epoch DESC
@@ -664,6 +665,30 @@ CREATE TABLE IF NOT EXISTS policy_weights (
   created_at_epoch INTEGER NOT NULL DEFAULT (unixepoch()),
   UNIQUE(project, model_name)
 );
+
+-- V13: critical_rules — behavioral rules that need periodic re-injection to prevent drift
+CREATE TABLE IF NOT EXISTS critical_rules (
+  id INTEGER PRIMARY KEY,
+  project TEXT NOT NULL,
+  rule_text TEXT NOT NULL,
+  variants TEXT,
+  source TEXT NOT NULL CHECK (source IN ('author', 'system-promoted')),
+  drift_risk TEXT NOT NULL CHECK (drift_risk IN ('safety', 'working-method', 'style')),
+  domain_tags TEXT,
+  base_ttl INTEGER NOT NULL,
+  current_ttl INTEGER,
+  last_injected_turn INTEGER,
+  injection_count INTEGER DEFAULT 0,
+  violation_count INTEGER DEFAULT 0,
+  compliance_count INTEGER DEFAULT 0,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_critical_rules_project_source
+  ON critical_rules(project, source);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_critical_rules_dedup
+  ON critical_rules(project, rule_text);
 `;
 
 /**

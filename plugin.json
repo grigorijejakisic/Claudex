@@ -1,0 +1,18 @@
+{
+  "$comment": "Claudex plugin manifest stub — NOT wired. CC's plugin API is feature-flagged and unstable. This file serves as a ready-to-activate blueprint when the API stabilizes.",
+  "name": "claudex",
+  "version": "3.0.0",
+  "description": "Persistent memory system for Claude Code",
+  "hooks": {
+    "$comment": "See ~/.claude/settings.json for active hook registrations"
+  },
+  "mcp": {
+    "server": "dist/mcp/recall-server.cjs"
+  },
+  "skills": {
+    "directory": ".claude/skills"
+  },
+  "config": {
+    "$comment": "See src/shared/config.ts for runtime configuration"
+  }
+}
