@@ -546,21 +546,22 @@ export function runDreamConsolidation(db: Database, projectDir: string): DreamRe
     stale_decisions_flagged: 0,
   };
 
-  // --- Pass 1: Contradiction detection via topic_key duplicates ---
-  // topic_key should be unique per concept. If two learnings share a topic_key,
-  // the older one is superseded. Keep the newer, delete the older.
+  // --- Pass 1: Contradiction detection via fingerprint duplicates ---
+  // topic_key is stored as fingerprint prefix "topic:<key>" (see decisions.ts:upsertDecisionByTopic).
+  // Learnings use plain fingerprint for dedup. Find duplicates in both tables.
   try {
+    // Learnings: duplicates share the same fingerprint (content hash)
     const dupLearnings = cachedPrepare(db,
-      `SELECT topic_key, COUNT(*) as cnt FROM learnings
-       WHERE topic_key IS NOT NULL AND topic_key != ''
-       GROUP BY topic_key HAVING cnt > 1`
-    ).all() as Array<{ topic_key: string; cnt: number }>;
+      `SELECT fingerprint, COUNT(*) as cnt FROM learnings
+       WHERE fingerprint IS NOT NULL AND fingerprint != ''
+       GROUP BY fingerprint HAVING cnt > 1`
+    ).all() as Array<{ fingerprint: string; cnt: number }>;
 
     for (const dup of dupLearnings) {
       const rows = cachedPrepare(db,
-        `SELECT id, created_at_epoch FROM learnings
-         WHERE topic_key = ? ORDER BY created_at_epoch DESC`
-      ).all(dup.topic_key) as Array<{ id: number; created_at_epoch: number }>;
+        `SELECT id, updated_at_epoch FROM learnings
+         WHERE fingerprint = ? ORDER BY updated_at_epoch DESC`
+      ).all(dup.fingerprint) as Array<{ id: number; updated_at_epoch: number }>;
 
       // Keep the newest, delete the rest
       result.contradictions_found += rows.length - 1;
@@ -570,17 +571,18 @@ export function runDreamConsolidation(db: Database, projectDir: string): DreamRe
       }
     }
 
+    // Decisions: topic_key stored as "topic:<key>" in fingerprint column
     const dupDecisions = cachedPrepare(db,
-      `SELECT topic_key, COUNT(*) as cnt FROM decisions
-       WHERE topic_key IS NOT NULL AND topic_key != ''
-       GROUP BY topic_key HAVING cnt > 1`
-    ).all() as Array<{ topic_key: string; cnt: number }>;
+      `SELECT fingerprint, COUNT(*) as cnt FROM decisions
+       WHERE fingerprint IS NOT NULL AND fingerprint != ''
+       GROUP BY fingerprint HAVING cnt > 1`
+    ).all() as Array<{ fingerprint: string; cnt: number }>;
 
     for (const dup of dupDecisions) {
       const rows = cachedPrepare(db,
-        `SELECT id, created_at_epoch FROM decisions
-         WHERE topic_key = ? ORDER BY created_at_epoch DESC`
-      ).all(dup.topic_key) as Array<{ id: number; created_at_epoch: number }>;
+        `SELECT id, updated_at_epoch FROM decisions
+         WHERE fingerprint = ? ORDER BY updated_at_epoch DESC`
+      ).all(dup.fingerprint) as Array<{ id: number; updated_at_epoch: number }>;
 
       result.contradictions_found += rows.length - 1;
       for (let i = 1; i < rows.length; i++) {
@@ -592,45 +594,44 @@ export function runDreamConsolidation(db: Database, projectDir: string): DreamRe
 
   // --- Pass 2: Staleness pruning via file path verification ---
   // Learnings/decisions that reference specific file paths (src/..., .ts, .js)
-  // may be stale if those files no longer exist. Demote importance to 1 (lowest)
-  // so they stop appearing in retrieval results but aren't deleted.
+  // may be stale if those files no longer exist. Demote learnings (set promotion_count=0)
+  // so they stop being promoted. Delete stale decisions outright.
   try {
     const fs = require('fs');
     const path = require('path');
 
-    // Extract file path references from learnings
+    const filePathRegex = /(?:src|dist|context|services)\/[\w\-./]+\.(?:ts|js|json|md|py|yaml)/g;
+
+    // Learnings with file path references
     const fileRefLearnings = cachedPrepare(db,
       `SELECT id, content FROM learnings
-       WHERE importance > 1
+       WHERE promotion_count > 0
        AND (content LIKE '%src/%' OR content LIKE '%dist/%' OR content LIKE '%context/%')
        LIMIT 100`
     ).all() as Array<{ id: number; content: string }>;
-
-    const filePathRegex = /(?:src|dist|context|services)\/[\w\-./]+\.(?:ts|js|json|md|py|yaml)/g;
 
     for (const learning of fileRefLearnings) {
       const matches = learning.content.match(filePathRegex);
       if (!matches || matches.length === 0) continue;
 
       // If ALL referenced files are missing, the learning is likely stale
-      const allMissing = matches.every(fp => {
+      const allMissing = matches.every((fp: string) => {
         const fullPath = path.resolve(projectDir, fp);
         return !fs.existsSync(fullPath);
       });
 
-      if (allMissing && matches.length >= 1) {
+      if (allMissing) {
         cachedPrepare(db,
-          `UPDATE learnings SET importance = 1 WHERE id = ?`
+          `UPDATE learnings SET promotion_count = 0 WHERE id = ?`
         ).run(learning.id);
         result.stale_learnings_flagged++;
       }
     }
 
-    // Same for decisions
+    // Decisions with file path references
     const fileRefDecisions = cachedPrepare(db,
       `SELECT id, content FROM decisions
-       WHERE importance > 1
-       AND (content LIKE '%src/%' OR content LIKE '%dist/%' OR content LIKE '%context/%')
+       WHERE content LIKE '%src/%' OR content LIKE '%dist/%' OR content LIKE '%context/%'
        LIMIT 100`
     ).all() as Array<{ id: number; content: string }>;
 
@@ -638,15 +639,13 @@ export function runDreamConsolidation(db: Database, projectDir: string): DreamRe
       const matches = decision.content.match(filePathRegex);
       if (!matches || matches.length === 0) continue;
 
-      const allMissing = matches.every(fp => {
+      const allMissing = matches.every((fp: string) => {
         const fullPath = path.resolve(projectDir, fp);
         return !fs.existsSync(fullPath);
       });
 
-      if (allMissing && matches.length >= 1) {
-        cachedPrepare(db,
-          `UPDATE decisions SET importance = 1 WHERE id = ?`
-        ).run(decision.id);
+      // Only flag decisions where ALL paths are dead — don't delete, just track
+      if (allMissing) {
         result.stale_decisions_flagged++;
       }
     }
