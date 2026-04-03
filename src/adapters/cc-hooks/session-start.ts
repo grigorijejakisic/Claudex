@@ -14,6 +14,7 @@ import { ingestFileArtifacts, pruneStaleFileArtifacts } from '../../core/file-in
 import { getLastSessionSummary, synthesizeSessionSummary, getSessionEvents, saveSessionSummary, recordEvent } from '../../core/session-events.js';
 import { cachedPrepare } from '../../core/stmt-cache.js';
 import { captureRecallFlowEntry } from '../shared/lifecycle.js';
+import { writeClaudeEnvFile, detectCcMemoryConflict } from '../shared/env-file.js';
 import { predictSessionIntent, CONFIDENCE_THRESHOLD } from '../../intelligence/intent-predictor.js';
 import { detectWindowSize } from '../../gauge/window-detector.js';
 import * as path from 'path';
@@ -176,6 +177,13 @@ const main = wrapHook('SessionStart', async (input, ctx) => {
     await ensureAngelRunning();
   } catch { /* Angel is optional */ }
 
+  // Write CLAUDE_ENV_FILE — inject env flags for CC's bash environment.
+  // X3: CC sources this file before every BashTool command for the session.
+  // T1/T2: Disable CC auto-memory (~11K tokens/turn saved).
+  // T8: Preserve hook additionalContext in transcripts for session resume.
+  // B6: Only session-agnostic flags — session ID from hook payload, not env file.
+  writeClaudeEnvFile();
+
   // Each operation isolated — if A fails, B and C still run
   try {
     createSession(ctx.db, {
@@ -228,6 +236,20 @@ const main = wrapHook('SessionStart', async (input, ctx) => {
   } catch (e) {
     emitErrorTelemetry(ctx.db, input.session_id, 'session_start/orphan_recovery', e);
   }
+
+  // C1: GrowthBook flag conflict detection — verify CC auto-memory stays disabled.
+  // If CC wrote memory files since our last session, the env flag mechanism may have failed.
+  try {
+    const conflictFiles = detectCcMemoryConflict(
+      ctx.db, input.session_id, ctx.project, ctx.scope ?? undefined,
+    );
+    if (conflictFiles.length > 0) {
+      recordEvent(ctx.db, input.session_id, ctx.project,
+        'cc_memory_conflict', 'session_start', 'warning',
+        JSON.stringify({ new_files: conflictFiles }),
+      );
+    }
+  } catch { /* Non-fatal — detection is best-effort */ }
 
   try {
     await recoverFromDb(ctx.db, input.cwd);
