@@ -10,6 +10,12 @@
  * Stored as artifacts with artifact_type = 'entity_summary'.
  * Regenerated when new evidence arrives (tracked via evidence count hash).
  *
+ * A6 (Phase 11): CC's Magic Docs (ant-only, magicDocs.ts) auto-updates files
+ * that start with `# MAGIC DOC: <title>`. If Magic Docs ships externally,
+ * Angel must check for this header before writing to any file and SKIP if
+ * present — otherwise both systems would race on the same file. Currently
+ * safe because Magic Docs is behind USER_TYPE === 'ant' gate.
+ *
  * Non-throwing throughout.
  */
 

@@ -10,7 +10,15 @@
 import type { Database } from 'better-sqlite3';
 import { cachedPrepare } from '../core/stmt-cache.js';
 
-export type MessageType = 'event' | 'command' | 'query' | 'advisory';
+/**
+ * A15 (Phase 11): `buddy_notification` is reserved for future Buddy integration.
+ * Buddy's companionReaction is an in-memory AppState field in CC's React render
+ * tree. Angel (separate process) cannot write to it — no bridge exists from
+ * Angel → AppState. When CC provides a hook→AppState bridge or MCP mechanism,
+ * the UPS hook should detect buddy_notification messages, format them as
+ * `<companion-notification>` tags, and let the companion_intro prompt handle them.
+ */
+export type MessageType = 'event' | 'command' | 'query' | 'advisory' | 'buddy_notification';
 export type MessagePriority = 'normal' | 'urgent' | 'advisory';
 
 /**

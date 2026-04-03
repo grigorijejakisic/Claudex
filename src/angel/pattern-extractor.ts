@@ -28,6 +28,8 @@ import { createPattern, createTipAndStrategy } from '../intelligence/experience-
 import { recordDomainInteraction, extractDomain } from '../intelligence/capability-tracker.js';
 import { recordEvent } from '../core/session-events.js';
 import type { ConversationTurn, ExtractedPattern } from './types.js';
+import { findSkillByDomain, writeSkillFile } from './skill-writer.js';
+import * as os from 'os';
 
 /**
  * Get all conversation turns for a session, ordered by turn number.
@@ -304,6 +306,52 @@ function measureSessionOutcome(db: Database, sessionId: string): SessionOutcome 
 }
 
 // ---------------------------------------------------------------------------
+// A8: Correction → Skill bridge
+// ---------------------------------------------------------------------------
+
+/**
+ * A8 (Phase 11): Bridge a correction pattern to an existing SKILL.md file.
+ *
+ * After Angel extracts a correction, scan `.claude/skills/` for a skill whose
+ * `when_to_use` matches the correction domain. If found, append the correction
+ * as a new rule. If no match, skip (A10 handles new skill creation).
+ *
+ * Records `skill_amended` session_event on success.
+ */
+function bridgeCorrectionToSkill(
+  db: Database,
+  sessionId: string,
+  project: string,
+  pattern: ExtractedPattern,
+  projectRoot?: string,
+): void {
+  if (pattern.pattern_type !== 'correction' || !pattern.domain) return;
+
+  try {
+    const skillsDir = projectRoot
+      ? `${projectRoot}/.claude/skills`
+      : `${os.homedir()}/.claude/skills`;
+
+    const match = findSkillByDomain(skillsDir, pattern.domain);
+    if (!match) return; // No matching skill — skip (A10 handles creation)
+
+    const amendment = `## Correction: ${pattern.trigger_context}\n- ${pattern.lesson}${pattern.anti_pattern ? `\n- Avoid: ${pattern.anti_pattern}` : ''}`;
+
+    const success = writeSkillFile(
+      pattern.domain,
+      { when_to_use: '', body: amendment },
+      'amend',
+      projectRoot,
+    );
+
+    if (success) {
+      recordEvent(db, sessionId, project, 'skill_amended', pattern.domain, 'correction_bridged',
+        `Appended correction to ${pattern.domain} skill: ${pattern.lesson.substring(0, 80)}`);
+    }
+  } catch { /* non-fatal */ }
+}
+
+// ---------------------------------------------------------------------------
 // Phase 5: REVIEW — validate candidate patterns before committing
 // ---------------------------------------------------------------------------
 
@@ -552,6 +600,9 @@ export async function extractPatternsFromSession(
           if (p.domain) {
             recordDomainInteraction(db, project, p.domain, true);
           }
+
+          // A8: Bridge corrections to existing skills
+          bridgeCorrectionToSkill(db, sessionId, project, p);
         }
       } catch {
         // Individual pattern creation failure — continue with others
@@ -604,6 +655,84 @@ export async function classifySessionDomains(
 
     if (domain && domain.length < 50) {
       recordDomainInteraction(db, project, domain, false);
+      return 1;
+    }
+
+    return 0;
+  } catch {
+    return 0;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// A10: Pattern → Skill crystallization
+// ---------------------------------------------------------------------------
+
+/**
+ * A10 (Phase 11): Crystallize proven experience patterns into SKILL.md files.
+ *
+ * Criteria: maturity = 'proven', confidence >= 0.8, not already crystallized.
+ * Generates SKILL.md from pattern fields (template-based).
+ * Capped at 1 crystallization per call (heartbeat rate-limits).
+ *
+ * Returns the number of skills crystallized (0 or 1).
+ */
+export function crystallizePatternToSkill(db: Database): number {
+  try {
+    // Find proven patterns not yet crystallized
+    const candidates = cachedPrepare(db,
+      `SELECT ep.id, ep.trigger_context, ep.lesson, ep.anti_pattern,
+              ep.generalized_rule, ep.source_project, ep.confidence
+       FROM experience_patterns ep
+       WHERE ep.maturity = 'proven' AND ep.confidence >= 0.8
+         AND ep.id NOT IN (
+           SELECT se.entity FROM session_events se
+           WHERE se.event_type = 'skill_crystallized'
+         )
+       ORDER BY ep.confidence DESC, ep.times_triggered DESC
+       LIMIT 1`
+    ).get() as {
+      id: string;
+      trigger_context: string;
+      lesson: string;
+      anti_pattern: string | null;
+      generalized_rule: string | null;
+      source_project: string;
+      confidence: number;
+    } | undefined;
+
+    if (!candidates) return 0;
+
+    // Determine domain from trigger_context
+    const domain = extractDomain(candidates.trigger_context)
+      ?? candidates.source_project.replace(/[^a-z0-9]/gi, '-').toLowerCase()
+      ?? 'general';
+
+    // Build SKILL.md body from pattern fields
+    const lessonStep = candidates.generalized_rule || candidates.lesson;
+    const antiPatternSection = candidates.anti_pattern
+      ? `\n## Anti-patterns\n- ${candidates.anti_pattern}`
+      : '';
+
+    const body = `# ${domain} — ${candidates.lesson.substring(0, 60)}
+
+## Steps
+1. ${lessonStep}
+${antiPatternSection}
+
+## Success criteria
+- Pattern is applied and no re-correction follows`;
+
+    const success = writeSkillFile(
+      domain,
+      { when_to_use: candidates.trigger_context, body },
+      'create',
+    );
+
+    if (success) {
+      recordEvent(db, 'angel', candidates.source_project, 'skill_crystallized',
+        candidates.id, 'crystallized',
+        `Pattern ${candidates.id} → skill/${domain} (confidence=${candidates.confidence.toFixed(2)})`);
       return 1;
     }
 

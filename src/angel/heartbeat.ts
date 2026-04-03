@@ -4,6 +4,7 @@
  * Each tick:
  *   1. Check for idle active sessions → send warnings
  *   1b. Auto-close escalated idle sessions (warned but still idle after 30min)
+ *   1c. Stuck detection on active sessions (A11) → send intervention
  *   2. Find completed sessions the Angel hasn't processed → extract patterns
  *   3. Classify domains for unclassified sessions
  *   4. Guardian duties (pruning, verification, orphan cleanup)
@@ -27,9 +28,9 @@
 import type { Database } from 'better-sqlite3';
 import { cachedPrepare } from '../core/stmt-cache.js';
 import type { AngelConfig } from './types.js';
-import { getIdleSessions, getUnprocessedSessions, hasIdleWarning, markSessionProcessed, getEscalatedIdleSessions } from './session-monitor.js';
-import { sendIdleWarning } from './message-sender.js';
-import { extractPatternsFromSession, classifySessionDomains } from './pattern-extractor.js';
+import { getIdleSessions, getUnprocessedSessions, hasIdleWarning, markSessionProcessed, getEscalatedIdleSessions, detectStuckSession } from './session-monitor.js';
+import { sendIdleWarning, sendMessage } from './message-sender.js';
+import { extractPatternsFromSession, classifySessionDomains, crystallizePatternToSkill } from './pattern-extractor.js';
 import { getUnverifiedFrequentPatterns, incrementVerificationCount } from '../intelligence/experience-patterns.js';
 import { monitorMemoryFiles } from './memory-monitor.js';
 import { consolidateObservationBatch, shouldConsolidate, markConsolidationRan } from './consolidator.js';
@@ -76,6 +77,9 @@ export interface TickResult {
   patterns_merged?: number;
   entities_summarized?: number;
   entities_updated?: number;
+  // Phase 11: Angel Intelligence
+  stuck_detected?: number;
+  skills_crystallized?: number;
   // Local Intelligence Amplifier
   services_down?: string[];
   codebase_files_indexed?: number;
@@ -162,6 +166,26 @@ export async function heartbeatTick(ctx: HeartbeatContext): Promise<TickResult> 
       }
     } catch {
       // Non-critical — auto-close failures don't break the heartbeat
+    }
+
+    // Phase 1c: Stuck session detection (A11)
+    // Active (non-idle) sessions that are making no progress get an intervention.
+    // Detects: repeated tool failures, looping prompts, no file progress.
+    try {
+      const activeSessions = cachedPrepare(ctx.db,
+        `SELECT session_id, project FROM sessions WHERE status = 'active'`
+      ).all() as Array<{ session_id: string; project: string }>;
+
+      for (const session of activeSessions) {
+        const stuckResult = detectStuckSession(ctx.db, session.session_id);
+        if (stuckResult?.stuck) {
+          const content = `Stuck session detected: ${stuckResult.reason}. Consider a different approach, or try reading the error message carefully and addressing the root cause.`;
+          sendMessage(ctx.db, session.session_id, content, 'advisory', 'urgent');
+          result.stuck_detected = (result.stuck_detected ?? 0) + 1;
+        }
+      }
+    } catch {
+      // Non-critical — stuck detection failure doesn't break the heartbeat
     }
 
     // Phase 2: Process completed sessions (pattern extraction)
@@ -741,6 +765,18 @@ export async function heartbeatTick(ctx: HeartbeatContext): Promise<TickResult> 
             result.patterns_merged = merged.size;
           }
         } catch { /* non-fatal — consolidation is best-effort */ }
+      }
+    } catch {
+      // Non-critical
+    }
+
+    // Phase 4g: Skill crystallization (A10)
+    // Crystallize proven patterns (maturity='proven', confidence>=0.8) into SKILL.md files.
+    // Capped at 1 per heartbeat tick. Rate-limited by Phase 4f interval.
+    try {
+      const crystallized = crystallizePatternToSkill(ctx.db);
+      if (crystallized > 0) {
+        result.skills_crystallized = crystallized;
       }
     } catch {
       // Non-critical

@@ -1,10 +1,17 @@
 /**
- * Angel Session Monitor — detects idle and completed sessions.
+ * Angel Session Monitor — detects idle, stuck, and completed sessions.
  *
  * Idle sessions: active sessions with no recent observations.
+ * Stuck sessions: active sessions making no progress (repeated errors, loops).
  * Unprocessed sessions: completed sessions the Angel hasn't analyzed yet.
  *
- * Non-throwing — returns empty arrays on error.
+ * A7 (Phase 11): CC's AgentSummary generates 3-5 word status strings every 30s
+ * via a forked subagent. These live in CC's in-memory AppState (React component
+ * state) — not persisted to disk or DB. Angel (separate process) cannot access
+ * them. If CC ever exposes agent summaries via a SubagentStop hook payload or
+ * file, Angel should consume them for richer session state awareness.
+ *
+ * Non-throwing — returns empty arrays/null on error.
  */
 
 import type { Database } from 'better-sqlite3';
@@ -185,5 +192,109 @@ export function getEscalatedIdleSessions(
     }));
   } catch {
     return [];
+  }
+}
+
+// ---------------------------------------------------------------------------
+// A11: Stuck session detection
+// ---------------------------------------------------------------------------
+
+export interface StuckResult {
+  stuck: boolean;
+  reason: string;
+}
+
+/**
+ * A11 (Phase 11): Detect whether an active session is stuck.
+ *
+ * "Stuck" differs from "idle" — stuck means the session is ACTIVE but making
+ * no progress (repeated errors, looping behavior, all talk no work).
+ *
+ * Detection signals (bounded to last 20 minutes):
+ * 1. Repeated tool failures: 3+ session_events with action containing 'error'/'fail'
+ * 2. Looping prompts: 3+ conversation_turns with same first 50 chars of user_text
+ * 3. No file progress: 10+ turns but 0 file_edit/file_create events
+ *
+ * 10-minute debounce: skips if a stuck advisory was already sent recently.
+ */
+export function detectStuckSession(
+  db: Database,
+  sessionId: string,
+): StuckResult | null {
+  try {
+    const now = Math.floor(Date.now() / 1000);
+
+    // Debounce: check for recent stuck advisory (10 min)
+    const recentAdvisory = cachedPrepare(db,
+      `SELECT 1 FROM session_messages
+       WHERE target_session = ? AND sender = 'angel'
+         AND content LIKE '%stuck%'
+         AND created_at_epoch > ?
+       LIMIT 1`
+    ).get(sessionId, now - 600);
+    if (recentAdvisory) return null; // Already warned recently
+
+    // Signal 1: Repeated tool failures in last 20 minutes
+    const twentyMinAgo = now - 1200;
+    const failures = cachedPrepare(db,
+      `SELECT action, COUNT(*) as c FROM session_events
+       WHERE session_id = ? AND timestamp_epoch > ?
+         AND (action LIKE '%error%' OR action LIKE '%fail%')
+       GROUP BY action
+       HAVING c >= 3
+       LIMIT 1`
+    ).get(sessionId, twentyMinAgo) as { action: string; c: number } | undefined;
+
+    if (failures) {
+      return {
+        stuck: true,
+        reason: `Repeated failures detected: "${failures.action}" occurred ${failures.c} times in last 20 minutes`,
+      };
+    }
+
+    // Signal 2: Looping prompts — 3+ turns with same first 50 chars
+    const recentTurns = cachedPrepare(db,
+      `SELECT user_text FROM conversation_turns
+       WHERE session_id = ? AND user_text IS NOT NULL
+       ORDER BY turn_number DESC
+       LIMIT 10`
+    ).all(sessionId) as Array<{ user_text: string }>;
+
+    const prefixCounts = new Map<string, number>();
+    for (const turn of recentTurns) {
+      const prefix = turn.user_text.substring(0, 50).toLowerCase();
+      prefixCounts.set(prefix, (prefixCounts.get(prefix) ?? 0) + 1);
+    }
+    for (const [prefix, count] of prefixCounts) {
+      if (count >= 3) {
+        return {
+          stuck: true,
+          reason: `Looping detected: similar prompt repeated ${count} times ("${prefix.substring(0, 30)}...")`,
+        };
+      }
+    }
+
+    // Signal 3: No file progress — 10+ turns but 0 file edits/creates
+    const turnCount = (cachedPrepare(db,
+      `SELECT COUNT(*) as c FROM conversation_turns WHERE session_id = ?`
+    ).get(sessionId) as { c: number }).c;
+
+    if (turnCount >= 10) {
+      const fileEvents = (cachedPrepare(db,
+        `SELECT COUNT(*) as c FROM session_events
+         WHERE session_id = ? AND event_type IN ('file_edit', 'file_create')`
+      ).get(sessionId) as { c: number }).c;
+
+      if (fileEvents === 0) {
+        return {
+          stuck: true,
+          reason: `No file progress: ${turnCount} turns completed but no files edited or created`,
+        };
+      }
+    }
+
+    return null; // Not stuck
+  } catch {
+    return null;
   }
 }

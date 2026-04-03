@@ -16,6 +16,13 @@
  * 6-phase pipeline (CONTEXT → ANALYZE → MEASURE → PLAN → REVIEW → COMMIT) in
  * pattern-extractor.ts is more sophisticated. If Dream is ever re-enabled,
  * detectCcMemoryConflict() in env-file.ts will log a warning.
+ *
+ * A14 (Phase 11): Angel-Dream symbiosis architecture. When Dream is disabled
+ * (current mode), Angel does full consolidation here + in pattern-extractor.ts.
+ * If Dream re-activates (autoDream/tengu_onyx_plover flag in ~/.claude/config.json),
+ * Angel should switch to "curator mode": deposit structured markdown observations
+ * to memdir for Dream to consolidate, then read Dream's consolidated output back
+ * into Claudex DB. detectDreamReactivation() below checks for this at module load.
  */
 
 import type { Database } from 'better-sqlite3';
@@ -479,3 +486,28 @@ export async function consolidateObservationBatch(
     return result;
   }
 }
+
+/**
+ * A14 (Phase 11): Detect Dream re-activation.
+ * Scans ~/.claude/config.json for autoDream or tengu_onyx_plover flag.
+ * If detected, logs a warning — Angel should switch to curator mode.
+ * Called at module load (non-throwing).
+ */
+function detectDreamReactivation(): void {
+  try {
+    const fs = require('fs');
+    const path = require('path');
+    const os = require('os');
+    const configPath = path.join(os.homedir(), '.claude', 'config.json');
+    if (!fs.existsSync(configPath)) return;
+    const config = fs.readFileSync(configPath, 'utf-8');
+    if (config.includes('autoDream') || config.includes('tengu_onyx_plover')) {
+      console.warn('[Angel/Consolidator] Dream re-activation detected in ~/.claude/config.json. ' +
+        'Angel should switch to curator mode (deposit observations for Dream, consume Dream output). ' +
+        'Currently running in sole-consolidator mode.');
+    }
+  } catch { /* non-fatal — detection is best-effort */ }
+}
+
+// Run detection at module load
+detectDreamReactivation();
