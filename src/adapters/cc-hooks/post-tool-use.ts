@@ -19,6 +19,7 @@ import { withBehavioralBatch, applyFileEditIncrement, applyToolCallPattern, setE
 import { buildToolSignature } from '../../intelligence/behavioral-signals.js';
 import { matchTriggers } from '../../intelligence/trigger-engine.js';
 import { extractEventsFromToolUse, recordEvent, recordEventDeduped } from '../../core/session-events.js';
+import { mapToolToDomain } from '../../intelligence/critical-reminders.js';
 
 // ---------------------------------------------------------------------------
 // Behavioral signal thresholds (spec-defined)
@@ -206,6 +207,48 @@ const main = wrapHook('PostToolUse', async (input, ctx) => {
   }
 
   // ---------------------------------------------------------------------------
+  // Critical reminders: activity gate + first-encounter tracking
+  // Flags phase-transition moments and tracks new rule domains for injection.
+  // ---------------------------------------------------------------------------
+  try {
+    const crFlags = getExperienceFlags(ctx.db, input.session_id);
+    let gateTriggered = false;
+    const newDomains: string[] = [...crFlags.seen_rule_domains];
+
+    // Activity gate: multi-file edits
+    const behavioral = withBehavioralBatch(ctx.db, input.session_id, () => {});
+    const editFiles = Object.keys(behavioral.file_edit_counts);
+    if (editFiles.length >= 2) gateTriggered = true;
+
+    // Activity gate: git operations
+    const crToolLower = toolName.toLowerCase();
+    const crInputStr = JSON.stringify(toolInput).toLowerCase();
+    if (crToolLower === 'bash' && (crInputStr.includes('git commit') || crInputStr.includes('git push'))) {
+      gateTriggered = true;
+    }
+
+    // Activity gate: agent spawning
+    if (crToolLower === 'task' || crToolLower === 'agent' || crToolLower === 'subagent') {
+      gateTriggered = true;
+    }
+
+    // First-encounter: track tool domain
+    const toolDomain = mapToolToDomain(toolName);
+    if (toolDomain && !newDomains.includes(toolDomain)) {
+      newDomains.push(toolDomain);
+    }
+
+    if (gateTriggered || newDomains.length !== crFlags.seen_rule_domains.length) {
+      setExperienceFlags(ctx.db, input.session_id, {
+        critical_activity_gate: gateTriggered || crFlags.critical_activity_gate,
+        seen_rule_domains: newDomains,
+      }, crFlags);
+    }
+  } catch (e) {
+    emitErrorTelemetry(ctx.db, input.session_id, 'post_tool_use/critical_gate', e);
+  }
+
+  // ---------------------------------------------------------------------------
   // Session events — lightweight structured event capture
   // Only for mutative tools (Edit, Write, Bash) — skip reads to avoid DB bloat
   // ---------------------------------------------------------------------------
@@ -220,6 +263,41 @@ const main = wrapHook('PostToolUse', async (input, ctx) => {
     }
   } catch (e) {
     emitErrorTelemetry(ctx.db, input.session_id, 'post_tool_use/session_events', e);
+  }
+
+  // ---------------------------------------------------------------------------
+  // B5: Edit integrity tracking — track Edit/Write on Claudex-relevant files.
+  // Tracked paths: src/, CLAUDE.md, .claude/rules/, context/
+  // Records claudex_file_edit events so PostCompact can verify edits survived.
+  // ---------------------------------------------------------------------------
+  try {
+    const isEditTool = (EDIT_TOOL_NAMES as readonly string[]).includes(toolName);
+    if (isEditTool) {
+      const filePath = (toolInput.file_path as string) || (toolInput.path as string) || (toolInput.notebook_path as string) || '';
+      if (filePath) {
+        // Normalize to forward slashes for consistent matching
+        const normalized = filePath.replace(/\\/g, '/');
+        const cwdNormalized = input.cwd.replace(/\\/g, '/');
+        const relative = normalized.startsWith(cwdNormalized)
+          ? normalized.slice(cwdNormalized.length).replace(/^\//, '')
+          : normalized;
+
+        const isClaudexRelevant =
+          relative.startsWith('src/') ||
+          relative === 'CLAUDE.md' ||
+          relative.startsWith('.claude/rules/') ||
+          relative.startsWith('context/');
+
+        if (isClaudexRelevant) {
+          recordEvent(ctx.db, input.session_id, routedProject,
+            'claudex_file_edit', filePath, toolName,
+            JSON.stringify({ mtime: Date.now() }),
+          );
+        }
+      }
+    }
+  } catch (e) {
+    emitErrorTelemetry(ctx.db, input.session_id, 'post_tool_use/edit_integrity', e);
   }
 
   return {};

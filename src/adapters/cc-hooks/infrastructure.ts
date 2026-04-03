@@ -92,11 +92,22 @@ export function readStdin(): Promise<HookInput> {
 }
 
 /**
+ * K4: Sanitize `cch=XXXXX` billing hash patterns to prevent CC's standalone binary
+ * from performing global string substitution across all historical tool results,
+ * which permanently breaks prompt cache. Replaces `=` with `_` so the pattern
+ * no longer matches CC's regex while preserving the hash value for debugging.
+ */
+const CCH_PATTERN = /cch=[a-f0-9]{3,}/gi;
+
+/**
  * Writes JSON to stdout. Non-throwing.
+ * K4: All output is sanitized through CCH_PATTERN before writing.
  */
 export function writeStdout(output: Record<string, unknown>): void {
   try {
-    process.stdout.write(JSON.stringify(output) + '\n');
+    let json = JSON.stringify(output);
+    json = json.replace(CCH_PATTERN, (match) => match.replace('=', '_'));
+    process.stdout.write(json + '\n');
   } catch {
     // Non-throwing
   }

@@ -417,6 +417,25 @@ const main = wrapHook('Stop', async (input, ctx) => {
     } catch { /* non-fatal — MemRL is supplementary */ }
   }, ctx.db, input.session_id);
 
+  // B4: Duplicate compaction agent detection — log-only telemetry.
+  // Duplicate compaction agents can consume up to 65% of session quota.
+  // Heuristic: cache_creation_input_tokens > 200K in a single stop event is anomalous.
+  runHookStep('duplicate_compaction_detection', () => {
+    const usage = input.usage as Record<string, unknown> | undefined;
+    if (!usage) return;
+    const cacheCreation = Number(usage.cache_creation_input_tokens ?? 0);
+    if (cacheCreation > 200_000) {
+      recordEvent(ctx.db, input.session_id, routedProject,
+        'duplicate_compaction_detected', 'stop', 'warning',
+        JSON.stringify({
+          cache_creation_input_tokens: cacheCreation,
+          input_tokens: Number(usage.input_tokens ?? 0),
+          output_tokens: Number(usage.output_tokens ?? 0),
+        }),
+      );
+    }
+  }, ctx.db, input.session_id);
+
   // Load session events ONCE — shared across summary, recall, and idle detection
   let sessionEvents: import('../../core/session-events.js').SessionEvent[] = [];
   try {

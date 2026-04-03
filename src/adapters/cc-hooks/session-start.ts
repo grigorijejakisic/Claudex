@@ -238,6 +238,19 @@ const main = wrapHook('SessionStart', async (input, ctx) => {
     emitErrorTelemetry(ctx.db, input.session_id, 'session_start/orphan_recovery', e);
   }
 
+  // B2: Resume cost awareness — log when session is a resume (disproportionate token cost).
+  // Resume sessions re-read the full conversation, draining token budget (regression since CC v2.1.69).
+  try {
+    const sessionType = (input.type as string) ?? '';
+    if (sessionType === 'resume') {
+      const ccVersion = (input.version as string) ?? 'unknown';
+      recordEvent(ctx.db, input.session_id, ctx.project,
+        'session_resume_cost', 'session_start', 'warning',
+        JSON.stringify({ cc_version: ccVersion, type: sessionType }),
+      );
+    }
+  } catch { /* non-fatal — telemetry only */ }
+
   // C1: GrowthBook flag conflict detection — verify CC auto-memory stays disabled.
   // If CC wrote memory files since our last session, the env flag mechanism may have failed.
   try {
@@ -330,13 +343,14 @@ const main = wrapHook('SessionStart', async (input, ctx) => {
   // Source: Claude Code v2.1.88 leak revealed feature flags (KAIROS, TEAMMEM,
   // EXTRACT_MEMORIES, COMPACTION_REMINDERS) that change how CC handles memory.
   // Claudex must detect and adapt to avoid conflicts.
+  let ccKairosActive = false;
   try {
     const ccVersion = (input.version as string) ?? 'unknown';
     const ccAutoMemDir = path.join(os.homedir(), '.claude', 'projects',
       ctx.scope ?? ctx.project, 'memory');
     const ccMemoryMdExists = fs.existsSync(path.join(ccAutoMemDir, 'MEMORY.md'));
     const ccKairosLogDir = path.join(ccAutoMemDir, 'logs');
-    const ccKairosActive = fs.existsSync(ccKairosLogDir);
+    ccKairosActive = fs.existsSync(ccKairosLogDir);
 
     recordEvent(ctx.db, input.session_id, ctx.project,
       'cc_environment', 'session_start', 'detected',
@@ -348,6 +362,16 @@ const main = wrapHook('SessionStart', async (input, ctx) => {
         context_window: contextWindowTokens,
       }),
     );
+
+    // C3: KAIROS mode detection — dedicated event + one-line warning.
+    // KAIROS is CC's experimental daily-log memory format. When active,
+    // Angel consolidation may conflict with KAIROS's own log writes.
+    if (ccKairosActive) {
+      recordEvent(ctx.db, input.session_id, ctx.project,
+        'kairos_detected', 'session_start', 'warning',
+        JSON.stringify({ cc_version: ccVersion, log_dir: ccKairosLogDir }),
+      );
+    }
   } catch { /* non-fatal — detection is best-effort */ }
 
   const payload = assembleFullContext({
@@ -375,6 +399,11 @@ const main = wrapHook('SessionStart', async (input, ctx) => {
 
   // Append last session summary to the assembled context (cross-session reconstruction)
   let fullContent = payload.content || '';
+
+  // C3: KAIROS warning injection — one line, only when KAIROS is active
+  if (ccKairosActive) {
+    fullContent += '\nKAIROS mode active -- Angel consolidation may conflict\n';
+  }
   try {
     const lastSummary = getLastSessionSummary(ctx.db, ctx.project);
     if (lastSummary) {
