@@ -153,17 +153,28 @@ const DOMAIN_PATTERNS: Array<{ re: RegExp; tag: string }> = [
 ];
 
 /**
- * Parses `<!-- critical -->` markers from CLAUDE.md content.
+ * Parses `<!-- critical -->` or `<!-- critical: key=val, ... -->` markers from CLAUDE.md content.
  * The marker applies to the NEXT non-empty line (numbered list item or bullet).
+ * Extended format: `<!-- critical: drift-risk=safety, domains=multi-file,git,team -->`
  */
 export function parseCriticalMarkers(content: string): ParsedCriticalRule[] {
   const lines = content.split('\n');
   const results: ParsedCriticalRule[] = [];
-  let pendingCritical = false;
+  let pendingCritical: { driftRisk?: string; domains?: string[] } | null = null;
 
   for (const line of lines) {
-    if (line.includes('<!-- critical -->')) {
-      pendingCritical = true;
+    const markerMatch = line.match(/<!--\s*critical(?::([^>]*))?\s*-->/);
+    if (markerMatch) {
+      const meta: { driftRisk?: string; domains?: string[] } = {};
+      if (markerMatch[1]) {
+        const pairs = markerMatch[1].split(',').map(s => s.trim());
+        for (const pair of pairs) {
+          const [key, val] = pair.split('=').map(s => s.trim());
+          if (key === 'drift-risk' && val) meta.driftRisk = val;
+          if (key === 'domains' && val) meta.domains = val.split(',').map(s => s.trim());
+        }
+      }
+      pendingCritical = meta;
       continue;
     }
 
@@ -171,24 +182,28 @@ export function parseCriticalMarkers(content: string): ParsedCriticalRule[] {
       // Strip markdown list prefix (-, *, 1., etc.)
       const ruleText = line.trim().replace(/^[-*]\s+|^\d+\.\s+/, '');
 
+      // Use marker metadata if provided, otherwise auto-detect
       let driftRisk: ParsedCriticalRule['drift_risk'] = 'style';
       let baseTtl = 20;
 
-      if (SAFETY_KEYWORDS.test(ruleText)) {
+      if (pendingCritical.driftRisk === 'safety' || (!pendingCritical.driftRisk && SAFETY_KEYWORDS.test(ruleText))) {
         driftRisk = 'safety';
         baseTtl = 6;
-      } else if (METHOD_KEYWORDS.test(ruleText)) {
+      } else if (pendingCritical.driftRisk === 'working-method' || (!pendingCritical.driftRisk && METHOD_KEYWORDS.test(ruleText))) {
         driftRisk = 'working-method';
         baseTtl = 10;
       }
 
-      const domainTags: string[] = [];
-      for (const { re, tag } of DOMAIN_PATTERNS) {
-        if (re.test(ruleText)) domainTags.push(tag);
+      // Use marker domains if provided, otherwise auto-detect
+      const domainTags: string[] = pendingCritical.domains ?? [];
+      if (domainTags.length === 0) {
+        for (const { re, tag } of DOMAIN_PATTERNS) {
+          if (re.test(ruleText)) domainTags.push(tag);
+        }
       }
 
       results.push({ rule_text: ruleText, drift_risk: driftRisk, domain_tags: domainTags, base_ttl: baseTtl });
-      pendingCritical = false;
+      pendingCritical = null;
     }
   }
 
