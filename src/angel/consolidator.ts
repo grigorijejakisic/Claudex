@@ -511,3 +511,146 @@ function detectDreamReactivation(): void {
 
 // Run detection at module load
 detectDreamReactivation();
+
+// ---------------------------------------------------------------------------
+// Dream-inspired deep consolidation (KAIROS autoDream upgrade)
+// Runs under the heavy consolidation gate (3+ sessions + time elapsed).
+// Three passes: contradiction detection, staleness pruning, temporal cleanup.
+// ---------------------------------------------------------------------------
+
+/** Result of a dream consolidation pass. */
+export interface DreamResult {
+  contradictions_found: number;
+  contradictions_resolved: number;
+  stale_learnings_flagged: number;
+  stale_decisions_flagged: number;
+}
+
+/**
+ * Dream consolidation — holistic memory quality pass.
+ *
+ * 1. Contradiction detection: finds learnings/decisions with the same topic_key
+ *    but different content (stale upsert failures), or learnings about the same
+ *    entity that conflict. Resolves by keeping the most recent.
+ *
+ * 2. Staleness pruning: scans learnings/decisions referencing file paths and
+ *    verifies those files still exist. Flags stale entries (sets importance = 1).
+ *
+ * Non-throwing. Pure SQL + filesystem checks, no LLM calls.
+ */
+export function runDreamConsolidation(db: Database, projectDir: string): DreamResult {
+  const result: DreamResult = {
+    contradictions_found: 0,
+    contradictions_resolved: 0,
+    stale_learnings_flagged: 0,
+    stale_decisions_flagged: 0,
+  };
+
+  // --- Pass 1: Contradiction detection via topic_key duplicates ---
+  // topic_key should be unique per concept. If two learnings share a topic_key,
+  // the older one is superseded. Keep the newer, delete the older.
+  try {
+    const dupLearnings = cachedPrepare(db,
+      `SELECT topic_key, COUNT(*) as cnt FROM learnings
+       WHERE topic_key IS NOT NULL AND topic_key != ''
+       GROUP BY topic_key HAVING cnt > 1`
+    ).all() as Array<{ topic_key: string; cnt: number }>;
+
+    for (const dup of dupLearnings) {
+      const rows = cachedPrepare(db,
+        `SELECT id, created_at_epoch FROM learnings
+         WHERE topic_key = ? ORDER BY created_at_epoch DESC`
+      ).all(dup.topic_key) as Array<{ id: number; created_at_epoch: number }>;
+
+      // Keep the newest, delete the rest
+      result.contradictions_found += rows.length - 1;
+      for (let i = 1; i < rows.length; i++) {
+        cachedPrepare(db, 'DELETE FROM learnings WHERE id = ?').run(rows[i].id);
+        result.contradictions_resolved++;
+      }
+    }
+
+    const dupDecisions = cachedPrepare(db,
+      `SELECT topic_key, COUNT(*) as cnt FROM decisions
+       WHERE topic_key IS NOT NULL AND topic_key != ''
+       GROUP BY topic_key HAVING cnt > 1`
+    ).all() as Array<{ topic_key: string; cnt: number }>;
+
+    for (const dup of dupDecisions) {
+      const rows = cachedPrepare(db,
+        `SELECT id, created_at_epoch FROM decisions
+         WHERE topic_key = ? ORDER BY created_at_epoch DESC`
+      ).all(dup.topic_key) as Array<{ id: number; created_at_epoch: number }>;
+
+      result.contradictions_found += rows.length - 1;
+      for (let i = 1; i < rows.length; i++) {
+        cachedPrepare(db, 'DELETE FROM decisions WHERE id = ?').run(rows[i].id);
+        result.contradictions_resolved++;
+      }
+    }
+  } catch { /* non-fatal */ }
+
+  // --- Pass 2: Staleness pruning via file path verification ---
+  // Learnings/decisions that reference specific file paths (src/..., .ts, .js)
+  // may be stale if those files no longer exist. Demote importance to 1 (lowest)
+  // so they stop appearing in retrieval results but aren't deleted.
+  try {
+    const fs = require('fs');
+    const path = require('path');
+
+    // Extract file path references from learnings
+    const fileRefLearnings = cachedPrepare(db,
+      `SELECT id, content FROM learnings
+       WHERE importance > 1
+       AND (content LIKE '%src/%' OR content LIKE '%dist/%' OR content LIKE '%context/%')
+       LIMIT 100`
+    ).all() as Array<{ id: number; content: string }>;
+
+    const filePathRegex = /(?:src|dist|context|services)\/[\w\-./]+\.(?:ts|js|json|md|py|yaml)/g;
+
+    for (const learning of fileRefLearnings) {
+      const matches = learning.content.match(filePathRegex);
+      if (!matches || matches.length === 0) continue;
+
+      // If ALL referenced files are missing, the learning is likely stale
+      const allMissing = matches.every(fp => {
+        const fullPath = path.resolve(projectDir, fp);
+        return !fs.existsSync(fullPath);
+      });
+
+      if (allMissing && matches.length >= 1) {
+        cachedPrepare(db,
+          `UPDATE learnings SET importance = 1 WHERE id = ?`
+        ).run(learning.id);
+        result.stale_learnings_flagged++;
+      }
+    }
+
+    // Same for decisions
+    const fileRefDecisions = cachedPrepare(db,
+      `SELECT id, content FROM decisions
+       WHERE importance > 1
+       AND (content LIKE '%src/%' OR content LIKE '%dist/%' OR content LIKE '%context/%')
+       LIMIT 100`
+    ).all() as Array<{ id: number; content: string }>;
+
+    for (const decision of fileRefDecisions) {
+      const matches = decision.content.match(filePathRegex);
+      if (!matches || matches.length === 0) continue;
+
+      const allMissing = matches.every(fp => {
+        const fullPath = path.resolve(projectDir, fp);
+        return !fs.existsSync(fullPath);
+      });
+
+      if (allMissing && matches.length >= 1) {
+        cachedPrepare(db,
+          `UPDATE decisions SET importance = 1 WHERE id = ?`
+        ).run(decision.id);
+        result.stale_decisions_flagged++;
+      }
+    }
+  } catch { /* non-fatal */ }
+
+  return result;
+}

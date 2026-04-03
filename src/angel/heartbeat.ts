@@ -33,7 +33,7 @@ import { sendIdleWarning, sendMessage } from './message-sender.js';
 import { extractPatternsFromSession, classifySessionDomains, crystallizePatternToSkill } from './pattern-extractor.js';
 import { getUnverifiedFrequentPatterns, incrementVerificationCount } from '../intelligence/experience-patterns.js';
 import { monitorMemoryFiles } from './memory-monitor.js';
-import { consolidateObservationBatch, shouldConsolidate, markConsolidationRan } from './consolidator.js';
+import { consolidateObservationBatch, shouldConsolidate, markConsolidationRan, runDreamConsolidation } from './consolidator.js';
 import { syncUserProfiles } from './user-profile-sync.js';
 import { runRetentionSweep } from './retention-sweep.js';
 import * as path from 'path';
@@ -77,6 +77,9 @@ export interface TickResult {
   patterns_merged?: number;
   entities_summarized?: number;
   entities_updated?: number;
+  // Dream consolidation
+  dream_contradictions_resolved?: number;
+  dream_stale_flagged?: number;
   // Phase 11: Angel Intelligence
   stuck_detected?: number;
   skills_crystallized?: number;
@@ -647,6 +650,17 @@ export async function heartbeatTick(ctx: HeartbeatContext): Promise<TickResult> 
       ).all() as Array<{ project: string }>;
       for (const p of projects) {
         if (p.project) deriveOpinionsFromPatterns(ctx.db, p.project);
+      }
+    } catch { /* non-critical */ }
+
+    // Phase 4e4: Dream consolidation — holistic memory quality pass.
+    // Contradiction detection (topic_key duplicates) + staleness pruning (dead file paths).
+    // Triple-gated: only runs when enough new sessions exist.
+    if (heavyConsolidationGatePassed) try {
+      const dreamResult = runDreamConsolidation(ctx.db, process.cwd());
+      if (dreamResult.contradictions_resolved > 0 || dreamResult.stale_learnings_flagged > 0 || dreamResult.stale_decisions_flagged > 0) {
+        result.dream_contradictions_resolved = dreamResult.contradictions_resolved;
+        result.dream_stale_flagged = (dreamResult.stale_learnings_flagged + dreamResult.stale_decisions_flagged);
       }
     } catch { /* non-critical */ }
 
