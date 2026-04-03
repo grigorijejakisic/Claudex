@@ -158,6 +158,25 @@ export function getTranscriptPath(input: HookInput): string | undefined {
  * - Error catching (writes {} on failure)
  * - Telemetry emission
  * - DB close in finally
+ *
+ * ## CC-provided environment variables
+ *
+ * CC sets these env vars before spawning hook commands:
+ *
+ * - `CLAUDE_PROJECT_DIR` — Absolute path to the project root (always present).
+ *   Note: this is the real root, not a worktree path. Claudex uses `cwd` from
+ *   the stdin JSON payload instead, which is more reliable across shell types.
+ *
+ * - `CLAUDE_ENV_FILE` — Path to a bash-sourceable env file. Present only for
+ *   SessionStart, Setup, CwdChanged, and FileChanged hooks, and only in bash
+ *   shells (not PowerShell). Claudex writes to this in session-start via
+ *   `writeClaudeEnvFile()` in env-file.ts.
+ *
+ * - `CLAUDE_PLUGIN_ROOT` — Plugin/skill root directory (plugins only).
+ * - `CLAUDE_PLUGIN_DATA` — Plugin data directory (plugins only).
+ * - `CLAUDE_PLUGIN_OPTION_*` — Plugin userConfig values (plugins only).
+ *
+ * The plugin env vars are irrelevant until Claudex is packaged as a CC plugin.
  */
 export function wrapHook(hookName: string, handler: HookHandler): () => Promise<void> {
   return async () => {
