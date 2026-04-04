@@ -721,3 +721,106 @@ describe('6.4 Agent-ID attribution', () => {
     }
   });
 });
+
+describe('Channel 6: Experience patterns in claudex_search', () => {
+  function insertPattern(
+    db: Database.Database,
+    id: string,
+    triggerContext: string,
+    lesson: string,
+    project: string = 'test-project',
+    severity: string = 'important',
+    score: number = 5,
+  ): void {
+    cachedPrepare(db,
+      `INSERT INTO experience_patterns
+         (id, pattern_type, trigger_context, lesson, anti_pattern, severity,
+          score, times_triggered, times_useful, source_session, source_project,
+          created_at_epoch, abstraction_level)
+       VALUES (?, 'correction', ?, ?, NULL, ?, ?, 0, 0, 'test-session', ?, ?, 'tip')`
+    ).run(id, triggerContext, lesson, severity, score, project, Math.floor(Date.now() / 1000));
+  }
+
+  it('FTS5 MATCH on experience_patterns_fts returns matching patterns', () => {
+    const db = createDb();
+    try {
+      insertSession(db, 'test-session', 'test-project');
+      insertPattern(db, 'pat-sine-1', 'Pedja says you would not write a sine function', 'Use existing libraries instead of writing from scratch');
+
+      const keywords = ['Pedja', 'sine', 'function'];
+      const ftsQuery = keywords.join(' OR ');
+      const hits = cachedPrepare(db,
+        `SELECT ep.id, ep.lesson, ep.severity, ep.score, ep.source_project,
+                bm25(experience_patterns_fts) as rank
+         FROM experience_patterns ep
+         JOIN experience_patterns_fts fts ON fts.rowid = ep.rowid
+         WHERE experience_patterns_fts MATCH ?
+           AND ep.score >= 2
+           AND (ep.source_project = ? OR ep.source_project = '__global__')
+         ORDER BY rank
+         LIMIT 10`
+      ).all(ftsQuery, 'test-project') as Array<{
+        id: string; lesson: string; severity: string; score: number;
+        source_project: string; rank: number;
+      }>;
+
+      expect(hits.length).toBeGreaterThanOrEqual(1);
+      expect(hits[0].id).toBe('pat-sine-1');
+      expect(hits[0].lesson).toContain('existing libraries');
+    } finally {
+      db.close();
+    }
+  });
+
+  it('filters out patterns with score < 2', () => {
+    const db = createDb();
+    try {
+      insertSession(db, 'test-session', 'test-project');
+      insertPattern(db, 'pat-low-1', 'low score pattern about databases', 'Some lesson about databases', 'test-project', 'minor', 1);
+      insertPattern(db, 'pat-high-1', 'high score pattern about databases', 'Validated lesson about databases', 'test-project', 'important', 5);
+
+      const hits = cachedPrepare(db,
+        `SELECT ep.id, ep.score
+         FROM experience_patterns ep
+         JOIN experience_patterns_fts fts ON fts.rowid = ep.rowid
+         WHERE experience_patterns_fts MATCH 'databases'
+           AND ep.score >= 2
+           AND (ep.source_project = ? OR ep.source_project = '__global__')
+         ORDER BY bm25(experience_patterns_fts)
+         LIMIT 10`
+      ).all('test-project') as Array<{ id: string; score: number }>;
+
+      expect(hits.length).toBe(1);
+      expect(hits[0].id).toBe('pat-high-1');
+    } finally {
+      db.close();
+    }
+  });
+
+  it('includes global patterns alongside project-scoped ones', () => {
+    const db = createDb();
+    try {
+      insertSession(db, 'test-session', 'test-project');
+      insertPattern(db, 'pat-local-1', 'local authentication pattern', 'Always validate tokens locally', 'test-project');
+      insertPattern(db, 'pat-global-1', 'global authentication pattern', 'Never store tokens in plaintext', '__global__');
+
+      const hits = cachedPrepare(db,
+        `SELECT ep.id, ep.source_project
+         FROM experience_patterns ep
+         JOIN experience_patterns_fts fts ON fts.rowid = ep.rowid
+         WHERE experience_patterns_fts MATCH 'authentication'
+           AND ep.score >= 2
+           AND (ep.source_project = ? OR ep.source_project = '__global__')
+         ORDER BY bm25(experience_patterns_fts)
+         LIMIT 10`
+      ).all('test-project') as Array<{ id: string; source_project: string }>;
+
+      expect(hits.length).toBe(2);
+      const projects = hits.map(h => h.source_project);
+      expect(projects).toContain('test-project');
+      expect(projects).toContain('__global__');
+    } finally {
+      db.close();
+    }
+  });
+});

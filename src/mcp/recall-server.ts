@@ -58,7 +58,7 @@ const defaultProject = getProjectId(process.cwd());
 const CLAUDEX_INSTRUCTIONS = `Claudex is active on this machine — a persistent memory system giving you context continuity across sessions.
 
 ## When to Use Claudex Tools
-- claudex_search: FIRST CHOICE for any question about past work, decisions, learnings, or project knowledge. Searches across all sessions and projects with relevance ranking.
+- claudex_search: FIRST CHOICE for any question about past work, decisions, learnings, experience patterns, or project knowledge. Also use when the user asks "do you remember..." — experience patterns (past corrections and lessons) are searchable here.
 - claudex_events: Session history — what happened, what was built, timeline of recent work.
 - claudex_recall: Retrieve a specific artifact by ID or file path when you have an exact reference.
 - claudex_store: Persist a decision or learning for future sessions after key decisions or user directives.
@@ -88,7 +88,7 @@ const server = new McpServer(
 server.registerTool(
   'claudex_search',
   {
-    description: 'Search Claudex memory — decisions, learnings, observations, project knowledge. Use for conceptual questions ("What decisions were made about auth?", "What is Nexus?"). Returns ranked results with provenance.',
+    description: 'Search Claudex memory — decisions, learnings, observations, experience patterns, project knowledge. Use for conceptual questions ("What decisions were made about auth?", "What is Nexus?"), recalling past corrections or lessons ("Do you remember when..."), and finding behavioral patterns. Returns ranked results with provenance.',
     inputSchema: {
       query: z.string().describe('Search query text'),
       project: z.string().optional().describe('Project scope (defaults to CWD project)'),
@@ -96,7 +96,7 @@ server.registerTool(
       offset: z.number().optional().describe('Result offset for pagination (default 0)'),
     },
     _meta: {
-      'anthropic/searchHint': 'memory recall knowledge decisions learnings observations project history past sessions',
+      'anthropic/searchHint': 'memory recall knowledge decisions learnings observations experience patterns corrections lessons principles past sessions remember',
       'anthropic/alwaysLoad': true,
     },
   },
@@ -335,9 +335,47 @@ server.registerTool(
       } catch { /* non-fatal */ }
     }
 
+    // Channel 6: Experience patterns (FTS5 on trigger_context + lesson + anti_pattern)
+    let patternResults: SearchResult[] = [];
+    try {
+      const keywords = tokenizeQuery(query, 5);
+      if (keywords.length > 0) {
+        const ftsQuery = keywords.join(' OR ');
+        const hits = cachedPrepare(getDb(),
+          `SELECT ep.id, ep.trigger_context, ep.lesson, ep.anti_pattern,
+                  ep.severity, ep.score, ep.source_project, ep.maturity,
+                  ep.helpful_count, ep.harmful_count, ep.escalation_level,
+                  bm25(experience_patterns_fts) as rank
+           FROM experience_patterns ep
+           JOIN experience_patterns_fts fts ON fts.rowid = ep.rowid
+           WHERE experience_patterns_fts MATCH ?
+             AND ep.score >= 2
+             AND (ep.source_project = ? OR ep.source_project = '__global__')
+           ORDER BY rank
+           LIMIT ?`
+        ).all(ftsQuery, proj, offset + limit) as Array<{
+          id: string; trigger_context: string; lesson: string; anti_pattern: string | null;
+          severity: string; score: number; source_project: string; maturity: string;
+          helpful_count: number; harmful_count: number; escalation_level: string; rank: number;
+        }>;
+        const sevImportance: Record<string, number> = { critical: 5, important: 4, minor: 3 };
+        patternResults = hits.map((p, i) => ({
+          id: typeof p.id === 'string' ? parseInt(p.id, 10) || i : i,
+          type: 'experience_pattern',
+          summary: p.lesson.slice(0, 300),
+          provenance: `pattern:${p.id}:${p.source_project}`,
+          importance: sevImportance[p.severity] ?? 3,
+          project: p.source_project,
+          source: 'experience',
+          score: 1.0 / (RRF_K + i + 1),
+        }));
+      }
+    } catch { /* experience_patterns_fts may not exist — non-fatal */ }
+
     // Source weight multipliers — narrow spread so relevance rank dominates,
     // weights act as tiebreaker only (old 0.8–1.3 range let weak decisions outrank strong artifacts)
     const SOURCE_WEIGHTS: Record<string, number> = {
+      experience: 1.06,  // Validated behavioral corrections — highest signal
       decision: 1.05,    // Explicit decisions — slight boost
       learning: 1.03,    // Behavioral corrections
       artifacts: 1.0,    // General content (baseline)
@@ -348,7 +386,7 @@ server.registerTool(
     // Merge all channels and sort by weighted RRF score
     const allResults = [
       ...artifactResults, ...journalResults, ...conversationResults,
-      ...learningResults, ...decisionResults,
+      ...learningResults, ...decisionResults, ...patternResults,
     ].map(r => ({
       ...r,
       score: r.score * (SOURCE_WEIGHTS[r.source] ?? 1.0),
