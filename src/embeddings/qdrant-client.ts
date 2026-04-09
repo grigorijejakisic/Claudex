@@ -1,53 +1,51 @@
 /**
- * Qdrant vector database client — manages collections, upserts, and search.
+ * Vector store client (historical filename — `qdrant-client.ts`).
  *
- * Dual-write pattern: SQLite is always written first (source of truth).
- * Qdrant upsert follows. If Qdrant is down, SQLite + FTS5 still works.
- * Qdrant is acceleration, not dependency.
+ * As of session 47 (Phase 5 of the Qdrant → sqlite-vec migration), this
+ * module is a thin facade over the sqlite-vec backend. Qdrant has been
+ * removed; every vector operation routes through the vec0 virtual tables
+ * in the shared SQLite database.
+ *
+ * The filename is preserved to avoid churning imports in the ~27 caller
+ * files that reference `qdrant-client.js`. A follow-up rename to
+ * `vector-store.ts` is tracked in `context/specs/SQLITE_VEC_MIGRATION.md`
+ * (Phase 5b). Callers see the same public API they always had:
+ *
+ *   - Types: ArtifactPayload, PatternPayload, SearchResult, QdrantConfig
+ *   - Collection constants: COLLECTIONS (kept for backward compat with
+ *     any code that imports them as identifiers)
+ *   - Upsert functions: upsertArtifactEmbedding, upsertPatternEmbedding,
+ *     upsertJournalEmbedding, upsertConversationEmbedding, upsertThreadEmbedding
+ *   - Search functions: searchArtifacts, searchPatterns, searchJournal,
+ *     searchConversations, searchThreads
+ *   - Lifecycle: ensureCollections, deleteArtifactPoint, setVectorStoreDb
+ *   - Compat shims: getQdrantClient (always null), isQdrantAvailable
+ *     (delegates to isSqliteVecReady), resetQdrantClient (no-op)
+ *
+ * Dual-write pattern is now trivial: SQLite is the source of truth AND
+ * the vector store. A single transaction can insert both the row and
+ * its embedding atomically (see sqlite-vec-backend.ts for the actual
+ * vec0 operations).
  *
  * All public functions are non-throwing with safe defaults.
- *
- * Backend dispatch (Phase 2 of the Qdrant → sqlite-vec migration):
- * Each public function checks `CLAUDEX_VECTOR_BACKEND` at call time. If the
- * env var is set to "sqlite-vec", the call is forwarded to the corresponding
- * `*Vec` function in `./sqlite-vec-backend.ts`. Otherwise, the existing
- * Qdrant code path runs. Default backend is "qdrant" for rollback safety.
- * See context/specs/SQLITE_VEC_MIGRATION.md for the full plan.
- *
- * Setting the backend at runtime requires two things:
- *   1. `CLAUDEX_VECTOR_BACKEND=sqlite-vec` in the environment
- *   2. `setVectorStoreDb(db)` called with a live better-sqlite3 connection
- *      (exported here — re-exported from sqlite-vec-backend.ts)
  */
 
-import { QdrantClient } from '@qdrant/js-client-rest';
 import * as vec from './sqlite-vec-backend.js';
 
-// Re-export the db setter so callers have a single import point.
+// Re-export the lifecycle setter so callers have a single import point.
 export { setVectorStoreDb, getVectorStoreDb, isSqliteVecReady } from './sqlite-vec-backend.js';
 
-/**
- * Read the active vector backend from the environment.
- * Default: 'qdrant' (rollback-safe). Override with CLAUDEX_VECTOR_BACKEND=sqlite-vec.
- *
- * Checked at each function entry so flipping the env var takes effect on
- * the next call without process restart. Cheap string comparison.
- */
-function getBackend(): 'qdrant' | 'sqlite-vec' {
-  return process.env.CLAUDEX_VECTOR_BACKEND === 'sqlite-vec' ? 'sqlite-vec' : 'qdrant';
-}
-
 // ---------------------------------------------------------------------------
-// Types
+// Types (preserved from the Qdrant-era API for caller backward compat)
 // ---------------------------------------------------------------------------
 
 export interface QdrantConfig {
-  /** Qdrant HTTP endpoint. Default: http://localhost:6333 */
-  url: string;
-  /** Embedding dimension. Default: 1024 (snowflake-arctic-embed2) */
-  dimensions: number;
-  /** Connection timeout in ms. Default: 3000 */
-  timeoutMs: number;
+  /** Ignored after Phase 5. Preserved in the type for API backward compat. */
+  url?: string;
+  /** Embedding dimension. Default: 1024 (snowflake-arctic-embed2). */
+  dimensions?: number;
+  /** Connection timeout in ms. Ignored after Phase 5. */
+  timeoutMs?: number;
 }
 
 export interface ArtifactPayload {
@@ -82,7 +80,9 @@ export interface SearchResult {
 }
 
 // ---------------------------------------------------------------------------
-// Collection names
+// Collection name constants (kept for backward compat — some callers
+// reference these as identifiers even though sqlite-vec uses different
+// table names under the hood).
 // ---------------------------------------------------------------------------
 
 export const COLLECTIONS = {
@@ -94,319 +94,104 @@ export const COLLECTIONS = {
 } as const;
 
 // ---------------------------------------------------------------------------
-// Default config
+// Compatibility shims — Qdrant-era functions kept as no-ops or aliases.
+// Callers that import these continue to work without changes.
 // ---------------------------------------------------------------------------
-
-const DEFAULT_QDRANT_CONFIG: QdrantConfig = {
-  url: 'http://localhost:6333',
-  dimensions: 1024,
-  timeoutMs: 3000,
-};
-
-// ---------------------------------------------------------------------------
-// Client singleton
-// ---------------------------------------------------------------------------
-
-let _client: QdrantClient | null = null;
-let _available: boolean | null = null;
-let _lastHealthCheck = 0;
-const HEALTH_CHECK_INTERVAL_MS = 30_000;
 
 /**
- * Get or create the Qdrant client singleton.
- * Returns null if Qdrant is unavailable.
- * Caches availability for 30 seconds.
- * Non-throwing.
+ * Historical Qdrant singleton accessor. Post-Phase 5 this always returns
+ * null — there is no separate vector DB client in the sqlite-vec world.
+ * Callers that were probing `!client` for graceful degradation still work
+ * correctly because the non-throwing sqlite-vec backend takes over.
  */
-export async function getQdrantClient(config?: Partial<QdrantConfig>): Promise<QdrantClient | null> {
-  try {
-    const cfg = { ...DEFAULT_QDRANT_CONFIG, ...config };
-
-    // Check cached availability
-    const now = Date.now();
-    if (_available === false && now - _lastHealthCheck < HEALTH_CHECK_INTERVAL_MS) {
-      return null;
-    }
-
-    if (!_client) {
-      _client = new QdrantClient({
-        url: cfg.url,
-        timeout: cfg.timeoutMs,
-      });
-    }
-
-    // Health check
-    if (_available === null || now - _lastHealthCheck >= HEALTH_CHECK_INTERVAL_MS) {
-      try {
-        await _client.getCollections();
-        _available = true;
-      } catch {
-        _available = false;
-      }
-      _lastHealthCheck = now;
-    }
-
-    return _available ? _client : null;
-  } catch {
-    _available = false;
-    return null;
-  }
+export async function getQdrantClient(_config?: Partial<QdrantConfig>): Promise<null> {
+  return null;
 }
 
 /**
- * Check if Qdrant is available without creating a client.
- * Uses cached health state. Non-throwing.
+ * Historical Qdrant availability check. Now returns the sqlite-vec
+ * readiness state — the semantic meaning ("is the vector store usable?")
+ * is preserved even though the implementation changed.
  */
 export function isQdrantAvailable(): boolean {
-  return _available === true;
+  return vec.isSqliteVecReady();
 }
 
 /**
- * Reset client state (for testing).
+ * Historical Qdrant client reset (used by tests for isolation).
+ * Post-Phase 5 this is a no-op — the sqlite-vec backend's state lives
+ * in the connected Database, which tests already create fresh per-case.
  */
 export function resetQdrantClient(): void {
-  _client = null;
-  _available = null;
-  _lastHealthCheck = 0;
+  // No-op.
 }
 
 // ---------------------------------------------------------------------------
-// Collection management
+// Collection lifecycle
 // ---------------------------------------------------------------------------
 
 /**
- * Ensures all required collections exist with correct schema.
- * Idempotent — safe to call on every startup.
- * Non-throwing.
+ * Verifies the vec0 virtual tables exist and the sqlite-vec extension is
+ * loaded. Created by the V14→V15 migration; this function is idempotent
+ * and non-throwing.
  */
 export async function ensureCollections(config?: Partial<QdrantConfig>): Promise<boolean> {
-  if (getBackend() === 'sqlite-vec') {
-    return vec.ensureVecCollections(config);
-  }
-  try {
-    const client = await getQdrantClient(config);
-    if (!client) return false;
-
-    const cfg = { ...DEFAULT_QDRANT_CONFIG, ...config };
-
-    const collections = [
-      COLLECTIONS.artifacts,
-      COLLECTIONS.patterns,
-      COLLECTIONS.threads,
-      COLLECTIONS.journal,
-      COLLECTIONS.conversations,
-    ];
-
-    for (const name of collections) {
-      try {
-        const exists = await client.collectionExists(name);
-        if (!exists.exists) {
-          await client.createCollection(name, {
-            vectors: { size: cfg.dimensions, distance: 'Cosine' },
-          });
-        }
-      } catch {
-        // Collection might already exist (race) — non-fatal
-      }
-    }
-
-    return true;
-  } catch {
-    return false;
-  }
+  return vec.ensureVecCollections(config);
 }
 
 // ---------------------------------------------------------------------------
-// Upsert operations
+// Upserts
 // ---------------------------------------------------------------------------
 
-/**
- * Upsert an artifact embedding into Qdrant.
- * Point ID = artifact_id (integer). Payload includes all filterable metadata.
- * Non-throwing.
- */
 export async function upsertArtifactEmbedding(
   artifactId: number,
   embedding: number[],
   payload: ArtifactPayload,
   config?: Partial<QdrantConfig>,
 ): Promise<boolean> {
-  if (getBackend() === 'sqlite-vec') {
-    return vec.upsertArtifactEmbeddingVec(artifactId, embedding, payload, config);
-  }
-  try {
-    const client = await getQdrantClient(config);
-    if (!client) return false;
-
-    await client.upsert(COLLECTIONS.artifacts, {
-      wait: false, // async — don't block the hook
-      points: [{
-        id: artifactId,
-        vector: embedding,
-        payload: payload as unknown as Record<string, unknown>,
-      }],
-    });
-
-    return true;
-  } catch {
-    return false;
-  }
+  return vec.upsertArtifactEmbeddingVec(artifactId, embedding, payload, config);
 }
 
-/**
- * Upsert a pattern embedding into Qdrant.
- * Point ID = auto-generated (Qdrant handles ULID→int mapping).
- * Non-throwing.
- */
 export async function upsertPatternEmbedding(
   patternId: string,
   embedding: number[],
   payload: PatternPayload,
   config?: Partial<QdrantConfig>,
 ): Promise<boolean> {
-  if (getBackend() === 'sqlite-vec') {
-    return vec.upsertPatternEmbeddingVec(patternId, embedding, payload, config);
-  }
-  try {
-    const client = await getQdrantClient(config);
-    if (!client) return false;
-
-    // Use a stable numeric ID derived from the ULID string
-    const numericId = hashStringToInt(patternId);
-
-    await client.upsert(COLLECTIONS.patterns, {
-      wait: false,
-      points: [{
-        id: numericId,
-        vector: embedding,
-        payload: { ...payload as unknown as Record<string, unknown>, pattern_id_str: patternId },
-      }],
-    });
-
-    return true;
-  } catch {
-    return false;
-  }
+  return vec.upsertPatternEmbeddingVec(patternId, embedding, payload, config);
 }
 
-/**
- * Upsert a journal entry embedding into Qdrant.
- * Non-throwing.
- */
 export async function upsertJournalEmbedding(
   journalId: number,
   embedding: number[],
   payload: Record<string, unknown>,
   config?: Partial<QdrantConfig>,
 ): Promise<boolean> {
-  if (getBackend() === 'sqlite-vec') {
-    return vec.upsertJournalEmbeddingVec(journalId, embedding, payload, config);
-  }
-  try {
-    const client = await getQdrantClient(config);
-    if (!client) return false;
-
-    await client.upsert(COLLECTIONS.journal, {
-      wait: false,
-      points: [{
-        id: journalId,
-        vector: embedding,
-        payload,
-      }],
-    });
-
-    return true;
-  } catch {
-    return false;
-  }
+  return vec.upsertJournalEmbeddingVec(journalId, embedding, payload, config);
 }
 
-/**
- * Upsert a conversation turn embedding into Qdrant.
- * Non-throwing.
- */
 export async function upsertConversationEmbedding(
   turnId: number,
   embedding: number[],
   payload: Record<string, unknown>,
   config?: Partial<QdrantConfig>,
 ): Promise<boolean> {
-  if (getBackend() === 'sqlite-vec') {
-    return vec.upsertConversationEmbeddingVec(turnId, embedding, payload, config);
-  }
-  try {
-    const client = await getQdrantClient(config);
-    if (!client) return false;
-
-    await client.upsert(COLLECTIONS.conversations, {
-      wait: false,
-      points: [{
-        id: turnId,
-        vector: embedding,
-        payload,
-      }],
-    });
-
-    return true;
-  } catch {
-    return false;
-  }
+  return vec.upsertConversationEmbeddingVec(turnId, embedding, payload, config);
 }
 
-/**
- * Search conversation turns by semantic similarity.
- * Used for recall — finding dialogue by how the user would describe it.
- * Non-throwing.
- */
-export async function searchConversations(
+export async function upsertThreadEmbedding(
+  sessionId: string,
   embedding: number[],
-  project: string,
-  limit: number = 5,
+  payload: Record<string, unknown>,
   config?: Partial<QdrantConfig>,
-): Promise<SearchResult[]> {
-  if (getBackend() === 'sqlite-vec') {
-    return vec.searchConversationsVec(embedding, project, limit, config);
-  }
-  try {
-    const client = await getQdrantClient(config);
-    if (!client) return [];
-
-    const results = await client.search(COLLECTIONS.conversations, {
-      vector: embedding,
-      limit,
-      filter: {
-        must: [
-          { key: 'project', match: { value: project } },
-        ],
-      },
-      with_payload: true,
-    });
-
-    return results.map(r => ({
-      id: r.id as number,
-      score: r.score,
-      payload: (r.payload ?? {}) as Record<string, unknown>,
-    }));
-  } catch {
-    return [];
-  }
+): Promise<boolean> {
+  return vec.upsertThreadEmbeddingVec(sessionId, embedding, payload, config);
 }
 
 // ---------------------------------------------------------------------------
-// Search operations
+// Searches
 // ---------------------------------------------------------------------------
 
-/**
- * Semantic search across artifact embeddings with metadata filtering.
- * This is the key advantage over FTS5: query is semantic (vocabulary-mismatch tolerant)
- * AND metadata filters are applied inside the vector query (not post-hoc).
- *
- * @param embedding - query embedding vector
- * @param project - project scope filter
- * @param limit - max results
- * @param filters - optional metadata filters (importance, type, etc.)
- * @returns ranked search results with payloads
- */
 export async function searchArtifacts(
   embedding: number[],
   project: string,
@@ -418,252 +203,52 @@ export async function searchArtifacts(
   },
   config?: Partial<QdrantConfig>,
 ): Promise<SearchResult[]> {
-  if (getBackend() === 'sqlite-vec') {
-    return vec.searchArtifactsVec(embedding, project, limit, filters, config);
-  }
-  try {
-    const client = await getQdrantClient(config);
-    if (!client) return [];
-
-    // Build Qdrant filter
-    const must: Array<Record<string, unknown>> = [
-      { key: 'project', match: { value: project } },
-    ];
-
-    if (filters?.excludeSuperseded !== false) {
-      must.push({ key: 'superseded', match: { value: false } });
-    }
-
-    if (filters?.minImportance) {
-      must.push({ key: 'importance', range: { gte: filters.minImportance } });
-    }
-
-    if (filters?.artifactTypes && filters.artifactTypes.length > 0) {
-      must.push({
-        key: 'artifact_type',
-        match: { any: filters.artifactTypes },
-      });
-    }
-
-    const results = await client.search(COLLECTIONS.artifacts, {
-      vector: embedding,
-      limit,
-      filter: { must },
-      with_payload: true,
-    });
-
-    return results.map(r => ({
-      id: r.id as number,
-      score: r.score,
-      payload: (r.payload ?? {}) as Record<string, unknown>,
-    }));
-  } catch {
-    return [];
-  }
+  return vec.searchArtifactsVec(embedding, project, limit, filters, config);
 }
 
-/**
- * Search patterns by semantic similarity.
- * Used for matching experience patterns against user prompts.
- * Non-throwing.
- */
 export async function searchPatterns(
   embedding: number[],
   project: string,
   limit: number = 5,
   config?: Partial<QdrantConfig>,
 ): Promise<SearchResult[]> {
-  if (getBackend() === 'sqlite-vec') {
-    return vec.searchPatternsVec(embedding, project, limit, config);
-  }
-  try {
-    const client = await getQdrantClient(config);
-    if (!client) return [];
-
-    const results = await client.search(COLLECTIONS.patterns, {
-      vector: embedding,
-      limit,
-      filter: {
-        must: [
-          {
-            should: [
-              { key: 'project', match: { value: project } },
-              { key: 'project', match: { value: '__global__' } },
-            ],
-          },
-        ],
-      },
-      with_payload: true,
-    });
-
-    return results.map(r => ({
-      id: r.id as number,
-      score: r.score,
-      payload: (r.payload ?? {}) as Record<string, unknown>,
-    }));
-  } catch {
-    return [];
-  }
+  return vec.searchPatternsVec(embedding, project, limit, config);
 }
 
-/**
- * Search journal entries by semantic similarity.
- * Used for recall — finding sessions by how the user would describe them.
- * Non-throwing.
- */
 export async function searchJournal(
   embedding: number[],
   project: string,
   limit: number = 5,
   config?: Partial<QdrantConfig>,
 ): Promise<SearchResult[]> {
-  if (getBackend() === 'sqlite-vec') {
-    return vec.searchJournalVec(embedding, project, limit, config);
-  }
-  try {
-    const client = await getQdrantClient(config);
-    if (!client) return [];
-
-    const results = await client.search(COLLECTIONS.journal, {
-      vector: embedding,
-      limit,
-      filter: {
-        must: [
-          { key: 'project', match: { value: project } },
-        ],
-      },
-      with_payload: true,
-    });
-
-    return results.map(r => ({
-      id: r.id as number,
-      score: r.score,
-      payload: (r.payload ?? {}) as Record<string, unknown>,
-    }));
-  } catch {
-    return [];
-  }
+  return vec.searchJournalVec(embedding, project, limit, config);
 }
 
-// ---------------------------------------------------------------------------
-// Delete operations
-// ---------------------------------------------------------------------------
-
-/**
- * Upsert a thread embedding into the claudex_threads collection.
- * Called by Stop hook when a thread summary is embedded.
- * Non-throwing.
- */
-export async function upsertThreadEmbedding(
-  sessionId: string,
+export async function searchConversations(
   embedding: number[],
-  payload: Record<string, unknown>,
+  project: string,
+  limit: number = 5,
   config?: Partial<QdrantConfig>,
-): Promise<boolean> {
-  if (getBackend() === 'sqlite-vec') {
-    return vec.upsertThreadEmbeddingVec(sessionId, embedding, payload, config);
-  }
-  try {
-    const client = await getQdrantClient(config);
-    if (!client) return false;
-
-    // Use stable hash of session_id for Qdrant point ID
-    const pointId = hashStringToInt(sessionId);
-
-    await client.upsert(COLLECTIONS.threads, {
-      wait: false,
-      points: [{
-        id: pointId,
-        vector: embedding,
-        payload: { ...payload, session_id: sessionId },
-      }],
-    });
-
-    return true;
-  } catch {
-    return false;
-  }
+): Promise<SearchResult[]> {
+  return vec.searchConversationsVec(embedding, project, limit, config);
 }
 
-/**
- * Search thread summaries by semantic similarity.
- * Used for cross-session thread linking — finding related past threads.
- * Non-throwing.
- */
 export async function searchThreads(
   embedding: number[],
   project: string,
   limit: number = 5,
   config?: Partial<QdrantConfig>,
 ): Promise<SearchResult[]> {
-  if (getBackend() === 'sqlite-vec') {
-    return vec.searchThreadsVec(embedding, project, limit, config);
-  }
-  try {
-    const client = await getQdrantClient(config);
-    if (!client) return [];
-
-    const results = await client.search(COLLECTIONS.threads, {
-      vector: embedding,
-      limit,
-      filter: {
-        must: [{ key: 'project', match: { value: project } }],
-      },
-      with_payload: true,
-    });
-
-    return results.map(r => ({
-      id: r.id,
-      score: r.score,
-      payload: r.payload as Record<string, unknown>,
-    }));
-  } catch {
-    return [];
-  }
+  return vec.searchThreadsVec(embedding, project, limit, config);
 }
 
-/**
- * Delete an artifact point from Qdrant (when superseded or pruned).
- * Non-throwing.
- */
+// ---------------------------------------------------------------------------
+// Deletes
+// ---------------------------------------------------------------------------
+
 export async function deleteArtifactPoint(
   artifactId: number,
   config?: Partial<QdrantConfig>,
 ): Promise<boolean> {
-  if (getBackend() === 'sqlite-vec') {
-    return vec.deleteArtifactPointVec(artifactId, config);
-  }
-  try {
-    const client = await getQdrantClient(config);
-    if (!client) return false;
-
-    await client.delete(COLLECTIONS.artifacts, {
-      wait: false,
-      points: [artifactId],
-    });
-
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
-/**
- * Stable hash: converts a string (ULID) to a positive 53-bit integer.
- * Qdrant requires integer or UUID point IDs. ULIDs are 26-char strings
- * that don't parse as UUIDs, so we hash them to integers.
- * Uses FNV-1a for speed and distribution.
- */
-function hashStringToInt(str: string): number {
-  let hash = 0x811c9dc5; // FNV offset basis (32-bit)
-  for (let i = 0; i < str.length; i++) {
-    hash ^= str.charCodeAt(i);
-    hash = (hash * 0x01000193) >>> 0; // FNV prime, keep unsigned 32-bit
-  }
-  // Ensure positive and within JS safe integer range
-  return Math.abs(hash);
+  return vec.deleteArtifactPointVec(artifactId, config);
 }
