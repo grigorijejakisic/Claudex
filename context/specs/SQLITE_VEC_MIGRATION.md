@@ -1,8 +1,21 @@
 # Qdrant → sqlite-vec Migration Design
 
-> Status: Design-only. No code changes have been made. This document is the concrete plan for a dedicated execution session.
+> Status: **Phases 1–3 complete** (session 47, 2026-04-09). The sqlite-vec backend is implemented, tested, feature-flagged, and wired into the DB open lifecycle. Phase 4 (flip default) and Phase 5 (remove Qdrant) are deferred pending a production benchmark run.
 >
-> Authored: Session 47 (2026-04-09) — deferred from execution due to scope (27 caller files). Foundation commit planned for the next session.
+> Progress:
+> - ✅ **Phase 1** (commit `24ce0c1`): sqlite-vec dependency added, V14→V15 migration creating 5 vec0 virtual tables, extension loader with non-throwing error handling. 13 new tests.
+> - ✅ **Phase 2** (commit `c31f04e`): full sqlite-vec backend mirroring qdrant-client API, feature-flagged dispatcher in qdrant-client.ts, 12 new tests covering upsert/search/delete with project + importance + type + superseded filters.
+> - ✅ **Phase 3** (commit `1785bf1`): setVectorStoreDb wired into openDatabase() and Angel's main. `CLAUDEX_VECTOR_BACKEND=sqlite-vec` is now functional end-to-end without any further configuration.
+> - ⏸ **Phase 4** (deferred): flip default backend, run LongMemEval to verify no regression.
+> - ⏸ **Phase 5** (deferred): remove Qdrant dependency entirely. Gated on Phase 4 soak test.
+> - 🔜 **Phase 2b** (minor follow-ups): fnv_hash column on experience_patterns for proper pattern JOIN; stable rowid → session_id mapping for thread search. Both currently handled in JS at query time; a V16 migration would make them SQL-native.
+
+## Current state
+
+- 2242 tests passing
+- Default backend: `qdrant` (unchanged — zero production behavior change)
+- To try sqlite-vec: `CLAUDEX_VECTOR_BACKEND=sqlite-vec bun run dev` or similar
+- Rollback: unset the env var, restart the process
 
 ## Why
 
