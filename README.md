@@ -2,21 +2,22 @@
 
 **Persistent memory that makes LLM agents actually remember.**
 
-LoCoMo **90.8%** | LongMemEval **90.6%** — outperforming every published memory system we benchmarked against.
+**LongMemEval Oracle 90.6%** — competitive with top published systems at 1–2 percentage points, using a local 16B model instead of GPT-4o.
 
 ```
-  OpenAI Memory      52.9%
-  Mem0               67.1%
-  Zep                75.1%
-  Memori             82.0%
-  MemMachine         84.9%
-  Hindsight OSS-120B 89.0%
-  Hindsight          89.6%
-  ----
-  Claudex            90.6%   LongMemEval Oracle (470 questions, 7 task types)
-  Claudex            90.8%   LoCoMo (1540 questions, 10 conversations)
-  Claudex            89.1%   LongMemEval Oracle (470 questions, 7 task types)
+Benchmark             Claudex   Competitors
+────────────────────────────────────────────────────────────────
+LongMemEval Oracle     90.6%   Hindsight 89.0–91.4%, Memori 82.0%,
+                               MemMachine 84.9%, Zep 71.2%,
+                               Mem0 —, OpenAI Memory 52.9%
+LoCoMo (full)          55.5%   Work in progress. See benchmarks/
+                               for honest harness + methodology.
 ```
+
+**Honesty notes:**
+- **LongMemEval mode is oracle**: only the 1–3 evidence sessions per question are ingested, not the full 500-session haystack. This is the standard published-baseline mode used by Hindsight and others. Full-haystack mode has not yet been benchmarked at scale.
+- **LoCoMo is a work in progress.** An earlier harness produced higher numbers; our current honest harness (commit `893270d feat: benchmark analysis tooling + first honest LoCoMo results`) scores 55.5% against the real hybrid-retrieval pipeline. The gap is being investigated. Results are committed at `LOCOMO_RESULTS.json` so anyone can verify.
+- **Answer model:** `deepseek-coder-v2:16b` locally for LongMemEval. Published competitors use GPT-4o or Gemini. The scores reflect the retrieval + assembly architecture, not raw LLM intelligence. A stronger answer model would likely push scores higher.
 
 No cloud dependency. No external memory service. One SQLite database, one vector store, running entirely on your machine.
 
@@ -49,9 +50,9 @@ After 550+ sessions and 30,000+ observations in production use, the system knows
 │    observations · artifacts · decisions · threads    │
 ├────────────────────┬────────────────────────────────┤
 │   SQLite (truth)   │      Qdrant (acceleration)     │
-│   V12 schema       │      5 collections             │
+│   V14 schema       │      5 collections             │
 │   FTS5 full-text   │      1024-dim vectors           │
-│   27+ tables       │      snowflake-arctic-embed2   │
+│   33 tables        │      snowflake-arctic-embed2   │
 ├────────────────────┴────────────────────────────────┤
 │                  Angel Guardian                       │
 │   pattern extraction · session monitoring            │
@@ -73,8 +74,8 @@ After 550+ sessions and 30,000+ observations in production use, the system knows
 ```
 
 **Three runtime components:**
-- **CC Hooks** — 6 ephemeral scripts that fire on Claude Code events. Fast, mechanical, DB-only state. Never call the API from a hook (deadlock).
-- **Angel** — Persistent guardian process. Extracts patterns, forms opinions (CARA reasoning), monitors sessions, indexes cross-agent sessions (Codex/Gemini/Aider), promotes proven rules to CLAUDE.md, runs retention sweeps. 12+ heartbeat phases.
+- **CC Hooks** — 26 ephemeral scripts that fire on Claude Code events (7 substantive hooks + 19 event recorders). Fast, mechanical, DB-only state. Never call the API from a hook (deadlock).
+- **Angel** — Persistent guardian process. Extracts patterns, forms opinions (CARA reasoning), monitors sessions, supervises the Python reranker lifecycle, indexes cross-agent sessions (Codex/Gemini/Aider), promotes proven rules, runs retention sweeps. 12+ heartbeat phases.
 - **Assembly** — Context injection engine. Assembles the right memories into the right prompt at the right time, with token budgeting, 5-channel retrieval, and priority cascade.
 
 ## Key Features
@@ -113,33 +114,38 @@ After 550+ sessions and 30,000+ observations in production use, the system knows
 
 ## Benchmark Results
 
-### LoCoMo (Long-term Conversational Memory)
+### LoCoMo (Long-term Conversational Memory) — work in progress
 
-10 conversations, 1540 questions across 4 categories. The standard benchmark for memory systems.
+10 conversations, 1540 questions across 4 categories. Run `2026-03-29` against the real hybrid-retrieval pipeline. Committed evidence: `LOCOMO_RESULTS.json`.
 
-| Category | Claudex | Description |
+| Category | Claudex | Questions |
 |---|---|---|
-| Single-hop | **92.6%** | Direct fact retrieval from one session |
-| Temporal | **91.7%** | Time-based reasoning across sessions |
-| Open-domain | **91.0%** | Combining conversation facts with world knowledge |
-| Multi-hop | **88.8%** | Cross-session synthesis requiring multiple facts |
-| **Overall** | **90.8%** | **1399/1540 correct** |
+| Single-hop | **41.1%** | 116/282 |
+| Multi-hop | **44.5%** | 143/321 |
+| Temporal | **36.5%** | 35/96 |
+| Open-domain | **66.7%** | 561/841 |
+| **Overall** | **55.5%** | **855/1540 correct** |
+
+The LoCoMo score is known to be below published competitors and is an active improvement area. Failure-mode analysis is in `LOCOMO_FAILURES.json` and the breakdown is categorized by `src/benchmark/analyze-results.ts`. Answer + judge: `claude-sonnet-4-6`.
 
 ### LongMemEval (Oracle Mode)
 
-500 instances, 7 task types. Tests reading comprehension and answer quality with perfect retrieval.
+470 answerable questions across 6 task types, plus 30 unanswerable questions scored separately as abstention accuracy. Run `2026-03-28`. Committed evidence: `LONGMEMEVAL_ORACLE_RESULTS.json`.
 
-| Category | Claudex | Description |
+| Category | Claudex | Questions |
 |---|---|---|
-| Single-session (preference) | **100.0%** | Identify user preferences |
-| Single-session (assistant) | **98.2%** | Recall assistant-provided info |
-| Single-session (user) | **98.4%** | Recall user-stated facts |
-| Multi-session | **88.4%** | Combine info across sessions |
-| Knowledge-update | **87.5%** | Detect changed information |
-| Temporal-reasoning | **85.0%** | Time-based reasoning |
+| Single-session (preference) | **100.0%** | 30/30 |
+| Single-session (user) | **98.4%** | 63/64 |
+| Single-session (assistant) | **98.2%** | 55/56 |
+| Multi-session | **87.6%** | 106/121 |
+| Knowledge-update | **87.5%** | 63/72 |
+| Temporal-reasoning | **85.8%** | 109/127 |
 | **Overall** | **90.6%** | **426/470 correct** |
+| Abstention (unanswerable) | 6.7% | 2/30 — known weak point, not included in overall |
 
-Answer model: `deepseek-coder-v2:16b` (local, 16B params). Published baselines use GPT-4o. The retrieval and assembly architecture does the heavy lifting — a stronger answer model would push scores higher.
+**Mode caveat:** Oracle mode ingests only the 1–3 evidence sessions per question, not the full 500-session haystack. This is the same mode used by Hindsight and other published baselines, and it measures reading comprehension + QA quality with retrieval guaranteed. Full-haystack mode would additionally stress the retrieval pipeline at scale; we have not yet run it.
+
+Answer and judge model: `deepseek-coder-v2:16b` (local, 16B params). Published baselines typically use GPT-4o or Gemini. The retrieval and assembly architecture does most of the work — a stronger answer model would likely push scores higher.
 
 ## Production Stats
 
@@ -176,19 +182,19 @@ node dist/cli/health.cjs
 
 - **Runtime:** Node.js 22 + TypeScript 5.8 (strict)
 - **Build:** esbuild (~70ms)
-- **Database:** SQLite via better-sqlite3 (V12 schema, 27+ tables)
+- **Database:** SQLite via better-sqlite3 (V14 schema, 33 tables)
 - **Vector Store:** Qdrant (5 collections, 1024-dim cosine)
-- **Embeddings:** Ollama + nomic-embed-text (384d, primary) + Snowflake Arctic Embed 2 (1024d, bi-encoder fallback)
-- **Reranking:** bge-reranker-v2-m3 (568M params, CUDA) — true neural cross-encoder with bi-encoder fallback
+- **Embeddings:** Ollama + Snowflake Arctic Embed 2 (1024d, primary for both retrieval and bi-encoder fallback rerank)
+- **Reranking:** bge-reranker-v2-m3 (568M params, CUDA) — true neural cross-encoder, supervised by Angel's `RerankerSupervisor` with bounded restart and log capture
 - **LLM:** Claude Code CLI + Ollama fallback
-- **Tests:** Vitest (108 files, 2076 tests)
+- **Tests:** Vitest (108+ files, 2000+ tests)
 - **MCP:** 6 tools (search, recall, store, events, message, session)
 
 ## Schema
 
-V12 schema with 27+ tables:
+V14 schema with 33 tables:
 
-`observations` · `artifacts` · `sessions` · `thread_state` · `conversation_turns` · `session_events` · `experience_patterns` · `decisions` · `learnings` · `retrieval_events` · `artifact_links` · `temporal_profile` · `action_transitions` · `session_journal` · `session_messages` · `pressure_scores` · `checkpoint_tracking` · `schema_versions` · `telemetry` · `artifact_access_log` · `knowledge_gaps` · `session_signals` · `angel_opinions` · `solution_outcomes` · `entity_aliases` · `policy_weights` · `file_leases` · `artifact_claims`
+`observations` · `artifacts` · `sessions` · `thread_state` · `conversation_turns` · `session_events` · `experience_patterns` · `decisions` · `learnings` · `retrieval_events` · `artifact_links` · `temporal_profile` · `action_transitions` · `session_journal` · `session_messages` · `pressure_scores` · `checkpoint_tracking` · `schema_versions` · `telemetry` · `artifact_access_log` · `knowledge_gaps` · `session_signals` · `angel_opinions` · `solution_outcomes` · `entity_aliases` · `policy_weights` · `file_leases` · `artifact_claims` · `critical_rules` (and others — full list in `src/core/schema.ts`)
 
 Dual-write: SQLite is the source of truth. Qdrant accelerates semantic search. FTS5 handles keyword search. The system degrades gracefully — if Qdrant or Ollama are down, everything still works via FTS5.
 
