@@ -5,6 +5,7 @@
 
 import Database from 'better-sqlite3';
 import { initializeSchema } from './migrations.js';
+import { setVectorStoreDb } from '../embeddings/sqlite-vec-backend.js';
 
 export type { Database } from 'better-sqlite3';
 
@@ -22,6 +23,12 @@ export function openDatabase(path: string): Database.Database {
   db.pragma('busy_timeout = 5000');
 
   initializeSchema(db);
+
+  // Register this connection with the sqlite-vec backend so the feature-
+  // flagged dispatcher in qdrant-client.ts can route to vec0 virtual tables
+  // when CLAUDEX_VECTOR_BACKEND=sqlite-vec. Safe no-op when the flag isn't
+  // set. Idempotent per-connection.
+  setVectorStoreDb(db);
 
   return db;
 }

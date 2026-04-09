@@ -21,7 +21,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { getDbPath, getClaudexHome } from '../shared/paths.js';
 import { initializeSchema, runMigrations } from '../core/migrations.js';
-import { ensureCollections } from '../embeddings/qdrant-client.js';
+import { ensureCollections, setVectorStoreDb } from '../embeddings/qdrant-client.js';
 import { startHeartbeat, type TickResult } from './heartbeat.js';
 import { DEFAULT_ANGEL_CONFIG, type AngelConfig } from './types.js';
 import { RerankerSupervisor } from './reranker-supervisor.js';
@@ -233,6 +233,12 @@ async function main(): Promise<void> {
   initializeSchema(db);
   runMigrations(db);
 
+  // Register this connection with the sqlite-vec backend so the feature-
+  // flagged dispatcher in qdrant-client.ts can route to vec0 when
+  // CLAUDEX_VECTOR_BACKEND=sqlite-vec. Angel opens the DB directly (not
+  // via openDatabase) so we call setVectorStoreDb explicitly here.
+  setVectorStoreDb(db);
+
   // Ensure Qdrant collections (non-fatal)
   try {
     await ensureCollections();
@@ -277,6 +283,7 @@ async function main(): Promise<void> {
     log('info', `${signal} received — shutting down`);
     heartbeat.stop();
     rerankerSupervisor.stop();
+    setVectorStoreDb(null); // release reference before db.close()
     removePidFile();
     try { db.close(); } catch { /* */ }
     process.exit(0);
