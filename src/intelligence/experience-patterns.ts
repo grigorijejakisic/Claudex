@@ -866,17 +866,20 @@ export function getProvenPrinciples(
 ): ExperiencePattern[] {
   try {
     const safeLimit = Math.max(1, Math.min(limit, 10));
-    // Proven patterns have earned cross-project visibility — they represent
-    // universal principles validated across many interactions. Don't restrict
-    // to current project scope; a proven pattern from Nexus v1 is just as
-    // relevant in Nexus v2.
+    // Scope to current project + GLOBAL_PROJECT_SCOPE. Patterns that have earned
+    // cross-project visibility should be explicitly promoted to GLOBAL_PROJECT_SCOPE
+    // via promoteToGlobalIfCrossProject — the unscoped query previously leaked
+    // patterns like "Lacuna-Betting end-of-event arbitrage" into unrelated
+    // project sessions every 5 turns. A pattern proven in one project is not
+    // automatically relevant elsewhere until it's been promoted to global.
     return cachedPrepare(db,
       `SELECT * FROM experience_patterns
        WHERE maturity IN ('proven', 'established')
          AND score >= 10
+         AND (source_project = ? OR source_project = ?)
        ORDER BY score DESC
        LIMIT ?`
-    ).all(safeLimit) as ExperiencePattern[];
+    ).all(project, GLOBAL_PROJECT_SCOPE, safeLimit) as ExperiencePattern[];
   } catch {
     return [];
   }
