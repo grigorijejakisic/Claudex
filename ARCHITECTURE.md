@@ -25,12 +25,12 @@ The scores reflect retrieval + assembly architecture more than model intelligenc
 ├──────────────────────────────────────────────────────┤
 │              Shared Lifecycle (lifecycle.ts)          │
 │  observations · artifacts · decisions · threads      │
-├────────────────────┬─────────────────────────────────┤
-│   SQLite (truth)   │      Qdrant (acceleration)      │
-│   33 tables, V14   │      5 collections              │
-│   FTS5 full-text   │      1024-dim cosine            │
-│   WAL journal mode │      snowflake-arctic-embed2    │
-├────────────────────┴─────────────────────────────────┤
+├──────────────────────────────────────────────────────┤
+│                 SQLite (single store)                │
+│   33 tables + 5 vec0 virtual tables, V15             │
+│   FTS5 full-text · sqlite-vec KNN · WAL journal      │
+│   snowflake-arctic-embed2 embeddings · 1024-dim      │
+├──────────────────────────────────────────────────────┤
 │                  Angel Guardian                       │
 │  pattern extraction · CARA opinions · consolidation  │
 │  retention sweep · embedding backfill · RL training  │
@@ -41,7 +41,7 @@ The scores reflect retrieval + assembly architecture more than model intelligenc
 │  retrieval RL · correction detection · topic shift   │
 ├──────────────────────────────────────────────────────┤
 │         Hybrid Retrieval (up to 5 channels)          │
-│  FTS5 · Qdrant KNN · recency · graph walk · temporal │
+│  FTS5 · sqlite-vec KNN · recency · graph · temporal │
 ├──────────────────────────────────────────────────────┤
 │        Neural Reranking (bge-reranker-v2-m3)         │
 │  supervised Python service · bi-encoder fallback     │
@@ -58,7 +58,7 @@ The seven substantive hooks that do real work:
 
 | Hook | Role |
 |------|------|
-| `session-start.ts` | Session init, checkpoint recovery, full context assembly, spawn Angel + Qdrant |
+| `session-start.ts` | Session init, checkpoint recovery, full context assembly, spawn Angel |
 | `user-prompt-submit.ts` | Intent classification, topic shift detection, regular assembly, Angel message delivery, experience pattern matching |
 | `post-tool-use.ts` | Observation extraction, pressure update, thread tracking, checkpoint threshold check |
 | `stop.ts` | Decision capture, conversation storage, retrieval feedback, activation decay |
@@ -78,14 +78,14 @@ Angel operates on a configurable heartbeat (default: 5 minutes). Each tick runs 
 2. **Pattern extraction** — cursor-based incremental processing of completed sessions; extracts experience patterns from corrections via Ollama
 3. **Domain classification** — classifies unprocessed sessions by engineering domain
 4. **CARA reasoning** — forms opinions about tools, approaches, and patterns with Bayesian confidence dynamics (`angel_opinions` table)
-5. **Bulk artifact linking** — connects related artifacts via Qdrant similarity
+5. **Bulk artifact linking** — connects related artifacts via sqlite-vec similarity
 6. **Observation consolidation** — clusters similar observations, LLM-summarizes clusters of 3+, sets `consumed=1` on originals (never deletes)
 7. **RL policy training** — updates SimpleMLP weights from session outcomes
 8. **Data retention sweep** — per-table lifecycle enforcement
 9. **Cross-project deduplication** — fingerprint-based dedup across projects
 10. **Data quality checks** — fixes orphaned artifacts, backfills missing embeddings
 11. **Proactive curation** — promotes high-value patterns, decays stale ones
-12. **Service health monitoring** — health-checks Ollama, Qdrant, Reranker, CliProxy
+12. **Service health monitoring** — health-checks Ollama, Reranker, CliProxy (Qdrant removed in session 47)
 
 Angel is also the **sole owner of the reranker service lifecycle** via `RerankerSupervisor` (`src/angel/reranker-supervisor.ts`). If the reranker dies, Angel restarts it up to 3 times with log capture before giving up and logging loudly. If an externally-managed reranker is already running at startup, Angel leaves it alone.
 
@@ -124,11 +124,13 @@ Key tables:
 
 All tables have FTS5 virtual tables or indexes for hot query paths. Complete DDL in `src/core/schema.ts`.
 
-### Qdrant — Vector Acceleration
+### sqlite-vec — Embedded Vector Store
 
-Runs locally at `http://localhost:6333`. Five collections: `claudex_artifacts`, `claudex_patterns`, `claudex_threads`, `claudex_journal`, `claudex_conversations`. All use 1024-dim cosine (snowflake-arctic-embed2 native dimension).
+The vector store lives inside the same SQLite file via the [sqlite-vec](https://github.com/asg017/sqlite-vec) extension (v0.1.9+). Five `vec0` virtual tables mirror the former Qdrant collections: `vec_artifacts`, `vec_patterns`, `vec_threads`, `vec_journal`, `vec_conversations`. All use 1024-dim float vectors (snowflake-arctic-embed2 native dimension) with flat KNN search.
 
-**Dual-write invariant**: SQLite is always written first. Qdrant upsert follows. If Qdrant is down, FTS5 search still works. The system never blocks on Qdrant availability.
+**Single-store design**: no dual-write. The source row and its embedding can be inserted in the same SQLite transaction. Zero divergence risk, zero network latency, zero external service dependency. At Claudex's current scale (tens of thousands of observations), flat KNN is fast (~10-30ms per query); past 500k+ vectors, HNSW would matter but we're nowhere near that threshold.
+
+Qdrant was removed in session 47. See `context/specs/SQLITE_VEC_MIGRATION.md` for the migration design and Phase 1-5 execution history.
 
 ## Retrieval Pipeline
 
@@ -140,7 +142,7 @@ Hybrid retrieval lives in `src/core/hybrid-retrieval.ts`. Two entry points:
 ### Channels
 
 1. **FTS5 keyword search** — BM25 over `artifacts_fts`. Porter stemmer, unicode61 tokenizer. Always available.
-2. **Qdrant KNN** — cosine similarity over `claudex_artifacts`. Requires Ollama + Qdrant. Degrades to 0 results if either is down.
+2. **sqlite-vec KNN** — cosine similarity over `vec_artifacts` (vec0 virtual table, L2 distance converted to score via `1 / (1 + d)`). Requires Ollama for embedding generation; the vec0 tables themselves are in-process. Degrades to 0 results if Ollama is down.
 3. **Recency** — newest-first sort, no query dependency. Always available.
 4. **Graph walk** — 2-hop traversal of `artifact_links` seeded by top-K from channels 1–3. Discovers related artifacts not matched by the query.
 5. **Temporal** — time-range filter when the query contains temporal expressions ("last week", "yesterday"). Skipped on parse failure.
@@ -201,11 +203,10 @@ Two assembly modes:
 | Service | Port | Used for | Fallback when down |
 |---------|------|----------|--------------------|
 | **Ollama** | 11434 | Embeddings (snowflake-arctic-embed2, 1024d); LLM for Angel pattern extraction and consolidation | FTS5-only retrieval; no embedding write; pattern extraction skipped |
-| **Qdrant** | 6333 | Vector acceleration (5 collections) | SQLite FTS5 + recency only; all writes still succeed |
 | **Reranker** (Python) | 7439 | BAAI/bge-reranker-v2-m3 cross-encoder | Bi-encoder cosine via Ollama, then RRF-only |
 | **CliProxy** (optional) | 8317 | OAuth passthrough for Claude MAX subscription | Angel falls back to Ollama for LLM work |
 
-The Qdrant binary is bundled and spawned detached by `session-start`. It is not a hard runtime dependency — only affects retrieval quality. The Python reranker requires Python 3.10+, PyTorch with CUDA (ROCm also works), and downloads ~568MB on first run. Angel's `RerankerSupervisor` manages its lifecycle with bounded restarts and log capture to `context/logs/reranker.log`.
+The Python reranker requires Python 3.10+, PyTorch with CUDA (ROCm also works), and downloads ~568MB on first run. Angel's `RerankerSupervisor` manages its lifecycle with bounded restarts and log capture to `context/logs/reranker.log`. Qdrant used to be bundled and spawned here; it was removed in session 47 — see `context/specs/SQLITE_VEC_MIGRATION.md` for the migration history.
 
 ## File Layout
 
@@ -224,7 +225,7 @@ src/
 ├── core/                  SQLite schema, migrations, DB access functions,
 │                          hybrid-retrieval.ts
 ├── decay/                 Observation decay engine
-├── embeddings/            EmbeddingProvider, embed pipeline, Qdrant client
+├── embeddings/            EmbeddingProvider, embed pipeline, sqlite-vec backend
 ├── extraction/            Observation extraction from tool outputs
 ├── gauge/                 Token window tracking
 ├── indexer/               Codebase file indexer for context injection
@@ -252,7 +253,7 @@ services/
 
 ## Known Limitations and Trade-offs
 
-**Microservices complexity.** Claudex requires four processes running for full capability: Ollama, Qdrant, the Python reranker, and Angel. Each is independently fallible. The graceful degradation chain (full → FTS5+vector → FTS5+recency → FTS5 only) works, but "FTS5 only" is meaningfully worse. Users who don't monitor Angel's log may not notice silent quality degradation. MemPalace's simpler architecture (one process, one store) avoids this trade at the cost of its cognitive features. Work to consolidate some of these services is tracked under the "friction reduction" initiative.
+**Service complexity, reduced in session 47.** Claudex previously required four external services running for full capability: Ollama, Qdrant, the Python reranker, and Angel. After the sqlite-vec migration (Phases 1-5, session 47), Qdrant is gone — the vector store now lives inside the shared SQLite file as vec0 virtual tables. Current state requires: Ollama (embeddings + local LLM), Python reranker (cross-encoder, CUDA), and Angel (persistent intelligence). The graceful degradation chain (full → FTS5+vector → FTS5+recency → FTS5 only) still works if Ollama goes down. MemPalace's simpler architecture (one process, one store) remains a reference point; Claudex now has a single store matching that simplicity, while keeping Angel for the cognitive features MemPalace lacks.
 
 **Python reranker is a hard dependency for best quality.** The BGE-reranker-v2-m3 model is 568MB, needs PyTorch with CUDA, and downloads on first run. The bi-encoder fallback (snowflake-arctic-embed2 cosine) is weaker. Users without a CUDA GPU will not get the full reranking benefit.
 
@@ -260,7 +261,7 @@ services/
 
 **Windows platform quirks.** The codebase was developed on Windows 11 and has accumulated platform-specific workarounds. See `.claude/rules/` for details. Some shell behaviors differ. Node spawn must be `detached: true, stdio: 'ignore'` for background services — `start /B` does not fully detach.
 
-**Single-user design.** The DB path is hardcoded to `~/.claudex/db/claudex.db`. No auth, no multi-tenancy. This is intentional — it's a personal memory system. Do not expose the MCP server or Qdrant to a network.
+**Single-user design.** The DB path is hardcoded to `~/.claudex/db/claudex.db`. No auth, no multi-tenancy. This is intentional — it's a personal memory system. Do not expose the MCP server or the database file to a network.
 
 **LoCoMo is a work in progress.** As of this writing the honest LoCoMo score is 55.5%, below published competitors. An earlier harness reported 90.8%; commit `893270d` explicitly documented that earlier number as inflated relative to the real hybrid pipeline. Improvement is an active area of work. See `benchmarks/BENCHMARKS.md`.
 
@@ -270,7 +271,7 @@ Start here, in this order:
 
 1. **`CLAUDE.md`** — 2-minute overview of what exists, critical safety rules (hook deadlock, fire-and-forget requirement, dual-write invariant). This is written for LLM sessions but it's also the right entry doc for humans.
 
-2. **`src/angel/index.ts`** — Entry point for the persistent guardian. Startup sequence: DB init, Qdrant collection setup, CliProxy detection, RerankerSupervisor startup, heartbeat loop. Then read `src/angel/heartbeat.ts` to see what each tick does.
+2. **`src/angel/index.ts`** — Entry point for the persistent guardian. Startup sequence: DB init (which includes V14→V15 sqlite-vec virtual table creation), CliProxy detection, RerankerSupervisor startup, heartbeat loop. Then read `src/angel/heartbeat.ts` to see what each tick does.
 
 3. **`src/assembly/assembler.ts`** — Context injection engine. Read the `FullAssemblyParams` interface, then trace `assembleFullContext` to understand the priority cascade.
 

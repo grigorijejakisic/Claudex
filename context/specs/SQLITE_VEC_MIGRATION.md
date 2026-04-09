@@ -1,21 +1,31 @@
 # Qdrant → sqlite-vec Migration Design
 
-> Status: **Phases 1–3 complete** (session 47, 2026-04-09). The sqlite-vec backend is implemented, tested, feature-flagged, and wired into the DB open lifecycle. Phase 4 (flip default) and Phase 5 (remove Qdrant) are deferred pending a production benchmark run.
+> Status: **All 5 phases complete** (session 47, 2026-04-09). sqlite-vec is the default and only vector backend; Qdrant has been removed entirely.
 >
 > Progress:
 > - ✅ **Phase 1** (commit `24ce0c1`): sqlite-vec dependency added, V14→V15 migration creating 5 vec0 virtual tables, extension loader with non-throwing error handling. 13 new tests.
 > - ✅ **Phase 2** (commit `c31f04e`): full sqlite-vec backend mirroring qdrant-client API, feature-flagged dispatcher in qdrant-client.ts, 12 new tests covering upsert/search/delete with project + importance + type + superseded filters.
-> - ✅ **Phase 3** (commit `1785bf1`): setVectorStoreDb wired into openDatabase() and Angel's main. `CLAUDEX_VECTOR_BACKEND=sqlite-vec` is now functional end-to-end without any further configuration.
-> - ⏸ **Phase 4** (deferred): flip default backend, run LongMemEval to verify no regression.
-> - ⏸ **Phase 5** (deferred): remove Qdrant dependency entirely. Gated on Phase 4 soak test.
-> - 🔜 **Phase 2b** (minor follow-ups): fnv_hash column on experience_patterns for proper pattern JOIN; stable rowid → session_id mapping for thread search. Both currently handled in JS at query time; a V16 migration would make them SQL-native.
+> - ✅ **Phase 3** (commit `1785bf1`): setVectorStoreDb wired into openDatabase() and Angel's main. `CLAUDEX_VECTOR_BACKEND=sqlite-vec` functional end-to-end without any further configuration.
+> - ✅ **Phase 4** (commit `bd4304d`): default backend flipped from qdrant to sqlite-vec. Tests adjusted (qdrant-e2e test file deleted; qdrant-client.ts internals replaced with pure sqlite-vec facade).
+> - ✅ **Phase 5** (commit `8d212ff`): Qdrant removed entirely. `@qdrant/js-client-rest` dep deleted, Qdrant binary spawn removed from session-start, Qdrant health check removed from heartbeat, thread-tracker Qdrant probing simplified, qdrant-client.test.ts deleted.
+> - 🔜 **Phase 2b** (minor follow-ups, deferred): fnv_hash column on experience_patterns for proper pattern JOIN; stable rowid → session_id mapping for thread search. Both currently handled in JS at query time; a V16 migration would make them SQL-native.
+> - 🔜 **Phase 5b** (cosmetic cleanup, deferred): rename `qdrant-client.ts` → `vector-store.ts`. Would force an import update across ~27 caller files. Current facade pattern works correctly; renaming is purely aesthetic.
 
 ## Current state
 
-- 2242 tests passing
-- Default backend: `qdrant` (unchanged — zero production behavior change)
-- To try sqlite-vec: `CLAUDEX_VECTOR_BACKEND=sqlite-vec bun run dev` or similar
-- Rollback: unset the env var, restart the process
+- **2220 tests passing**, 0 failures
+- **Default backend: sqlite-vec.** Single SQLite file (`~/.claudex/db/claudex.db`) contains everything: truth tables, FTS5 index, and vec0 virtual tables for vector search
+- **External services required:** Ollama (embeddings + local LLM), optional Python reranker (cross-encoder, CUDA), optional CliProxy (MAX subscription OAuth)
+- **External services removed:** Qdrant (was port 6333, required ~100MB binary + separate process)
+- **Rollback (if needed):** Revert commits `bd4304d` and `8d212ff`; the Phase 1-3 foundation stays viable as the default-off path
+
+## What the migration actually bought us
+
+**Before:** SQLite (truth) + Qdrant (HTTP, port 6333, separate process, bundled binary, dual-write invariant to maintain) + Ollama + Python reranker. 4 moving parts for full vector retrieval.
+
+**After:** SQLite (truth + vectors, single file) + Ollama + Python reranker. 3 moving parts. One fewer process to monitor, one fewer failure mode, one fewer install step. Install friction is measurably lower for first-time contributors. Cold-start is faster (no Qdrant init). Backup is trivial (copy one file). Network exposure surface is smaller.
+
+**What we lost:** HNSW indexing on vectors. At Claudex's scale (tens of thousands of observations), flat KNN is fast enough (~10-30ms). Past 500k+ vectors, HNSW would start to matter; by then we can reintroduce a dedicated index via a new sqlite-vec feature or a different extension.
 
 ## Why
 

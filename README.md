@@ -48,12 +48,12 @@ After 550+ sessions and 30,000+ observations in production use, the system knows
 ├─────────────────────────────────────────────────────┤
 │                  Shared Lifecycle                     │
 │    observations · artifacts · decisions · threads    │
-├────────────────────┬────────────────────────────────┤
-│   SQLite (truth)   │      Qdrant (acceleration)     │
-│   V14 schema       │      5 collections             │
-│   FTS5 full-text   │      1024-dim vectors           │
-│   33 tables        │      snowflake-arctic-embed2   │
-├────────────────────┴────────────────────────────────┤
+├─────────────────────────────────────────────────────┤
+│                  SQLite (single store)               │
+│   V15 schema · 33 tables · FTS5 full-text           │
+│   sqlite-vec · 5 vec0 virtual tables · 1024-dim     │
+│   snowflake-arctic-embed2 embeddings · one .db file │
+├─────────────────────────────────────────────────────┤
 │                  Angel Guardian                       │
 │   pattern extraction · session monitoring            │
 │   auto-close idle sessions · RL policy training      │
@@ -66,7 +66,7 @@ After 550+ sessions and 30,000+ observations in production use, the system knows
 │   topic shift detection · cross-session linking      │
 ├─────────────────────────────────────────────────────┤
 │         Hybrid Retrieval (5-channel RRF)             │
-│  FTS5 · Qdrant KNN · recency · graph walk · temporal │
+│  FTS5 · sqlite-vec KNN · recency · graph · temporal │
 ├─────────────────────────────────────────────────────┤
 │         Neural Reranking (bge-reranker-v2-m3)        │
 │   568M params · CUDA · 46 NDCG · bi-encoder fallback │
@@ -93,7 +93,7 @@ After 550+ sessions and 30,000+ observations in production use, the system knows
 - RL policy system: 6 SimpleMLP models (278 lines, ~34K parameters, pure TypeScript) learn optimal memory decisions
 
 **Retrieval**
-- 5-channel Reciprocal Rank Fusion: FTS5 keyword + Qdrant KNN + recency decay + MPFP graph walk + temporal
+- 5-channel Reciprocal Rank Fusion: FTS5 keyword + sqlite-vec KNN + recency decay + MPFP graph walk + temporal
 - Neural cross-encoder reranking: bge-reranker-v2-m3 (568M params) on CUDA, 46 NDCG, with bi-encoder fallback (Snowflake Arctic Embed 2, 1024-dim)
 - Q-value reinforcement learning: patterns earn effectiveness scores from session outcomes (EMA + UCB exploration)
 - Per-event exponential decay with zone-based half-lives (corrections: 60d, architecture: 180d)
@@ -162,7 +162,7 @@ Running in daily production use since March 2026:
 ## Setup
 
 ```bash
-# Prerequisites: Node.js 22+, Bun 1.3+, Ollama, Qdrant
+# Prerequisites: Node.js 22+, Bun 1.3+, Ollama (Qdrant no longer required — sqlite-vec is embedded)
 # Pull the embedding model
 ollama pull snowflake-arctic-embed2
 
@@ -182,8 +182,8 @@ node dist/cli/health.cjs
 
 - **Runtime:** Node.js 22 + TypeScript 5.8 (strict)
 - **Build:** esbuild (~70ms)
-- **Database:** SQLite via better-sqlite3 (V14 schema, 33 tables)
-- **Vector Store:** Qdrant (5 collections, 1024-dim cosine)
+- **Database:** SQLite via better-sqlite3 (V15 schema, 33 tables + 5 vec0 virtual tables)
+- **Vector Store:** sqlite-vec embedded in the same SQLite file (1024-dim flat KNN, 5 virtual tables mirroring the former Qdrant collections)
 - **Embeddings:** Ollama + Snowflake Arctic Embed 2 (1024d, primary for both retrieval and bi-encoder fallback rerank)
 - **Reranking:** bge-reranker-v2-m3 (568M params, CUDA) — true neural cross-encoder, supervised by Angel's `RerankerSupervisor` with bounded restart and log capture
 - **LLM:** Claude Code CLI + Ollama fallback
@@ -196,7 +196,7 @@ V14 schema with 33 tables:
 
 `observations` · `artifacts` · `sessions` · `thread_state` · `conversation_turns` · `session_events` · `experience_patterns` · `decisions` · `learnings` · `retrieval_events` · `artifact_links` · `temporal_profile` · `action_transitions` · `session_journal` · `session_messages` · `pressure_scores` · `checkpoint_tracking` · `schema_versions` · `telemetry` · `artifact_access_log` · `knowledge_gaps` · `session_signals` · `angel_opinions` · `solution_outcomes` · `entity_aliases` · `policy_weights` · `file_leases` · `artifact_claims` · `critical_rules` (and others — full list in `src/core/schema.ts`)
 
-Dual-write: SQLite is the source of truth. Qdrant accelerates semantic search. FTS5 handles keyword search. The system degrades gracefully — if Qdrant or Ollama are down, everything still works via FTS5.
+Single-store design: SQLite is both the source of truth AND the vector store (via sqlite-vec virtual tables). FTS5 handles keyword search. The system degrades gracefully — if Ollama is down for embeddings, search falls back to FTS5-only. One .db file contains everything.
 
 ## How It's Different
 
