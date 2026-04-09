@@ -409,7 +409,7 @@ export async function heartbeatTick(ctx: HeartbeatContext): Promise<TickResult> 
 
         // Auto-restart known services (with process guard to prevent duplicate instances)
         try {
-          const { execSync } = await import('child_process');
+          const { execSync, spawn } = await import('child_process');
 
           // Check if a process is already running by name (exact image match)
           const isRunning = (processName: string): boolean => {
@@ -432,12 +432,32 @@ export async function heartbeatTick(ctx: HeartbeatContext): Promise<TickResult> 
             } catch { return false; }
           };
 
+          // Spawn a truly-detached background process. `start /B` does NOT fully
+          // detach on Windows — the child inherits the parent cmd's console and
+          // dies when that console goes away (observed: reranker python starts,
+          // loads model, then dies before uvicorn.run() binds the port). The
+          // canonical cross-platform fix is Node's spawn with detached+ignore,
+          // followed by child.unref() to let the parent exit independently.
+          const spawnDetached = (command: string, args: string[] = [], cwd?: string): boolean => {
+            try {
+              const child = spawn(command, args, {
+                detached: true,
+                stdio: 'ignore',
+                windowsHide: true,
+                cwd,
+                shell: false,
+              });
+              child.unref();
+              return true;
+            } catch {
+              return false;
+            }
+          };
+
           for (const svc of downServices) {
             if (svc.includes('CliProxy') && !isRunning('cli-proxy-api.exe')) {
               // CliProxy auto-restart — background process, no window
-              try {
-                execSync('start /B cli-proxy-api.exe', { shell: 'cmd.exe', timeout: 5000, windowsHide: true });
-              } catch { /* may not be in PATH — non-fatal */ }
+              spawnDetached('cli-proxy-api.exe');
             }
             if (svc.includes('Reranker')) {
               // Reranker auto-restart — kill zombie first if health check failed but process exists
@@ -452,7 +472,7 @@ export async function heartbeatTick(ctx: HeartbeatContext): Promise<TickResult> 
                   // Brief pause to let port release
                   execSync('timeout /t 2 /nobreak >nul', { shell: 'cmd.exe', timeout: 5000, windowsHide: true });
                 }
-                execSync(`start /B python "${rerankerPath}"`, { shell: 'cmd.exe', timeout: 5000, windowsHide: true });
+                spawnDetached('python', [rerankerPath], process.cwd());
               } catch { /* non-fatal */ }
             }
           }
