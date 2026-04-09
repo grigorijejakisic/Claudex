@@ -24,6 +24,7 @@ import { initializeSchema, runMigrations } from '../core/migrations.js';
 import { ensureCollections } from '../embeddings/qdrant-client.js';
 import { startHeartbeat, type TickResult } from './heartbeat.js';
 import { DEFAULT_ANGEL_CONFIG, type AngelConfig } from './types.js';
+import { RerankerSupervisor } from './reranker-supervisor.js';
 
 // ---------------------------------------------------------------------------
 // CLI argument parsing
@@ -239,6 +240,18 @@ async function main(): Promise<void> {
     log('warn', 'Qdrant collections check failed — semantic features may be limited');
   }
 
+  // Supervise the Python reranker service. Non-blocking: if the reranker
+  // can't come up, Angel continues and hybrid-retrieval falls back to the
+  // bi-encoder path via Ollama. Supervision gives us logs (context/logs/
+  // reranker.log), bounded restart (3 attempts), and clean shutdown —
+  // replaces the old fire-and-forget `start /B` pattern that lost children
+  // to broken stdio pipes on Windows.
+  const rerankerSupervisor = new RerankerSupervisor({
+    projectRoot: process.cwd(),
+    logger: (level, message) => log(level, `reranker: ${message}`),
+  });
+  await rerankerSupervisor.start();
+
   // Write PID file
   writePidFile();
 
@@ -263,6 +276,7 @@ async function main(): Promise<void> {
   const shutdown = (signal: string) => {
     log('info', `${signal} received — shutting down`);
     heartbeat.stop();
+    rerankerSupervisor.stop();
     removePidFile();
     try { db.close(); } catch { /* */ }
     process.exit(0);

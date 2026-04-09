@@ -407,11 +407,20 @@ export async function heartbeatTick(ctx: HeartbeatContext): Promise<TickResult> 
       if (downServices.length > 0) {
         result.services_down = downServices;
 
-        // Auto-restart known services (with process guard to prevent duplicate instances)
+        // Auto-restart known services.
+        //
+        // Reranker is owned by RerankerSupervisor (src/angel/reranker-supervisor.ts)
+        // which is initialized in Angel's main entry — the heartbeat no longer
+        // spawns it directly. The supervisor handles spawn, health-check,
+        // bounded restart, and clean shutdown. The /health ping above is
+        // retained only for status reporting.
+        //
+        // CliProxy has no dedicated supervisor — Angel still attempts an
+        // opportunistic restart here using the canonical Node detached-spawn
+        // pattern (not `start /B`, which does not fully detach on Windows).
         try {
           const { execSync, spawn } = await import('child_process');
 
-          // Check if a process is already running by name (exact image match)
           const isRunning = (processName: string): boolean => {
             try {
               const out = execSync(`tasklist /FI "IMAGENAME eq ${processName}" /NH`, {
@@ -421,23 +430,6 @@ export async function heartbeatTick(ctx: HeartbeatContext): Promise<TickResult> 
             } catch { return false; }
           };
 
-          // Check if a specific Python script is running (not just any python.exe)
-          const isPythonScriptRunning = (scriptName: string): boolean => {
-            try {
-              const out = execSync(
-                `powershell -NoProfile -Command "Get-CimInstance Win32_Process -Filter \\"name='python.exe'\\" | Select-Object -ExpandProperty CommandLine"`,
-                { timeout: 3000, windowsHide: true, encoding: 'utf-8' },
-              );
-              return out.toLowerCase().includes(scriptName.toLowerCase());
-            } catch { return false; }
-          };
-
-          // Spawn a truly-detached background process. `start /B` does NOT fully
-          // detach on Windows — the child inherits the parent cmd's console and
-          // dies when that console goes away (observed: reranker python starts,
-          // loads model, then dies before uvicorn.run() binds the port). The
-          // canonical cross-platform fix is Node's spawn with detached+ignore,
-          // followed by child.unref() to let the parent exit independently.
           const spawnDetached = (command: string, args: string[] = [], cwd?: string): boolean => {
             try {
               const child = spawn(command, args, {
@@ -456,25 +448,9 @@ export async function heartbeatTick(ctx: HeartbeatContext): Promise<TickResult> 
 
           for (const svc of downServices) {
             if (svc.includes('CliProxy') && !isRunning('cli-proxy-api.exe')) {
-              // CliProxy auto-restart — background process, no window
               spawnDetached('cli-proxy-api.exe');
             }
-            if (svc.includes('Reranker')) {
-              // Reranker auto-restart — kill zombie first if health check failed but process exists
-              try {
-                const rerankerPath = path.join(process.cwd(), 'services', 'reranker.py');
-                if (isPythonScriptRunning('reranker.py')) {
-                  // Zombie: process alive but HTTP server dead — kill it to free the port
-                  execSync(
-                    `powershell -NoProfile -Command "Get-CimInstance Win32_Process -Filter \\"name='python.exe'\\" | Where-Object { $_.CommandLine -like '*reranker.py*' } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force }"`,
-                    { timeout: 5000, windowsHide: true },
-                  );
-                  // Brief pause to let port release
-                  execSync('timeout /t 2 /nobreak >nul', { shell: 'cmd.exe', timeout: 5000, windowsHide: true });
-                }
-                spawnDetached('python', [rerankerPath], process.cwd());
-              } catch { /* non-fatal */ }
-            }
+            // Reranker is supervised from main() — heartbeat no longer restarts it.
           }
         } catch { /* auto-restart is best-effort */ }
 
