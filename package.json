@@ -9,7 +9,10 @@
     "setup": "node dist/cli/setup.cjs",
     "health": "node dist/cli/health.cjs",
     "projects-touched": "node dist/cli/projects-touched.cjs",
-    "recall": "node dist/cli/recall.cjs"
+    "recall": "node dist/cli/recall.cjs",
+    "bench:longmemeval": "node dist/benchmark/longmemeval-harness.cjs",
+    "bench:locomo": "node dist/benchmark/locomo-harness.cjs",
+    "bench:analyze": "node dist/benchmark/analyze-results.cjs"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.27.1",
