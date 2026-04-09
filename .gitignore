@@ -7,5 +7,6 @@ dist/
 context/checkpoints/
 context/sessions/
 context/reasoning/
+context/logs/
 .qdrant-initialized
 SYSTEM_ANALYSIS_REPORT.md
