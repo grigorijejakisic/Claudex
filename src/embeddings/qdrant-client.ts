@@ -6,9 +6,36 @@
  * Qdrant is acceleration, not dependency.
  *
  * All public functions are non-throwing with safe defaults.
+ *
+ * Backend dispatch (Phase 2 of the Qdrant → sqlite-vec migration):
+ * Each public function checks `CLAUDEX_VECTOR_BACKEND` at call time. If the
+ * env var is set to "sqlite-vec", the call is forwarded to the corresponding
+ * `*Vec` function in `./sqlite-vec-backend.ts`. Otherwise, the existing
+ * Qdrant code path runs. Default backend is "qdrant" for rollback safety.
+ * See context/specs/SQLITE_VEC_MIGRATION.md for the full plan.
+ *
+ * Setting the backend at runtime requires two things:
+ *   1. `CLAUDEX_VECTOR_BACKEND=sqlite-vec` in the environment
+ *   2. `setVectorStoreDb(db)` called with a live better-sqlite3 connection
+ *      (exported here — re-exported from sqlite-vec-backend.ts)
  */
 
 import { QdrantClient } from '@qdrant/js-client-rest';
+import * as vec from './sqlite-vec-backend.js';
+
+// Re-export the db setter so callers have a single import point.
+export { setVectorStoreDb, getVectorStoreDb, isSqliteVecReady } from './sqlite-vec-backend.js';
+
+/**
+ * Read the active vector backend from the environment.
+ * Default: 'qdrant' (rollback-safe). Override with CLAUDEX_VECTOR_BACKEND=sqlite-vec.
+ *
+ * Checked at each function entry so flipping the env var takes effect on
+ * the next call without process restart. Cheap string comparison.
+ */
+function getBackend(): 'qdrant' | 'sqlite-vec' {
+  return process.env.CLAUDEX_VECTOR_BACKEND === 'sqlite-vec' ? 'sqlite-vec' : 'qdrant';
+}
 
 // ---------------------------------------------------------------------------
 // Types
@@ -153,6 +180,9 @@ export function resetQdrantClient(): void {
  * Non-throwing.
  */
 export async function ensureCollections(config?: Partial<QdrantConfig>): Promise<boolean> {
+  if (getBackend() === 'sqlite-vec') {
+    return vec.ensureVecCollections(config);
+  }
   try {
     const client = await getQdrantClient(config);
     if (!client) return false;
@@ -201,6 +231,9 @@ export async function upsertArtifactEmbedding(
   payload: ArtifactPayload,
   config?: Partial<QdrantConfig>,
 ): Promise<boolean> {
+  if (getBackend() === 'sqlite-vec') {
+    return vec.upsertArtifactEmbeddingVec(artifactId, embedding, payload, config);
+  }
   try {
     const client = await getQdrantClient(config);
     if (!client) return false;
@@ -231,6 +264,9 @@ export async function upsertPatternEmbedding(
   payload: PatternPayload,
   config?: Partial<QdrantConfig>,
 ): Promise<boolean> {
+  if (getBackend() === 'sqlite-vec') {
+    return vec.upsertPatternEmbeddingVec(patternId, embedding, payload, config);
+  }
   try {
     const client = await getQdrantClient(config);
     if (!client) return false;
@@ -263,6 +299,9 @@ export async function upsertJournalEmbedding(
   payload: Record<string, unknown>,
   config?: Partial<QdrantConfig>,
 ): Promise<boolean> {
+  if (getBackend() === 'sqlite-vec') {
+    return vec.upsertJournalEmbeddingVec(journalId, embedding, payload, config);
+  }
   try {
     const client = await getQdrantClient(config);
     if (!client) return false;
@@ -292,6 +331,9 @@ export async function upsertConversationEmbedding(
   payload: Record<string, unknown>,
   config?: Partial<QdrantConfig>,
 ): Promise<boolean> {
+  if (getBackend() === 'sqlite-vec') {
+    return vec.upsertConversationEmbeddingVec(turnId, embedding, payload, config);
+  }
   try {
     const client = await getQdrantClient(config);
     if (!client) return false;
@@ -322,6 +364,9 @@ export async function searchConversations(
   limit: number = 5,
   config?: Partial<QdrantConfig>,
 ): Promise<SearchResult[]> {
+  if (getBackend() === 'sqlite-vec') {
+    return vec.searchConversationsVec(embedding, project, limit, config);
+  }
   try {
     const client = await getQdrantClient(config);
     if (!client) return [];
@@ -373,6 +418,9 @@ export async function searchArtifacts(
   },
   config?: Partial<QdrantConfig>,
 ): Promise<SearchResult[]> {
+  if (getBackend() === 'sqlite-vec') {
+    return vec.searchArtifactsVec(embedding, project, limit, filters, config);
+  }
   try {
     const client = await getQdrantClient(config);
     if (!client) return [];
@@ -425,6 +473,9 @@ export async function searchPatterns(
   limit: number = 5,
   config?: Partial<QdrantConfig>,
 ): Promise<SearchResult[]> {
+  if (getBackend() === 'sqlite-vec') {
+    return vec.searchPatternsVec(embedding, project, limit, config);
+  }
   try {
     const client = await getQdrantClient(config);
     if (!client) return [];
@@ -466,6 +517,9 @@ export async function searchJournal(
   limit: number = 5,
   config?: Partial<QdrantConfig>,
 ): Promise<SearchResult[]> {
+  if (getBackend() === 'sqlite-vec') {
+    return vec.searchJournalVec(embedding, project, limit, config);
+  }
   try {
     const client = await getQdrantClient(config);
     if (!client) return [];
@@ -506,6 +560,9 @@ export async function upsertThreadEmbedding(
   payload: Record<string, unknown>,
   config?: Partial<QdrantConfig>,
 ): Promise<boolean> {
+  if (getBackend() === 'sqlite-vec') {
+    return vec.upsertThreadEmbeddingVec(sessionId, embedding, payload, config);
+  }
   try {
     const client = await getQdrantClient(config);
     if (!client) return false;
@@ -539,6 +596,9 @@ export async function searchThreads(
   limit: number = 5,
   config?: Partial<QdrantConfig>,
 ): Promise<SearchResult[]> {
+  if (getBackend() === 'sqlite-vec') {
+    return vec.searchThreadsVec(embedding, project, limit, config);
+  }
   try {
     const client = await getQdrantClient(config);
     if (!client) return [];
@@ -570,6 +630,9 @@ export async function deleteArtifactPoint(
   artifactId: number,
   config?: Partial<QdrantConfig>,
 ): Promise<boolean> {
+  if (getBackend() === 'sqlite-vec') {
+    return vec.deleteArtifactPointVec(artifactId, config);
+  }
   try {
     const client = await getQdrantClient(config);
     if (!client) return false;
