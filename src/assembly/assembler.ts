@@ -391,7 +391,8 @@ export function assembleFullContext(params: FullAssemblyParams): InjectPayload {
         const lines = opinions.map(o => {
           const conf = Math.round(o.confidence * 100);
           const evidence = o.evidence_count > 1 ? ` (${o.evidence_count} observations)` : '';
-          return `- **${o.subject}**: ${o.opinion} [${conf}% confidence${evidence}]`;
+          // Cap opinion text at 150 chars — defensive guard against verbose CARA output.
+          return `- **${o.subject}**: ${o.opinion.slice(0, 150)} [${conf}% confidence${evidence}]`;
         });
         const opinionSection = `## Angel Insights\n${lines.join('\n')}`;
         const cost = estimateTokens(opinionSection);
@@ -486,8 +487,12 @@ export function assembleFullContext(params: FullAssemblyParams): InjectPayload {
     } catch { /* non-fatal */ }
 
     // === LAYER 2: Reference (packed artifact summaries) ===
+    // Cap at 10 artifacts: metadata-only awareness surface, the model rarely
+    // acts on entries beyond the top 10 by importance. Artifacts that drop off
+    // this list are still reachable via the materialization layer's hybrid
+    // search on explicit query. Saves ~300-400 tokens per session-start.
     try {
-      const packedArtifacts = getPackedArtifacts(params.db, params.project, 20);
+      const packedArtifacts = getPackedArtifacts(params.db, params.project, 10);
       const refSection = formatReferenceLayer(packedArtifacts);
       if (refSection) {
         const cost = estimateTokens(refSection);
@@ -887,9 +892,11 @@ export function assembleRegularPrompt(params: RegularPromptParams): InjectPayloa
       // wastes ~150-250 tokens/turn with identical content. Cooldown-based: inject every
       // 5 turns to maintain anti-drift value while saving ~80% of token cost.
       // Hard cap: 500 tokens (~5 patterns × ~40 tokens each).
+      // Gate: skip turns 0-1 — session-start already injected these seconds ago, so
+      // re-firing on the first UPS is pure duplication. Resume at the next 5-turn mark.
       try {
         const turnCount = params.sessionId ? getTurnCount(params.db, params.sessionId) : 0;
-        if (turnCount % 5 === 0) { // Fire on turns 0, 5, 10, 15, ...
+        if (turnCount > 1 && turnCount % 5 === 0) { // Fire on turns 5, 10, 15, ...
           const principles = getProvenPrinciples(params.db, params.project, 5);
           if (principles.length > 0) {
             const section = formatProvenPrinciplesSection(principles);
