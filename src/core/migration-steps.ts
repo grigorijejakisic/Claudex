@@ -8,6 +8,7 @@
  */
 
 import type { Database } from 'better-sqlite3';
+import { loadSqliteVec } from './sqlite-vec-loader.js';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -1304,4 +1305,64 @@ export function migrateV13toV14(db: Database): void {
       db.exec('ALTER TABLE experience_patterns ADD COLUMN needs_reembed INTEGER NOT NULL DEFAULT 0');
     }
   } catch { /* non-fatal — column may already exist */ }
+}
+
+/**
+ * V14 → V15: sqlite-vec foundation — vec0 virtual tables for vector similarity.
+ *
+ * Creates five vec0 virtual tables that mirror Qdrant's 5 collections, with
+ * matching 1024-dim float vectors (snowflake-arctic-embed2 native dimension):
+ *
+ *   - vec_artifacts      — artifact embeddings (primary retrieval surface)
+ *   - vec_patterns       — experience pattern embeddings
+ *   - vec_threads        — thread topic embeddings
+ *   - vec_journal        — session journal embeddings
+ *   - vec_conversations  — conversation turn embeddings
+ *
+ * Each table's rowid must match the corresponding SQLite row's id (stored as
+ * BigInt to avoid the "only integers allowed for primary key values" error
+ * — JavaScript Number binds as REAL in better-sqlite3, which vec0 rejects).
+ *
+ * Phase 1 of the Qdrant → sqlite-vec migration (see
+ * context/specs/SQLITE_VEC_MIGRATION.md). In Phase 1, these tables exist
+ * as dormant storage alongside Qdrant — no caller writes to them yet.
+ * Phase 2 introduces a facade that routes reads/writes based on a
+ * feature flag. Phase 5 removes Qdrant.
+ *
+ * If the sqlite-vec extension is unavailable (package missing, binary
+ * mismatch, unsupported platform), this migration is a silent no-op.
+ * The migration runner will proceed and the system will continue using
+ * Qdrant exclusively.
+ */
+export function migrateV14toV15(db: Database): void {
+  // Load the extension. loadSqliteVec is idempotent per-connection.
+  const loaded = loadSqliteVec(db);
+  if (!loaded) {
+    // Extension unavailable — skip virtual table creation. The DB is still
+    // at V14 functionally but we mark it as V15 so future runs don't retry
+    // (they'd fail the same way). Callers that want vec0 features should
+    // check sqliteVecLoadStatus() at runtime.
+    return;
+  }
+
+  // All five virtual tables use the same schema shape — a single embedding
+  // column with fixed 1024 dimensions (snowflake-arctic-embed2 native).
+  // If the dimension ever changes, add a new V16 migration that creates
+  // parallel tables and backfills.
+  const tables = [
+    'vec_artifacts',
+    'vec_patterns',
+    'vec_threads',
+    'vec_journal',
+    'vec_conversations',
+  ];
+  for (const table of tables) {
+    try {
+      db.exec(`CREATE VIRTUAL TABLE IF NOT EXISTS ${table} USING vec0(embedding float[1024])`);
+    } catch {
+      // Non-fatal — if the table already exists or the create fails,
+      // the migration is still valid. A failed create will surface at
+      // first query time if any caller actually uses the table.
+    }
+  }
 }

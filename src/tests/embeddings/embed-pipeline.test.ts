@@ -237,11 +237,11 @@ describe('isSemanticPipelineAvailable', () => {
 // ---------------------------------------------------------------------------
 
 describe('V10 schema on fresh install', () => {
-  it('sets user_version to 14', () => {
+  it('sets user_version to 15', () => {
     const db = createTestDb();
     try {
       const row = db.pragma('user_version') as Array<{ user_version: number }>;
-      expect(row[0].user_version).toBe(14);
+      expect(row[0].user_version).toBe(15);
     } finally {
       db.close();
     }

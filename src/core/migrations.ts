@@ -33,10 +33,15 @@ import {
   migrateV11toV12,
   migrateV12toV13,
   migrateV13toV14,
+  migrateV14toV15,
   migrateSchemaFixes,
   cleanupOrphanTables,
   upgradeV2SchemaInPlace,
 } from './migration-steps.js';
+import { loadSqliteVec } from './sqlite-vec-loader.js';
+
+// Re-export migrateV14toV15 for direct use from initializeSchema fresh-DB path.
+export { migrateV14toV15 };
 
 // ---------------------------------------------------------------------------
 // runMigrations — incremental PRAGMA user_version migrations
@@ -68,9 +73,15 @@ export function runMigrations(db: Database): void {
   const row = db.pragma('user_version') as Array<{ user_version: number }>;
   let version = row[0]?.user_version ?? 0;
 
-  const TARGET_VERSION = 14;
+  const TARGET_VERSION = 15;
 
-  if (version >= TARGET_VERSION) return;
+  if (version >= TARGET_VERSION) {
+    // Still load sqlite-vec even if no migration is needed — the extension
+    // doesn't persist across DB connections, so every open needs it loaded
+    // for callers that want to query vec0 tables.
+    loadSqliteVec(db);
+    return;
+  }
 
   // Run all migrations from current version to target
   const migrations: Array<[number, () => void]> = [
@@ -86,6 +97,7 @@ export function runMigrations(db: Database): void {
     [11, () => migrateV11toV12(db)],
     [12, () => migrateV12toV13(db)],
     [13, () => migrateV13toV14(db)],
+    [14, () => migrateV14toV15(db)],
   ];
 
   // Handle special cases for version 0 and 1
@@ -133,6 +145,17 @@ export function runMigrations(db: Database): void {
 export function initializeSchema(db: Database): void {
   upgradeV2SchemaInPlace(db);
   runMigrations(db);
+  // Ensure sqlite-vec is loaded on this connection even if runMigrations
+  // took the fast-path return (already at TARGET_VERSION). Idempotent
+  // per-connection — safe to call multiple times.
+  loadSqliteVec(db);
+  // Create vec0 virtual tables explicitly. For fresh in-memory or brand-new
+  // DBs, runMigrations returns early (no `observations` table → assumes
+  // nothing to migrate) and V14→V15 never runs. The SCHEMA_V3 DDL below
+  // creates the regular tables but not the virtual ones. Run the V15
+  // migration step directly here so vec0 tables exist regardless of
+  // whether initialization came via migration or fresh creation.
+  migrateV14toV15(db);
 
   // FTS5: detect stale v2 index with wrong column count and rebuild
   rebuildStaleFts5(db);
@@ -161,7 +184,7 @@ export function initializeSchema(db: Database): void {
   } else {
     db.prepare('INSERT OR IGNORE INTO schema_versions (version) VALUES (?)').run(SCHEMA_VERSION);
   }
-  db.pragma('user_version = 14');
+  db.pragma('user_version = 15');
 }
 
 // ---------------------------------------------------------------------------
