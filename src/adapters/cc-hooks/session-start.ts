@@ -23,54 +23,11 @@ import * as os from 'os';
 import * as fs from 'fs';
 import { spawn } from 'child_process';
 
-/**
- * Ensure Qdrant is running. Checks HTTP health endpoint, spawns if not reachable.
- * Non-throwing — Qdrant is optional (graceful degradation to FTS5).
- */
-async function ensureQdrantRunning(): Promise<void> {
-  // Check if Qdrant is already running
-  try {
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 2000);
-    const resp = await fetch('http://localhost:6333/healthz', { signal: controller.signal });
-    clearTimeout(timeout);
-    if (resp.ok) return; // Already running
-  } catch {
-    // Not running — try to start
-  }
-
-  const qdrantDir = path.join(os.homedir(), '.claudex', 'qdrant-bin');
-  const qdrantExe = path.join(qdrantDir, 'qdrant.exe');
-  const configPath = path.join(qdrantDir, 'config.yaml');
-
-  if (!fs.existsSync(qdrantExe) || !fs.existsSync(configPath)) return;
-
-  // Ensure storage dirs exist
-  const storageDir = path.join(os.homedir(), '.claudex', 'qdrant', 'storage');
-  const snapshotsDir = path.join(os.homedir(), '.claudex', 'qdrant', 'snapshots');
-  fs.mkdirSync(storageDir, { recursive: true });
-  fs.mkdirSync(snapshotsDir, { recursive: true });
-
-  // Spawn detached — survives hook process exit
-  const child = spawn(qdrantExe, ['--config-path', configPath], {
-    detached: true,
-    stdio: 'ignore',
-    cwd: qdrantDir,
-  });
-  child.unref();
-
-  // Wait briefly for startup
-  for (let i = 0; i < 5; i++) {
-    await new Promise(r => setTimeout(r, 500));
-    try {
-      const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 1000);
-      const resp = await fetch('http://localhost:6333/healthz', { signal: controller.signal });
-      clearTimeout(timeout);
-      if (resp.ok) return;
-    } catch { /* still starting */ }
-  }
-}
+// Qdrant support removed in session 47 (Phase 5 of the sqlite-vec migration).
+// The vector store is now sqlite-vec (vec0 virtual tables in the shared SQLite
+// database). No separate service needs to be spawned at session start. The
+// virtual tables are created automatically by the V14→V15 migration when the
+// DB is opened. See context/specs/SQLITE_VEC_MIGRATION.md.
 
 /**
  * Ensure CliProxy is running on localhost:8317.
@@ -163,10 +120,9 @@ async function ensureAngelRunning(): Promise<void> {
 }
 
 const main = wrapHook('SessionStart', async (input, ctx) => {
-  // Ensure Qdrant is running (non-blocking, non-fatal — FTS5 fallback on failure)
-  try {
-    await ensureQdrantRunning();
-  } catch { /* Qdrant is optional */ }
+  // Qdrant spawn removed in Phase 5 — vector store is now sqlite-vec (in-process,
+  // no external service). The V14→V15 migration runs automatically when the DB
+  // is opened by wrapHook infrastructure.
 
   // Ensure CliProxy is running (non-blocking, non-fatal — enables Opus for Angel)
   try {

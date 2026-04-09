@@ -389,10 +389,11 @@ export async function heartbeatTick(ctx: HeartbeatContext): Promise<TickResult> 
     // Service health checks — warn active sessions if critical services are down
     // =========================================================================
     try {
+      // Qdrant removed in Phase 5 — vector search is now in-process via
+      // sqlite-vec (no separate service to health-check).
       const services = [
         { name: 'CliProxy', url: 'http://127.0.0.1:8317/v1/models', purpose: 'LLM routing (Sonnet/GPT)' },
         { name: 'Reranker', url: 'http://127.0.0.1:7439/health', purpose: 'Neural cross-encoder (CUDA)' },
-        { name: 'Qdrant', url: 'http://localhost:6333/collections', purpose: 'Vector search' },
         { name: 'Ollama', url: 'http://localhost:11434/api/tags', purpose: 'Embeddings + local LLM' },
       ];
       const downServices: string[] = [];

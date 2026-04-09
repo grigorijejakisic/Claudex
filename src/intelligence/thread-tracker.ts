@@ -461,17 +461,15 @@ export async function findSimilarThreadsAsync(
   excludeSessionId?: string,
 ): Promise<SimilarThread[]> {
   try {
-    // Initialize Qdrant availability on first call (resolves init race in ephemeral hooks).
-    // getQdrantClient() has a 30s cache — subsequent calls within the same process are free.
-    // If Qdrant is down, getQdrantClient() returns null quickly (cached after first 3s timeout).
-    const { getQdrantClient, isQdrantAvailable, searchThreads } = await import('../embeddings/qdrant-client.js');
-    if (!isQdrantAvailable()) {
-      // First call in this process: trigger the health check
-      await getQdrantClient();
-      // After init, re-check — if still unavailable, skip to SQLite immediately
-      if (!isQdrantAvailable()) {
-        return findSimilarThreadsSQLite(db, queryEmbedding, project, threshold, excludeSessionId);
-      }
+    // Phase 5 (session 47): Qdrant removed. Vector search now runs in-process
+    // via sqlite-vec, which is always available on databases opened through
+    // `openDatabase()` (V14→V15 migration loads the extension and creates the
+    // virtual tables automatically). The legacy probing pattern
+    // (getQdrantClient + isQdrantAvailable + SQLite fallback) is no longer
+    // needed — searchThreads routes directly to the sqlite-vec backend.
+    const { searchThreads, isSqliteVecReady } = await import('../embeddings/qdrant-client.js');
+    if (!isSqliteVecReady()) {
+      return findSimilarThreadsSQLite(db, queryEmbedding, project, threshold, excludeSessionId);
     }
     const embedding = Array.from(queryEmbedding);
     const qdrantResults = await searchThreads(embedding, project, 10);
