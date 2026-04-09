@@ -23,6 +23,12 @@ export type MessagePriority = 'normal' | 'urgent' | 'advisory';
 
 /**
  * Send a message to a specific session (delivered on next UserPromptSubmit).
+ *
+ * Content dedup: if an identical undelivered message already exists for this
+ * target_session, the insert is skipped and the function returns true. This
+ * prevents periodic senders (heartbeat service-down warnings, retry loops)
+ * from piling up multiple copies of the same message between user prompts.
+ * Caller intent ("this content should be queued") is satisfied either way.
  */
 export function sendMessage(
   db: Database,
@@ -32,6 +38,14 @@ export function sendMessage(
   priority: MessagePriority = 'normal',
 ): boolean {
   try {
+    // Dedup on content: identical undelivered messages collapse into one.
+    const existing = cachedPrepare(db,
+      `SELECT 1 FROM session_messages
+       WHERE target_session = ? AND content = ? AND delivered_at_epoch IS NULL
+       LIMIT 1`
+    ).get(targetSession, content);
+    if (existing) return true;
+
     cachedPrepare(db,
       `INSERT INTO session_messages (target_session, sender, message_type, content, priority)
        VALUES (?, 'angel', ?, ?, ?)`

@@ -41,6 +41,46 @@ describe('Angel Message Sender', () => {
       expect(row.message_type).toBe('command');
       expect(row.priority).toBe('urgent');
     });
+
+    it('deduplicates identical undelivered content for the same session', () => {
+      // First send succeeds.
+      expect(sendMessage(db, 'session-1', '⚠ Services down: Reranker', 'advisory', 'advisory')).toBe(true);
+      // Second identical send is a dedup no-op — returns true but no new row.
+      expect(sendMessage(db, 'session-1', '⚠ Services down: Reranker', 'advisory', 'advisory')).toBe(true);
+      expect(sendMessage(db, 'session-1', '⚠ Services down: Reranker', 'advisory', 'advisory')).toBe(true);
+
+      const rows = db.prepare('SELECT * FROM session_messages WHERE target_session = ?').all('session-1');
+      expect(rows.length).toBe(1);
+    });
+
+    it('does not dedup when content differs', () => {
+      sendMessage(db, 'session-1', 'Reranker down');
+      sendMessage(db, 'session-1', 'Qdrant down');
+      const rows = db.prepare('SELECT * FROM session_messages WHERE target_session = ?').all('session-1');
+      expect(rows.length).toBe(2);
+    });
+
+    it('does not dedup across different target sessions', () => {
+      sendMessage(db, 'session-1', 'same content');
+      sendMessage(db, 'session-2', 'same content');
+      const all = db.prepare('SELECT * FROM session_messages').all();
+      expect(all.length).toBe(2);
+    });
+
+    it('allows re-sending identical content after delivery', () => {
+      // Initial send.
+      sendMessage(db, 'session-1', 'recurring warning');
+      const pending = getPendingMessages(db, 'session-1');
+      expect(pending.length).toBe(1);
+
+      // Mark delivered.
+      markMessagesDelivered(db, [pending[0].id]);
+
+      // Identical content should now re-queue (the prior one is delivered, not pending).
+      sendMessage(db, 'session-1', 'recurring warning');
+      const all = db.prepare('SELECT * FROM session_messages WHERE target_session = ?').all('session-1');
+      expect(all.length).toBe(2);
+    });
   });
 
   describe('getPendingMessages', () => {
