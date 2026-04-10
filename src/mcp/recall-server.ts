@@ -70,7 +70,7 @@ Query Claudex before exploring the filesystem for context. Only read code files 
 All projects live in ~/Desktop/Projects/. The project registry is at ~/.claudex/projects.json.
 
 ## Safety
-Never call CC's CLIProxyAPI from a hook (deadlock). The "cross-encoder" reranking uses bi-encoder cosine similarity, not a true neural cross-encoder.`;
+Never call CC's CLIProxyAPI from a hook (deadlock). \`claudex_search\` ranks with RRF fusion over FTS5 + sqlite-vec channels — it does not invoke a reranker. The cross-encoder reranker (BAAI/bge-reranker-v2-m3 on port 7439) is used by the hybrid-retrieval path feeding session-start and user-prompt-submit hooks; \`hybrid-retrieval.ts\` falls back to the arctic-embed2 bi-encoder when that service is unavailable.`;
 
 // ---------------------------------------------------------------------------
 // Server setup

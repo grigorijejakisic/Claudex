@@ -733,11 +733,13 @@ export async function hybridSearchAsync(
 
     scored.sort((a, b) => b.hybrid_score - a.hybrid_score);
 
-    // Cross-encoder reranking: ms-marco-MiniLM-L-6-v2 via local Python microservice.
-    // True neural cross-encoder that jointly scores (query, document) pairs — the gold
-    // standard for reranking (Hindsight uses the same model). Runs on GPU (CUDA/ROCm).
-    // Falls back to bi-encoder (snowflake-arctic-embed2 cosine) if service unavailable.
-    // Non-blocking: 3s timeout. Skips if < 2 candidates.
+    // Cross-encoder reranking: BAAI/bge-reranker-v2-m3 (~568M params) via the
+    // local Python microservice supervised by Angel's RerankerSupervisor.
+    // True neural cross-encoder that jointly scores (query, document) pairs —
+    // materially more precise than bi-encoder cosine on reranking tasks. Runs
+    // on GPU (CUDA/ROCm). Falls back to bi-encoder (snowflake-arctic-embed2
+    // cosine via Ollama) if the service is unavailable. Non-blocking: 3s
+    // timeout per call. Skips if < 2 candidates.
     try {
       const topCandidates = scored.slice(0, Math.min(20, scored.length));
       if (topCandidates.length > 1) {

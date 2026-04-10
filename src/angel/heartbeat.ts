@@ -42,10 +42,18 @@ import { runDataQualityChecks } from './data-quality.js';
 import { runProactiveCuration } from './proactive-curator.js';
 import { getSessionEvents, synthesizeSessionSummary, saveSessionSummary } from '../core/session-events.js';
 import { captureRecallFlowEntry } from '../adapters/shared/lifecycle.js';
+import type { RerankerSupervisor } from './reranker-supervisor.js';
 
 export interface HeartbeatContext {
   db: Database;
   config: AngelConfig;
+  /**
+   * Optional supervisor references injected from main(). The heartbeat uses
+   * them to drive recovery when service health checks fail — e.g., calling
+   * `rerankerSupervisor.ensureRunning()` when the reranker /health probe
+   * returns down. Tests may omit this field.
+   */
+  rerankerSupervisor?: RerankerSupervisor;
 }
 
 /** Telemetry for a single heartbeat tick. */
@@ -388,6 +396,12 @@ export async function heartbeatTick(ctx: HeartbeatContext): Promise<TickResult> 
     // =========================================================================
     // Service health checks — warn active sessions if critical services are down
     // =========================================================================
+    //
+    // Each down service records a structured outcome describing what the
+    // heartbeat actually did (vs. the prior hardcoded "Auto-restart attempted"
+    // string, which lied when no restart was attempted). The outcomes are
+    // joined into the advisory so the user sees the truth: "restart attempted
+    // in background", "restart succeeded", "cool-down 540s remaining", etc.
     try {
       // Qdrant removed in Phase 5 — vector search is now in-process via
       // sqlite-vec (no separate service to health-check).
@@ -396,74 +410,109 @@ export async function heartbeatTick(ctx: HeartbeatContext): Promise<TickResult> 
         { name: 'Reranker', url: 'http://127.0.0.1:7439/health', purpose: 'Neural cross-encoder (CUDA)' },
         { name: 'Ollama', url: 'http://localhost:11434/api/tags', purpose: 'Embeddings + local LLM' },
       ];
-      const downServices: string[] = [];
+      interface DownOutcome { label: string; outcome: string; }
+      const downOutcomes: DownOutcome[] = [];
       for (const svc of services) {
+        let down = false;
         try {
           const resp = await fetch(svc.url, { signal: AbortSignal.timeout(3000) });
-          if (!resp.ok) downServices.push(`${svc.name} (${svc.purpose})`);
+          if (!resp.ok) down = true;
         } catch {
-          downServices.push(`${svc.name} (${svc.purpose})`);
+          down = true;
+        }
+        if (down) {
+          downOutcomes.push({ label: `${svc.name} (${svc.purpose})`, outcome: 'no auto-restart available' });
         }
       }
-      if (downServices.length > 0) {
-        result.services_down = downServices;
+      if (downOutcomes.length > 0) {
+        result.services_down = downOutcomes.map(o => o.label);
 
-        // Auto-restart known services.
-        //
-        // Reranker is owned by RerankerSupervisor (src/angel/reranker-supervisor.ts)
-        // which is initialized in Angel's main entry — the heartbeat no longer
-        // spawns it directly. The supervisor handles spawn, health-check,
-        // bounded restart, and clean shutdown. The /health ping above is
-        // retained only for status reporting.
-        //
-        // CliProxy has no dedicated supervisor — Angel still attempts an
-        // opportunistic restart here using the canonical Node detached-spawn
-        // pattern (not `start /B`, which does not fully detach on Windows).
-        try {
-          const { execSync, spawn } = await import('child_process');
-
-          const isRunning = (processName: string): boolean => {
-            try {
-              const out = execSync(`tasklist /FI "IMAGENAME eq ${processName}" /NH`, {
-                shell: 'cmd.exe', timeout: 3000, windowsHide: true, encoding: 'utf-8',
-              });
-              return out.toLowerCase().includes(processName.toLowerCase());
-            } catch { return false; }
-          };
-
-          const spawnDetached = (command: string, args: string[] = [], cwd?: string): boolean => {
-            try {
-              const child = spawn(command, args, {
-                detached: true,
-                stdio: 'ignore',
-                windowsHide: true,
-                cwd,
-                shell: false,
-              });
-              child.unref();
-              return true;
-            } catch {
-              return false;
+        // Reranker recovery: delegate to RerankerSupervisor.ensureRunning().
+        // The supervisor owns the spawn/restart lifecycle including bounded
+        // retries + cool-down; the heartbeat just kicks it when the service
+        // is observed down. This replaces the old "supervisor is only called
+        // once at Angel start" pattern that left the reranker permanently
+        // dead after the first failure.
+        const rerankerEntry = downOutcomes.find(o => o.label.includes('Reranker'));
+        if (rerankerEntry && ctx.rerankerSupervisor) {
+          try {
+            const res = await ctx.rerankerSupervisor.ensureRunning();
+            if (res.running) {
+              rerankerEntry.outcome = res.attempted ? 'restart succeeded' : `recovered (${res.reason})`;
+              // It's no longer down — drop it from the advisory entirely.
+              const idx = downOutcomes.indexOf(rerankerEntry);
+              if (idx >= 0) downOutcomes.splice(idx, 1);
+              if (result.services_down) {
+                result.services_down = result.services_down.filter(l => !l.includes('Reranker'));
+              }
+            } else {
+              rerankerEntry.outcome = res.attempted
+                ? `restart failed: ${res.reason}`
+                : res.reason;
             }
-          };
-
-          for (const svc of downServices) {
-            if (svc.includes('CliProxy') && !isRunning('cli-proxy-api.exe')) {
-              spawnDetached('cli-proxy-api.exe');
-            }
-            // Reranker is supervised from main() — heartbeat no longer restarts it.
+          } catch (err) {
+            rerankerEntry.outcome = `supervisor error: ${err instanceof Error ? err.message : String(err)}`;
           }
-        } catch { /* auto-restart is best-effort */ }
+        }
 
-        // Warn active sessions about down services
-        const activeSessions = cachedPrepare(ctx.db,
-          `SELECT session_id FROM sessions WHERE status = 'active' ORDER BY created_at_epoch DESC LIMIT 5`
-        ).all() as Array<{ session_id: string }>;
-        const { sendMessage: sendMsg } = await import('./message-sender.js');
-        for (const s of activeSessions) {
-          sendMsg(ctx.db, s.session_id,
-            `⚠ Services down: ${downServices.join(', ')}. Auto-restart attempted.`,
-            'advisory', 'advisory');
+        // CliProxy recovery: opportunistic detached spawn. Distinct from
+        // reranker because CliProxy has no dedicated supervisor class — we
+        // use the canonical Node detached-spawn pattern (not `start /B`,
+        // which does not fully detach on Windows).
+        const cliProxyEntry = downOutcomes.find(o => o.label.includes('CliProxy'));
+        if (cliProxyEntry) {
+          try {
+            const { execSync, spawn } = await import('child_process');
+
+            const isRunning = (processName: string): boolean => {
+              try {
+                const out = execSync(`tasklist /FI "IMAGENAME eq ${processName}" /NH`, {
+                  shell: 'cmd.exe', timeout: 3000, windowsHide: true, encoding: 'utf-8',
+                });
+                return out.toLowerCase().includes(processName.toLowerCase());
+              } catch { return false; }
+            };
+
+            const spawnDetached = (command: string, args: string[] = [], cwd?: string): boolean => {
+              try {
+                const child = spawn(command, args, {
+                  detached: true,
+                  stdio: 'ignore',
+                  windowsHide: true,
+                  cwd,
+                  shell: false,
+                });
+                child.unref();
+                return true;
+              } catch {
+                return false;
+              }
+            };
+
+            if (!isRunning('cli-proxy-api.exe')) {
+              const spawned = spawnDetached('cli-proxy-api.exe');
+              cliProxyEntry.outcome = spawned
+                ? 'detached-spawn attempted'
+                : 'detached-spawn failed';
+            } else {
+              cliProxyEntry.outcome = 'process running but /v1/models not responding';
+            }
+          } catch (err) {
+            cliProxyEntry.outcome = `restart error: ${err instanceof Error ? err.message : String(err)}`;
+          }
+        }
+
+        // If anything is still down after recovery attempts, advise active sessions.
+        if (downOutcomes.length > 0) {
+          const advisory = '⚠ Services down: '
+            + downOutcomes.map(o => `${o.label} — ${o.outcome}`).join('; ');
+          const activeSessions = cachedPrepare(ctx.db,
+            `SELECT session_id FROM sessions WHERE status = 'active' ORDER BY created_at_epoch DESC LIMIT 5`
+          ).all() as Array<{ session_id: string }>;
+          const { sendMessage: sendMsg } = await import('./message-sender.js');
+          for (const s of activeSessions) {
+            sendMsg(ctx.db, s.session_id, advisory, 'advisory', 'advisory');
+          }
         }
       }
     } catch { /* non-critical */ }

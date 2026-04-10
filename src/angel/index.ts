@@ -272,9 +272,12 @@ async function main(): Promise<void> {
     idle_threshold_minutes: Math.round(config.idleThresholdSeconds / 60),
   });
 
-  // Start heartbeat
+  // Start heartbeat — wire the reranker supervisor through so the heartbeat
+  // can call ensureRunning() whenever the /health probe reports it as down.
+  // Without this, a single supervisor failure at boot would leave the
+  // reranker permanently dead until Angel itself restarted.
   const heartbeat = startHeartbeat(
-    { db, config },
+    { db, config, rerankerSupervisor },
     logTickResult,
   );
 

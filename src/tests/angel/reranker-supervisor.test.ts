@@ -277,4 +277,155 @@ describe('RerankerSupervisor', () => {
       expect(status.restartCount).toBe(0);
     });
   });
+
+  describe('ensureRunning', () => {
+    it('returns running=true without spawning when externally-managed instance is healthy', async () => {
+      // Boot with externally-managed, then call ensureRunning — should no-op.
+      healthResponses.push({ ok: true }); // boot check
+      const sup = makeSupervisor();
+      await sup.start();
+      expect(spawnCallCount).toBe(0);
+
+      healthResponses.push({ ok: true }); // ensureRunning's re-check
+      const res = await sup.ensureRunning();
+      expect(res.attempted).toBe(false);
+      expect(res.running).toBe(true);
+      expect(res.reason).toMatch(/externally-managed/);
+      expect(spawnCallCount).toBe(0);
+    });
+
+    it('downgrades from externally-managed and spawns when the external reranker dies', async () => {
+      // Boot → external is alive → supervisor marks externallyManaged.
+      healthResponses.push({ ok: true });
+      const sup = makeSupervisor();
+      await sup.start();
+      expect(sup.getStatus().externallyManaged).toBe(true);
+      expect(spawnCallCount).toBe(0);
+
+      // Now the external dies. ensureRunning's re-check fails, then the
+      // supervisor should spawn a managed replacement whose post-spawn
+      // health probe succeeds.
+      healthResponses.push({ ok: false }); // ensureRunning re-check
+      healthResponses.push({ ok: true });  // post-spawn probe
+      const res = await sup.ensureRunning();
+
+      expect(spawnCallCount).toBe(1);
+      expect(res.attempted).toBe(true);
+      expect(res.running).toBe(true);
+      expect(sup.getStatus().externallyManaged).toBe(false);
+      expect(logLines.some(l =>
+        l.level === 'warn' && l.message.includes('no longer responding'),
+      )).toBe(true);
+    });
+
+    it('is a no-op when a managed child is already healthy', async () => {
+      healthResponses.push({ ok: false }, { ok: true }); // boot spawn path
+      const sup = makeSupervisor();
+      await sup.start();
+      expect(spawnCallCount).toBe(1);
+
+      healthResponses.push({ ok: true }); // ensureRunning's probe
+      const res = await sup.ensureRunning();
+
+      expect(res.attempted).toBe(false);
+      expect(res.running).toBe(true);
+      expect(res.reason).toMatch(/managed child healthy/);
+      expect(spawnCallCount).toBe(1); // unchanged
+    });
+
+    it('refuses to spawn while restart budget is exhausted inside cool-down', async () => {
+      // Exhaust the restart budget via onChildExit restarts.
+      healthResponses.push(
+        { ok: false }, // initial externally-managed probe
+        { ok: true },  // first spawn's post-spawn probe
+        { ok: true },  // restart 1
+        { ok: true },  // restart 2
+        { ok: true },  // restart 3
+      );
+      const sup = makeSupervisor({ maxRestarts: 3, cooldownMs: 60_000 });
+      await sup.start();
+      expect(spawnCallCount).toBe(1);
+
+      // Drive the child through 4 unexpected deaths to exhaust the budget.
+      fakeChildren[0].emitExit(1, null);
+      await new Promise(r => setTimeout(r, 20));
+      fakeChildren[1].emitExit(1, null);
+      await new Promise(r => setTimeout(r, 20));
+      fakeChildren[2].emitExit(1, null);
+      await new Promise(r => setTimeout(r, 20));
+      fakeChildren[3].emitExit(1, null);
+      await new Promise(r => setTimeout(r, 20));
+
+      expect(spawnCallCount).toBe(4);
+      expect(sup.getStatus().restartCount).toBe(3);
+
+      // ensureRunning should respect the cool-down and NOT spawn.
+      const res = await sup.ensureRunning();
+      expect(res.attempted).toBe(false);
+      expect(res.running).toBe(false);
+      expect(res.reason).toMatch(/cool-down/);
+      expect(spawnCallCount).toBe(4);
+    });
+
+    it('resets the budget and spawns after cool-down elapses', async () => {
+      // Same setup as the previous test but with a zero cool-down so the
+      // budget reset path is reachable synchronously.
+      healthResponses.push(
+        { ok: false }, // initial externally-managed probe
+        { ok: true },  // first spawn's post-spawn probe
+        { ok: true },  // restart 1
+        { ok: true },  // restart 2
+        { ok: true },  // restart 3
+      );
+      const sup = makeSupervisor({ maxRestarts: 3, cooldownMs: 0 });
+      await sup.start();
+
+      fakeChildren[0].emitExit(1, null);
+      await new Promise(r => setTimeout(r, 20));
+      fakeChildren[1].emitExit(1, null);
+      await new Promise(r => setTimeout(r, 20));
+      fakeChildren[2].emitExit(1, null);
+      await new Promise(r => setTimeout(r, 20));
+      fakeChildren[3].emitExit(1, null);
+      await new Promise(r => setTimeout(r, 20));
+
+      expect(spawnCallCount).toBe(4);
+      expect(sup.getStatus().restartCount).toBe(3);
+
+      // With cooldownMs=0, ensureRunning should reset the budget and spawn.
+      healthResponses.push({ ok: true }); // post-spawn probe
+      const res = await sup.ensureRunning();
+
+      expect(spawnCallCount).toBe(5);
+      expect(res.attempted).toBe(true);
+      expect(res.running).toBe(true);
+      expect(sup.getStatus().restartCount).toBe(0);
+      expect(logLines.some(l => l.message.includes('resetting counter'))).toBe(true);
+    });
+
+    it('reports spawn failure honestly when the post-spawn health probe times out', async () => {
+      // Start cleanly from nothing (no prior spawn), then invoke ensureRunning
+      // with a failing health probe. The spawn will be attempted and fail.
+      healthResponses.push({ ok: false }); // ensureRunning's initial probe
+      for (let i = 0; i < 20; i++) healthResponses.push({ ok: false }); // post-spawn probes all fail
+      const sup = makeSupervisor({ healthTimeoutMs: 50 });
+
+      const res = await sup.ensureRunning();
+
+      expect(res.attempted).toBe(true);
+      expect(res.running).toBe(false);
+      expect(res.reason).toMatch(/spawn failed/);
+    });
+
+    it('refuses to spawn during shutdown', async () => {
+      healthResponses.push({ ok: false }, { ok: true });
+      const sup = makeSupervisor();
+      await sup.start();
+      sup.stop();
+
+      const res = await sup.ensureRunning();
+      expect(res.attempted).toBe(false);
+      expect(res.reason).toMatch(/shutdown/);
+    });
+  });
 });
