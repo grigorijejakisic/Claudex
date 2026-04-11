@@ -122,10 +122,10 @@ describe('sqlite-vec loader', () => {
       db.close();
     });
 
-    it('sets user_version to 15 after initializeSchema', () => {
+    it('sets user_version to 16 after initializeSchema', () => {
       const db = createTestDb();
       const row = (db.pragma('user_version') as Array<{ user_version: number }>)[0];
-      expect(row.user_version).toBe(15);
+      expect(row.user_version).toBe(16);
       db.close();
     });
 

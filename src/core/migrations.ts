@@ -34,6 +34,7 @@ import {
   migrateV12toV13,
   migrateV13toV14,
   migrateV14toV15,
+  migrateV15toV16,
   migrateSchemaFixes,
   cleanupOrphanTables,
   upgradeV2SchemaInPlace,
@@ -73,7 +74,7 @@ export function runMigrations(db: Database): void {
   const row = db.pragma('user_version') as Array<{ user_version: number }>;
   let version = row[0]?.user_version ?? 0;
 
-  const TARGET_VERSION = 15;
+  const TARGET_VERSION = 16;
 
   if (version >= TARGET_VERSION) {
     // Still load sqlite-vec even if no migration is needed — the extension
@@ -98,6 +99,7 @@ export function runMigrations(db: Database): void {
     [12, () => migrateV12toV13(db)],
     [13, () => migrateV13toV14(db)],
     [14, () => migrateV14toV15(db)],
+    [15, () => migrateV15toV16(db)],
   ];
 
   // Handle special cases for version 0 and 1
@@ -157,6 +159,10 @@ export function initializeSchema(db: Database): void {
   // whether initialization came via migration or fresh creation.
   migrateV14toV15(db);
 
+  // V15→V16: project_curated_context table. No extension required, so the
+  // fresh-DB path can call it unconditionally. Idempotent via IF NOT EXISTS.
+  migrateV15toV16(db);
+
   // FTS5: detect stale v2 index with wrong column count and rebuild
   rebuildStaleFts5(db);
 
@@ -184,7 +190,7 @@ export function initializeSchema(db: Database): void {
   } else {
     db.prepare('INSERT OR IGNORE INTO schema_versions (version) VALUES (?)').run(SCHEMA_VERSION);
   }
-  db.pragma('user_version = 15');
+  db.pragma('user_version = 16');
 }
 
 // ---------------------------------------------------------------------------

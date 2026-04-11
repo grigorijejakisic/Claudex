@@ -21,6 +21,10 @@ import { getIdentityDir, getHandoffsDir, getSessionsDir } from '../shared/paths.
 import { getPressureZone } from '../shared/constants.js';
 import type { PressureZone } from '../shared/constants.js';
 import type { ToolCostEstimate } from '../observability/telemetry.js';
+import { estimateTokens } from '../shared/text-utils.js';
+import { listEntries as listCuratedEntries } from '../core/curated-context.js';
+import type { CuratedEntry } from '../core/curated-context.js';
+import { GLOBAL_PROJECT_SCOPE } from '../shared/constants.js';
 
 /**
  * Wraps file-derived content in data boundary markers with provenance.
@@ -898,5 +902,160 @@ export function formatPredictedContextSection(prediction: {
   } catch {
     return null;
   }
+}
+
+/**
+ * Priority 2.1: Project Curated Context.
+ *
+ * Privileged always-on slot for agent-curated theory, workspace map, shipped
+ * manifest, constraints, and preferences. Written authoritatively at
+ * /endsession by the agent with full session context; Angel writes proposed
+ * entries from completed sessions the agent didn't curate (tier 1).
+ *
+ * Injection renders global entries first (cross-project rules/preferences),
+ * then project-specific entries grouped by type. Supersedes stale CLAUDE.md
+ * descriptions on conflict.
+ *
+ * Eviction order when over token cap:
+ *   1. Oldest 'proposed' entries (Angel-written, awaiting confirmation)
+ *   2. Oldest non-reframe, non-constraint 'active' entries
+ *   3. 'reframe' and 'constraint' entries are load-bearing — never auto-
+ *      evicted (only replaced via explicit supersession)
+ *
+ * Returns null if there are no active entries. Non-throwing — any query
+ * failure returns null rather than poisoning the whole assembly.
+ */
+export function formatCuratedContextSection(
+  db: import('better-sqlite3').Database,
+  project: string,
+  tokenCap: number = 1500,
+): string | null {
+  try {
+    // Include proposed entries alongside active — they render with a
+    // [proposed] marker so the next agent can confirm them at /endsession
+    // without needing a separate read path.
+    const entries: CuratedEntry[] = listCuratedEntries(db, project, {
+      includeGlobal: true,
+      statuses: ['active', 'proposed'],
+    });
+
+    if (entries.length === 0) return null;
+
+    let rendered = renderCuratedBlock(entries);
+
+    // Soft token cap: evict entries in reverse priority order until we fit.
+    //   1. Oldest 'proposed' entries first
+    //   2. Oldest active entries that are NOT reframe/constraint and not
+    //      promoted (tier < 3)
+    // reframe/constraint + tier-3 (promoted) entries are load-bearing and
+    // never auto-evicted.
+    if (estimateTokens(rendered) > tokenCap) {
+      const evictable: CuratedEntry[] = [];
+      for (const e of entries) {
+        if (e.status === 'proposed') evictable.push(e);
+      }
+      for (const e of entries) {
+        if (
+          e.status === 'active' &&
+          e.type !== 'reframe' &&
+          e.type !== 'constraint' &&
+          e.trust_tier < 3
+        ) {
+          evictable.push(e);
+        }
+      }
+      // listCuratedEntries returns newest first within each type group, so
+      // reverse to drop oldest first inside each eviction tier.
+      evictable.reverse();
+
+      const keep = new Set(entries.map((e) => e.id));
+      for (const e of evictable) {
+        if (estimateTokens(rendered) <= tokenCap) break;
+        keep.delete(e.id);
+        const surviving = entries.filter((x) => keep.has(x.id));
+        if (surviving.length === 0) {
+          // Pathological: cap too small even for load-bearing entries.
+          rendered = '## Project Curated Context\n(over token cap)';
+          break;
+        }
+        rendered = renderCuratedBlock(surviving);
+      }
+    }
+
+    return rendered;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Internal helper: renders the curated context block from a list of entries.
+ * Pulled out so the eviction loop in formatCuratedContextSection can re-render
+ * after removing entries without duplicating the grouping logic.
+ */
+function renderCuratedBlock(entries: readonly CuratedEntry[]): string {
+  const formatEntry = (e: CuratedEntry): string => {
+    const marker =
+      e.status === 'proposed'
+        ? '[proposed] '
+        : e.trust_tier >= 3
+          ? '[promoted] '
+          : '';
+    const curatorNote = e.curator === 'angel' ? 'angel' : '';
+    const sessionNote = e.source_session_id
+      ? `session ${e.source_session_id.slice(0, 8)}`
+      : '';
+    const provenance = [curatorNote, sessionNote].filter(Boolean).join(', ');
+    const provSuffix = provenance ? ` (${provenance})` : '';
+    return `- ${marker}${e.content}${provSuffix}`;
+  };
+
+  const globalEntries = entries.filter(
+    (e) => e.project === GLOBAL_PROJECT_SCOPE,
+  );
+  const projectEntries = entries.filter(
+    (e) => e.project !== GLOBAL_PROJECT_SCOPE,
+  );
+
+  const GROUP_HEADINGS: Record<CuratedEntry['type'], string> = {
+    mental_model: '### Mental Model',
+    reframe: '### Reframes',
+    preference: '### Preferences',
+    constraint: '### Constraints',
+    workspace_map: '### Workspace Map',
+    shipped: '### Shipped — DO NOT REBUILD',
+  };
+
+  const GROUP_ORDER: CuratedEntry['type'][] = [
+    'mental_model',
+    'reframe',
+    'preference',
+    'constraint',
+    'workspace_map',
+    'shipped',
+  ];
+
+  const out: string[] = [
+    '## Project Curated Context',
+    'Agent-curated at end-of-session. Supersedes CLAUDE.md on conflict.',
+  ];
+
+  if (globalEntries.length > 0) {
+    out.push('');
+    out.push('### Global — Rules & Preferences');
+    for (const e of globalEntries) out.push(formatEntry(e));
+  }
+
+  if (projectEntries.length > 0) {
+    for (const t of GROUP_ORDER) {
+      const grouped = projectEntries.filter((e) => e.type === t);
+      if (grouped.length === 0) continue;
+      out.push('');
+      out.push(GROUP_HEADINGS[t]);
+      for (const e of grouped) out.push(formatEntry(e));
+    }
+  }
+
+  return out.join('\n');
 }
 

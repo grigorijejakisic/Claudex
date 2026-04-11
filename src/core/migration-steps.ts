@@ -1366,3 +1366,48 @@ export function migrateV14toV15(db: Database): void {
     }
   }
 }
+
+/**
+ * V15→V16: project_curated_context table.
+ *
+ * Adds a privileged always-on injection slot per project (and globally),
+ * written authoritatively by the agent at /endsession with Angel fallback
+ * for crashed sessions. Bypasses RRF ranking — not competing for slots
+ * in hybrid retrieval.
+ *
+ * See context/specs/CURATED_CONTEXT.md for the full design.
+ *
+ * Types: mental_model, workspace_map, shipped, reframe, constraint, preference
+ * (workspace_map and shipped are project-only; enforced in CRUD, not DB CHECK)
+ *
+ * curator='agent' → authoritative (trust_tier=2 by default)
+ * curator='angel' → proposed (trust_tier=1, status='proposed')
+ * trust_tier=3    → user-promoted, immune to auto-eviction
+ */
+export function migrateV15toV16(db: Database): void {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS project_curated_context (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      project TEXT NOT NULL,
+      type TEXT NOT NULL CHECK(type IN (
+        'mental_model', 'workspace_map', 'shipped',
+        'reframe', 'constraint', 'preference'
+      )),
+      content TEXT NOT NULL,
+      tags TEXT,
+      supersedes_id INTEGER REFERENCES project_curated_context(id),
+      curator TEXT NOT NULL CHECK(curator IN ('agent', 'angel')),
+      trust_tier INTEGER NOT NULL DEFAULT 2,
+      status TEXT NOT NULL DEFAULT 'active'
+        CHECK(status IN ('active', 'superseded', 'proposed', 'archived')),
+      source_session_id TEXT,
+      created_at_epoch INTEGER NOT NULL DEFAULT (unixepoch()),
+      updated_at_epoch INTEGER NOT NULL DEFAULT (unixepoch())
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_pcc_project_status
+      ON project_curated_context(project, status);
+    CREATE INDEX IF NOT EXISTS idx_pcc_project_type
+      ON project_curated_context(project, type, status);
+  `);
+}
