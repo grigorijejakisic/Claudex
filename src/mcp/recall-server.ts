@@ -2,7 +2,8 @@
  * Claudex Recall MCP Server — exposes Claudex DB as MCP tools.
  *
  * Uses official @modelcontextprotocol/sdk for stdio transport.
- * 6 tools: claudex_search, claudex_recall, claudex_store, claudex_events, claudex_message, claudex_session.
+ * 7 tools: claudex_search, claudex_recall, claudex_store, claudex_events,
+ * claudex_message, claudex_session, claudex_curated_context.
  *
  * Usage: node dist/mcp/recall-server.cjs
  */
@@ -64,6 +65,7 @@ const CLAUDEX_INSTRUCTIONS = `Claudex is active on this machine — a persistent
 - claudex_store: Persist a decision or learning for future sessions after key decisions or user directives.
 - claudex_message: Send messages to other active sessions (cross-session coordination).
 - claudex_session: Session management — name sessions, list active sessions, create/clear signals.
+- claudex_curated_context: Manage Project Curated Context — mental models, workspace maps, shipped components, constraints, preferences. Use at /endsession to curate what the next session sees.
 
 ## Navigation Rule
 Query Claudex before exploring the filesystem for context. Only read code files when you need to MODIFY them.
@@ -711,6 +713,186 @@ server.registerTool(
     }
 
     return { content: [{ type: 'text', text: JSON.stringify({ error: `Unknown action: ${action}` }) }] };
+  },
+);
+
+// ---------------------------------------------------------------------------
+// claudex_curated_context — privileged always-on slot for agent-curated
+// theory, workspace map, shipped manifest, constraints, preferences.
+// Written at /endsession; read at /starthere via assembly injection P2.1.
+// See context/specs/CURATED_CONTEXT.md for the full design.
+// ---------------------------------------------------------------------------
+
+server.registerTool(
+  'claudex_curated_context',
+  {
+    description: "Manage Project Curated Context — the privileged always-on injection slot for mental models, workspace maps, shipped components, constraints, preferences, and reframes. Actions: 'list' (show active entries for project + global), 'write' (add new entry), 'confirm' (promote Angel-proposed → active), 'archive' (retire entry), 'promote' (mark permanent, tier 3), 'supersede' (write new entry replacing old). Use at /endsession to curate what the next session should know. Types: mental_model, workspace_map, shipped, reframe, constraint, preference. workspace_map and shipped are project-only (not valid at __global__ scope).",
+    inputSchema: {
+      action: z.enum(['list', 'write', 'confirm', 'archive', 'promote', 'supersede'])
+        .describe('Action to perform'),
+      project: z.string().optional()
+        .describe("Project scope (defaults to CWD project). Use '__global__' for cross-project entries."),
+      type: z.enum(['mental_model', 'workspace_map', 'shipped', 'reframe', 'constraint', 'preference'])
+        .optional()
+        .describe('Entry type (for write/supersede)'),
+      content: z.string().optional()
+        .describe('Entry content, active voice, ≤500 chars (for write/supersede)'),
+      tags: z.array(z.string()).optional()
+        .describe('Free-form tags (for write/supersede)'),
+      supersedes_id: z.number().optional()
+        .describe('ID of the entry being replaced (for supersede)'),
+      id: z.number().optional()
+        .describe('Entry ID (for confirm/archive/promote)'),
+      session_id: z.string().optional()
+        .describe('Source session ID (auto-filled for write when available)'),
+      include_proposed: z.boolean().optional()
+        .describe('Include Angel-proposed entries in list results (default true)'),
+      types: z.array(z.enum(['mental_model', 'workspace_map', 'shipped', 'reframe', 'constraint', 'preference']))
+        .optional()
+        .describe('Filter list by types (default: all)'),
+    },
+    _meta: {
+      'anthropic/searchHint': 'curated context mental model workspace shipped constraint preference reframe agent endsession',
+    },
+  },
+  async ({ action, project, type, content, tags, supersedes_id, id, session_id, include_proposed, types }) => {
+    const proj = project ?? defaultProject;
+
+    try {
+      if (action === 'list') {
+        const { listEntries } = await import('../core/curated-context.js');
+        const statuses = include_proposed === false
+          ? (['active'] as const)
+          : (['active', 'proposed'] as const);
+        const entries = listEntries(getDb(), proj, {
+          includeGlobal: true,
+          statuses,
+          types,
+        });
+        return {
+          content: [{
+            type: 'text',
+            text: JSON.stringify({ entries, count: entries.length, project: proj }),
+          }],
+        };
+      }
+
+      if (action === 'write') {
+        if (!type || !content) {
+          return {
+            content: [{
+              type: 'text',
+              text: JSON.stringify({ error: 'type and content are required for write' }),
+            }],
+          };
+        }
+        const { writeEntry } = await import('../core/curated-context.js');
+        const newId = writeEntry(getDb(), {
+          project: proj,
+          type,
+          content,
+          curator: 'agent',
+          tags,
+          source_session_id: session_id,
+        });
+        return {
+          content: [{
+            type: 'text',
+            text: JSON.stringify({ written: true, id: newId, project: proj, type }),
+          }],
+        };
+      }
+
+      if (action === 'confirm') {
+        if (!id) {
+          return {
+            content: [{
+              type: 'text',
+              text: JSON.stringify({ error: 'id is required for confirm' }),
+            }],
+          };
+        }
+        const { confirmEntry } = await import('../core/curated-context.js');
+        const ok = confirmEntry(getDb(), id);
+        return {
+          content: [{ type: 'text', text: JSON.stringify({ confirmed: ok, id }) }],
+        };
+      }
+
+      if (action === 'archive') {
+        if (!id) {
+          return {
+            content: [{
+              type: 'text',
+              text: JSON.stringify({ error: 'id is required for archive' }),
+            }],
+          };
+        }
+        const { archiveEntry } = await import('../core/curated-context.js');
+        const ok = archiveEntry(getDb(), id);
+        return {
+          content: [{ type: 'text', text: JSON.stringify({ archived: ok, id }) }],
+        };
+      }
+
+      if (action === 'promote') {
+        if (!id) {
+          return {
+            content: [{
+              type: 'text',
+              text: JSON.stringify({ error: 'id is required for promote' }),
+            }],
+          };
+        }
+        const { promoteEntry } = await import('../core/curated-context.js');
+        const ok = promoteEntry(getDb(), id);
+        return {
+          content: [{ type: 'text', text: JSON.stringify({ promoted: ok, id }) }],
+        };
+      }
+
+      if (action === 'supersede') {
+        if (!supersedes_id || !type || !content) {
+          return {
+            content: [{
+              type: 'text',
+              text: JSON.stringify({ error: 'supersedes_id, type, and content are required for supersede' }),
+            }],
+          };
+        }
+        const { supersedeEntry } = await import('../core/curated-context.js');
+        const newId = supersedeEntry(getDb(), supersedes_id, {
+          project: proj,
+          type,
+          content,
+          curator: 'agent',
+          tags,
+          source_session_id: session_id,
+        });
+        return {
+          content: [{
+            type: 'text',
+            text: JSON.stringify({ superseded: true, old_id: supersedes_id, new_id: newId }),
+          }],
+        };
+      }
+
+      return {
+        content: [{
+          type: 'text',
+          text: JSON.stringify({ error: `Unknown action: ${action}` }),
+        }],
+      };
+    } catch (err) {
+      return {
+        content: [{
+          type: 'text',
+          text: JSON.stringify({
+            error: err instanceof Error ? err.message : String(err),
+          }),
+        }],
+      };
+    }
   },
 );
 
