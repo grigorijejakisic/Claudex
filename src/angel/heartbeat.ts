@@ -7,6 +7,7 @@
  *   1c. Stuck detection on active sessions (A11) → send intervention
  *   2. Find completed sessions the Angel hasn't processed → extract patterns
  *   3. Classify domains for unclassified sessions
+ *   12. Curated context extraction (P2.1 injection slot fallback)
  *   4. Guardian duties (pruning, verification, orphan cleanup)
  *   5. Memory monitor (CC auto-memory migration)
  *   6. Bulk artifact linking (Qdrant similarity)
@@ -31,6 +32,10 @@ import type { AngelConfig } from './types.js';
 import { getIdleSessions, getUnprocessedSessions, hasIdleWarning, markSessionProcessed, getEscalatedIdleSessions, detectStuckSession } from './session-monitor.js';
 import { sendIdleWarning, sendMessage } from './message-sender.js';
 import { extractPatternsFromSession, classifySessionDomains, crystallizePatternToSkill } from './pattern-extractor.js';
+import {
+  extractCuratedContextFromSession,
+  getSessionsPendingCuratedExtraction,
+} from './curated-context-extractor.js';
 import { getUnverifiedFrequentPatterns, incrementVerificationCount } from '../intelligence/experience-patterns.js';
 import { monitorMemoryFiles } from './memory-monitor.js';
 import { consolidateObservationBatch, shouldConsolidate, markConsolidationRan, runDreamConsolidation } from './consolidator.js';
@@ -91,6 +96,9 @@ export interface TickResult {
   // Phase 11: Angel Intelligence
   stuck_detected?: number;
   skills_crystallized?: number;
+  // Phase 12: Curated Context Extraction
+  curated_entries_proposed?: number;
+  curated_sessions_scanned?: number;
   // Local Intelligence Amplifier
   services_down?: string[];
   codebase_files_indexed?: number;
@@ -242,6 +250,39 @@ export async function heartbeatTick(ctx: HeartbeatContext): Promise<TickResult> 
         // Individual session processing failure — continue with others
       }
     }
+    // Phase 12: Curated Context Extraction — scan completed sessions for
+    // reframes, directives, and other high-signal statements that belong in
+    // the Project Curated Context slot (P2.1 injection). Angel's fallback
+    // for sessions where the agent didn't curate at /endsession.
+    //
+    // Runs AFTER pattern extraction so both subsystems share the same
+    // hasActiveSessions gate. Batch size matches — 3 when user is active,
+    // 5 when autonomous. Each session triggers one CliProxy call at most,
+    // and sessions with no signal candidates are marked without calling
+    // the LLM at all.
+    //
+    // See context/specs/CURATED_CONTEXT.md for the full design.
+    try {
+      const curatedBatchSize = hasActiveSessions ? 3 : 5;
+      const pendingCurated = getSessionsPendingCuratedExtraction(ctx.db, curatedBatchSize);
+      for (const session of pendingCurated) {
+        try {
+          const extraction = await extractCuratedContextFromSession(
+            ctx.db,
+            session.session_id,
+            session.project,
+          );
+          result.curated_sessions_scanned = (result.curated_sessions_scanned ?? 0) + 1;
+          result.curated_entries_proposed =
+            (result.curated_entries_proposed ?? 0) + extraction.entriesCreated;
+        } catch {
+          // Individual session extraction failure — continue with others
+        }
+      }
+    } catch {
+      // Non-critical — curated extraction failure doesn't break the heartbeat
+    }
+
     // Phase 4: Guardian duties — learning curation, pattern quality, DB maintenance
     try {
       // 4a: Prune garbage learnings (apply quality gate retroactively)
