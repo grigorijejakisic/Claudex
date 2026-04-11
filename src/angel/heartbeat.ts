@@ -48,6 +48,8 @@ import { runProactiveCuration } from './proactive-curator.js';
 import { getSessionEvents, synthesizeSessionSummary, saveSessionSummary } from '../core/session-events.js';
 import { captureRecallFlowEntry } from '../adapters/shared/lifecycle.js';
 import type { RerankerSupervisor } from './reranker-supervisor.js';
+import type { LlamaServerSupervisor } from './llama-server-supervisor.js';
+import { callLocalLLM, checkLlamaServerHealth } from './llama-client.js';
 
 export interface HeartbeatContext {
   db: Database;
@@ -56,9 +58,11 @@ export interface HeartbeatContext {
    * Optional supervisor references injected from main(). The heartbeat uses
    * them to drive recovery when service health checks fail — e.g., calling
    * `rerankerSupervisor.ensureRunning()` when the reranker /health probe
-   * returns down. Tests may omit this field.
+   * returns down, or `llamaServerSupervisor.ensureRunning()` when the
+   * llama-server /v1/models probe returns down. Tests may omit these.
    */
   rerankerSupervisor?: RerankerSupervisor;
+  llamaServerSupervisor?: LlamaServerSupervisor;
 }
 
 /** Telemetry for a single heartbeat tick. */
@@ -257,7 +261,7 @@ export async function heartbeatTick(ctx: HeartbeatContext): Promise<TickResult> 
     //
     // Runs AFTER pattern extraction so both subsystems share the same
     // hasActiveSessions gate. Batch size matches — 3 when user is active,
-    // 5 when autonomous. Each session triggers one CliProxy call at most,
+    // 5 when autonomous. Each session triggers one local LLM call at most,
     // and sessions with no signal candidates are marked without calling
     // the LLM at all.
     //
@@ -444,43 +448,60 @@ export async function heartbeatTick(ctx: HeartbeatContext): Promise<TickResult> 
     // joined into the advisory so the user sees the truth: "restart attempted
     // in background", "restart succeeded", "cool-down 540s remaining", etc.
     try {
-      // Qdrant removed in Phase 5 — vector search is now in-process via
-      // sqlite-vec (no separate service to health-check).
-      const services = [
-        { name: 'CliProxy', url: 'http://127.0.0.1:8317/v1/models', purpose: 'LLM routing (Sonnet/GPT)' },
-        { name: 'Reranker', url: 'http://127.0.0.1:7439/health', purpose: 'Neural cross-encoder (CUDA)' },
-        { name: 'Ollama', url: 'http://localhost:11434/api/tags', purpose: 'Embeddings + local LLM' },
-      ];
+      // Qdrant was removed in Phase 5 — vector search is in-process via
+      // sqlite-vec. CliProxy was removed in Path B — Angel's generation
+      // runs against the local llama-server (Gemma 4 31B Q6_K), supervised
+      // by LlamaServerSupervisor.
       interface DownOutcome { label: string; outcome: string; }
       const downOutcomes: DownOutcome[] = [];
-      for (const svc of services) {
-        let down = false;
-        try {
-          const resp = await fetch(svc.url, { signal: AbortSignal.timeout(3000) });
-          if (!resp.ok) down = true;
-        } catch {
-          down = true;
-        }
-        if (down) {
-          downOutcomes.push({ label: `${svc.name} (${svc.purpose})`, outcome: 'no auto-restart available' });
-        }
+
+      // llama-server (LLM generation) — probed via checkLlamaServerHealth
+      // which parses /v1/models and verifies the data array is non-empty.
+      if (!(await checkLlamaServerHealth())) {
+        downOutcomes.push({
+          label: 'llama-server (LLM generation — Gemma 4 31B Q6_K)',
+          outcome: 'no auto-restart available',
+        });
       }
+      // Reranker (neural cross-encoder)
+      let rerankerDown = false;
+      try {
+        const resp = await fetch('http://127.0.0.1:7439/health', { signal: AbortSignal.timeout(3000) });
+        if (!resp.ok) rerankerDown = true;
+      } catch {
+        rerankerDown = true;
+      }
+      if (rerankerDown) {
+        downOutcomes.push({
+          label: 'Reranker (Neural cross-encoder, CUDA)',
+          outcome: 'no auto-restart available',
+        });
+      }
+      // Ollama (still used for embeddings — arctic-embed2)
+      let ollamaDown = false;
+      try {
+        const resp = await fetch('http://localhost:11434/api/tags', { signal: AbortSignal.timeout(3000) });
+        if (!resp.ok) ollamaDown = true;
+      } catch {
+        ollamaDown = true;
+      }
+      if (ollamaDown) {
+        downOutcomes.push({
+          label: 'Ollama (Embeddings — arctic-embed2)',
+          outcome: 'no auto-restart available',
+        });
+      }
+
       if (downOutcomes.length > 0) {
         result.services_down = downOutcomes.map(o => o.label);
 
         // Reranker recovery: delegate to RerankerSupervisor.ensureRunning().
-        // The supervisor owns the spawn/restart lifecycle including bounded
-        // retries + cool-down; the heartbeat just kicks it when the service
-        // is observed down. This replaces the old "supervisor is only called
-        // once at Angel start" pattern that left the reranker permanently
-        // dead after the first failure.
         const rerankerEntry = downOutcomes.find(o => o.label.includes('Reranker'));
         if (rerankerEntry && ctx.rerankerSupervisor) {
           try {
             const res = await ctx.rerankerSupervisor.ensureRunning();
             if (res.running) {
               rerankerEntry.outcome = res.attempted ? 'restart succeeded' : `recovered (${res.reason})`;
-              // It's no longer down — drop it from the advisory entirely.
               const idx = downOutcomes.indexOf(rerankerEntry);
               if (idx >= 0) downOutcomes.splice(idx, 1);
               if (result.services_down) {
@@ -496,50 +517,28 @@ export async function heartbeatTick(ctx: HeartbeatContext): Promise<TickResult> 
           }
         }
 
-        // CliProxy recovery: opportunistic detached spawn. Distinct from
-        // reranker because CliProxy has no dedicated supervisor class — we
-        // use the canonical Node detached-spawn pattern (not `start /B`,
-        // which does not fully detach on Windows).
-        const cliProxyEntry = downOutcomes.find(o => o.label.includes('CliProxy'));
-        if (cliProxyEntry) {
+        // llama-server recovery: delegate to LlamaServerSupervisor.ensureRunning().
+        // Same pattern as the reranker — the supervisor owns the lifecycle
+        // (bounded restart + cool-down + externally-managed detection); the
+        // heartbeat just kicks it when the service is observed down.
+        const llamaEntry = downOutcomes.find(o => o.label.includes('llama-server'));
+        if (llamaEntry && ctx.llamaServerSupervisor) {
           try {
-            const { execSync, spawn } = await import('child_process');
-
-            const isRunning = (processName: string): boolean => {
-              try {
-                const out = execSync(`tasklist /FI "IMAGENAME eq ${processName}" /NH`, {
-                  shell: 'cmd.exe', timeout: 3000, windowsHide: true, encoding: 'utf-8',
-                });
-                return out.toLowerCase().includes(processName.toLowerCase());
-              } catch { return false; }
-            };
-
-            const spawnDetached = (command: string, args: string[] = [], cwd?: string): boolean => {
-              try {
-                const child = spawn(command, args, {
-                  detached: true,
-                  stdio: 'ignore',
-                  windowsHide: true,
-                  cwd,
-                  shell: false,
-                });
-                child.unref();
-                return true;
-              } catch {
-                return false;
+            const res = await ctx.llamaServerSupervisor.ensureRunning();
+            if (res.running) {
+              llamaEntry.outcome = res.attempted ? 'restart succeeded' : `recovered (${res.reason})`;
+              const idx = downOutcomes.indexOf(llamaEntry);
+              if (idx >= 0) downOutcomes.splice(idx, 1);
+              if (result.services_down) {
+                result.services_down = result.services_down.filter(l => !l.includes('llama-server'));
               }
-            };
-
-            if (!isRunning('cli-proxy-api.exe')) {
-              const spawned = spawnDetached('cli-proxy-api.exe');
-              cliProxyEntry.outcome = spawned
-                ? 'detached-spawn attempted'
-                : 'detached-spawn failed';
             } else {
-              cliProxyEntry.outcome = 'process running but /v1/models not responding';
+              llamaEntry.outcome = res.attempted
+                ? `restart failed: ${res.reason}`
+                : res.reason;
             }
           } catch (err) {
-            cliProxyEntry.outcome = `restart error: ${err instanceof Error ? err.message : String(err)}`;
+            llamaEntry.outcome = `supervisor error: ${err instanceof Error ? err.message : String(err)}`;
           }
         }
 
@@ -843,26 +842,13 @@ export async function heartbeatTick(ctx: HeartbeatContext): Promise<TickResult> 
               const lessons = [target.lesson, ...toMerge.map(m => m.lesson)].join('\n- ');
               const prompt = `These are related learnings from a coding assistant's experience:\n- ${lessons}\n\nSynthesize ONE concise abstract principle (max 200 chars) that captures the common rule. Output only the principle, nothing else.`;
 
-              const resp = await fetch('http://127.0.0.1:8317/v1/chat/completions', {
-                method: 'POST',
-                headers: {
-                  'Content-Type': 'application/json',
-                  'Authorization': 'Bearer cliproxy-no-key-needed',
-                },
-                body: JSON.stringify({
-                  model: ctx.config.cloudModel,
-                  messages: [{ role: 'user', content: prompt }],
-                  max_tokens: 256,
-                  temperature: 0,
-                }),
-                signal: AbortSignal.timeout(30000),
+              const text = await callLocalLLM({
+                prompt,
+                maxTokens: 256,
+                timeoutMs: 30000,
               });
-              if (resp.ok) {
-                const data = await resp.json() as { choices?: Array<{ message?: { content?: string } }> };
-                const text = (data.choices?.[0]?.message?.content ?? '').trim();
-                if (text.length > 10 && text.length < 300) {
-                  synthesizedLesson = text;
-                }
+              if (text.length > 10 && text.length < 300) {
+                synthesizedLesson = text;
               }
             } catch { /* LLM failed — keep original lesson */ }
 
@@ -1137,8 +1123,8 @@ export function computeNextInterval(
     // Priority 0: Any critical service observed down this tick — stay on the
     // active cadence so ensureRunning() gets called promptly on the next tick,
     // not 10–30 min from now under idle backoff. Without this, the reranker
-    // (or CliProxy) dying during an idle window would leave retrieval in
-    // bi-encoder fallback for up to MAX_INTERVAL_MS before recovery was
+    // (or llama-server) dying during an idle window would leave retrieval
+    // in bi-encoder fallback for up to MAX_INTERVAL_MS before recovery was
     // attempted. Pin to ACTIVE_INTERVAL_MS and reset the idle-tick counter
     // via `idle: false` so the exponential backoff starts fresh after recovery.
     if (result.services_down && result.services_down.length > 0) {

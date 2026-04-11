@@ -6,7 +6,9 @@
  * multiple turns, understand the context of why something was corrected, and
  * create high-confidence patterns.
  *
- * Uses CliProxy (local HTTP proxy) or Ollama for LLM analysis.
+ * Uses the local llama-server (Gemma 4 31B IT Q6_K via llama-client) for
+ * all LLM analysis. Single path — the old CliProxy → Ollama cloud → Ollama
+ * local cascade was collapsed in Path B.
  *
  * Non-throwing — returns empty results on error.
  *
@@ -15,7 +17,6 @@
  * CLAUDE_CODE_DISABLE_AUTO_MEMORY=1. Angel cannot adopt CC's forked-agent-with-
  * cache-sharing pattern because Angel runs as a separate process (different PID),
  * not a CC subagent — cache sharing only works within CC's conversation fork.
- * Angel uses CliProxy (Sonnet) or Ollama for LLM extraction instead.
  *
  * A5 (Phase 10): Angel reads conversation_turns which naturally contains any CC
  * away summaries (appended as system messages). No special integration needed.
@@ -24,6 +25,7 @@
 
 import type { Database } from 'better-sqlite3';
 import { cachedPrepare } from '../core/stmt-cache.js';
+import { callLocalLLM } from './llama-client.js';
 import { createPattern, createTipAndStrategy } from '../intelligence/experience-patterns.js';
 import { recordDomainInteraction, extractDomain } from '../intelligence/capability-tracker.js';
 import { recordEvent } from '../core/session-events.js';
@@ -136,48 +138,11 @@ Respond with JSON only:
 
 If no patterns are found, return: { "patterns": [], "summary": "no patterns found" }`;
 
-/**
- * Call Ollama for simple LLM tasks (classification, short extraction).
- * Local, no hooks, no phantom sessions.
- * Returns the response text or throws on failure.
- */
-async function callOllama(prompt: string, model: string): Promise<string> {
-  const resp = await fetch('http://localhost:11434/api/generate', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ model, prompt, stream: false }),
-  });
-  if (!resp.ok) throw new Error(`Ollama ${resp.status}`);
-  const data = await resp.json() as { response: string };
-  return (data.response ?? '').trim();
-}
-
-/**
- * Call CliProxy (OpenAI-compatible) for high-quality extraction.
- * Uses Sonnet via local proxy — no API key needed, uses MAX subscription.
- */
-async function callCliProxy(system: string, prompt: string, model: string = 'claude-sonnet-4-6'): Promise<string> {
-  const resp = await fetch('http://127.0.0.1:8317/v1/chat/completions', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': 'Bearer cliproxy-no-key-needed',
-    },
-    body: JSON.stringify({
-      model,
-      messages: [
-        { role: 'system', content: system },
-        { role: 'user', content: prompt },
-      ],
-      max_tokens: 2048,
-      temperature: 0,
-    }),
-    signal: AbortSignal.timeout(60000),
-  });
-  if (!resp.ok) throw new Error(`CliProxy ${resp.status}`);
-  const data = await resp.json() as { choices?: Array<{ message?: { content?: string } }> };
-  return (data.choices?.[0]?.message?.content ?? '').trim();
-}
+// LLM calls go through callLocalLLM (src/angel/llama-client.ts) against the
+// local llama.cpp server (Gemma 4 31B IT Q6_K). The previous three-tier
+// cascade (CliProxy → Ollama cloud → Ollama local) has been collapsed to a
+// single local path as part of Path B — fully-local generation, no MAX
+// subscription coupling, no cloud dependency, no hook deadlock.
 
 // ---------------------------------------------------------------------------
 // Directive keyword pre-filter
@@ -570,37 +535,22 @@ export async function extractPatternsFromSession(
 
     const enrichedTranscript = manifestSection + directiveSection + transcript;
 
-    // Call LLM for pattern extraction
-    // Priority: CliProxy (Sonnet) → Ollama cloud → Ollama local
-    // Never use Claude CLI subprocess — it triggers hooks and creates phantom sessions.
+    // Call local LLM for pattern extraction. Single path now — Path B
+    // collapsed the old CliProxy → Ollama cloud → Ollama local cascade to
+    // one call against the local llama-server (Gemma 4 31B IT Q6_K). If the
+    // server is down, extraction skips for this tick and retries next
+    // heartbeat (the supervisor will have restarted it by then in the
+    // common case).
     const userPrompt = `Analyze this session transcript for correction and directive patterns:\n\n${enrichedTranscript}`;
     let responseText = '';
 
-    // Priority 1: CliProxy (Sonnet via local proxy — best quality for directive detection)
     try {
-      responseText = await callCliProxy(EXTRACTION_SYSTEM_PROMPT, userPrompt);
-    } catch { /* CliProxy unavailable — fall through to Ollama cloud */ }
-
-    // Priority 3: Ollama cloud models (capable, free via Ollama cloud routing)
-    if (!responseText) {
-      const cloudModels = ['deepseek-v3.2:cloud', 'cogito-2.1:671b-cloud', 'qwen3.5:397b-cloud'];
-      for (const cloudModel of cloudModels) {
-        try {
-          const fullPrompt = `${EXTRACTION_SYSTEM_PROMPT}\n\n${userPrompt}`;
-          responseText = await callOllama(fullPrompt, cloudModel);
-          if (responseText) break;
-        } catch { /* try next model */ }
-      }
-    }
-
-    // Priority 4: Ollama local (last resort — small model, lower quality)
-    if (!responseText) {
-      try {
-        const fullPrompt = `${EXTRACTION_SYSTEM_PROMPT}\n\n${userPrompt}`;
-        responseText = await callOllama(fullPrompt, localModel);
-      } catch {
-        return { patternsCreated: 0, summary: 'no LLM available (CliProxy + API + Ollama cloud + local all failed)' };
-      }
+      responseText = await callLocalLLM({
+        system: EXTRACTION_SYSTEM_PROMPT,
+        prompt: userPrompt,
+      });
+    } catch {
+      return { patternsCreated: 0, summary: 'llama-server unavailable' };
     }
 
     if (!responseText) {
@@ -754,13 +704,18 @@ export async function classifySessionDomains(
       return 1;
     }
 
-    // For complex topics, use Ollama (local, no hooks, no phantom sessions)
+    // For complex topics, use the local llama-server (Gemma 4 31B Q6_K).
+    // Domain classification is cheap — low max_tokens keeps the call short.
     let domain = '';
     const classifyPrompt = `Classify this session topic into a single technical domain (1-2 words, lowercase). Topic: "${thread.topic}". Respond with just the domain name, nothing else.`;
 
     try {
-      domain = (await callOllama(classifyPrompt, localModel)).toLowerCase().split('\n')[0];
-    } catch { /* Ollama not available — skip classification */ }
+      const raw = await callLocalLLM({
+        prompt: classifyPrompt,
+        maxTokens: 32,
+      });
+      domain = raw.toLowerCase().split('\n')[0];
+    } catch { /* llama-server not available — skip classification */ }
 
     if (domain && domain.length < 50) {
       recordDomainInteraction(db, project, domain, false);

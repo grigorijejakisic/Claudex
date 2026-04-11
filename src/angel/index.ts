@@ -10,10 +10,17 @@
  *
  * Usage: node dist/angel/index.cjs [--interval <minutes>] [--model <model>]
  *
- * LLM: Uses CliProxy (localhost:8317, MAX subscription) or Ollama for all LLM tasks.
+ * LLM: Uses a local llama.cpp server (Gemma 4 31B IT Q6_K) on 127.0.0.1:8081
+ * for all generation tasks — pattern extraction, curated-context extraction,
+ * entity summarization, observation consolidation, health reports. The server
+ * is supervised by LlamaServerSupervisor and auto-launched at Angel startup.
+ * Ollama is still used for embeddings (snowflake-arctic-embed2) but no
+ * longer for generation. CliProxy has been removed entirely.
  *
  * Environment:
  *   CLAUDEX_DB_PATH — optional, overrides default DB location
+ *   LLAMA_SERVER_EXE — optional, overrides path to llama-server.exe
+ *   LLAMA_MODEL_PATH — optional, overrides path to the GGUF model file
  */
 
 import Database from 'better-sqlite3';
@@ -25,6 +32,8 @@ import { ensureCollections, setVectorStoreDb } from '../embeddings/qdrant-client
 import { startHeartbeat, type TickResult } from './heartbeat.js';
 import { DEFAULT_ANGEL_CONFIG, type AngelConfig } from './types.js';
 import { RerankerSupervisor } from './reranker-supervisor.js';
+import { LlamaServerSupervisor } from './llama-server-supervisor.js';
+import { checkLlamaServerHealth } from './llama-client.js';
 
 // ---------------------------------------------------------------------------
 // CLI argument parsing
@@ -79,27 +88,6 @@ function parseArgs(argv: string[]): Partial<AngelConfig> {
   }
 
   return config;
-}
-
-// ---------------------------------------------------------------------------
-// CliProxy detection
-// ---------------------------------------------------------------------------
-
-/**
- * Check if CliProxy is available on localhost:8317.
- * CliProxy exposes OAuth as an OpenAI/Anthropic-compatible API — no API key needed.
- */
-async function isCliProxyAvailable(): Promise<boolean> {
-  try {
-    // CliProxy doesn't have /health — use /v1/models to verify it's alive
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 2000);
-    const resp = await fetch('http://127.0.0.1:8317/v1/models', { signal: controller.signal });
-    clearTimeout(timeout);
-    return resp.ok;
-  } catch {
-    return false;
-  }
 }
 
 // ---------------------------------------------------------------------------
@@ -231,15 +219,6 @@ async function main(): Promise<void> {
   // `angelDist` defensively.
   const projectRoot = path.resolve(__dirname, '..', '..');
 
-  // Check LLM availability
-  // Priority: CliProxy (localhost:8317, MAX subscription) > Ollama
-  // If neither available, Angel runs Ollama-only for all LLM tasks.
-  // Never uses Claude CLI subprocess — it triggers hooks and creates phantom sessions.
-  const cliProxyAvailable = await isCliProxyAvailable();
-  if (!cliProxyAvailable) {
-    log('warn', 'CliProxy not available — Angel will use Ollama for all LLM tasks');
-  }
-
   // Parse config
   const cliConfig = parseArgs(process.argv);
   const config: AngelConfig = {
@@ -280,23 +259,36 @@ async function main(): Promise<void> {
   });
   await rerankerSupervisor.start();
 
+  // Supervise the local llama.cpp generation server (Gemma 4 31B IT Q6_K).
+  // Non-blocking: if the server can't come up, Angel continues and every
+  // LLM-dependent subsystem (pattern extraction, curated-context extraction,
+  // entity summarization, consolidation, health reports) skips its work
+  // and retries next tick. Supervision gives us logs (context/logs/
+  // llama-server.log), bounded restart (2 attempts), and clean shutdown.
+  const llamaServerSupervisor = new LlamaServerSupervisor({
+    projectRoot,
+    logger: (level, message) => log(level, `llama-server: ${message}`),
+  });
+  await llamaServerSupervisor.start();
+  const llamaHealthy = await checkLlamaServerHealth();
+
   // Log startup
   const intervalMin = Math.round(config.heartbeatIntervalMs / 60000);
   log('info', `Angel started`, {
     pid: process.pid,
-    auth: cliProxyAvailable ? 'cliproxy (MAX subscription via localhost:8317)' : 'none (Ollama only)',
-    cloudModel: config.cloudModel,
-    localModel: config.localModel,
+    llm: llamaHealthy
+      ? 'local llama-server (Gemma 4 31B Q6_K via 127.0.0.1:8081)'
+      : 'local llama-server unavailable — generation tasks will retry',
     interval_minutes: intervalMin,
     idle_threshold_minutes: Math.round(config.idleThresholdSeconds / 60),
   });
 
-  // Start heartbeat — wire the reranker supervisor through so the heartbeat
-  // can call ensureRunning() whenever the /health probe reports it as down.
+  // Start heartbeat — wire both supervisors through so the heartbeat can
+  // call ensureRunning() whenever their health probes report them as down.
   // Without this, a single supervisor failure at boot would leave the
-  // reranker permanently dead until Angel itself restarted.
+  // service permanently dead until Angel itself restarted.
   const heartbeat = startHeartbeat(
-    { db, config, rerankerSupervisor },
+    { db, config, rerankerSupervisor, llamaServerSupervisor },
     logTickResult,
   );
 
@@ -305,6 +297,7 @@ async function main(): Promise<void> {
     log('info', `${signal} received — shutting down`);
     heartbeat.stop();
     rerankerSupervisor.stop();
+    llamaServerSupervisor.stop();
     setVectorStoreDb(null); // release reference before db.close()
     removePidFile();
     try { db.close(); } catch { /* */ }

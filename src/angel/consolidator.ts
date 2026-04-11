@@ -29,6 +29,7 @@ import type { Database } from 'better-sqlite3';
 import { cachedPrepare } from '../core/stmt-cache.js';
 import { insertObservation, type ObservationRow } from '../core/observations.js';
 import { createArtifact } from '../core/artifacts.js';
+import { callLocalLLM } from './llama-client.js';
 
 /** Result of a single consolidation batch run. */
 export interface ConsolidationResult {
@@ -216,15 +217,15 @@ export async function buildClusters(
 }
 
 /**
- * Call Ollama for LLM consolidation of a cluster.
- * Returns the consolidated summary text, or null on failure.
+ * Call the local llama-server (Gemma 4 31B Q6_K) for consolidation of an
+ * observation cluster. Returns the consolidated summary text, or null on
+ * failure — the caller falls back to createFallbackSummary.
  */
-async function callOllamaConsolidate(
+async function callLocalLLMConsolidate(
   observations: ObservationRow[],
-  model: string = 'llama3.2',
 ): Promise<string | null> {
   try {
-    const obsTexts = observations.map((o, i) =>
+    const obsTexts = observations.map((o) =>
       `[Obs #${o.id}] (${o.category}, importance=${o.importance}) ${o.title}: ${o.content}`
     ).join('\n\n');
 
@@ -235,15 +236,11 @@ ${obsTexts}
 
 Respond with ONLY the consolidated summary text, nothing else.`;
 
-    const resp = await fetch('http://localhost:11434/api/generate', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ model, prompt, stream: false }),
+    const text = await callLocalLLM({
+      prompt,
+      maxTokens: 512,
+      timeoutMs: 60000,
     });
-
-    if (!resp.ok) return null;
-    const data = await resp.json() as { response: string };
-    const text = (data.response ?? '').trim();
     return text || null;
   } catch {
     return null;
@@ -269,7 +266,7 @@ async function consolidateCluster(
   localModel: string,
 ): Promise<number> {
   // Determine the summary text — LLM or fallback
-  let summaryContent = await callOllamaConsolidate(cluster, localModel);
+  let summaryContent = await callLocalLLMConsolidate(cluster);
   if (!summaryContent) {
     summaryContent = createFallbackSummary(cluster);
   }

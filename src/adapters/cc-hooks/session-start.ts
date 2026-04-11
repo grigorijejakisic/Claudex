@@ -28,59 +28,13 @@ import { spawn } from 'child_process';
 // database). No separate service needs to be spawned at session start. The
 // virtual tables are created automatically by the V14→V15 migration when the
 // DB is opened. See context/specs/SQLITE_VEC_MIGRATION.md.
-
-/**
- * Ensure CliProxy is running on localhost:8317.
- * CliProxy bridges MAX subscription OAuth to the Anthropic API — needed by the Angel
- * for Opus-quality pattern extraction.
- * Non-throwing — CliProxy is optional (Angel falls back to Ollama).
- */
-async function ensureCliProxyRunning(): Promise<void> {
-  // Check if already running
-  try {
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 2000);
-    const resp = await fetch('http://127.0.0.1:8317/v1/models', { signal: controller.signal });
-    clearTimeout(timeout);
-    if (resp.ok) return; // Already running
-  } catch {
-    // Not running — try to start
-  }
-
-  // Known locations for CliProxy
-  const candidates = [
-    path.join(os.tmpdir(), 'cliproxy_new', 'cli-proxy-api.exe'),
-    path.join(os.homedir(), '.cli-proxy-api', 'cli-proxy-api.exe'),
-  ];
-  const configCandidates = [
-    path.join(os.tmpdir(), 'laptop-cli-proxy-config.yaml'),
-    path.join(os.homedir(), '.cli-proxy-api', 'config.yaml'),
-  ];
-
-  const exe = candidates.find(p => fs.existsSync(p));
-  const config = configCandidates.find(p => fs.existsSync(p));
-  if (!exe) return;
-
-  const args = config ? ['-config', config] : [];
-  const child = spawn(exe, args, {
-    detached: true,
-    stdio: 'ignore',
-    cwd: os.homedir(),
-  });
-  child.unref();
-
-  // Wait briefly for startup
-  for (let i = 0; i < 5; i++) {
-    await new Promise(r => setTimeout(r, 500));
-    try {
-      const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 1000);
-      const resp = await fetch('http://127.0.0.1:8317/v1/models', { signal: controller.signal });
-      clearTimeout(timeout);
-      if (resp.ok) return;
-    } catch { /* still starting */ }
-  }
-}
+//
+// CliProxy removed in Path B (curated-context milestone). Angel's LLM
+// generation now runs against a local llama.cpp server (Gemma 4 31B Q6_K)
+// supervised by LlamaServerSupervisor. The supervisor is started inside
+// Angel's main process, so session-start only has to spawn Angel —
+// llama-server comes up as part of Angel's startup sequence. No CliProxy,
+// no MAX subscription coupling for background work.
 
 /**
  * Ensure the Angel process is running. Checks PID file, spawns if not alive.
@@ -123,13 +77,13 @@ const main = wrapHook('SessionStart', async (input, ctx) => {
   // Qdrant spawn removed in Phase 5 — vector store is now sqlite-vec (in-process,
   // no external service). The V14→V15 migration runs automatically when the DB
   // is opened by wrapHook infrastructure.
+  //
+  // CliProxy spawn removed in Path B — Angel now supervises a local
+  // llama.cpp server (Gemma 4 31B Q6_K) internally. Starting Angel is
+  // sufficient; no separate CliProxy bootstrap needed.
 
-  // Ensure CliProxy is running (non-blocking, non-fatal — enables Opus for Angel)
-  try {
-    await ensureCliProxyRunning();
-  } catch { /* CliProxy is optional */ }
-
-  // Ensure Angel is running (non-blocking, non-fatal — optional enhancement)
+  // Ensure Angel is running (non-blocking, non-fatal — optional enhancement).
+  // When Angel starts it auto-launches the llama-server via LlamaServerSupervisor.
   try {
     await ensureAngelRunning();
   } catch { /* Angel is optional */ }

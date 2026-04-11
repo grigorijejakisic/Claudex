@@ -22,6 +22,7 @@
 import type { Database } from 'better-sqlite3';
 import { cachedPrepare } from '../core/stmt-cache.js';
 import { ulid } from 'ulid';
+import { callLocalLLM } from './llama-client.js';
 
 export interface EntitySummaryResult {
   entities_summarized: number;
@@ -135,34 +136,20 @@ export async function generateEntitySummaries(
 
         const trend = computeTrend(entity.earliest_epoch, entity.latest_epoch, entity.mention_count);
 
-        // Try LLM synthesis via CliProxy
+        // Try LLM synthesis via local llama-server (Gemma 4 31B Q6_K).
+        // Falls through to the template fallback below if the server is
+        // unreachable or returns malformed output.
         let summary = '';
         try {
           const evidenceText = evidence.map(e =>
             `[${e.project}] ${e.action}: ${(e.detail ?? '').substring(0, 100)}`
           ).join('\n');
 
-          const resp = await fetch('http://127.0.0.1:8317/v1/chat/completions', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'Authorization': 'Bearer cliproxy-no-key-needed',
-            },
-            body: JSON.stringify({
-              model,
-              messages: [{
-                role: 'user',
-                content: `Summarize this entity in 2-3 sentences based on the evidence. Entity: "${entity.entity_name}"\nEvidence:\n${evidenceText}\n\nOutput only the summary.`,
-              }],
-              max_tokens: 200,
-              temperature: 0,
-            }),
-            signal: AbortSignal.timeout(30000),
+          summary = await callLocalLLM({
+            prompt: `Summarize this entity in 2-3 sentences based on the evidence. Entity: "${entity.entity_name}"\nEvidence:\n${evidenceText}\n\nOutput only the summary.`,
+            maxTokens: 200,
+            timeoutMs: 30000,
           });
-          if (resp.ok) {
-            const data = await resp.json() as { choices?: Array<{ message?: { content?: string } }> };
-            summary = (data.choices?.[0]?.message?.content ?? '').trim();
-          }
         } catch { /* LLM failed — use template */ }
 
         if (!summary) {

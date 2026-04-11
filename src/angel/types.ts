@@ -73,9 +73,9 @@ export interface AngelConfig {
   idleThresholdSeconds: number;
   /** Auto-close threshold in minutes — sessions still idle this long after warning get auto-closed. Default: 15 min (so 30 min total). */
   autoCloseMinutesAfterWarning: number;
-  /** Cloud model for complex reasoning (pattern extraction). Uses CliProxy/API. Default: claude-sonnet-4-6. */
+  /** @deprecated Kept for backwards-compatible config parsing; no longer routed. Path B eliminated CliProxy — all generation goes through llama-client. */
   cloudModel: string;
-  /** Local model for simple tasks (classification). Uses Ollama. Default: llama3.2. */
+  /** @deprecated Kept for backwards-compatible config parsing; no longer routed. Path B eliminated Ollama generation paths — all generation goes through llama-client against the local llama.cpp server. */
   localModel: string;
   /** Max patterns to extract per session. Default: 5. */
   maxPatternsPerSession: number;

@@ -15,7 +15,7 @@
  * See context/specs/CURATED_CONTEXT.md for the full design.
  *
  * Non-throwing — returns empty result on any failure, so the heartbeat
- * continues even when CliProxy is down or the LLM returns garbage.
+ * continues even when llama-server is down or the LLM returns garbage.
  */
 
 import type { Database } from 'better-sqlite3';
@@ -27,6 +27,7 @@ import {
   type CuratedType,
 } from '../core/curated-context.js';
 import { GLOBAL_PROJECT_SCOPE } from '../shared/constants.js';
+import { callLocalLLM } from './llama-client.js';
 import type { ConversationTurn } from './types.js';
 
 // ---------------------------------------------------------------------------
@@ -102,7 +103,7 @@ export function findSignalCandidates(turns: ConversationTurn[]): ConversationTur
 }
 
 // ---------------------------------------------------------------------------
-// LLM extraction — CliProxy (Sonnet via MAX subscription, no API key)
+// LLM extraction — local llama-server (Gemma 4 31B Q6 via llama-client)
 // ---------------------------------------------------------------------------
 
 const EXTRACTION_SYSTEM_PROMPT = `You extract Project Curated Context entries from AI coding session transcripts.
@@ -143,41 +144,6 @@ Return ONLY a JSON array (no prose, no markdown). Each item:
 }
 
 If no entries meet the precision bar, return [].`;
-
-/**
- * Call CliProxy for LLM extraction. Uses Sonnet via the local proxy — no
- * API key needed, no deadlock (Angel is a separate process, not a CC hook).
- *
- * Returns the raw LLM response text. Throws on network or non-2xx error.
- */
-async function callCliProxy(
-  system: string,
-  prompt: string,
-  model: string = 'claude-sonnet-4-6',
-): Promise<string> {
-  const resp = await fetch('http://127.0.0.1:8317/v1/chat/completions', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': 'Bearer cliproxy-no-key-needed',
-    },
-    body: JSON.stringify({
-      model,
-      messages: [
-        { role: 'system', content: system },
-        { role: 'user', content: prompt },
-      ],
-      max_tokens: 2048,
-      temperature: 0,
-    }),
-    signal: AbortSignal.timeout(60000),
-  });
-  if (!resp.ok) throw new Error(`CliProxy ${resp.status}`);
-  const data = await resp.json() as {
-    choices?: Array<{ message?: { content?: string } }>;
-  };
-  return (data.choices?.[0]?.message?.content ?? '').trim();
-}
 
 // ---------------------------------------------------------------------------
 // Prompt building + response parsing
@@ -440,7 +406,7 @@ export interface ExtractionResult {
  *   - No conversation turns stored
  *
  * Transient conditions (retry next tick, no marker written):
- *   - CliProxy unavailable
+ *   - llama-server unavailable
  *   - LLM returns empty or malformed response
  */
 export async function extractCuratedContextFromSession(
@@ -479,10 +445,13 @@ export async function extractCuratedContextFromSession(
 
   let raw: string;
   try {
-    raw = await callCliProxy(EXTRACTION_SYSTEM_PROMPT, transcript);
+    raw = await callLocalLLM({
+      system: EXTRACTION_SYSTEM_PROMPT,
+      prompt: transcript,
+    });
   } catch {
     // Transient — do NOT mark extracted. Retry next tick.
-    return { entriesCreated: 0, entriesDuplicate: 0, summary: 'CliProxy unavailable' };
+    return { entriesCreated: 0, entriesDuplicate: 0, summary: 'llama-server unavailable' };
   }
 
   const extracted = parseExtractionResponse(raw);
