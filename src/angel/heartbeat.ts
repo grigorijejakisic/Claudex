@@ -1087,12 +1087,23 @@ function hasPendingBacklog(db: Database): boolean {
  * unembedded artifacts, unlinkd artifacts) regardless of whether the user
  * is online. It only sleeps when ALL queues are empty.
  */
-function computeNextInterval(
+export function computeNextInterval(
   db: Database,
   result: TickResult,
   consecutiveIdleTicks: number,
 ): { intervalMs: number; idle: boolean } {
   try {
+    // Priority 0: Any critical service observed down this tick — stay on the
+    // active cadence so ensureRunning() gets called promptly on the next tick,
+    // not 10–30 min from now under idle backoff. Without this, the reranker
+    // (or CliProxy) dying during an idle window would leave retrieval in
+    // bi-encoder fallback for up to MAX_INTERVAL_MS before recovery was
+    // attempted. Pin to ACTIVE_INTERVAL_MS and reset the idle-tick counter
+    // via `idle: false` so the exponential backoff starts fresh after recovery.
+    if (result.services_down && result.services_down.length > 0) {
+      return { intervalMs: ACTIVE_INTERVAL_MS, idle: false };
+    }
+
     // Priority 1: Pending backlog — stay awake and keep working
     if (hasPendingBacklog(db)) {
       return { intervalMs: BACKLOG_INTERVAL_MS, idle: false };

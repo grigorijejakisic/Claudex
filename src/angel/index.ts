@@ -209,6 +209,28 @@ async function main(): Promise<void> {
     process.exit(0);
   }
 
+  // Claim the PID file IMMEDIATELY — before any slow init — so concurrent
+  // session-start hooks that race Angel boot can't double-spawn us. The
+  // previous ordering wrote the PID file only after `rerankerSupervisor.start()`
+  // which blocks up to 60s on a cold BGE-v2-m3 load. During that window,
+  // a second session-start could see no PID file, pass its own
+  // isAlreadyRunning() check, and spawn a rival Angel that would fight
+  // over port 7439, the DB, and the PID file itself. Claim-first semantics
+  // close the race.
+  writePidFile();
+
+  // Resolve projectRoot from __dirname instead of process.cwd(). The
+  // session-start hook spawns Angel with `cwd: os.homedir()` (for security —
+  // see src/adapters/cc-hooks/session-start.ts), so process.cwd() is the
+  // user's home directory, not the repo root. Using that as the supervisor's
+  // projectRoot would make it look for ~/services/reranker.py, which
+  // doesn't exist, and every auto-spawned Angel would silently fall back to
+  // bi-encoder retrieval. __dirname is resolved against the compiled bundle
+  // location (dist/angel/index.cjs), so `../..` is the repo root regardless
+  // of CWD. This is the same pattern the session-start hook uses to resolve
+  // `angelDist` defensively.
+  const projectRoot = path.resolve(__dirname, '..', '..');
+
   // Check LLM availability
   // Priority: CliProxy (localhost:8317, MAX subscription) > Ollama
   // If neither available, Angel runs Ollama-only for all LLM tasks.
@@ -253,13 +275,10 @@ async function main(): Promise<void> {
   // replaces the old fire-and-forget `start /B` pattern that lost children
   // to broken stdio pipes on Windows.
   const rerankerSupervisor = new RerankerSupervisor({
-    projectRoot: process.cwd(),
+    projectRoot,
     logger: (level, message) => log(level, `reranker: ${message}`),
   });
   await rerankerSupervisor.start();
-
-  // Write PID file
-  writePidFile();
 
   // Log startup
   const intervalMin = Math.round(config.heartbeatIntervalMs / 60000);

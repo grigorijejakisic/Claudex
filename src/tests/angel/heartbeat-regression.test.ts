@@ -4,9 +4,16 @@
  * Covers:
  * - Stale string match: 'no patterns found' is in definitiveOutcomes list
  * - Process guard: isPythonScriptRunning checks for specific script name
+ * - Services-down interval override: when critical services are observed down,
+ *   the next-interval computation pins to ACTIVE cadence instead of drifting
+ *   into idle backoff (so ensureRunning recovery happens on the next tick,
+ *   not 10–30 min later).
  */
 
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import Database from 'better-sqlite3';
+import { computeNextInterval } from '../../angel/heartbeat.js';
+import type { TickResult } from '../../angel/heartbeat.js';
 
 // ---------------------------------------------------------------------------
 // Regression: Stale string match in definitive outcomes
@@ -99,5 +106,98 @@ describe('Process guard — isPythonScriptRunning logic (regression)', () => {
     // Full path with the exact script name should match
     const commandLines = 'python.exe C:\\services\\reranker.py --port 8080\n';
     expect(isPythonScriptRunningSimulated(commandLines, 'reranker.py')).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Regression: Services-down interval override
+// When result.services_down contains at least one entry, computeNextInterval
+// must return the ACTIVE cadence (2 min) with `idle: false`, regardless of
+// whether there's a backlog, active sessions, or consecutive idle ticks.
+// Without this, a service dying during an idle window would leave retrieval
+// in fallback mode for up to MAX_INTERVAL_MS before the next ensureRunning
+// recovery attempt.
+// ---------------------------------------------------------------------------
+
+describe('Services-down interval override (regression)', () => {
+  const ACTIVE_INTERVAL_MS = 2 * 60 * 1000;
+  let db: Database.Database;
+
+  beforeEach(() => {
+    db = new Database(':memory:');
+    // computeNextInterval reads from `sessions` (for the active-session check)
+    // and from the pending-backlog SQL. Create minimal schema so those queries
+    // don't throw. Empty tables exercise the P0 services_down override path
+    // before the backlog / active-session paths are reached.
+    db.exec(`
+      CREATE TABLE sessions (
+        session_id TEXT PRIMARY KEY,
+        status TEXT NOT NULL,
+        created_at_epoch INTEGER NOT NULL
+      );
+      CREATE TABLE observations (id INTEGER PRIMARY KEY, processed INTEGER DEFAULT 0);
+      CREATE TABLE artifacts (id INTEGER PRIMARY KEY, embedding BLOB);
+      CREATE TABLE conversation_turns (id INTEGER PRIMARY KEY, processed INTEGER DEFAULT 0);
+    `);
+  });
+
+  afterEach(() => {
+    db.close();
+  });
+
+  function makeResult(overrides: Partial<TickResult> = {}): TickResult {
+    return {
+      idle_warnings_sent: 0,
+      sessions_processed: 0,
+      patterns_extracted: 0,
+      domains_classified: 0,
+      duration_ms: 10,
+      ...overrides,
+    };
+  }
+
+  it('pins to ACTIVE_INTERVAL_MS when one service is down', () => {
+    const result = makeResult({ services_down: ['Reranker (Neural cross-encoder (CUDA))'] });
+    const { intervalMs, idle } = computeNextInterval(db, result, 5); // 5 consecutive idle ticks
+    expect(intervalMs).toBe(ACTIVE_INTERVAL_MS);
+    expect(idle).toBe(false);
+  });
+
+  it('pins to ACTIVE_INTERVAL_MS when multiple services are down', () => {
+    const result = makeResult({
+      services_down: ['Reranker (cross-encoder)', 'CliProxy (LLM routing)'],
+    });
+    const { intervalMs, idle } = computeNextInterval(db, result, 10);
+    expect(intervalMs).toBe(ACTIVE_INTERVAL_MS);
+    expect(idle).toBe(false);
+  });
+
+  it('override beats idle exponential backoff', () => {
+    // 10 consecutive idle ticks would normally drive the interval to MAX
+    // (30 min) via exponential backoff. The override must take precedence.
+    const result = makeResult({ services_down: ['Reranker (x)'] });
+    const { intervalMs } = computeNextInterval(db, result, 10);
+    expect(intervalMs).toBeLessThan(3 * 60 * 1000);
+    expect(intervalMs).toBe(ACTIVE_INTERVAL_MS);
+  });
+
+  it('does NOT override when services_down is undefined', () => {
+    // Empty DB + no backlog + no active sessions + no work done → should fall
+    // through to the idle exponential backoff path. This is the control case
+    // proving the test DB is wired correctly and the override is the reason
+    // the previous cases returned ACTIVE_INTERVAL_MS.
+    const result = makeResult(); // services_down undefined
+    const { idle } = computeNextInterval(db, result, 0);
+    expect(idle).toBe(true);
+  });
+
+  it('does NOT override when services_down is empty array', () => {
+    // Defensive: an empty array from the heartbeat service-check block
+    // (e.g., all services recovered within the tick) must NOT trigger the
+    // override, otherwise we'd stay on active cadence forever after any
+    // earlier down-service.
+    const result = makeResult({ services_down: [] });
+    const { idle } = computeNextInterval(db, result, 0);
+    expect(idle).toBe(true);
   });
 });
