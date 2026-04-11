@@ -93,7 +93,11 @@ export interface EnsureRunningResult {
   status: LlamaServerStatus;
 }
 
-const DEFAULT_HEALTH_TIMEOUT_MS = 180_000;
+// Empirically verified: Gemma 4 31B Q6_K (~25GB) comes up in ~25s from cold
+// on RTX 5090 with -ngl 99. 90s is a 3.6x margin for slower hardware or a
+// cold filesystem. Was originally 180s but that was a guess — verification
+// during Path B showed it was overly conservative.
+const DEFAULT_HEALTH_TIMEOUT_MS = 90_000;
 const DEFAULT_MAX_RESTARTS = 2;
 const SHUTDOWN_GRACE_MS = 5_000;
 const RESTART_COOLDOWN_MS = 15 * 60 * 1000;
@@ -402,6 +406,11 @@ export class LlamaServerSupervisor {
   }
 
   private buildSpawnArgs(): string[] {
+    // NOTE: modern llama.cpp requires an explicit value after --flash-attn
+    // (on|off|auto). The older bare flag form was silently removed and now
+    // consumes the next arg, blowing up the spawn. Caught the hard way by
+    // running the server manually during Path B verification — the user's
+    // run-gemma.sh had the same issue.
     return [
       '-m',
       this.modelPath,
@@ -414,6 +423,7 @@ export class LlamaServerSupervisor {
       '-c',
       String(this.contextSize),
       '--flash-attn',
+      'on',
       '-t',
       String(this.threads),
       '--alias',

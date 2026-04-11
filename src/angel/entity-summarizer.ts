@@ -147,8 +147,9 @@ export async function generateEntitySummaries(
 
           summary = await callLocalLLM({
             prompt: `Summarize this entity in 2-3 sentences based on the evidence. Entity: "${entity.entity_name}"\nEvidence:\n${evidenceText}\n\nOutput only the summary.`,
-            maxTokens: 200,
-            timeoutMs: 30000,
+            // Budget for Gemma's reasoning_content overhead — a 200-token
+            // budget burns on reasoning and returns truncated summaries.
+            maxTokens: 1024,
           });
         } catch { /* LLM failed — use template */ }
 

@@ -844,8 +844,10 @@ export async function heartbeatTick(ctx: HeartbeatContext): Promise<TickResult> 
 
               const text = await callLocalLLM({
                 prompt,
-                maxTokens: 256,
-                timeoutMs: 30000,
+                // Budget for Gemma's reasoning_content overhead — 256 is
+                // too small (all burned on reasoning). 1024 leaves room for
+                // a short synthesized principle.
+                maxTokens: 1024,
               });
               if (text.length > 10 && text.length < 300) {
                 synthesizedLesson = text;

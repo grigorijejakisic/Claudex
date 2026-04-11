@@ -56,7 +56,7 @@ describe('callLocalLLM', () => {
     const body = JSON.parse(capturedInit?.body as string);
     expect(body.model).toBe(LLAMA_MODEL_ALIAS);
     expect(body.temperature).toBe(0);
-    expect(body.max_tokens).toBe(2048);
+    expect(body.max_tokens).toBe(4096);
     expect(body.messages).toEqual([
       { role: 'system', content: 'you are a test' },
       { role: 'user', content: 'ping' },

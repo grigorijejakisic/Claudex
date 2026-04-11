@@ -705,14 +705,16 @@ export async function classifySessionDomains(
     }
 
     // For complex topics, use the local llama-server (Gemma 4 31B Q6_K).
-    // Domain classification is cheap — low max_tokens keeps the call short.
+    // maxTokens needs to budget for Gemma's reasoning_content — a naive
+    // 32-token budget burns entirely on reasoning and returns empty content.
+    // 512 is enough for reasoning overhead + a short domain response.
     let domain = '';
     const classifyPrompt = `Classify this session topic into a single technical domain (1-2 words, lowercase). Topic: "${thread.topic}". Respond with just the domain name, nothing else.`;
 
     try {
       const raw = await callLocalLLM({
         prompt: classifyPrompt,
-        maxTokens: 32,
+        maxTokens: 512,
       });
       domain = raw.toLowerCase().split('\n')[0];
     } catch { /* llama-server not available — skip classification */ }

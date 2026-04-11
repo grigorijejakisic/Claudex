@@ -238,8 +238,9 @@ Respond with ONLY the consolidated summary text, nothing else.`;
 
     const text = await callLocalLLM({
       prompt,
-      maxTokens: 512,
-      timeoutMs: 60000,
+      // Budget for Gemma's reasoning_content overhead — 512 burns on
+      // reasoning and leaves no room for the consolidated summary.
+      maxTokens: 2048,
     });
     return text || null;
   } catch {

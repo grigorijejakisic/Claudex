@@ -40,9 +40,25 @@ export interface LocalLLMCallOptions {
   model?: string;
   /** Sampling temperature. Default: 0 (deterministic for extraction tasks). */
   temperature?: number;
-  /** Max completion tokens. Default: 2048. */
+  /**
+   * Max completion tokens. Default: 4096.
+   *
+   * Gemma 4 has a reasoning mode — `reasoning_content` is emitted alongside
+   * `content` but STILL COUNTS against max_tokens. Empirically, Gemma spends
+   * 60-80% of budget on reasoning tokens before producing content. A 2048
+   * budget truncates realistic extraction responses mid-JSON. 4096 gives a
+   * comfortable margin. Callers needing very short outputs (<256 tokens of
+   * actual content) should still request at least 512 to leave room for
+   * reasoning overhead.
+   */
   maxTokens?: number;
-  /** Request timeout in ms. Default: 120_000 (2min — Gemma 31B is slower than cloud). */
+  /**
+   * Request timeout in ms. Default: 600_000 (10 min).
+   *
+   * Gemma 4 31B Q6_K runs at ~6-9 tok/s on RTX 5090. A 4096-token response
+   * worst-case is ~11 minutes. 600s matches this realistic ceiling. Shorter
+   * timeouts caused false-positive failures during Path B verification.
+   */
   timeoutMs?: number;
   /** Override endpoint URL (used by tests). */
   url?: string;
@@ -67,8 +83,8 @@ export async function callLocalLLM(opts: LocalLLMCallOptions): Promise<string> {
   const fetchFn = opts.fetchFn ?? fetch;
   const model = opts.model ?? LLAMA_MODEL_ALIAS;
   const temperature = opts.temperature ?? 0;
-  const maxTokens = opts.maxTokens ?? 2048;
-  const timeoutMs = opts.timeoutMs ?? 120_000;
+  const maxTokens = opts.maxTokens ?? 4096;
+  const timeoutMs = opts.timeoutMs ?? 600_000;
 
   const messages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }> = [];
   if (opts.system) messages.push({ role: 'system', content: opts.system });

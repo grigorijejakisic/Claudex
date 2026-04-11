@@ -219,6 +219,9 @@ describe('LlamaServerSupervisor', () => {
       expect(capturedArgs).toContain('-c');
       expect(capturedArgs).toContain('16384');
       expect(capturedArgs).toContain('--flash-attn');
+      // --flash-attn now requires an explicit value — verify 'on' follows it
+      const fa = capturedArgs.indexOf('--flash-attn');
+      expect(capturedArgs[fa + 1]).toBe('on');
       expect(capturedArgs).toContain('--alias');
       expect(capturedArgs).toContain('gemma4');
     });
