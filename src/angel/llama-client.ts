@@ -18,6 +18,22 @@
  * failures (retry next tick) from malformed output (skip, mark processed).
  */
 
+// ---------------------------------------------------------------------------
+// Usage tracking — allows the supervisor to know when the last LLM call
+// happened so it can idle-shutdown the server when nothing needs it.
+// ---------------------------------------------------------------------------
+
+let _onUsed: (() => void) | null = null;
+
+/**
+ * Register a callback that fires after every successful callLocalLLM().
+ * The LlamaServerSupervisor calls this at boot to wire its markUsed().
+ * Pass null to unregister.
+ */
+export function registerLlamaUsageCallback(cb: (() => void) | null): void {
+  _onUsed = cb;
+}
+
 /** Default endpoint — matches run-gemma.sh. */
 export const LLAMA_SERVER_URL = 'http://127.0.0.1:8081/v1/chat/completions';
 
@@ -115,6 +131,7 @@ export async function callLocalLLM(opts: LocalLLMCallOptions): Promise<string> {
     throw new Error('llama-server response missing choices[0].message.content');
   }
 
+  _onUsed?.();
   return content.trim();
 }
 

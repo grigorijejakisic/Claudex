@@ -558,6 +558,33 @@ export async function heartbeatTick(ctx: HeartbeatContext): Promise<TickResult> 
     } catch { /* non-critical */ }
 
     // =========================================================================
+    // Llama-server idle lifecycle — shut down when idle to free ~25GB VRAM,
+    // wake up when sessions need it.
+    // =========================================================================
+    try {
+      if (ctx.llamaServerSupervisor) {
+        if (ctx.llamaServerSupervisor.idledDown) {
+          // Server was idle-shutdown. Wake it if there are active sessions
+          // that will need LLM extraction work.
+          const activeCount = (cachedPrepare(ctx.db,
+            `SELECT COUNT(*) as c FROM sessions WHERE status = 'active'`
+          ).get() as { c: number }).c;
+          if (activeCount > 0) {
+            ctx.llamaServerSupervisor.wakeFromIdle();
+            const res = await ctx.llamaServerSupervisor.ensureRunning();
+            if (!res.running) {
+              result.services_down = result.services_down ?? [];
+              result.services_down.push(`llama-server (wake from idle failed: ${res.reason})`);
+            }
+          }
+        } else {
+          // Server is (or should be) running — check idle timeout.
+          ctx.llamaServerSupervisor.checkIdleAndShutdown();
+        }
+      }
+    } catch { /* non-critical */ }
+
+    // =========================================================================
     // Guardian of All Memory — Phases 4b-4e
     // All pure SQL, no LLM calls, individually rate-limited and non-throwing.
     // KAIROS-inspired triple gate: time + session-count + mutual exclusion.

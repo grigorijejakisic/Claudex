@@ -321,6 +321,127 @@ describe('LlamaServerSupervisor', () => {
     });
   });
 
+  describe('idle shutdown', () => {
+    it('kills the managed child when idle timeout is exceeded', async () => {
+      healthQueue.push('down');   // start probe
+      healthQueue.push('loaded'); // wait poll
+      const sup = makeSupervisor({ idleTimeoutMs: 100 });
+      await sup.start();
+
+      // Fast-forward lastUsedMs so idle check triggers
+      (sup as unknown as { lastUsedMs: number }).lastUsedMs = Date.now() - 200;
+
+      const result = sup.checkIdleAndShutdown();
+      expect(result.shutdown).toBe(true);
+      expect(result.idleMs).toBeGreaterThanOrEqual(200);
+      expect(fakeChildren[0].killCalls).toContain('SIGTERM');
+      expect(sup.idledDown).toBe(true);
+      expect(logLines.some(l => l.message.includes('idle shutdown'))).toBe(true);
+    });
+
+    it('does not kill when not yet idle', async () => {
+      healthQueue.push('down');
+      healthQueue.push('loaded');
+      const sup = makeSupervisor({ idleTimeoutMs: 60_000 });
+      await sup.start();
+
+      const result = sup.checkIdleAndShutdown();
+      expect(result.shutdown).toBe(false);
+      expect(result.reason).toMatch(/not yet idle/);
+      expect(fakeChildren[0].killCalls.length).toBe(0);
+    });
+
+    it('does not kill externally-managed instances', async () => {
+      healthQueue.push('loaded'); // initial: external alive
+      const sup = makeSupervisor({ idleTimeoutMs: 100 });
+      await sup.start();
+
+      (sup as unknown as { lastUsedMs: number }).lastUsedMs = Date.now() - 200;
+
+      const result = sup.checkIdleAndShutdown();
+      expect(result.shutdown).toBe(false);
+      expect(result.reason).toMatch(/externally managed/);
+    });
+
+    it('blocks ensureRunning after idle shutdown until wakeFromIdle', async () => {
+      healthQueue.push('down');
+      healthQueue.push('loaded');
+      const sup = makeSupervisor({ idleTimeoutMs: 100 });
+      await sup.start();
+
+      // Trigger idle shutdown
+      (sup as unknown as { lastUsedMs: number }).lastUsedMs = Date.now() - 200;
+      sup.checkIdleAndShutdown();
+      // Wait for the exit event to propagate
+      await new Promise(r => setTimeout(r, 50));
+
+      // ensureRunning should refuse to restart
+      const result = await sup.ensureRunning();
+      expect(result.running).toBe(false);
+      expect(result.reason).toMatch(/idled down/);
+      expect(spawnCallCount).toBe(1); // only the initial spawn
+
+      // After wakeFromIdle, ensureRunning should restart
+      sup.wakeFromIdle();
+      expect(sup.idledDown).toBe(false);
+
+      healthQueue.push('loaded'); // wait poll for respawn
+      const result2 = await sup.ensureRunning();
+      expect(result2.attempted).toBe(true);
+      expect(result2.running).toBe(true);
+      expect(spawnCallCount).toBe(2);
+    });
+
+    it('resets restart counter so idle cycles do not exhaust budget', async () => {
+      healthQueue.push('down');
+      healthQueue.push('loaded');
+      const sup = makeSupervisor({ idleTimeoutMs: 100, maxRestarts: 2 });
+      await sup.start();
+
+      // Simulate idle → shutdown → wake → restart, twice
+      for (let i = 0; i < 3; i++) {
+        (sup as unknown as { lastUsedMs: number }).lastUsedMs = Date.now() - 200;
+        sup.checkIdleAndShutdown();
+        await new Promise(r => setTimeout(r, 50));
+
+        sup.wakeFromIdle();
+        healthQueue.push('loaded');
+        const res = await sup.ensureRunning();
+        expect(res.running).toBe(true);
+      }
+
+      // After 3 idle cycles, should still be able to restart (budget not exhausted)
+      expect(spawnCallCount).toBe(4); // 1 initial + 3 restarts
+    });
+
+    it('markUsed resets the idle timer', async () => {
+      healthQueue.push('down');
+      healthQueue.push('loaded');
+      const sup = makeSupervisor({ idleTimeoutMs: 100 });
+      await sup.start();
+
+      (sup as unknown as { lastUsedMs: number }).lastUsedMs = Date.now() - 80;
+      sup.markUsed();
+
+      const result = sup.checkIdleAndShutdown();
+      expect(result.shutdown).toBe(false);
+      expect(result.reason).toMatch(/not yet idle/);
+    });
+
+    it('is disabled when idleTimeoutMs is 0', async () => {
+      healthQueue.push('down');
+      healthQueue.push('loaded');
+      const sup = makeSupervisor({ idleTimeoutMs: 0 });
+      await sup.start();
+
+      (sup as unknown as { lastUsedMs: number }).lastUsedMs = Date.now() - 999999;
+
+      const result = sup.checkIdleAndShutdown();
+      expect(result.shutdown).toBe(false);
+      expect(result.reason).toMatch(/disabled/);
+    });
+  });
+
   describe('stop()', () => {
     it('SIGTERMs the managed child on stop', async () => {
       healthQueue.push('down');

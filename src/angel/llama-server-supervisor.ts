@@ -32,7 +32,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
 import type { WriteStream } from 'fs';
-import { checkLlamaServerHealth, LLAMA_HEALTH_URL } from './llama-client.js';
+import { checkLlamaServerHealth, LLAMA_HEALTH_URL, registerLlamaUsageCallback } from './llama-client.js';
 
 export interface LlamaServerSupervisorOptions {
   /** Project root (used to resolve the log file location). */
@@ -65,6 +65,12 @@ export interface LlamaServerSupervisorOptions {
   threads?: number;
   /** Model alias (for --alias). Default: "gemma4". */
   alias?: string;
+  /**
+   * Idle timeout in ms. If no callLocalLLM() has fired for this long, the
+   * supervisor kills the child to free VRAM. Default: 10 minutes.
+   * Set to 0 to disable idle shutdown.
+   */
+  idleTimeoutMs?: number;
   /** Dependency injection for tests. */
   spawnFn?: typeof spawn;
   /** Dependency injection for tests. */
@@ -93,6 +99,12 @@ export interface EnsureRunningResult {
   status: LlamaServerStatus;
 }
 
+export interface IdleShutdownResult {
+  shutdown: boolean;
+  idleMs: number;
+  reason: string;
+}
+
 // Empirically verified: Gemma 4 31B Q6_K (~25GB) comes up in ~25s from cold
 // on RTX 5090 with -ngl 99. 90s is a 3.6x margin for slower hardware or a
 // cold filesystem. Was originally 180s but that was a guess — verification
@@ -101,6 +113,7 @@ const DEFAULT_HEALTH_TIMEOUT_MS = 90_000;
 const DEFAULT_MAX_RESTARTS = 2;
 const SHUTDOWN_GRACE_MS = 5_000;
 const RESTART_COOLDOWN_MS = 15 * 60 * 1000;
+const DEFAULT_IDLE_TIMEOUT_MS = 10 * 60 * 1000; // 10 minutes
 
 /**
  * Default exe / model paths. Windows absolute paths from run-gemma.sh.
@@ -135,7 +148,15 @@ export class LlamaServerSupervisor {
   private lastError: string | null = null;
   private starting = false;
   private lastAttemptMs = 0;
+  private lastUsedMs = 0;
+  /** True between checkIdleAndShutdown() kill and onChildExit() — prevents
+   *  the exit handler from treating it as a crash and auto-restarting. */
+  private idleShutdownDone = false;
+  /** True after idle shutdown, persists until wakeFromIdle(). Prevents
+   *  ensureRunning() from restarting the server while idle. */
+  private _idledDown = false;
   private readonly cooldownMs: number;
+  private readonly idleTimeoutMs: number;
 
   private readonly projectRoot: string;
   private readonly serverExePath: string;
@@ -166,6 +187,7 @@ export class LlamaServerSupervisor {
     this.healthTimeoutMs = opts.healthTimeoutMs ?? DEFAULT_HEALTH_TIMEOUT_MS;
     this.maxRestarts = opts.maxRestarts ?? DEFAULT_MAX_RESTARTS;
     this.cooldownMs = opts.cooldownMs ?? RESTART_COOLDOWN_MS;
+    this.idleTimeoutMs = opts.idleTimeoutMs ?? DEFAULT_IDLE_TIMEOUT_MS;
     this.port = opts.port ?? 8081;
     this.host = opts.host ?? '127.0.0.1';
     this.gpuLayers = opts.gpuLayers ?? 99;
@@ -189,10 +211,15 @@ export class LlamaServerSupervisor {
    * load.
    */
   async start(): Promise<void> {
+    // Register the usage callback so callLocalLLM() can notify us on every
+    // successful generation. This drives the idle-shutdown timer.
+    registerLlamaUsageCallback(() => this.markUsed());
+
     try {
       // Step 1: check if something is already serving. If so, don't spawn.
       if (await this.checkHealth()) {
         this.externallyManaged = true;
+        this.lastUsedMs = Date.now();
         this.logger(
           'info',
           'existing llama-server detected on health endpoint — supervising external instance, will not respawn or kill',
@@ -253,6 +280,9 @@ export class LlamaServerSupervisor {
     }
     if (this.starting) {
       return makeResult(false, false, 'spawn already in progress');
+    }
+    if (this._idledDown) {
+      return makeResult(false, false, 'idled down — call wakeFromIdle() to re-enable');
     }
 
     // Case 1: externally-managed path.
@@ -328,6 +358,7 @@ export class LlamaServerSupervisor {
    */
   stop(): void {
     this.shutdownRequested = true;
+    registerLlamaUsageCallback(null);
 
     if (this.externallyManaged) {
       this.logger('info', 'shutdown: externally-managed llama-server left running');
@@ -377,6 +408,98 @@ export class LlamaServerSupervisor {
       childPid: this.externallyManaged ? null : this.child?.pid ?? null,
       lastError: this.lastError,
     };
+  }
+
+  /**
+   * Mark the server as recently used. Called by callLocalLLM() via the
+   * registered usage callback after every successful generation.
+   */
+  markUsed(): void {
+    this.lastUsedMs = Date.now();
+  }
+
+  /**
+   * Clear the idle-down state so ensureRunning() can restart the server.
+   * Called by the heartbeat when active sessions exist and llama-server
+   * needs to come back up.
+   */
+  wakeFromIdle(): void {
+    if (!this._idledDown) return;
+    this._idledDown = false;
+    this.logger('info', 'woken from idle — ensureRunning() will restart on next call');
+  }
+
+  /** True when the server was shut down for idleness and hasn't been woken. */
+  get idledDown(): boolean {
+    return this._idledDown;
+  }
+
+  /**
+   * Check if the managed server has been idle longer than idleTimeoutMs.
+   * If so, kill it to free VRAM. Called by the heartbeat every tick.
+   *
+   * Does NOT affect externally-managed instances — if you started
+   * llama-server manually, the supervisor won't kill it.
+   *
+   * After idle shutdown, the next heartbeat tick that detects llama-server
+   * as down will call ensureRunning() and cold-start it (~25s on RTX 5090).
+   * restartCount is reset so the idle→restart cycle doesn't exhaust the
+   * restart budget.
+   */
+  checkIdleAndShutdown(): IdleShutdownResult {
+    const idleMs = this.lastUsedMs > 0 ? Date.now() - this.lastUsedMs : 0;
+
+    if (this.idleTimeoutMs <= 0) {
+      return { shutdown: false, idleMs, reason: 'idle shutdown disabled' };
+    }
+    if (this.shutdownRequested) {
+      return { shutdown: false, idleMs, reason: 'shutdown already in progress' };
+    }
+    if (this.externallyManaged) {
+      return { shutdown: false, idleMs, reason: 'externally managed — will not kill' };
+    }
+    if (!this.child || this.child.killed) {
+      return { shutdown: false, idleMs, reason: 'not running' };
+    }
+    if (this.starting) {
+      return { shutdown: false, idleMs, reason: 'still starting up' };
+    }
+    if (idleMs < this.idleTimeoutMs) {
+      return { shutdown: false, idleMs, reason: 'not yet idle' };
+    }
+
+    // Idle timeout exceeded — kill the child to free VRAM.
+    const childPid = this.child.pid;
+    this.logger(
+      'info',
+      `idle shutdown: no LLM calls for ${Math.round(idleMs / 1000)}s (threshold ${Math.round(this.idleTimeoutMs / 1000)}s) — killing pid ${childPid} to free ~25GB VRAM`,
+    );
+
+    this.idleShutdownDone = true;
+    this._idledDown = true;
+    try {
+      this.child.kill('SIGTERM');
+    } catch {
+      /* already dead */
+    }
+
+    // Give it a grace period, then SIGKILL.
+    setTimeout(() => {
+      if (this.child && !this.child.killed) {
+        this.logger('warn', `idle shutdown: SIGKILL to pid ${childPid} after ${SHUTDOWN_GRACE_MS}ms grace`);
+        try {
+          this.child.kill('SIGKILL');
+        } catch {
+          /* already dead */
+        }
+      }
+    }, SHUTDOWN_GRACE_MS).unref();
+
+    // Reset restart counter so the next ensureRunning() doesn't think we
+    // exhausted the budget. Idle shutdown is intentional, not a crash.
+    this.restartCount = 0;
+
+    return { shutdown: true, idleMs, reason: 'idle timeout exceeded — server killed' };
   }
 
   // ---------------------------------------------------------------------------
@@ -465,6 +588,9 @@ export class LlamaServerSupervisor {
         `llama-server did not become healthy within ${this.healthTimeoutMs}ms`,
       );
     }
+    this.lastUsedMs = Date.now();
+    this.idleShutdownDone = false;
+    this._idledDown = false;
     this.logger('info', 'llama-server is healthy and ready');
   }
 
@@ -485,10 +611,19 @@ export class LlamaServerSupervisor {
 
   private onChildExit(code: number | null, signal: NodeJS.Signals | null): void {
     const msg = `child exited: code=${code} signal=${signal}`;
-    this.logger(this.shutdownRequested ? 'info' : 'warn', msg);
+    const intentional = this.shutdownRequested || this.idleShutdownDone;
+    this.logger(intentional ? 'info' : 'warn', msg);
     this.child = null;
 
     if (this.shutdownRequested) return;
+
+    // Idle shutdown is intentional — don't auto-restart. The heartbeat's
+    // ensureRunning() will cold-start when the next LLM call is needed.
+    if (this.idleShutdownDone) {
+      this.idleShutdownDone = false;
+      this.logger('info', 'idle shutdown complete — VRAM freed, will restart on demand');
+      return;
+    }
 
     if (this.restartCount >= this.maxRestarts) {
       this.lastError = `llama-server died ${this.restartCount} times, giving up — Angel LLM generation unavailable until cool-down elapses`;
