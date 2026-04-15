@@ -6,7 +6,8 @@
       "mcp__claudex-recall__claudex_store",
       "mcp__claudex-recall__claudex_recall",
       "mcp__claudex-recall__claudex_session",
-      "mcp__claudex-recall__claudex_message"
+      "mcp__claudex-recall__claudex_message",
+      "mcp__claudex-recall__claudex_curated_context"
     ]
   }
 }

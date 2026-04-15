@@ -73,9 +73,17 @@ export interface AngelConfig {
   idleThresholdSeconds: number;
   /** Auto-close threshold in minutes — sessions still idle this long after warning get auto-closed. Default: 15 min (so 30 min total). */
   autoCloseMinutesAfterWarning: number;
-  /** @deprecated Kept for backwards-compatible config parsing; no longer routed. Path B eliminated CliProxy — all generation goes through llama-client. */
+  /**
+   * Cloud-tier model tag (e.g. "glm-5.1:cloud"). Informational — the active
+   * generation model is resolved in llama-client from env OLLAMA_GEN_MODEL
+   * (default: glm-5.1:cloud). Kept on the config for introspection and for
+   * older callers that still read it.
+   */
   cloudModel: string;
-  /** @deprecated Kept for backwards-compatible config parsing; no longer routed. Path B eliminated Ollama generation paths — all generation goes through llama-client against the local llama.cpp server. */
+  /**
+   * Local-fallback model tag (e.g. "glm-5:cloud" or a local Ollama tag).
+   * Informational — same resolution rule as cloudModel.
+   */
   localModel: string;
   /** Max patterns to extract per session. Default: 5. */
   maxPatternsPerSession: number;
@@ -128,8 +136,8 @@ export const DEFAULT_ANGEL_CONFIG: AngelConfig = {
   heartbeatIntervalMs: 2 * 60 * 1000, // 2 minutes (adaptive loop overrides based on workload)
   idleThresholdSeconds: 15 * 60,        // 15 minutes — warning
   autoCloseMinutesAfterWarning: 15,     // 15 minutes after warning — auto-close (30 min total)
-  cloudModel: 'claude-opus-4-6',
-  localModel: 'glm-5:cloud',
+  cloudModel: 'glm-5.1:cloud',
+  localModel: 'glm-5.1:cloud',
   maxPatternsPerSession: 5,
   pidFile: '',  // Set at runtime from paths
   retention: { ...DEFAULT_RETENTION_CONFIG },

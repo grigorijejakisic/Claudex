@@ -32,7 +32,13 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
 import type { WriteStream } from 'fs';
-import { checkLlamaServerHealth, LLAMA_HEALTH_URL, registerLlamaUsageCallback } from './llama-client.js';
+import {
+  checkLlamaServerHealth,
+  isCloudModel,
+  LLAMA_HEALTH_URL,
+  LLAMA_MODEL_ALIAS,
+  registerLlamaUsageCallback,
+} from './llama-client.js';
 
 export interface LlamaServerSupervisorOptions {
   /** Project root (used to resolve the log file location). */
@@ -71,6 +77,14 @@ export interface LlamaServerSupervisorOptions {
    * Set to 0 to disable idle shutdown.
    */
   idleTimeoutMs?: number;
+  /**
+   * Cloud mode — when the configured generation model is a `:cloud` tag,
+   * Angel's generation calls route through the local Ollama daemon which
+   * forwards to ollama.com. In that mode this supervisor must NOT spawn
+   * llama-server.exe; it only health-probes the Ollama daemon.
+   * Default: auto-detected from LLAMA_MODEL_ALIAS (env OLLAMA_GEN_MODEL).
+   */
+  cloudMode?: boolean;
   /** Dependency injection for tests. */
   spawnFn?: typeof spawn;
   /** Dependency injection for tests. */
@@ -157,6 +171,7 @@ export class LlamaServerSupervisor {
   private _idledDown = false;
   private readonly cooldownMs: number;
   private readonly idleTimeoutMs: number;
+  private readonly cloudMode: boolean;
 
   private readonly projectRoot: string;
   private readonly serverExePath: string;
@@ -188,6 +203,7 @@ export class LlamaServerSupervisor {
     this.maxRestarts = opts.maxRestarts ?? DEFAULT_MAX_RESTARTS;
     this.cooldownMs = opts.cooldownMs ?? RESTART_COOLDOWN_MS;
     this.idleTimeoutMs = opts.idleTimeoutMs ?? DEFAULT_IDLE_TIMEOUT_MS;
+    this.cloudMode = opts.cloudMode ?? isCloudModel(LLAMA_MODEL_ALIAS);
     this.port = opts.port ?? 8081;
     this.host = opts.host ?? '127.0.0.1';
     this.gpuLayers = opts.gpuLayers ?? 99;
@@ -214,6 +230,24 @@ export class LlamaServerSupervisor {
     // Register the usage callback so callLocalLLM() can notify us on every
     // successful generation. This drives the idle-shutdown timer.
     registerLlamaUsageCallback(() => this.markUsed());
+
+    // Cloud mode: generation goes through the local Ollama daemon which
+    // forwards `:cloud` tags to ollama.com. We never spawn llama-server.exe
+    // in this mode — just verify the daemon is reachable.
+    if (this.cloudMode) {
+      if (await this.checkHealth()) {
+        this.externallyManaged = true;
+        this.lastUsedMs = Date.now();
+        this.logger(
+          'info',
+          `cloud mode (${LLAMA_MODEL_ALIAS}): Ollama daemon reachable at ${this.healthUrl} — no local llama-server spawn`,
+        );
+      } else {
+        this.lastError = `cloud mode: Ollama daemon not reachable at ${this.healthUrl} — run 'ollama serve' and 'ollama signin'`;
+        this.logger('error', this.lastError);
+      }
+      return;
+    }
 
     try {
       // Step 1: check if something is already serving. If so, don't spawn.
@@ -283,6 +317,16 @@ export class LlamaServerSupervisor {
     }
     if (this._idledDown) {
       return makeResult(false, false, 'idled down — call wakeFromIdle() to re-enable');
+    }
+    // Cloud mode never spawns a local process — health-probe only.
+    if (this.cloudMode) {
+      const healthy = await this.checkHealth();
+      if (healthy) this.lastUsedMs = Date.now();
+      return makeResult(
+        false,
+        healthy,
+        healthy ? 'cloud mode: Ollama daemon healthy' : 'cloud mode: Ollama daemon not reachable',
+      );
     }
 
     // Case 1: externally-managed path.
@@ -449,6 +493,9 @@ export class LlamaServerSupervisor {
   checkIdleAndShutdown(): IdleShutdownResult {
     const idleMs = this.lastUsedMs > 0 ? Date.now() - this.lastUsedMs : 0;
 
+    if (this.cloudMode) {
+      return { shutdown: false, idleMs, reason: 'cloud mode — no local process to shut down' };
+    }
     if (this.idleTimeoutMs <= 0) {
       return { shutdown: false, idleMs, reason: 'idle shutdown disabled' };
     }

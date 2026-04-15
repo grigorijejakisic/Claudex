@@ -49,7 +49,12 @@ import { getSessionEvents, synthesizeSessionSummary, saveSessionSummary } from '
 import { captureRecallFlowEntry } from '../adapters/shared/lifecycle.js';
 import type { RerankerSupervisor } from './reranker-supervisor.js';
 import type { LlamaServerSupervisor } from './llama-server-supervisor.js';
-import { callLocalLLM, checkLlamaServerHealth } from './llama-client.js';
+import {
+  callLocalLLM,
+  checkLlamaServerHealth,
+  isCloudModel,
+  LLAMA_MODEL_ALIAS,
+} from './llama-client.js';
 
 export interface HeartbeatContext {
   db: Database;
@@ -455,11 +460,15 @@ export async function heartbeatTick(ctx: HeartbeatContext): Promise<TickResult> 
       interface DownOutcome { label: string; outcome: string; }
       const downOutcomes: DownOutcome[] = [];
 
-      // llama-server (LLM generation) — probed via checkLlamaServerHealth
-      // which parses /v1/models and verifies the data array is non-empty.
+      // Generation backend — probes the Ollama daemon (or the legacy
+      // llama-server in local mode) via checkLlamaServerHealth.
+      const cloudMode = isCloudModel(LLAMA_MODEL_ALIAS);
       if (!(await checkLlamaServerHealth())) {
+        const label = cloudMode
+          ? `Ollama daemon (LLM generation — ${LLAMA_MODEL_ALIAS})`
+          : 'llama-server (LLM generation — Gemma 4 31B Q6_K)';
         downOutcomes.push({
-          label: 'llama-server (LLM generation — Gemma 4 31B Q6_K)',
+          label,
           outcome: 'no auto-restart available',
         });
       }
@@ -517,11 +526,13 @@ export async function heartbeatTick(ctx: HeartbeatContext): Promise<TickResult> 
           }
         }
 
-        // llama-server recovery: delegate to LlamaServerSupervisor.ensureRunning().
-        // Same pattern as the reranker — the supervisor owns the lifecycle
-        // (bounded restart + cool-down + externally-managed detection); the
-        // heartbeat just kicks it when the service is observed down.
-        const llamaEntry = downOutcomes.find(o => o.label.includes('llama-server'));
+        // Generation backend recovery: delegate to LlamaServerSupervisor.
+        // Matches cloud-mode label ("Ollama daemon") and legacy local label
+        // ("llama-server"). In cloud mode the supervisor only health-probes;
+        // it never spawns.
+        const llamaEntry = downOutcomes.find(o =>
+          o.label.includes('llama-server') || o.label.includes('Ollama daemon'),
+        );
         if (llamaEntry && ctx.llamaServerSupervisor) {
           try {
             const res = await ctx.llamaServerSupervisor.ensureRunning();
@@ -542,6 +553,22 @@ export async function heartbeatTick(ctx: HeartbeatContext): Promise<TickResult> 
           }
         }
 
+        // Filter the stale ollama-embeddings label when the same daemon is
+        // already surfaced under the LLM label (cloud mode).
+        if (cloudMode) {
+          const embIdx = downOutcomes.findIndex(o =>
+            o.label.startsWith('Ollama (Embeddings'),
+          );
+          if (embIdx >= 0 && downOutcomes.some(o => o.label.startsWith('Ollama daemon'))) {
+            downOutcomes.splice(embIdx, 1);
+            if (result.services_down) {
+              result.services_down = result.services_down.filter(
+                l => !l.startsWith('Ollama (Embeddings'),
+              );
+            }
+          }
+        }
+
         // If anything is still down after recovery attempts, advise active sessions.
         if (downOutcomes.length > 0) {
           const advisory = '⚠ Services down: '
@@ -559,10 +586,10 @@ export async function heartbeatTick(ctx: HeartbeatContext): Promise<TickResult> 
 
     // =========================================================================
     // Llama-server idle lifecycle — shut down when idle to free ~25GB VRAM,
-    // wake up when sessions need it.
+    // wake up when sessions need it. Skipped in cloud mode (no local process).
     // =========================================================================
     try {
-      if (ctx.llamaServerSupervisor) {
+      if (ctx.llamaServerSupervisor && !isCloudModel(LLAMA_MODEL_ALIAS)) {
         if (ctx.llamaServerSupervisor.idledDown) {
           // Server was idle-shutdown. Wake it if there are active sessions
           // that will need LLM extraction work.

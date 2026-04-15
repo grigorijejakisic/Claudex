@@ -33,7 +33,12 @@ import { startHeartbeat, type TickResult } from './heartbeat.js';
 import { DEFAULT_ANGEL_CONFIG, type AngelConfig } from './types.js';
 import { RerankerSupervisor } from './reranker-supervisor.js';
 import { LlamaServerSupervisor } from './llama-server-supervisor.js';
-import { checkLlamaServerHealth } from './llama-client.js';
+import {
+  checkLlamaServerHealth,
+  isCloudModel,
+  LLAMA_MODEL_ALIAS,
+  LLAMA_SERVER_URL,
+} from './llama-client.js';
 
 // ---------------------------------------------------------------------------
 // CLI argument parsing
@@ -277,8 +282,10 @@ async function main(): Promise<void> {
   log('info', `Angel started`, {
     pid: process.pid,
     llm: llamaHealthy
-      ? 'local llama-server (Gemma 4 31B Q6_K via 127.0.0.1:8081)'
-      : 'local llama-server unavailable — generation tasks will retry',
+      ? (isCloudModel(LLAMA_MODEL_ALIAS)
+          ? `Ollama Cloud via daemon (${LLAMA_MODEL_ALIAS}) at ${LLAMA_SERVER_URL}`
+          : `local llama-server (${LLAMA_MODEL_ALIAS}) at ${LLAMA_SERVER_URL}`)
+      : 'generation backend unavailable — tasks will retry',
     interval_minutes: intervalMin,
     idle_threshold_minutes: Math.round(config.idleThresholdSeconds / 60),
   });
