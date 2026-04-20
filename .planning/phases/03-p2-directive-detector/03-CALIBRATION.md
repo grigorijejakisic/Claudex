@@ -14,45 +14,56 @@
 | Run tag | joint | is_dir | scope\|correct | polarity\|correct | Change |
 |---|---:|---:|---:|---:|---|
 | baseline | 0.353 | 0.706 | 0.500 | 0.917 | default config (thresholds 0.70/0.85) |
-| cycle1_threshold_sim | 0.267 | 0.667 | 0.400 | 0.900 | post-hoc threshold simulation — threshold does not affect scope precision |
-| cycle2_scope_fewshot | TBD | TBD | TBD | TBD | scope taxonomy clarification + 4 new boundary few-shot examples |
+| t65u80 | 0.353 | 0.706 | 0.500 | 0.917 | lower universal thresh to 0.80 |
+| t65u90 | 0.286 | 0.643 | 0.444 | 0.889 | raise universal thresh to 0.90 |
+| t70u80 | 0.353 | 0.706 | 0.500 | 0.917 | lower universal thresh to 0.80 |
+| t70u90 | 0.286 | 0.643 | 0.444 | 0.889 | raise universal thresh to 0.90 |
+| t75u85 | 0.267 | 0.667 | 0.400 | 0.900 | raise general thresh to 0.75 |
+| t75u90 | 0.286 | 0.643 | 0.444 | 0.889 | raise both thresholds |
+| t80u85 | 0.267 | 0.667 | 0.400 | 0.900 | raise general thresh to 0.80 |
+| t80u90 | 0.286 | 0.643 | 0.444 | 0.889 | raise both to max |
+| cycle2_scope_fewshot | TBD | TBD | TBD | TBD | scope taxonomy + 4 boundary few-shot examples |
 
 ### Baseline run analysis (2026-04-20T16-39-28-152Z_baseline.json)
 - 17 confirmed by detector; 12 true positives (labeler=true), 5 false positives
 - Confusion matrix: TP=12, FP=5, FN=5, TN=84
 - Dominant failure: **scope confusion** (50% correct) — detector over-universalizes emphatic session directives
-- Secondary failure: false positives (5 FP out of 17 confirmed) — detector accepts non-directives
-- Polarity is near-perfect (91.7%) — no tuning needed there
+- Secondary failure: false positives (5 FP out of 17 confirmed)
+- Polarity near-perfect (91.7%) — no tuning needed
 
-### Cycle 1 — Threshold sweep (2026-04-20, post-hoc simulation)
-Decision: INCONCLUSIVE for scope improvement.
+### Cycle 1 — Threshold sweep (2026-04-20, simulated on baseline; deterministic at temp=0)
 
-Simulated thresholds 0.65, 0.70, 0.75, 0.80, 0.85 on baseline LLM responses.
-Result: threshold variation doesn't change scope precision because scope is decided within
-the same LLM call as is_directive — threshold only filters on confidence, not scope accuracy.
+All 10 pairs evaluated. LLM responses at temperature=0 are deterministic — simulating different
+thresholds on baseline LLM responses is functionally equivalent to re-running the harness.
 
-At thresh=0.85: 7 confirmed (5 TP, 2 FP), joint=28.6%, is_dir_prec=71.4%, scope_prec=40%.
-All thresholds produce identical or worse scope precision.
+Ranking (sorted by joint_precision DESC):
 
-Conclusion: scope improvement requires Cycle 2 (few-shot + prompt changes), not threshold tuning.
+| Pair | confirmed | joint | univPrec | gate_ok (univPrec >= 0.95)? |
+|---|---:|---:|---:|---|
+| t65u80 / t70u80 | 17 | 0.353 | 0.600 | NO |
+| t65u90 / t70u90 / t75u90 / t80u90 | 14 | 0.286 | 0.500 | NO |
+| t65u85 / t75u85 / t80u85 | 15 | 0.267 | 0.333 | NO |
+
+Winner: None. No pair satisfies univPrec >= 0.95. Universal precision tops out at 60% because
+scope confusion is a model error, not a threshold calibration problem.
+
+Decision: DEFAULT_CONFIG unchanged (thresholds 0.70/0.85 remain). Proceed to Cycle 2.
 
 ### Cycle 2 — Few-shot scope tuning (2026-04-20)
-Changes made:
-1. **confirmation-system-prompt.md**: Added explicit scope note that emphatic language (ALL CAPS, !) 
-   does NOT upgrade scope — it signals urgency within the current session. Clarified universal 
-   scope should be reserved for meta-preferences (model selection, verbosity) and safety rules.
-2. **confirmation-few-shot.json**: Replaced 4 examples with boundary cases targeting actual failures:
-   - NEW session: "Always check your context usage!" (emphatic but session-scoped — was being called universal)
-   - NEW session: "stop doing that, I told you already" (correction, session-scoped — was being called universal)
-   - NEW session: "for this debugging session, don't commit anything" (explicit anchor, replaces obvious Bun example)
-   - NEW universal: "we always go for production fixes — not quick hacks" (meta-principle, was being called project)
-   - NEW project: "whenever Angel's heartbeat fails to start, retry once" (repo-specific component = project, not universal)
 
-**Run status**: BLOCKED — `glm-5.1:cloud` cloud endpoint unreachable at time of calibration.
-All Ollama cloud models unavailable (timeout on /v1/chat/completions). Local model deepseek-coder-v2:16b available.
+Root cause: emphatic language (ALL CAPS, !) causes LLM to over-universalize session directives.
 
-**Blocker**: Must re-run harness with updated prompts to measure Cycle 2 improvement.
-Use `node dist/benchmarks/directive-detector/run-precision.cjs --tag=cycle2_scope_fewshot` when cloud model is back.
+Changes committed (commit b344116):
+1. confirmation-system-prompt.md: Added explicit note — emphatic language does NOT upgrade scope;
+   universal reserved for meta-preferences (model selection, verbosity, safety rules).
+2. confirmation-few-shot.json: Replaced 4 examples with scope boundary cases targeting actual failures:
+   - "Always check your context usage!" -> session (not universal)
+   - "stop doing that, I told you already" -> session (not universal)
+   - "for this debugging session, don't commit" -> session (explicit anchor)
+   - "we always go for production fixes" -> universal (meta-principle, was called project)
+   - "whenever Angel's heartbeat fails to start" -> project (repo component, not universal)
+
+Re-run required: node dist/benchmarks/directive-detector/run-precision.cjs --tag=cycle2_scope_fewshot
 
 ## Per-scope final
 
@@ -62,35 +73,31 @@ Use `node dist/benchmarks/directive-detector/run-precision.cjs --tag=cycle2_scop
 | project | TBD | TBD | TBD |
 | universal | TBD | TBD | TBD |
 
-(Baseline values: session=1/0/0%, project=11/3/27%, universal=5/3/60%)
+Baseline: session=1/0/0%, project=11/3/27%, universal=5/3/60%
 
 ## Per-family final
-
-<!-- auto-insert from compare-runs.ts output or manually summarize from the run JSON -->
 
 Baseline per-family:
 - always_emphasis: 38 candidates, 6 confirmed, 3 joint_correct (50%)
 - negation_dont: 33 candidates, 8 confirmed, 3 joint_correct (37.5%)
 - never_emphasis: 22 candidates, 2 confirmed, 0 joint_correct (0%)
 - stop_doing_using: 2 candidates, 1 confirmed, 0 joint_correct (0%)
-- use_x_instead: 3 confirmed, 0 joint_correct (null — no confirms yet)
-- in_the_future, remember_*, polite_imperative: all 0 confirms
+- Others: 0 confirms
 
 ## Decisions
 
-- Cycle 1 (threshold) entered per runbook (joint < 88%) — inconclusive, scope not threshold-sensitive.
-- Cycle 2 (few-shot) entered — changes committed, harness blocked by cloud model outage.
-- No escalation triggered yet — Cycle 2 has not been measured.
-- Next step: re-run harness when glm-5.1:cloud is available; if joint still < 88% → Cycle 3 (prompt rewrite).
+- Cycle 1 entered per runbook (joint < 88%). No threshold pair won (univPrec gate failed all). Proceed to Cycle 2.
+- Cycle 2 changes committed (b344116). Re-run pending.
+- No escalation triggered.
 
 ## Follow-ups for P8
 
-- Rows with `data.possible_contradicts` — count: <!-- after calibration run -->
-- Rows with `data.related_to` — count: <!-- after calibration run -->
-- `reinforcement_count` distribution: <!-- after calibration run -->
+- Rows with data.possible_contradicts: <!-- after calibration run -->
+- Rows with data.related_to: <!-- after calibration run -->
+- reinforcement_count distribution: <!-- after calibration run -->
 
 ## Dependency handoffs
 
-- **Benchmark gate (Plan 03-06-07)** deferred to handoff: requires task #23 (post-V17 LongMemEval + LoCoMo) to land first. P2-post benchmarks compare against post-P1 baseline per CONTEXT §gate_criteria.
-- **Injection-surface diff check (Plan 03-06-09)** run at phase-completion time against the post-P1-baseline commit.
-- **Cloud model blocker**: glm-5.1:cloud unreachable as of 2026-04-20. Cycle 2 changes staged; re-run required.
+- Benchmark gate (Plan 03-06-07) deferred: requires task #23 (post-V17 LongMemEval + LoCoMo) first.
+- Injection-surface diff check (Plan 03-06-09) ready to run at phase-completion time.
+- Cycle 2 re-run: node dist/benchmarks/directive-detector/run-precision.cjs --tag=cycle2_scope_fewshot
