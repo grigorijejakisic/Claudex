@@ -1,31 +1,53 @@
-# Active Handoff — claudex-v3 (v4 redesign)
+---
+schema: claudex/handoff
+version: 1
+handoff_id: claudex-v3-handoff-phase2-bench
+status: active
+created_at: 2026-04-20T10:44:35Z
+updated_at: 2026-04-20T10:44:35Z
+origin_session_id: unknown
+---
 
-> Commander's intent: user wants the v4 redesign executed via `/auto-orchestrate`. Scope locked, crystallization complete, Phase 2 (P1 — Artifact table unification) is the next step. One human-review todo blocks P1 *execution* (not planning).
+# Handoff: Phase 2 (P1) benchmark collection + Phase 3 kickoff
+Date: 2026-04-20
 
-## What's Left To Do
+## What I Was Working On
 
-1. **Human-review the stale `project_curated_context` entries before P1 migration runs.**
-   Markers flagged in STATE.md: `Gemma 4 31B`, `llama-server:8081`, `local llama-server`. These will be imported as `status='stale'` during P1's migration into the unified artifact table; a human decides whether to keep, rewrite, or drop them. Can happen any time before P1 execute (not before P1 plan).
+Phase 2 (P1 — Artifact table unification) is CODE + TESTS + LIVE DB COMPLETE. Benchmarks running async in background; need to collect final results, record them, then move to Phase 3 (P2 Directive Detector).
 
-2. **Resume the pipeline: `/auto-orchestrate --from-phase 2`.**
-   This spawns a fresh `plan-2` teammate running `/auto-plan-phase 2` against `.planning/ROADMAP.md` Phase 2 (P1 — Artifact table unification). Plan covers the V17 migration + legacy views. Then execute. Then P2 (directive detector) starts.
+## Progress Made
 
-3. **Subsequent phase sequence** (the big picture — read `ROADMAP.md` for per-phase detail):
-   - P2: Directive detector (writes `directive_rule` artifacts).
-   - P3: MEMORY.md curation + C2 auto-dream write-guard.
-   - **P4: Kill legacy injection** (the big benchmark gate — session-start ≤500 tokens, UPS ≤1KB, cache-stable, `initialUserMessage` prime).
-   - P5: Retrieval simplification (kill the 6-multiplier scoring chain).
-   - P6: Framing rewrite (all formatters advisory voice).
-   - **P6.5: RL ablation gate** (feature-flag, bench-measured go/no-go on RL deletion).
-   - P7: Angel simplification (CARA/dream/investigator/crystallizer gone; RL conditional).
-   - P8: Rule lifecycle (scope + supersession + decay).
-   - P9: Final validation + Vesna test, drop legacy tables, tag v4.
+- [x] All 7 P1 plans shipped (02-01..02-07), 44 new Vitest cases green
+- [x] Live V17 migration applied to ~/.claudex/db/claudex.db — 1052 rows migrated, 9 stale flagged, user_version=17, legacy_id_map 976 rows, all 6 _old backstops present
+- [x] Backup verified PASS (6/6 checks): ~/.claudex/backups/pre-v4-P1-1776681458021.db (sha256 3680d8dcd68dc396...)
+- [x] End-to-end smoke test via learnings view: INSERT → artifact → DELETE round-trip PASS
+- [x] Angel restarted (PID 7812 via session-start hook auto-respawn)
+- [x] Benchmark harness config fixed (commit 01e80c7): deepseek-coder-v2:16b via Ollama, env-var overrides
+- [x] deepseek-coder-v2:16b pulled (8.9 GB)
+- [x] Benchmarks relaunched async 2026-04-20T12:27
+
+## What's Actually Left To Do
+
+- [ ] Wait for LongMemEval Oracle + LoCoMo to finish (~4-10h runtime)
+- [ ] Record final scores — append to `.planning/phases/02-p1-artifact-table-unification/backup-manifest.md` or a dedicated `benchmark-results.md` in the same dir
+- [ ] Update CLAUDEX_V3/CLAUDE.md LoCoMo baseline (55.5% via sonnet-4-6 → new deepseek-v2 anchor; team-lead owns per prior message)
+- [ ] Commit: `feat(02): record post-migration benchmark scores; Phase 2 TRULY complete`
+- [ ] Kick off Phase 3 (P2 Directive Detector): `/auto-orchestrate --from-phase 3` or equivalent
+
+## Decisions Needed Before Continuing
+
+None. Team-lead signed off on LoCoMo baseline change; benchmarks running with the new config are the v4 forward anchor.
+
+## First Action Next Session
+
+1. Check benchmark processes still alive: `wmic process where "commandline like '%benchmark%harness%'" get processid,commandline`
+2. If alive, tail logs for progress: `tail -20 benchmarks/results/p1-postmigration/longmemeval-v17-*.log` + `locomo-v17-*.log`
+3. If finished, grep for `overall` / `Oracle.*%` in both logs for final scores.
 
 ## Context That Won't Be Obvious
 
-- **v4 supersedes v3.5.** The session-49 consolidation spec (`context/specs/CLAUDEX_V3_5_CONSOLIDATION.md`) is archived as prior art. The authoritative scope is `context/specs/CLAUDEX_V4_SCOPE.md`. Memory-as-rules is the diagnosis; advisory/pull is the treatment.
-- **Benchmark floors are hard.** LongMemEval Oracle ≥88% (currently 90.6% — never cross the floor). LoCoMo no regression >2pp per phase. Every phase commit includes both scores in the message. Phase reverts on regression.
-- **`.planning.archive.2026-04-20/` is the prior "CC Source Upgrades" milestone** — never started, 81 items. Five items merged into v4 (T5, I3, C2, I1, T3 budget). Don't resurrect the rest.
-- **Auto-orchestrate's task-list can collide** with my orchestrator-level `TaskCreate` calls — creates "task-list" noise the teammates see as misrouted messages. If resuming, either don't create orchestrator-level tasks OR prefix them so they're obviously out-of-band.
-- **crystallizer produced `.planning/` cleanly on second attempt** after a message-delivery race caused it to think it was still waiting. Pattern: when a teammate reports "still blocked" despite your SendMessage succeeding, resend with a `RESEND:` prefix.
-- **Team name `auto-gsd-pipeline` is shared** across sessions. If resuming and you see a stale team, clean up with `rm -rf ~/.claude/teams/auto-gsd-pipeline ~/.claude/tasks/auto-gsd-pipeline` before recreating (TeamDelete requires being in-team).
+- **Benchmark PIDs (as of handoff):** LongMemEval 33672, LoCoMo 31268. Background processes independent of this session.
+- **Benchmark log paths:** `benchmarks/results/p1-postmigration/longmemeval-v17-20260420-122734.log` + `locomo-v17-.log` (empty-$TS suffix due to shell quoting in launch).
+- **Two CLI TDZ bugs were surfaced + fixed** during pre-flight (commits 4721ff8 + 4073715). Pattern: top-level const in migrate.ts gets hoisted as `var = undefined` when CJS bundle's `isDirectRun` dispatcher fires. Inline the constant at call sites, don't add new top-level ones.
+- **LongMemEval at [30/500] = 80.0% accuracy** when I handed off. Baseline 90.6% on 470 instances. First 30 are noisy but within envelope.
+- **LoCoMo baseline (55.5%) not reproducible** — CLIProxy on this machine serves only Gemini + GPT, no Claude. New deepseek anchor supersedes per team-lead.
