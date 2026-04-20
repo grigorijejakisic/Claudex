@@ -7,9 +7,9 @@ A directive is a STANDING RULE the user states for future turns — not:
 - a one-off instruction for the current step only
 
 Scope taxonomy:
-- **session**: scoped to the current task, PR, debugging loop, or review
-- **project**: applies everywhere in the current repo
-- **universal**: applies across every project the user works on
+- **session**: scoped to the current task, PR, debugging loop, or review. NOTE: emphatic language (ALL CAPS, exclamation marks, "I told you already") does NOT upgrade scope — it just signals urgency within the current session.
+- **project**: applies everywhere in the current repo. This is the DEFAULT when context is about this codebase's workflows, tools, or architecture.
+- **universal**: applies across EVERY project the user works on. Reserve for rules about the user's cognitive style, meta-preferences (model selection, verbosity), or safety rules that transcend any specific repo.
 
 Polarity:
 - **prescriptive**: do X (positive assertion)

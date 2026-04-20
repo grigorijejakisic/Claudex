@@ -1,27 +1,61 @@
 {
   "examples": [
     {
-      "candidate_text": "for this PR, keep the refactor minimal — I just want the bug fixed, nothing else",
+      "candidate_text": "Always check your context usage before drawing conclusions! DO NOT SKIP THIS STEP!",
       "context": [
-        { "role": "user", "turn_offset": -1, "text": "The login flow is throwing on expired tokens." },
-        { "role": "user", "turn_offset":  0, "text": "for this PR, keep the refactor minimal — I just want the bug fixed, nothing else" },
-        { "role": "user", "turn_offset": 1, "text": "And open a follow-up issue if you see cleanup worth doing." }
+        { "role": "user", "turn_offset": -1, "text": "We're close to the context limit and you just said we have 40% left." },
+        { "role": "user", "turn_offset":  0, "text": "Always check your context usage before drawing conclusions! DO NOT SKIP THIS STEP!" },
+        { "role": "user", "turn_offset": 1, "text": "I need you to keep an eye on that for the rest of this session." }
       ],
       "expected_output": {
         "is_directive": true,
-        "confidence": 0.9,
+        "confidence": 0.85,
         "polarity": "prescriptive",
         "scope": "session",
-        "suggested_title": "Keep this PR minimal",
-        "normalized_text": "For this PR, keep the refactor minimal — only fix the bug, no adjacent cleanup.",
-        "reasoning": "'for this PR' anchors to the current change; standing rule for the duration of this work."
+        "suggested_title": "Verify context usage before estimating capacity",
+        "normalized_text": "Before drawing conclusions about remaining context capacity, always verify the actual usage counter.",
+        "reasoning": "Emphatic ALL CAPS and exclamation marks signal urgency but do NOT upgrade scope. The directive is triggered by a specific session error and is about current-session context management, not a universal principle. 'rest of this session' in next turn confirms session scope."
       }
     },
     {
-      "candidate_text": "in this debugging session, don't commit anything until I say so",
+      "candidate_text": "stop doing that, I told you already",
+      "context": [
+        { "role": "user", "turn_offset": -1, "text": "You did the same thing three turns ago and I corrected you." },
+        { "role": "user", "turn_offset":  0, "text": "stop doing that, I told you already" },
+        { "role": "user", "turn_offset": 1, "text": "Just focus on what I asked." }
+      ],
+      "expected_output": {
+        "is_directive": true,
+        "confidence": 0.78,
+        "polarity": "prohibitive",
+        "scope": "session",
+        "suggested_title": "Cease previously corrected behavior",
+        "normalized_text": "Stop repeating the previously corrected behavior that the user has already flagged.",
+        "reasoning": "'I told you already' is a session correction, not a universal rule. The rule is session-scoped because it references a correction made in the same conversation. Without knowing what 'that' refers to, the rule cannot be generalized beyond this session."
+      }
+    },
+    {
+      "candidate_text": "we always go for production fixes — not quick hacks",
+      "context": [
+        { "role": "user", "turn_offset": -1, "text": "The default model was causing issues so you suggested downgrading to an older version." },
+        { "role": "user", "turn_offset":  0, "text": "we always go for production fixes — not quick hacks" },
+        { "role": "user", "turn_offset": 1, "text": "Fix it properly." }
+      ],
+      "expected_output": {
+        "is_directive": true,
+        "confidence": 0.88,
+        "polarity": "prescriptive",
+        "scope": "universal",
+        "suggested_title": "Always pursue production fixes, not quick hacks",
+        "normalized_text": "Always pursue root-cause production fixes rather than quick workarounds or downgrades.",
+        "reasoning": "The rule 'we always go for production fixes' is a meta-engineering principle about how to approach ANY technical problem, not specific to this repo's code. 'We' implies a personal working style that applies across all projects. No project-specific anchor (no filename, no repo tool, no architecture reference). Universal scope."
+      }
+    },
+    {
+      "candidate_text": "for this debugging session, don't commit anything until I give the go-ahead",
       "context": [
         { "role": "user", "turn_offset": -1, "text": "We're chasing a heisenbug — behavior changes between runs." },
-        { "role": "user", "turn_offset":  0, "text": "in this debugging session, don't commit anything until I say so" },
+        { "role": "user", "turn_offset":  0, "text": "for this debugging session, don't commit anything until I give the go-ahead" },
         { "role": "user", "turn_offset": 1, "text": "I want to be able to reset the tree at any point." }
       ],
       "expected_output": {
@@ -29,43 +63,9 @@
         "confidence": 0.92,
         "polarity": "prohibitive",
         "scope": "session",
-        "suggested_title": "No commits until told",
+        "suggested_title": "No commits until approved (this session)",
         "normalized_text": "During this debugging session, do not commit without explicit approval.",
-        "reasoning": "Session-scoped prohibition; explicit 'in this debugging session' anchor + 'don't'."
-      }
-    },
-    {
-      "candidate_text": "during this review, only flag critical issues — ignore nits",
-      "context": [
-        { "role": "user", "turn_offset": -1, "text": "I'm under time pressure on this one." },
-        { "role": "user", "turn_offset":  0, "text": "during this review, only flag critical issues — ignore nits" },
-        { "role": "user", "turn_offset": 1, "text": "Start with the authz module." }
-      ],
-      "expected_output": {
-        "is_directive": true,
-        "confidence": 0.88,
-        "polarity": "prescriptive",
-        "scope": "session",
-        "suggested_title": "Critical-only review",
-        "normalized_text": "For this review, surface only critical issues; skip style and nit-level findings.",
-        "reasoning": "Session-scoped prescription anchored by 'during this review'."
-      }
-    },
-    {
-      "candidate_text": "always use Bun for tests in this project — never npm or yarn",
-      "context": [
-        { "role": "user", "turn_offset": -1, "text": "The test command is `bun run test`." },
-        { "role": "user", "turn_offset":  0, "text": "always use Bun for tests in this project — never npm or yarn" },
-        { "role": "user", "turn_offset": 1, "text": "npm scripts will just fail because of the lockfile." }
-      ],
-      "expected_output": {
-        "is_directive": true,
-        "confidence": 0.95,
-        "polarity": "prescriptive",
-        "scope": "project",
-        "suggested_title": "Use Bun for tests",
-        "normalized_text": "Use Bun (not npm or yarn) to run tests in this project.",
-        "reasoning": "Explicit 'always' + 'in this project' + 'never' — strong project-level rule, both polarities."
+        "reasoning": "Session-scoped prohibition; 'for this debugging session' is an explicit session anchor."
       }
     },
     {
@@ -103,20 +103,20 @@
       }
     },
     {
-      "candidate_text": "be concise — no narration, no file summaries, just do it",
+      "candidate_text": "whenever Angel's heartbeat fails to start, always retry once before giving up",
       "context": [
-        { "role": "user", "turn_offset": -1, "text": "You were explaining every step in the last session." },
-        { "role": "user", "turn_offset":  0, "text": "be concise — no narration, no file summaries, just do it" },
-        { "role": "user", "turn_offset": 1, "text": "Quality over quantity, always." }
+        { "role": "user", "turn_offset": -1, "text": "Angel crashed and the hook just logged an error and moved on." },
+        { "role": "user", "turn_offset":  0, "text": "whenever Angel's heartbeat fails to start, always retry once before giving up" },
+        { "role": "user", "turn_offset": 1, "text": "This is critical infrastructure — one attempt is not enough." }
       ],
       "expected_output": {
         "is_directive": true,
-        "confidence": 0.9,
+        "confidence": 0.88,
         "polarity": "prescriptive",
-        "scope": "universal",
-        "suggested_title": "Be concise",
-        "normalized_text": "Default to concise output: no narration, no file summaries, no restated plans.",
-        "reasoning": "Generic voice, no repo anchor — universal style preference that applies everywhere."
+        "scope": "project",
+        "suggested_title": "Retry Angel heartbeat once on failure",
+        "normalized_text": "If Angel's heartbeat process fails to start, retry exactly once before reporting failure.",
+        "reasoning": "'Whenever' + 'always' make it sound universal, but 'Angel's heartbeat' is a specific component of THIS codebase. The rule is about this repo's infrastructure, not a meta-principle. Scope is project even though the imperative voice is emphatic."
       }
     },
     {
