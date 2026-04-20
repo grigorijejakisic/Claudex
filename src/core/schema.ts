@@ -5,6 +5,14 @@
  * All CREATE statements use IF NOT EXISTS for idempotency.
  *
  * Split from migrations.ts for clarity — DDL is structural, migrations are procedural.
+ *
+ * V17 (Phase P1, 2026-04-20): unified `artifact(kind, ...)` table collapses 6
+ *   knowledge tables (learnings, decisions, experience_patterns, angel_opinions,
+ *   critical_rules, project_curated_context) into one kernel + JSON sidecar +
+ *   legacy views with INSTEAD OF triggers. See `migrateV16toV17` in
+ *   migration-steps.ts and the DDL generators in src/core/migration/.
+ *   Retires `learnings_fts` + `experience_patterns_fts` (replaced by `artifact_fts`).
+ *   `artifacts` + `artifacts_fts` + `vec_artifacts` + `artifact_links` untouched.
  */
 
 /**

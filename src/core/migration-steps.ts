@@ -9,6 +9,9 @@
 
 import type { Database } from 'better-sqlite3';
 import { loadSqliteVec } from './sqlite-vec-loader.js';
+import { applyV17DDL } from './migration/v17-ddl.js';
+import { applyGeneratedDDL, generateViewsAndTriggers } from './migration/v17-triggers.js';
+import { KIND_MAPPING } from './migration/kind-mapping.js';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -1410,4 +1413,25 @@ export function migrateV15toV16(db: Database): void {
     CREATE INDEX IF NOT EXISTS idx_pcc_project_type
       ON project_curated_context(project, type, status);
   `);
+}
+
+/**
+ * V16→V17: Unified artifact table + legacy views + INSTEAD OF triggers.
+ *
+ * NOTE: this function only applies the DDL and the generated views/triggers.
+ * It does NOT move data from the 6 legacy tables into `artifact` — that is
+ * the migration RUNNER's job (see src/core/migration/v17-runner.ts, Plan 02-05).
+ *
+ * Called only by the explicit migrate:v17:apply CLI path. Not invoked from
+ * runMigrations() or initializeSchema() because Phase A (pre-embed) requires
+ * Ollama and must run outside any implicit open-time path.
+ *
+ * Also retires the 2 legacy FTS5 tables per Amendment 4 — these DROPs happen
+ * AFTER the runner renames legacy tables to {name}_old, otherwise the
+ * `content='learnings'` binding breaks the view substitution. See Plan 02-05
+ * for sequencing.
+ */
+export function migrateV16toV17(db: Database): void {
+  applyV17DDL(db);
+  applyGeneratedDDL(db, generateViewsAndTriggers(KIND_MAPPING));
 }
