@@ -552,5 +552,101 @@ const isDirectRun = typeof require !== 'undefined' && require.main === module
   || process.argv[1]?.endsWith('migrate.ts');
 
 if (isDirectRun) {
-  main();
+  // Route V17 subcommands before the v2→v3 main() path.
+  const subcmd = process.argv[2];
+  if (subcmd === 'migrate:backup' || subcmd === 'migrate:backup:dry-run') {
+    void v17Main(subcmd);
+  } else {
+    main();
+  }
+}
+
+// ── V17 P1 backup CLI ──────────────────────────────────────────────────
+//
+// Minimal entry points for Plan 02-02. Plan 02-05 will layer migrate:v17:dry-run
+// and migrate:v17:apply on top of this backup gate.
+
+import {
+  createAndVerifyBackup,
+  appendManifestRow,
+  rotateBackups,
+  backupFileName,
+  type BackupKind,
+} from '../core/migration/v17-backup.js';
+
+const P1_LEGACY_TABLES = [
+  'learnings',
+  'decisions',
+  'experience_patterns',
+  'angel_opinions',
+  'critical_rules',
+  'project_curated_context',
+  // Backstop — untouched tables whose row counts should also match:
+  'artifacts',
+  'artifact_links',
+];
+
+function v17ParseArgs(argv: string[]): { db?: string; backupDir?: string; phaseLabel: string } {
+  const out: { db?: string; backupDir?: string; phaseLabel: string } = { phaseLabel: 'P1' };
+  for (let i = 0; i < argv.length; i++) {
+    const a = argv[i];
+    if (a === '--db' && i + 1 < argv.length) out.db = argv[++i];
+    else if (a === '--backup-dir' && i + 1 < argv.length) out.backupDir = argv[++i];
+    else if (a === '--phase' && i + 1 < argv.length) out.phaseLabel = argv[++i];
+  }
+  return out;
+}
+
+export async function v17Main(subcmd: 'migrate:backup' | 'migrate:backup:dry-run'): Promise<void> {
+  const kind: BackupKind = subcmd === 'migrate:backup:dry-run' ? 'dry-run' : 'real';
+  const args = v17ParseArgs(process.argv.slice(3));
+
+  const dbPath = args.db ?? getDbPath();
+  if (!fs.existsSync(dbPath)) {
+    console.error(`[ERROR] Source DB not found: ${dbPath}`);
+    process.exit(1);
+  }
+
+  const backupDir = args.backupDir ?? path.join(path.dirname(dbPath), '..', 'backups');
+  const phaseLabel = args.phaseLabel;
+
+  const backupName = backupFileName(phaseLabel, kind);
+  const backupPath = path.join(backupDir, backupName);
+
+  console.log(`[v17-backup] source: ${dbPath}`);
+  console.log(`[v17-backup] target: ${backupPath}`);
+  console.log(`[v17-backup] kind:   ${kind}`);
+
+  // Rotate BEFORE create so the new backup is never the one we delete.
+  const deleted = rotateBackups(backupDir, phaseLabel, kind, 5);
+  if (deleted.length > 0) {
+    console.log(`[v17-backup] rotated: ${deleted.length} old backups removed`);
+  }
+
+  const result = await createAndVerifyBackup(dbPath, backupPath, {
+    legacyTables: P1_LEGACY_TABLES,
+    anyVec0Table: 'vec_artifacts',
+  });
+
+  // Find or create manifest path in the current-working-directory's .planning/
+  const manifestPath = path.join(
+    process.cwd(),
+    '.planning',
+    'phases',
+    '02-p1-artifact-table-unification',
+    'backup-manifest.md',
+  );
+  try {
+    appendManifestRow(manifestPath, result, phaseLabel, kind);
+  } catch (err) {
+    console.warn(`[v17-backup] manifest append failed: ${err instanceof Error ? err.message : String(err)}`);
+  }
+
+  console.log(`[v17-backup] verdict: ${result.verdict} (${result.totalMs}ms)`);
+  for (const c of result.checks) {
+    const status = c.passed ? '  ok ' : ' FAIL';
+    console.log(`  [${status}] ${c.name}${c.detail ? ` — ${c.detail}` : ''}${c.error ? ` — ${c.error}` : ''}`);
+  }
+
+  process.exit(result.verdict === 'PASS' ? 0 : 1);
 }
