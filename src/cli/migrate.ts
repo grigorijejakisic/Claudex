@@ -627,8 +627,19 @@ export async function v17Main(subcmd: 'migrate:backup' | 'migrate:backup:dry-run
     console.log(`[v17-backup] rotated: ${deleted.length} old backups removed`);
   }
 
+  // Inline the table list to avoid CJS bundle hoisting TDZ (see CLI dispatcher comment).
+  const p1LegacyTables = [
+    'learnings',
+    'decisions',
+    'experience_patterns',
+    'angel_opinions',
+    'critical_rules',
+    'project_curated_context',
+    'artifacts',
+    'artifact_links',
+  ];
   const result = await createAndVerifyBackup(dbPath, backupPath, {
-    legacyTables: P1_LEGACY_TABLES,
+    legacyTables: p1LegacyTables,
     anyVec0Table: 'vec_artifacts',
   });
 
