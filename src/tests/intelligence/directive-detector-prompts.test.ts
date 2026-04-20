@@ -48,10 +48,10 @@ function readMd(filename: string): string {
 // ---------------------------------------------------------------------------
 
 describe('directive-detector-prompts — JSON fixtures', () => {
-  it('confirmation-few-shot.json parses and has exactly 12 examples', () => {
+  it('confirmation-few-shot.json parses and has exactly 15 examples', () => {
     const data = readJson<{ examples: ConfirmationExample[] }>('confirmation-few-shot.json');
     expect(Array.isArray(data.examples)).toBe(true);
-    expect(data.examples.length).toBe(12);
+    expect(data.examples.length).toBe(15);
   });
 
   it('confirmation-few-shot has 3:3:3 positive examples across session/project/universal', () => {
@@ -69,10 +69,10 @@ describe('directive-detector-prompts — JSON fixtures', () => {
     expect(byScope.get('universal')).toBe(3);
   });
 
-  it('confirmation-few-shot has exactly 3 negative examples', () => {
+  it('confirmation-few-shot has exactly 6 negative examples', () => {
     const data = readJson<{ examples: ConfirmationExample[] }>('confirmation-few-shot.json');
     const negatives = data.examples.filter(e => !e.expected_output.is_directive);
-    expect(negatives.length).toBe(3);
+    expect(negatives.length).toBe(6);
     // Negatives must null out structured fields
     for (const n of negatives) {
       expect(n.expected_output.polarity).toBeNull();
@@ -133,7 +133,7 @@ describe('loadPromptAssets', () => {
     expect(typeof assets.confirmationSystem).toBe('string');
     expect(assets.confirmationSystem).not.toContain('{{FEW_SHOT}}');
     // A representative few-shot candidate should now be inlined
-    expect(assets.confirmationSystem).toContain('always use Bun');
+    expect(assets.confirmationSystem).toContain('always go for production fixes');
   });
 
   it('returns a scopeRubricSystem string with the placeholder filled', () => {

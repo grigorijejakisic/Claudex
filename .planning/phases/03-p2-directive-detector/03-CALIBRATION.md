@@ -22,7 +22,8 @@
 | t75u90 | 0.286 | 0.643 | 0.444 | 0.889 | raise both thresholds |
 | t80u85 | 0.267 | 0.667 | 0.400 | 0.900 | raise general thresh to 0.80 |
 | t80u90 | 0.286 | 0.643 | 0.444 | 0.889 | raise both to max |
-| cycle2_scope_fewshot | TBD | TBD | TBD | TBD | scope taxonomy + 4 boundary few-shot examples |
+| cycle2_scope_fewshot | 0.391 | 0.609 | 0.714 | 0.929 | scope taxonomy + 4 boundary few-shot examples |
+| cycle3_prompt_rewrite | TBD | TBD | TBD | TBD | hard-reject criteria + 4 FP-targeting negative examples |
 
 ### Baseline run analysis (2026-04-20T16-39-28-152Z_baseline.json)
 - 17 confirmed by detector; 12 true positives (labeler=true), 5 false positives
@@ -63,7 +64,36 @@ Changes committed (commit b344116):
    - "we always go for production fixes" -> universal (meta-principle, was called project)
    - "whenever Angel's heartbeat fails to start" -> project (repo component, not universal)
 
-Re-run required: node dist/benchmarks/directive-detector/run-precision.cjs --tag=cycle2_scope_fewshot
+Run results (2026-04-20T23-29-40-752Z_cycle2_scope_fewshot.json):
+- joint_precision: 0.391 (was 0.353) — marginal +3.8pp
+- is_directive_precision: 0.609 (was 0.706) — WORSE: more FPs confirmed
+- scope_precision_given_correct: 0.714 (was 0.500) — +21.4pp
+- polarity: 0.929 (was 0.917)
+- Confirmed: 23 (up from 17); joint_correct: 9
+
+Analysis: Scope confusion largely fixed, but 9/23 confirmed are FPs (39% rate). FP pattern:
+complaints, design discussions, scolding, task-scoped demands confirmed as directives.
+Scope errors (4): project→session (2), project→universal (2).
+
+Runbook: joint=0.391 < 0.88 → Cycle 3 (prompt rewrite targeting FP reduction).
+
+### Cycle 3 — Prompt rewrite + FP-targeting negatives (2026-04-21)
+
+Root cause: LLM treats complaints, scolding, design discussions, and one-off task demands
+as standing directives. Hard-reject criteria in prompt were too vague.
+
+Changes:
+1. confirmation-system-prompt.md: Complete rewrite with:
+   - Explicit 3-property definition: prescriptive/prohibitive + forward-looking + durable
+   - Named 10 hard-reject categories with concrete examples from actual failures
+   - Two KEY TEST heuristics: "venting/asking/describing vs prescribing" and "applies tomorrow?"
+2. confirmation-few-shot.json: Added 4 new negative examples targeting actual FP cases:
+   - Complaint + rhetorical scolding: "You rushed into development breaking the rule..."
+   - Design-discussion goal: "I don't want to chase the score, I want useful benchmarks"
+   - Task-scoped one-off demand: "EVERYTHING MUST BE DONE!"
+   - (total: 15 examples, 9 pos 3:3:3, 6 neg)
+
+Re-run: node dist/benchmarks/directive-detector/run-precision.cjs --tag=cycle3_prompt_rewrite
 
 ## Per-scope final
 
@@ -87,17 +117,10 @@ Baseline per-family:
 ## Decisions
 
 - Cycle 1 entered per runbook (joint < 88%). No threshold pair won (univPrec gate failed all). Proceed to Cycle 2.
-- Cycle 2 changes committed (b344116). Re-run pending.
-- No escalation triggered.
-
-## Follow-ups for P8
-
-- Rows with data.possible_contradicts: <!-- after calibration run -->
-- Rows with data.related_to: <!-- after calibration run -->
-- reinforcement_count distribution: <!-- after calibration run -->
+- Cycle 2 completed. joint=0.391 — scope +21pp but FP problem exposed. Proceed to Cycle 3.
+- Cycle 3 in progress. Prompt rewrite + 4 FP-targeting negatives. Re-run underway.
 
 ## Dependency handoffs
 
 - Benchmark gate (Plan 03-06-07) deferred: requires task #23 (post-V17 LongMemEval + LoCoMo) first.
 - Injection-surface diff check (Plan 03-06-09) ready to run at phase-completion time.
-- Cycle 2 re-run: node dist/benchmarks/directive-detector/run-precision.cjs --tag=cycle2_scope_fewshot

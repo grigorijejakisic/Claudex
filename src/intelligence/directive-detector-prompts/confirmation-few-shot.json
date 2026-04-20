@@ -204,6 +204,57 @@
         "normalized_text": null,
         "reasoning": "Hedged preference ('kind of prefer') + explicit override ('follow existing convention'). Not a standing rule."
       }
+    },
+    {
+      "candidate_text": "You rushed into development breaking the rule that sits in the Claude.md — does it mean nothing to you?",
+      "context": [
+        { "role": "user", "turn_offset": -1, "text": "You just started implementing before I agreed to the plan." },
+        { "role": "user", "turn_offset":  0, "text": "You rushed into development breaking the rule that sits in the Claude.md — does it mean nothing to you?" },
+        { "role": "user", "turn_offset": 1, "text": "Stop and fix the approach before continuing." }
+      ],
+      "expected_output": {
+        "is_directive": false,
+        "confidence": 0.88,
+        "polarity": null,
+        "scope": null,
+        "suggested_title": null,
+        "normalized_text": null,
+        "reasoning": "Complaint about past behavior + rhetorical question ('does it mean nothing to you?'). The CLAUDE.md rule already exists — this is scolding for violating an existing rule, not establishing a new one. Rhetorical frustration is not a directive even when it contains emphatic language."
+      }
+    },
+    {
+      "candidate_text": "I do not want to chase the benchmark score — I want it to actually be useful for measuring real memory quality",
+      "context": [
+        { "role": "user", "turn_offset": -1, "text": "The LoCoMo score improved from 55% to 61% with that change." },
+        { "role": "user", "turn_offset":  0, "text": "I do not want to chase the benchmark score — I want it to actually be useful for measuring real memory quality" },
+        { "role": "user", "turn_offset": 1, "text": "What aspects of real memory quality does the benchmark actually test?" }
+      ],
+      "expected_output": {
+        "is_directive": false,
+        "confidence": 0.85,
+        "polarity": null,
+        "scope": null,
+        "suggested_title": null,
+        "normalized_text": null,
+        "reasoning": "Expresses a preference and design philosophy in a technical discussion, but the user is describing a GOAL, not prescribing a standing rule for agent behavior. The follow-up question confirms this is exploratory discussion, not a command. 'I do not want X, I want Y' in a discussion context is a statement of design intent, not a directive."
+      }
+    },
+    {
+      "candidate_text": "EVERYTHING MUST BE DONE! I need all of it — every issue, every finding, no prioritization!",
+      "context": [
+        { "role": "user", "turn_offset": -1, "text": "I found 15 issues in the codebase. Should I prioritize them?" },
+        { "role": "user", "turn_offset":  0, "text": "EVERYTHING MUST BE DONE! I need all of it — every issue, every finding, no prioritization!" },
+        { "role": "user", "turn_offset": 1, "text": "Start from the top of the list." }
+      ],
+      "expected_output": {
+        "is_directive": false,
+        "confidence": 0.82,
+        "polarity": null,
+        "scope": null,
+        "suggested_title": null,
+        "normalized_text": null,
+        "reasoning": "ALL CAPS and emphatic 'EVERYTHING MUST' signal urgency about the current task, not a standing rule for future sessions. This is a task-scoped one-off demand — the user wants all 15 issues fixed NOW in this conversation, not a meta-preference about how to handle findings in general. Emphatic frustration does not make a one-off instruction a durable directive."
+      }
     }
   ]
 }
