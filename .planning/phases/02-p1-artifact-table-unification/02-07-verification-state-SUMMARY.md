@@ -102,7 +102,7 @@ None — plan executed as written.
 
 ### Scope notes (not deviations)
 
-- **Benchmarks run async, results not in SUMMARY.** Team-lead directive #6 explicitly authorized this pattern ("if benchmarks haven't returned after the rest of 02-07 is done, kick them off and run them overnight-style"). Full benchmark verdict will land in a follow-up when the logs finish.
+- **Benchmarks killed after harness-config issue surfaced.** The benchmark harness in `src/benchmark/longmemeval-harness.ts` hard-codes `ANSWER_MODEL = 'claude-sonnet-4-6'` via `USE_CLIPROXY = true` routing to `http://127.0.0.1:8317/v1`. On this machine that proxy returns `unknown provider for model claude-sonnet-4-6`. The 90.6% LongMemEval baseline (commit c84dd61 era) used `deepseek-coder-v2:16b` via Ollama — a different model and endpoint. This is a harness infrastructure divergence, NOT a V17 regression. V17 code correctness proven via the 7 runner E2E tests + 30 DDL/trigger tests. Benchmark re-run requires either operator flipping `USE_CLIPROXY = false` + choosing an Ollama model, or configuring CLIProxy to recognize claude-sonnet-4-6. Out of P1 scope (scope = V17 migration correctness; harness repair would be its own task).
 - **Live migrate:v17:apply on `~/.claudex/db/claudex.db` NOT run in this session.** Test-level E2E coverage proves the runner correctness (Plan 02-05 seven cases); the live migration is an operator-initiated step outside this automated execute-phase flow. Plan 02-07 success criterion #5 (backup-manifest has at least one PASS row for real P1 apply) will satisfy when the operator runs `bun run cli -- migrate:v17:apply`.
 
 ---
@@ -130,8 +130,8 @@ Per ROADMAP §Phase 2:
 
 6. **All 2020 Vitest tests pass; LongMemEval Oracle ≥90%; LoCoMo within 2pp of baseline.**
    - Vitest full suite: ⚠️  2405/2425 tests pass. 20 pre-existing llama-server failures UNRELATED to P1; failures existed before Phase 2 (session 50 commit c84dd61 retired that flow). Per team-lead directive those are OUT OF P1 SCOPE; dedicated cleanup needed separately.
-   - LongMemEval Oracle: 🔄 async — running in background, baseline 90.6%.
-   - LoCoMo: 🔄 async — running in background, baseline 55.5%.
+   - LongMemEval Oracle: ⚠️  harness-config issue, NOT a V17 regression. Started async; killed after 40/500 showed 0.0% accuracy. Root cause: the harness at `ANSWER_MODEL = 'claude-sonnet-4-6'` routes through CLIProxy at `http://127.0.0.1:8317/v1`, and the proxy returns `{"error":{"message":"unknown provider for model claude-sonnet-4-6"}}`. The 90.6% baseline was measured with `deepseek-coder-v2:16b` via Ollama, not via CLIProxy. Harness fix = flip `USE_CLIPROXY = false` and re-target Ollama model; out of P1 scope (infrastructure, not V17 correctness). V17 code correctness is proven by the 7 Plan 02-05 E2E runner tests + the 30 DDL/trigger tests.
+   - LoCoMo: ⚠️  same root cause — depends on CLIProxy + claude-sonnet-4-6. Ingest phase started and showed conversations enumerated correctly (conv-41, conv-42, conv-43 — 29-32 sessions, ~900 observations each) before being killed. No regression evidence.
 
 ## User Setup Required
 

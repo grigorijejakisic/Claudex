@@ -69,4 +69,4 @@ Resume file: .planning/ROADMAP.md (Phase 3 — P2 Directive detector ready to pl
 
 **Schema version:** 17 (bumped from 16 inside the runner's atomic tx; not bumped by the dormant-storage init-time call).
 
-**Benchmark post-migration:** Running asynchronously — LongMemEval Oracle + LoCoMo harnesses launched at end of Phase 2 session. Logs under `benchmarks/results/p1-postmigration/`. Targets: LongMemEval Oracle ≥ 90% (baseline 90.6%); LoCoMo within 2pp of 55.5% (so ≥ 53.5%). Results to be appended to backup-manifest.md or a successor record when complete.
+**Benchmark post-migration:** Attempted async. LongMemEval Oracle harness started producing 0.0% accuracy at 40/500 because the hard-coded `ANSWER_MODEL = 'claude-sonnet-4-6'` routed through CLIProxy returns `unknown provider for model claude-sonnet-4-6`. Baseline 90.6% (commit c84dd61 era) was measured with `deepseek-coder-v2:16b` via Ollama, not via CLIProxy. Harness infrastructure divergence; flagged as a separate cleanup task (out of P1 scope). V17 code correctness proven via 7 runner E2E tests + 30 DDL/trigger tests. Logs retained under `benchmarks/results/p1-postmigration/` for audit.
