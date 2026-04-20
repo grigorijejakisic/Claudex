@@ -556,6 +556,8 @@ if (isDirectRun) {
   const subcmd = process.argv[2];
   if (subcmd === 'migrate:backup' || subcmd === 'migrate:backup:dry-run') {
     void v17Main(subcmd);
+  } else if (subcmd === 'migrate:v17:stale-scan') {
+    void v17StaleScanMain();
   } else {
     main();
   }
@@ -649,4 +651,36 @@ export async function v17Main(subcmd: 'migrate:backup' | 'migrate:backup:dry-run
   }
 
   process.exit(result.verdict === 'PASS' ? 0 : 1);
+}
+
+// ── V17 P1 stale-scan CLI (Plan 02-03 stub; full dry-run in Plan 02-05) ────
+
+import { scanStaleRows } from '../core/migration/v17-stale-scan.js';
+import { writeStaleReview } from '../core/migration/stale-review-parser.js';
+
+const STALE_REVIEW_PATH = path.join(
+  '.planning',
+  'phases',
+  '02-p1-artifact-table-unification',
+  'stale-review.md',
+);
+
+export async function v17StaleScanMain(): Promise<void> {
+  const args = v17ParseArgs(process.argv.slice(3));
+  const dbPath = args.db ?? getDbPath();
+  if (!fs.existsSync(dbPath)) {
+    console.error(`[ERROR] Source DB not found: ${dbPath}`);
+    process.exit(1);
+  }
+  const db = new Database(dbPath, { readonly: true });
+  try {
+    const matches = scanStaleRows(db);
+    writeStaleReview(path.join(process.cwd(), STALE_REVIEW_PATH), matches);
+    console.log(
+      `Wrote ${matches.length} heuristic matches to ${STALE_REVIEW_PATH}. Review, commit, then run migrate:v17:apply.`,
+    );
+    process.exit(0);
+  } finally {
+    db.close();
+  }
 }
