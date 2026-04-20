@@ -1,35 +1,53 @@
-# STATE: CC Source-Informed Upgrades
+# Project State
 
-**Current Phase:** Not started
-**Last Updated:** 2026-04-03
+## Project Reference
 
-## Phase Status
+See: .planning/PROJECT.md (updated 2026-04-19)
 
-| Phase | Status | Notes |
-|-------|--------|-------|
-| 1 — Environment Flags | NOT STARTED | |
-| 2 — Critical Reminders Tier | NOT STARTED | |
-| 3 — Injection Architecture | NOT STARTED | |
-| 4 — Core Lifecycle Hooks | NOT STARTED | |
-| 5 — Permission & Error Hooks | NOT STARTED | |
-| 6 — Config & Environment Hooks | NOT STARTED | |
-| 7 — Advanced Hook Execution | NOT STARTED | |
-| 8 — MCP & Injection Points | NOT STARTED | |
-| 9 — Bug Workarounds & Defense | NOT STARTED | |
-| 10 — Angel Memory Integration | NOT STARTED | |
-| 11 — Angel Intelligence Integration | NOT STARTED | |
-| 12 — Patterns, Extensions, Polish | NOT STARTED | |
+**Core value:** Memory stops acting like rules — the agent thinks again, pulling curated artifacts on demand instead of blindly following injected imperatives.
+**Current focus:** Phase 2: P1 — Artifact table unification
 
-## Item Tracking
+## Current Position
 
-### Completed Items
-(none yet)
+**Current Phase:** 2
+**Current Phase Name:** P1 — Artifact table unification
+**Total Phases:** 11
+**Current Plan:** 0
+**Total Plans in Phase:** 0
+**Status:** Ready to plan
+**Last Activity:** 2026-04-19
+**Last Activity Description:** P0 crystallization complete; Q1-Q4 decisions locked; .planning/ produced from CLAUDEX_V4_SCOPE.md
+**Progress:** [█░░░░░░░░░] 9%
 
-### Blocked Items
-(none yet)
+Phase: 2 of 11 (P1 — Artifact table unification)
+Plan: 0 of 0 in current phase
+Status: Ready to plan
+Last activity: 2026-04-19 — P0 crystallization complete
 
-## Decisions Log
-(none yet)
+Progress: [█░░░░░░░░░] 9%
 
-## Key Files Modified
-(none yet)
+## Accumulated Context
+
+### Decisions
+
+Decisions are logged in PROJECT.md Key Decisions table. Summary of locked decisions from P0:
+- **Q1 transcript chunking** — LLM topic-detected boundaries (quality over latency)
+- **Q2 MEMORY.md schema** — sectioned markdown, importance-sorted, capped at 15/5/5/1/1 entries per section
+- **Q3 directive threshold** — regex + LLM-confirm, starting ≥0.7 (tuned in P2)
+- **Q4 project_curated_context** — migrate to `artifact(kind='mental_model')`, flag stale entries as `status='stale'`
+
+### Pending Todos
+
+- Human review of `project_curated_context` entries flagged `status='stale'` during the P1 migration dry-run. Known-stale keyword markers: `Gemma 4 31B`, `llama-server:8081`, `local llama-server` (all superseded by session 50's swap to Ollama Cloud `glm-5.1:cloud`).
+
+### Blockers/Concerns
+
+- P4 is the high-risk benchmark gate — if LoCoMo drops >2pp after removing injection sections, the pull-based model isn't strong enough and MEMORY.md curation must improve before re-attempt
+- P6.5 is a deterministic gate on RL deletion; if flagged LoCoMo drops >2pp, v4 scope must adjust (keep RL or redesign scoring)
+- Stale `project_curated_context` entries carry claims contradicting current state — migration must flag, not silently carry forward
+
+## Session Continuity
+
+Last session: 2026-04-19
+Stopped at: P0 crystallization complete; .planning/ produced; decisions locked
+Resume file: .planning/ROADMAP.md (Phase 2 ready to plan)

@@ -1,136 +1,157 @@
-# REQUIREMENTS: CC Source-Informed Upgrades (81 Items)
+# Requirements: Claudex v4
 
-All items from `context/research/SYNTHESIS.md`. None deferred.
+**Defined:** 2026-04-19
+**Core Value:** Memory stops acting like rules — the agent thinks again, pulling curated artifacts on demand instead of blindly following injected imperatives.
 
----
+## v1 Requirements
 
-## Category 1: Token Optimization (T1-T8)
+### Storage (STOR)
 
-| ID | Title | Description | Constraint |
-|----|-------|-------------|------------|
-| T1 | Disable CC auto-memory | Set `CLAUDE_CODE_DISABLE_AUTO_MEMORY=1` via CLAUDE_ENV_FILE in SessionStart. Saves ~11K tokens/turn by killing 3 CC memory subsystems. | Via X3 (CLAUDE_ENV_FILE) |
-| T2 | Eliminate 5K fixed memory instructions | With T1, CC's `loadMemoryPrompt()` 5K token overhead disappears. Verify no residual injection. | Depends on T1 |
-| T3 | Minimize UserPromptSubmit injection | Move bulk context to SessionStart. Keep UserPromptSubmit under 1KB. No dedup in CC — repeated every turn. SessionStart has no truncation; UPS truncated at 10K chars. | Critical Reminders tier defines per-section budgets |
-| T4 | MCP instructions for system-prompt injection | Set Claudex MCP server `instructions` field for system-prompt-level context. Trade-off: downgrades cache from global to org scope (K1). | Requires K1 analysis |
-| T5 | Cache-stable hook content | Remove timestamps, counts, session IDs from injected text. Cache prefix matching — any change = 10x cost. | |
-| T6 | Reduce CLAUDE.md footprint | Audit both CLAUDE.md files. Move conditional content to `.claude/rules/` with `paths:` frontmatter. | |
-| T7 | Post-compact duplication avoidance | Track SessionStart post-compact firing. Skip/reduce next UserPromptSubmit to prevent double-injection. | Depends on H4 (PostCompact) |
-| T8 | SAVE_HOOK_ADDITIONAL_CONTEXT | Set `CLAUDE_CODE_SAVE_HOOK_ADDITIONAL_CONTEXT=1` to preserve context in transcripts for resume. Trade-off: larger transcript files. | Via X3 |
+- [ ] **STOR-01**: Add `artifact(kind, ...)` unified table via V17 migration supporting free-form `kind` column (no CHECK constraint) plus `kind_registry` tracking seen values + counts
+- [ ] **STOR-02**: Migrate all rows from `learnings`, `decisions`, `experience_patterns`, `angel_opinions`, `critical_rules`, `project_curated_context`, and the `entity_summary` subset of `artifacts` into the unified table
+- [ ] **STOR-03**: Create legacy SQL views preserving `learnings`, `decisions`, `experience_patterns`, `angel_opinions`, `critical_rules`, and `project_curated_context` names/shapes so all existing v3 callers keep working unchanged
+- [ ] **STOR-04**: Migration transaction-wrapped; legacy tables retained (not dropped) until P9 zero-caller gate
+- [ ] **STOR-05**: Flag `project_curated_context` rows contradicting current state with `status='stale'` during migration. Known-stale keyword markers for scan: `Gemma 4 31B`, `llama-server:8081`, `local llama-server`. Human review of flagged entries as P0 deliverable.
+- [ ] **STOR-06**: `artifact(kind='transcript_chunk')` rows carry `session_id`, `turn_range`, `topic_label`, and embedding; chunking pipeline produces these at `/endsession`
+- [ ] **STOR-07**: Path-scoped artifacts (`kind IN ('workspace_fact','directive_rule') AND scope='project'`) may carry `paths:` glob; surface via `.claude/rules/` lazy-load when matching files are edited
+- [ ] **STOR-08**: DB backup to `~/.claudex/backups/pre-v4-{phase}-{ts}.db` before every irreversible drop commit in P1 and P5; restore path verified prior to each drop
 
-## Category 2: New Hook Types (H1-H17)
+### Extraction (EXTR)
 
-| ID | Title | Description |
-|----|-------|-------------|
-| H1 | SubagentStart | Inject Claudex awareness at actual agent start, not coordinator dispatch. |
-| H2 | SubagentStop | Capture subagent results, duration, success/failure for analytics. |
-| H3 | PreCompact | Capture pre-compact state. Inject preservation instructions into compaction prompt. |
-| H4 | PostCompact | Detect compaction events. Trigger full re-assembly. Prevent duplicate injection (T7). |
-| H5 | PermissionRequest | Auto-allow/deny based on behavioral patterns. Return `permissionDecision`. |
-| H6 | PermissionDenied | Track denial patterns. Optionally `retry: true`. |
-| H7 | Elicitation/ElicitationResult | Intercept MCP elicitation requests. Auto-respond to Claudex's own elicitations. |
-| H8 | ConfigChange | Detect settings.json changes. Adapt behavior. |
-| H9 | InstructionsLoaded | Detect CLAUDE.md reloads. Known bug: doesn't fire post-compact (#30973). |
-| H10 | CwdChanged | Detect project switches. Adjust context injection. |
-| H11 | FileChanged (watchPaths) | Fires when watched files change. Already used for ACTIVE.md/CLAUDE.md. Extend. |
-| H12 | TeammateIdle | Detect idle teammates in team mode. Reassign or notify. |
-| H13 | TaskCreated/TaskCompleted | Track CC task lifecycle for progress analytics. |
-| H14 | PostToolUseFailure/StopFailure | Capture hook failures for pattern extraction. |
-| H15 | Setup | Auto-configure Claudex during first-time CC setup. |
-| H16 | WorktreeCreate/WorktreeRemove | Track git worktrees for multi-workspace sessions. |
-| H17 | SessionEnd | Final cleanup, summarization, handoff at actual session boundary. |
+- [ ] **EXTR-01**: Build `src/intelligence/directive-detector.ts` — regex pass for emphasis signals ("remember this", "always X", "never Y", "from now on", "next time do Z", "please X"), followed by LLM confirmation with starting threshold ≥0.7
+- [ ] **EXTR-02**: Directive detector writes `artifact(kind='directive_rule', scope=...)` with LLM-classified `scope ∈ {session, project, universal}`
+- [ ] **EXTR-03**: Directive detector runs in Angel extraction phase *before* generic ingester; accumulates rules without changing injection
+- [ ] **EXTR-04**: Precision ≥90% on fixture sessions; calibrate final threshold against fixtures during P2
+- [ ] **EXTR-05**: Replace the 6 v3 extractors (`pattern-extractor`, `entity-summarizer`, `curated-context-extractor`, `consolidator` pattern-merge, CARA, `classifySessionDomains`) with one Angel semantic ingester that emits mixed-kind artifacts with confidence + provenance
+- [ ] **EXTR-06**: Transcript chunking uses LLM topic-segmentation at `/endsession`; accepts ~20-30s latency cost per user decision in Q1
 
-## Category 3: Hook Execution Capabilities (X1-X10)
+### Injection (INJ)
 
-| ID | Title | Description |
-|----|-------|-------------|
-| X1 | Async hook protocol | Output `{"async": true}` to background. `asyncRewake: true` for monitoring (exit code 2 wakes Claude). |
-| X2 | Interactive prompt protocol | Output `{"prompt": "id", "message": "...", "options": [...]}` for user input mid-hook. |
-| X3 | CLAUDE_ENV_FILE injection | Write bash exports to CLAUDE_ENV_FILE. Injects env vars into all Bash commands for session. |
-| X4 | `once: true` hook flag | Auto-remove hook after first success. For one-time setup. |
-| X5 | `agent` execution type | Multi-turn LLM agent hooks with tool access. |
-| X6 | `http` execution type | POST to HTTP endpoints from hooks. |
-| X7 | `prompt` execution type | One-shot LLM call hooks. |
-| X8 | PreToolUse `permissionDecision` | Auto-allow/deny without normal permission flow. |
-| X9 | PostToolUse `updatedMCPToolOutput` | Replace MCP tool output (not built-in tools). |
-| X10 | PreToolUse `updatedInput` with matchers | Modify tool input. Matchers: exact, pipe-separated, regex, `ToolName(pattern)`. |
+- [ ] **INJ-01**: Session-start injection reduced to: identity, handoff pointer, MEMORY.md (native CC load), active safety-critical signals — total ≤500 tokens
+- [ ] **INJ-02**: Remove from `assembler.ts`: Proven Principles (P4.1), Entity Summaries auto-surface (P4.05), Angel Opinions (P4.07), Predicted Context, Curated Context (P2.1), Experience Warnings auto-surface, Flow, Reference Layer (L2), Materialization (L3 auto-trigger)
+- [ ] **INJ-03**: Keep assembler sections: Identity, Project (CLAUDE.md), Session Continuity, Checkpoint, GSD
+- [ ] **INJ-04**: All surviving injected text stripped of timestamps, turn counts, session IDs, wall-clock references — cache-stable prefix (T5)
+- [ ] **INJ-05**: UPS per-turn payload ≤1KB; carries only dynamic signals (critical reminders with decay TTL, gauge/pressure) — never bulk context
+- [ ] **INJ-06**: `initialUserMessage` auto-prime (I1) — when `ACTIVE.md` handoff exists, SessionStart hook returns a resume prompt for auto-submit; no handoff → no auto-prime
+- [ ] **INJ-07**: Experience-warning content surfaces only on explicit agent query (`claudex_search`) or agent-hook triggers tied to specific file paths/commands — never auto-injected
 
-## Category 4: Injection Point Upgrades (I1-I5)
+### Retrieval (RETR)
 
-| ID | Title | Description |
-|----|-------|-------------|
-| I1 | initialUserMessage from SessionStart | Auto-prime sessions with handoff tasks. Model starts working immediately. |
-| I2 | MCP tool annotations | `searchHint` and `alwaysLoad` for tool discovery. |
-| I3 | Conditional rules via .claude/rules/ | Rules with `paths:` frontmatter. Only load when matching files touched. |
-| I4 | MCP skills (feature-flagged) | Serve SKILL.md files as MCP resources via `MCP_SKILLS` flag. |
-| I5 | Plugin system | Package Claudex as CC plugin (manifest with hooks, MCP, skills, config). |
+- [ ] **RETR-01**: Collapse hybrid-retrieval scoring to `RRF(FTS5 + vec0 + recency) → cross-encoder rerank → top-k`; budget-gate the final selection
+- [ ] **RETR-02**: Delete the 6-multiplier chain (`retrieval_multiplier × novelty × activation × q_value × ...`) from `hybrid-retrieval.ts`
+- [ ] **RETR-03**: Keep RIF suppression and spread activation (light + measurably useful for deduplication)
+- [ ] **RETR-04**: MCP surface unchanged: `claudex_search(query, project, budget, kinds?)`, `claudex_recall`, `claudex_events`, `claudex_store`, `claudex_message`
+- [ ] **RETR-05**: Conditional RL deletion — P6.5 ablation runs LoCoMo with `CLAUDEX_DISABLE_RL_SCORING=1`; if drop ≤2pp, delete `retrieval-rl.ts`, `memrl-scorer.ts`, `rl-trainer.ts`, `rl-policy.ts`, `rl-model.ts`, `rl-reward.ts`, `policy-registry.ts` and drop `policy_weights`, `solution_outcomes` tables via V18
 
-## Category 5: Conflict Prevention (C1-C5)
+### Curation (CUR)
 
-| ID | Title | Description |
-|----|-------|-------------|
-| C1 | Monitor GrowthBook flags | Track `tengu_passport_quail`, `tengu_onyx_plover`, `tengu_moth_copse`, `tengu_marble_fox`. Detect activation, adapt. |
-| C2 | Prevent auto-dream MEMORY.md rewrite | Ensure `autoDreamEnabled: false`. Detect activation and redirect. |
-| C3 | KAIROS mode detection | Detect KAIROS activation (append-only daily logs). Pre-align Angel. |
-| C4 | Compaction race awareness | Keep post-compact injections lean. Compaction is non-atomic. |
-| C5 | VERIFICATION_AGENT outcome capture | When CC ships structured PASS/FAIL/PARTIAL, capture in `solution_outcomes`. |
+- [ ] **CUR-01**: Angel writes sectioned MEMORY.md at `/endsession` — `## Entities` (≤15), `## Active Projects` (≤5), `## Recent Threads` (≤5), `## Handoff` (≤1), `## How to Query` (≤1). Hard ceiling 25KB / 200 lines
+- [ ] **CUR-02**: MEMORY.md includes universal user memories (user_pc_specs, identity); sort importance DESC with recency tiebreaker
+- [ ] **CUR-03**: Auto-dream write-guard (C2) — detect CC's auto-dream subsystem, enforce `autoDreamEnabled: false` via `CLAUDEX_ENV_FILE`, guard MEMORY.md writes with a sentinel comment so Angel doesn't overwrite user edits and auto-dream cannot overwrite Angel's curation
+- [ ] **CUR-04**: MEMORY.md curation idempotent — re-running Angel's writer against unchanged inputs produces byte-identical output
+- [ ] **CUR-05**: Delete from Angel: `cara-reasoning.ts`, `autonomous-investigator.ts`, `consolidator.ts::runDreamConsolidation`, `pattern-extractor.ts::crystallizePatternToSkill`, `cross-project-consolidator.ts`, `proactive-curator.ts`, `data-quality.ts`
+- [ ] **CUR-06**: Gut `heartbeat.ts` phases: drop CARA, investigation, dream, skill crystallization, proactive curation, cross-project consolidation. Heartbeat tick drops from ~20 phases to ~8
+- [ ] **CUR-07**: Angel keeps: idle monitoring, session auto-close, pattern→artifact extraction, entity resolution, embedding backfill, retention sweep, artifact promotion, MEMORY.md maintenance, service health supervision (reranker, llama/Ollama)
 
-## Category 6: Cache Optimization (K1-K4)
+### Framing (FRAM)
 
-| ID | Title | Description |
-|----|-------|-------------|
-| K1 | MCP ↔ global cache trade-off | Measure whether MCP injection benefit outweighs cache scope downgrade (global→org). |
-| K2 | TTL awareness | Session-stable TTL. 5min default, 1hr subscriber. Keep sessions alive. |
-| K3 | Sticky-on latched headers | Beta headers never removed mid-session. Only cleared on /clear or /compact. |
-| K4 | cch= billing sentinel | Never output strings matching `cch=XXX` pattern. Global substitution breaks cache. |
+- [ ] **FRAM-01**: Rewrite every surviving formatter in `sections.ts` for advisory voice — no `WARNING:`, no `**Correct approach:**`, no `Apply them proactively — they are always relevant`, no `supersedes CLAUDE.md on conflict`
+- [ ] **FRAM-02**: Experience-warning surface (when agent explicitly queries) reframes as descriptive observation: *"Similar prior situation (session X): user wanted Y; outcome was Z."*
+- [ ] **FRAM-03**: `<experience-data>` wrap remains for prompt-injection isolation but inner content is descriptive, not imperative
+- [ ] **FRAM-04**: Manual inspection confirms no imperative framing remains across all formatters
 
-## Category 7: Bug Workarounds (B1-B8)
+### Lifecycle (LIFE)
 
-| ID | Title | Description |
-|----|-------|-------------|
-| B1 | Auto-memory truncation bug (#40210) | Newest memories lost first. Reinforces case for Claudex DB-only. |
-| B2 | Resume cache regression (#34629) | Only system prompt cached on resume since v2.1.69. 20x cost increase. |
-| B3 | InstructionsLoaded not firing post-compact (#30973) | Use PostCompact hook instead. |
-| B4 | Duplicate compaction agents (#41607) | Up to 65% quota drain. Awareness only — no Claudex fix possible. |
-| B5 | Edit tool changes reverted during compaction (#34674) | Track edits, verify post-compact survival. |
-| B6 | CLAUDE_ENV_FILE session ID mismatch on resume (#40391) | Use session_id from hook payload, not env file. |
-| B7 | Agent-type hooks fail on SessionEnd (#40010) | Use command-type hooks for stop/end events. |
-| B8 | Plugin hook scripts lose execute permissions (#40050, #40187) | Explicit chmod after plugin install. |
+- [ ] **LIFE-01**: Every `artifact(kind='directive_rule')` carries `scope ∈ {session, project, universal}` detected at ingestion by LLM
+- [ ] **LIFE-02**: Supersession edges — when a new directive contradicts an existing active directive of the same scope, LLM confirms contradiction and writes `supersedes_id`
+- [ ] **LIFE-03**: Confidence decay — daily sweep reduces confidence for rules not reinforced since last seen; rules below threshold → `status='archived'`
+- [ ] **LIFE-04**: Rule accumulation bounded — contradiction and decay logic verified against fixture sessions before acceptance
 
-## Category 8: Extension Surfaces (E1-E3)
+### Benchmarks & Validation (BENCH)
 
-| ID | Title | Description |
-|----|-------|-------------|
-| E1 | Package Claudex as CC plugin | Plugin manifest: auto-register hooks, MCP server, skills, config. |
-| E2 | Channel MCP servers | Native CC communication channel for cross-session messaging. |
-| E3 | MCP searchHint and alwaysLoad | Ensure Claudex tools always available and correctly matched. |
+- [ ] **BENCH-01**: LongMemEval Oracle ≥88% hard floor at every phase boundary; crossing the floor is a revert trigger
+- [ ] **BENCH-02**: LoCoMo final target ≥70% (stretch 80%+); no single phase may regress LoCoMo >2pp from the prior phase baseline
+- [ ] **BENCH-03**: Full v3 test suite (2020 Vitest tests) passes after every phase
+- [ ] **BENCH-04**: Pass the Vesna test — `claudex_search("Vesna")` from a fresh session returns the `entity_summary` artifact in rank 1-3 without filesystem exploration
+- [ ] **BENCH-05**: Session-start injection ≤500 tokens verified by tokenizer on actual session-start output
+- [ ] **BENCH-06**: UPS per-turn payload ≤1KB verified on live turns
+- [ ] **BENCH-07**: Prefix-stable cache proven — repeated session-starts produce byte-identical cacheable prefix
+- [ ] **BENCH-08**: P6.5 RL ablation report committed to `context/specs/V4_RL_ABLATION.md` with LoCoMo-with-flag vs. baseline numbers and the go/no-go decision
 
-## Category 9: Angel/CC Integration (A1-A15)
+## v2 Requirements
 
-| ID | Title | Description |
-|----|-------|-------------|
-| A1 | /dream consolidation | Angel adopts Dream's 4-phase structure OR disables Dream, sole consolidator. |
-| A2 | extractMemories — disable or bridge | Disable CC's extraction (conflicts with Angel). Adopt forked-agent-with-cache pattern. |
-| A3 | /remember — retention sweep | Angel learns from /remember's classification taxonomy for retention sweep. |
-| A4 | Session Memory complement | CC's within-session summary feeds Angel instead of raw transcripts. |
-| A5 | Away Summary complement | CC idle → recap feeds Angel's session monitoring. |
-| A6 | Magic Docs awareness | Prevent conflicts with Angel entity summaries. Target different outputs. |
-| A7 | Agent Summary consumption | Angel consumes 30s forked agent status summaries for richer cross-session state. |
-| A8 | Skill Improvement bridge | Angel detects corrections → triggers CC's skill rewrite mechanism. |
-| A9 | findRelevantMemories dedup | Adopt deduplication logic — track what's been surfaced, avoid re-injection. |
-| A10 | /skillify pipeline | Angel extracts patterns → /skillify turns them into CC skills. |
-| A11 | /stuck auto-trigger | Angel detects stuck patterns → auto-triggers /stuck skill. |
-| A12 | Memory file race prevention | File locking or ownership protocol. With T1 disabled, races eliminated. |
-| A13 | 30-day transcript cleanup | Angel indexes within cleanup window. |
-| A14 | Angel-Dream symbiosis | Angel = input curator + output consumer. Dream = forked-agent consolidator. Clear ownership. |
-| A15 | Buddy as Claudex notification UI | Use Buddy's companionReaction + speech bubble for Angel notifications, transfers, signals. |
+*(none for v4 — this milestone is intentionally bounded. Post-v4 candidates: Angel-as-subagent migration, Agent Teams integration, cross-project consolidator redesign.)*
 
-## Category 10: Angel Engineering Patterns (P1-P6)
+## Out of Scope
 
-| ID | Title | Description |
-|----|-------|-------------|
-| P1 | Forked agent with cache sharing | Near-zero cost background LLM work. Trigger CC's forked agent mechanism via hooks. |
-| P2 | Cursor-based incremental extraction | Track message cursor. Only analyze new messages. Reduce redundant extraction. |
-| P3 | Pre-injecting manifests | Pre-inject observation summaries for Angel LLM reasoning instead of DB queries. |
-| P4 | Scan throttling (10-min debounce) | Debounce Angel monitoring loops. Especially file-watching and session discovery. |
-| P5 | Hard turn budgets | Cap Angel processes at 5 turns. Prevent runaway background agents. |
-| P6 | Mutual exclusion via skip logic | Angel and CC features detect prior writes and skip. Ownership protocol. |
+| Feature | Reason |
+|---------|--------|
+| Ground-up rewrite | v4 is consolidation + behavioral reframe; 124 commits of v3 bug fixes stay |
+| Reranker service changes | `services/reranker.py` BGE-v2-m3 on port 7439 works, leave alone |
+| sqlite-vec / vec0 virtual tables | V15 foundation, don't touch |
+| CC hook plumbing | 26 hooks in `src/adapters/cc-hooks/` are clean and working |
+| Ollama arctic-embed2 embeddings | Infrastructure stays |
+| `lifecycle.ts` shared module | 1466 lines reused across hooks + OpenClaw bridge, no refactor |
+| Angel-as-subagent migration | Parked until v4 stabilizes |
+| Agent Teams integration | Experimental unstable API |
+| LongMemEval baseline work | 90.6% is strong, don't risk improvement attempts |
+| `conversation_turns` schema change | Raw turn storage correct; only new chunking pipeline layers on top |
+
+## Traceability
+
+| Requirement | Phase | Status |
+|-------------|-------|--------|
+| STOR-01 | Phase 2 (P1) | Pending |
+| STOR-02 | Phase 2 (P1) | Pending |
+| STOR-03 | Phase 2 (P1) | Pending |
+| STOR-04 | Phase 2 (P1) | Pending |
+| STOR-05 | Phase 2 (P1) | Pending |
+| STOR-06 | Phase 4 (P3) | Pending |
+| STOR-07 | Phase 2 (P1) | Pending |
+| STOR-08 | Phase 2 (P1) | Pending |
+| EXTR-01 | Phase 3 (P2) | Pending |
+| EXTR-02 | Phase 3 (P2) | Pending |
+| EXTR-03 | Phase 3 (P2) | Pending |
+| EXTR-04 | Phase 3 (P2) | Pending |
+| EXTR-05 | Phase 8 (P7) | Pending |
+| EXTR-06 | Phase 4 (P3) | Pending |
+| INJ-01 | Phase 5 (P4) | Pending |
+| INJ-02 | Phase 5 (P4) | Pending |
+| INJ-03 | Phase 5 (P4) | Pending |
+| INJ-04 | Phase 5 (P4) | Pending |
+| INJ-05 | Phase 5 (P4) | Pending |
+| INJ-06 | Phase 5 (P4) | Pending |
+| INJ-07 | Phase 5 (P4) | Pending |
+| RETR-01 | Phase 6 (P5) | Pending |
+| RETR-02 | Phase 6 (P5) | Pending |
+| RETR-03 | Phase 6 (P5) | Pending |
+| RETR-04 | Phase 6 (P5) | Pending |
+| RETR-05 | Phase 8 (P7) | Pending |
+| CUR-01 | Phase 4 (P3) | Pending |
+| CUR-02 | Phase 4 (P3) | Pending |
+| CUR-03 | Phase 4 (P3) | Pending |
+| CUR-04 | Phase 4 (P3) | Pending |
+| CUR-05 | Phase 8 (P7) | Pending |
+| CUR-06 | Phase 8 (P7) | Pending |
+| CUR-07 | Phase 8 (P7) | Pending |
+| FRAM-01 | Phase 7 (P6) | Pending |
+| FRAM-02 | Phase 7 (P6) | Pending |
+| FRAM-03 | Phase 7 (P6) | Pending |
+| FRAM-04 | Phase 7 (P6) | Pending |
+| LIFE-01 | Phase 9 (P8) | Pending |
+| LIFE-02 | Phase 9 (P8) | Pending |
+| LIFE-03 | Phase 9 (P8) | Pending |
+| LIFE-04 | Phase 9 (P8) | Pending |
+| BENCH-01 | All phases (gate) | Pending |
+| BENCH-02 | All phases (gate) | Pending |
+| BENCH-03 | All phases (gate) | Pending |
+| BENCH-04 | Phase 10 (P9) | Pending |
+| BENCH-05 | Phase 5 (P4) | Pending |
+| BENCH-06 | Phase 5 (P4) | Pending |
+| BENCH-07 | Phase 5 (P4) | Pending |
+| BENCH-08 | Phase 7.5 (P6.5) | Pending |
+
+**Coverage:**
+- v1 requirements: 49 total
+- Mapped to phases: 49
+- Unmapped: 0
