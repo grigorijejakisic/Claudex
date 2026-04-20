@@ -35,6 +35,7 @@ import {
   migrateV13toV14,
   migrateV14toV15,
   migrateV15toV16,
+  migrateV16toV17,
   migrateSchemaFixes,
   cleanupOrphanTables,
   upgradeV2SchemaInPlace,
@@ -162,6 +163,13 @@ export function initializeSchema(db: Database): void {
   // V15→V16: project_curated_context table. No extension required, so the
   // fresh-DB path can call it unconditionally. Idempotent via IF NOT EXISTS.
   migrateV15toV16(db);
+
+  // V16→V17 DDL — create the artifact kernel + artifact_fts + legacy_id_map
+  // as DORMANT storage. Data migration is CLI-driven via migrate:v17:apply
+  // (Plan 02-05 runner) because Phase A requires Ollama. Creating the tables
+  // up-front lets callers port their FTS5 MATCH queries to artifact_fts even
+  // before the actual row migration runs. Matches the V14→V15 vec0 pattern.
+  try { migrateV16toV17(db); } catch { /* non-fatal: may fail on older sqlite-vec */ }
 
   // FTS5: detect stale v2 index with wrong column count and rebuild
   rebuildStaleFts5(db);

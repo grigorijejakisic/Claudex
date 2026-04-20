@@ -60,6 +60,24 @@ import { SECRET_CONTENT_PATTERNS } from './behavioral-signals.js';
 /** Global-flag version for use in .replace() — the exported constant is for .test() only. */
 const SECRET_CONTENT_PATTERNS_RE = new RegExp(SECRET_CONTENT_PATTERNS.source, 'g');
 
+/**
+ * V17 routing helper: true when artifact + artifact_fts exist AND the kernel
+ * has at least one row of the target kind. False → caller falls back to the
+ * legacy {kind}_fts table. Non-throwing; unknown schema → false (safe).
+ *
+ * Cheap query — single COUNT(*) bounded by LIMIT 1.
+ */
+function v17HasArtifactsOfKind(db: Database, kind: string): boolean {
+  try {
+    const row = db
+      .prepare(`SELECT 1 AS ok FROM artifact WHERE kind = ? LIMIT 1`)
+      .get(kind) as { ok: number } | undefined;
+    return !!row;
+  } catch {
+    return false;
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
@@ -489,21 +507,41 @@ export function findMatchingPatterns(
     // FTS5 match + ACE re-ranking. Rank threshold applied post-query in code
     // (not in SQL) because BM25 needs multiple documents for meaningful IDF —
     // single-document test indices produce rank ~0 which a SQL filter rejects.
-    const rows = cachedPrepare(db,
-      `SELECT ep.*, fts.rank AS fts_rank
-       FROM experience_patterns ep
-       JOIN experience_patterns_fts fts ON fts.rowid = ep.rowid
-       WHERE experience_patterns_fts MATCH ?
-         AND ep.score >= 2
-         AND (ep.source_project = ? OR ep.source_project = ?)
-         AND COALESCE(ep.retrieval_mode, 'reactive') = 'reactive'
-       ORDER BY
-         CASE WHEN ep.source_project = ? THEN 0 ELSE 1 END,
-         CASE ep.severity WHEN 'critical' THEN 0 WHEN 'important' THEN 1 ELSE 2 END,
-         fts.rank,
-         ${DECAYED_SCORE_SQL} DESC
-       LIMIT ?`
-    ).all(ftsQuery, project, GLOBAL_PROJECT_SCOPE, project, safeLimit * 2) as ExperiencePattern[];
+    // V17-aware: prefer artifact_fts when the unified table has rows for this
+    // kind; fall back to the legacy experience_patterns_fts otherwise (pre-V17
+    // DBs or post-V17 DBs whose migration runner hasn't populated artifacts yet).
+    const rows = v17HasArtifactsOfKind(db, 'experience_pattern')
+      ? cachedPrepare(db,
+          `SELECT ep.*, f.rank AS fts_rank
+           FROM artifact_fts f
+           JOIN artifact a ON a.rowid = f.rowid AND a.kind = 'experience_pattern'
+           JOIN experience_patterns ep ON ep.id = a.id
+           WHERE artifact_fts MATCH ?
+             AND ep.score >= 2
+             AND (ep.source_project = ? OR ep.source_project = ?)
+             AND COALESCE(ep.retrieval_mode, 'reactive') = 'reactive'
+           ORDER BY
+             CASE WHEN ep.source_project = ? THEN 0 ELSE 1 END,
+             CASE ep.severity WHEN 'critical' THEN 0 WHEN 'important' THEN 1 ELSE 2 END,
+             f.rank,
+             ${DECAYED_SCORE_SQL} DESC
+           LIMIT ?`
+        ).all(ftsQuery, project, GLOBAL_PROJECT_SCOPE, project, safeLimit * 2) as ExperiencePattern[]
+      : cachedPrepare(db,
+          `SELECT ep.*, fts.rank AS fts_rank
+           FROM experience_patterns ep
+           JOIN experience_patterns_fts fts ON fts.rowid = ep.rowid
+           WHERE experience_patterns_fts MATCH ?
+             AND ep.score >= 2
+             AND (ep.source_project = ? OR ep.source_project = ?)
+             AND COALESCE(ep.retrieval_mode, 'reactive') = 'reactive'
+           ORDER BY
+             CASE WHEN ep.source_project = ? THEN 0 ELSE 1 END,
+             CASE ep.severity WHEN 'critical' THEN 0 WHEN 'important' THEN 1 ELSE 2 END,
+             fts.rank,
+             ${DECAYED_SCORE_SQL} DESC
+           LIMIT ?`
+        ).all(ftsQuery, project, GLOBAL_PROJECT_SCOPE, project, safeLimit * 2) as ExperiencePattern[];
 
     // Post-query rank filter: reject noise matches when corpus is large enough for BM25.
     // Calibrated on live data (2026-03-24): real matches rank < -1.0, noise > -1.0.
@@ -953,18 +991,33 @@ export function deduplicateCheck(
     }
     if (patternType) params.push(patternType);
 
-    const row = cachedPrepare(db,
-      `SELECT ep.*, fts.rank
-       FROM experience_patterns ep
-       JOIN experience_patterns_fts fts ON fts.rowid = ep.rowid
-       WHERE experience_patterns_fts MATCH ?
-         AND ep.score >= 2
-         ${projectFilter}
-         ${typeFilter}
-         AND fts.rank < -0.5
-       ORDER BY fts.rank
-       LIMIT 1`
-    ).get(...params) as (ExperiencePattern & { rank: number }) | undefined;
+    // V17-aware: prefer artifact_fts when populated; fall back to legacy FTS5.
+    const row = v17HasArtifactsOfKind(db, 'experience_pattern')
+      ? cachedPrepare(db,
+          `SELECT ep.*, f.rank
+           FROM artifact_fts f
+           JOIN artifact a ON a.rowid = f.rowid AND a.kind = 'experience_pattern'
+           JOIN experience_patterns ep ON ep.id = a.id
+           WHERE artifact_fts MATCH ?
+             AND ep.score >= 2
+             ${projectFilter}
+             ${typeFilter}
+             AND f.rank < -0.5
+           ORDER BY f.rank
+           LIMIT 1`
+        ).get(...params) as (ExperiencePattern & { rank: number }) | undefined
+      : cachedPrepare(db,
+          `SELECT ep.*, fts.rank
+           FROM experience_patterns ep
+           JOIN experience_patterns_fts fts ON fts.rowid = ep.rowid
+           WHERE experience_patterns_fts MATCH ?
+             AND ep.score >= 2
+             ${projectFilter}
+             ${typeFilter}
+             AND fts.rank < -0.5
+           ORDER BY fts.rank
+           LIMIT 1`
+        ).get(...params) as (ExperiencePattern & { rank: number }) | undefined;
 
     if (!row) return null;
 

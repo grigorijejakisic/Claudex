@@ -1432,6 +1432,11 @@ export function migrateV15toV16(db: Database): void {
  * for sequencing.
  */
 export function migrateV16toV17(db: Database): void {
+  // DDL only — kernel + registry + map + vec0 + fts5 + indexes.
+  // Views and INSTEAD OF triggers are NOT created here because they would
+  // collide with the still-present legacy tables (CREATE VIEW name conflicts
+  // with CREATE TABLE name of same name). The runner (src/core/migration/
+  // v17-runner.ts) renames legacy tables to {name}_old first, then calls
+  // applyGeneratedDDL to install the views.
   applyV17DDL(db);
-  applyGeneratedDDL(db, generateViewsAndTriggers(KIND_MAPPING));
 }

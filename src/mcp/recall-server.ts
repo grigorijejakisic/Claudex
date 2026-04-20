@@ -246,26 +246,53 @@ server.registerTool(
       }
     } catch { /* Qdrant/embeddings unavailable — non-fatal */ }
 
-    // Channel 4: Learnings (BM25-ranked via FTS5)
+    // Channel 4: Learnings (BM25-ranked via FTS5 — V17 routes through artifact_fts,
+    // pre-V17 through learnings_fts; tries artifact_fts first, falls back to legacy).
     let learningResults: SearchResult[] = [];
     try {
       const keywords = tokenizeQuery(query, 5);
       if (keywords.length > 0) {
         const ftsQuery = keywords.join(' OR ');
-        const hits = cachedPrepare(getDb(),
-          `SELECT l.id, l.content, l.project, l.promotion_count,
-                  bm25(learnings_fts) as rank
-           FROM learnings l
-           JOIN learnings_fts fts ON fts.rowid = l.id
-           WHERE learnings_fts MATCH ?
-             AND (l.project = ? OR l.project = '__global__')
-           ORDER BY rank
-           LIMIT ?`
-        ).all(ftsQuery, proj, offset + limit) as Array<{
-          id: number; content: string; project: string; promotion_count: number; rank: number;
-        }>;
+        const db = getDb();
+        // Try V17 path first
+        let hits: Array<{ id: number | string; content: string; project: string; promotion_count: number }> = [];
+        try {
+          const rows = cachedPrepare(db,
+            `SELECT a.id AS id, a.body AS content, a.project_id AS project,
+                    CAST(json_extract(a.data, '$.promotion_count') AS INTEGER) AS promotion_count
+             FROM artifact_fts f
+             JOIN artifact a ON a.rowid = f.rowid
+             WHERE artifact_fts MATCH ?
+               AND a.kind = 'learning'
+               AND (a.project_id = ? OR a.project_id = '__global__')
+             ORDER BY bm25(artifact_fts)
+             LIMIT ?`
+          ).all(ftsQuery, proj, offset + limit) as Array<{
+            id: string; content: string; project: string; promotion_count: number;
+          }>;
+          hits = rows;
+        } catch { /* artifact_fts unavailable */ }
+
+        // Fallback to legacy learnings_fts if V17 path produced nothing
+        if (hits.length === 0) {
+          try {
+            const rows = cachedPrepare(db,
+              `SELECT l.id, l.content, l.project, l.promotion_count
+               FROM learnings l
+               JOIN learnings_fts fts ON fts.rowid = l.id
+               WHERE learnings_fts MATCH ?
+                 AND (l.project = ? OR l.project = '__global__')
+               ORDER BY bm25(learnings_fts)
+               LIMIT ?`
+            ).all(ftsQuery, proj, offset + limit) as Array<{
+              id: number; content: string; project: string; promotion_count: number;
+            }>;
+            hits = rows;
+          } catch { /* learnings_fts retired post-V17 — non-fatal */ }
+        }
+
         learningResults = hits.map((l, i) => ({
-          id: l.id,
+          id: typeof l.id === 'number' ? l.id : i,
           type: 'learning',
           summary: l.content.slice(0, 300),
           provenance: `learning:${l.id}`,
@@ -275,7 +302,7 @@ server.registerTool(
           score: 1.0 / (RRF_K + i + 1),
         }));
       }
-    } catch { /* learnings_fts may not exist — non-fatal */ }
+    } catch { /* non-fatal */ }
 
     // Channel 5: Decisions (FTS5 with BM25 — replaces broken LIKE AND)
     let decisionResults: SearchResult[] = [];
@@ -337,32 +364,57 @@ server.registerTool(
       } catch { /* non-fatal */ }
     }
 
-    // Channel 6: Experience patterns (FTS5 on trigger_context + lesson + anti_pattern)
+    // Channel 6: Experience patterns (FTS5 — V17 routes through artifact_fts,
+    // pre-V17 through experience_patterns_fts).
     let patternResults: SearchResult[] = [];
     try {
       const keywords = tokenizeQuery(query, 5);
       if (keywords.length > 0) {
         const ftsQuery = keywords.join(' OR ');
-        const hits = cachedPrepare(getDb(),
-          `SELECT ep.id, ep.trigger_context, ep.lesson, ep.anti_pattern,
-                  ep.severity, ep.score, ep.source_project, ep.maturity,
-                  ep.helpful_count, ep.harmful_count, ep.escalation_level,
-                  bm25(experience_patterns_fts) as rank
-           FROM experience_patterns ep
-           JOIN experience_patterns_fts fts ON fts.rowid = ep.rowid
-           WHERE experience_patterns_fts MATCH ?
-             AND ep.score >= 2
-             AND (ep.source_project = ? OR ep.source_project = '__global__')
-           ORDER BY rank
-           LIMIT ?`
-        ).all(ftsQuery, proj, offset + limit) as Array<{
-          id: string; trigger_context: string; lesson: string; anti_pattern: string | null;
-          severity: string; score: number; source_project: string; maturity: string;
-          helpful_count: number; harmful_count: number; escalation_level: string; rank: number;
-        }>;
+        const db = getDb();
+        let hits: Array<{
+          id: string; lesson: string; severity: string; source_project: string;
+        }> = [];
+        try {
+          const rows = cachedPrepare(db,
+            `SELECT a.id, a.body AS lesson,
+                    CAST(json_extract(a.data, '$.severity') AS TEXT) AS severity,
+                    a.project_id AS source_project
+             FROM artifact_fts f
+             JOIN artifact a ON a.rowid = f.rowid
+             WHERE artifact_fts MATCH ?
+               AND a.kind = 'experience_pattern'
+               AND CAST(json_extract(a.data, '$.score') AS INTEGER) >= 2
+               AND (a.project_id = ? OR a.project_id = '__global__')
+             ORDER BY bm25(artifact_fts)
+             LIMIT ?`
+          ).all(ftsQuery, proj, offset + limit) as Array<{
+            id: string; lesson: string; severity: string; source_project: string;
+          }>;
+          hits = rows;
+        } catch { /* artifact_fts unavailable */ }
+
+        if (hits.length === 0) {
+          try {
+            const rows = cachedPrepare(db,
+              `SELECT ep.id, ep.lesson, ep.severity, ep.source_project
+               FROM experience_patterns ep
+               JOIN experience_patterns_fts fts ON fts.rowid = ep.rowid
+               WHERE experience_patterns_fts MATCH ?
+                 AND ep.score >= 2
+                 AND (ep.source_project = ? OR ep.source_project = '__global__')
+               ORDER BY bm25(experience_patterns_fts)
+               LIMIT ?`
+            ).all(ftsQuery, proj, offset + limit) as Array<{
+              id: string; lesson: string; severity: string; source_project: string;
+            }>;
+            hits = rows;
+          } catch { /* experience_patterns_fts retired post-V17 */ }
+        }
+
         const sevImportance: Record<string, number> = { critical: 5, important: 4, minor: 3 };
         patternResults = hits.map((p, i) => ({
-          id: typeof p.id === 'string' ? parseInt(p.id, 10) || i : i,
+          id: i,
           type: 'experience_pattern',
           summary: p.lesson.slice(0, 300),
           provenance: `pattern:${p.id}:${p.source_project}`,
@@ -372,7 +424,7 @@ server.registerTool(
           score: 1.0 / (RRF_K + i + 1),
         }));
       }
-    } catch { /* experience_patterns_fts may not exist — non-fatal */ }
+    } catch { /* non-fatal */ }
 
     // Source weight multipliers — narrow spread so relevance rank dominates,
     // weights act as tiebreaker only (old 0.8–1.3 range let weak decisions outrank strong artifacts)

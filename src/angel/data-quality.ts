@@ -283,7 +283,7 @@ const FTS_DISCREPANCY_THRESHOLD = 10;
  * Checks + fixes:
  *   - observations_fts  (soft-delete aware — rebuilds from non-deleted rows)
  *   - artifacts_fts
- *   - learnings_fts
+ *   - artifact_fts      (V17: unified FTS5 for artifact kernel — replaces learnings_fts + experience_patterns_fts)
  *   - conversation_turns_fts
  *
  * Returns the number of tables that were rebuilt.
@@ -317,12 +317,16 @@ export function validateSchemaIntegrity(db: Database): number {
         (SELECT COUNT(*) FROM artifacts_fts) AS fts_count`,
       rebuildCmd: `INSERT INTO artifacts_fts(artifacts_fts) VALUES('rebuild')`,
     },
+    // V17: learnings_fts retired; artifact_fts (content='artifact') covers
+    // all 6 kinds including learnings. Compare artifact rowcount against
+    // artifact_fts rowcount here. This replaces the old learnings + experience_patterns
+    // FTS5 sync checks in one row.
     {
-      name: 'learnings',
+      name: 'artifact',
       query: `SELECT
-        (SELECT COUNT(*) FROM learnings) AS base_count,
-        (SELECT COUNT(*) FROM learnings_fts) AS fts_count`,
-      rebuildCmd: `INSERT INTO learnings_fts(learnings_fts) VALUES('rebuild')`,
+        (SELECT COUNT(*) FROM artifact) AS base_count,
+        (SELECT COUNT(*) FROM artifact_fts) AS fts_count`,
+      rebuildCmd: `INSERT INTO artifact_fts(artifact_fts) VALUES('rebuild')`,
     },
     {
       name: 'conversation_turns',
