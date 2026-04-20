@@ -153,6 +153,26 @@ describe('stripCodeBlocks', () => {
   it('leaves text without code unchanged', () => {
     expect(stripCodeBlocks('always use Bun')).toBe('always use Bun');
   });
+
+  it('strips <system-reminder> blocks', () => {
+    const text = '<system-reminder>that is wrong, stop doing that</system-reminder>how are we looking?';
+    expect(stripCodeBlocks(text)).toBe('how are we looking?');
+  });
+
+  it('strips <task-notification> blocks', () => {
+    const text = '<task-notification><task-id>foo</task-id><status>done</status></task-notification>next turn text';
+    expect(stripCodeBlocks(text)).toBe('next turn text');
+  });
+
+  it('strips <teammate-message> blocks', () => {
+    const text = '<teammate-message teammate_id="x">always do X</teammate-message>actual user speech';
+    expect(stripCodeBlocks(text)).toBe('actual user speech');
+  });
+
+  it('strips multiple tags in one turn', () => {
+    const text = '<system-reminder>a</system-reminder>middle<task-notification>b</task-notification>end';
+    expect(stripCodeBlocks(text)).toBe('middleend');
+  });
 });
 
 describe('DIRECTIVE_REGEX_FAMILIES', () => {

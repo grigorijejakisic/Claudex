@@ -37,6 +37,7 @@ import {
   getSessionsPendingCuratedExtraction,
 } from './curated-context-extractor.js';
 import { getUnverifiedFrequentPatterns, incrementVerificationCount } from '../intelligence/experience-patterns.js';
+import { extractDirectivesFromSession } from '../intelligence/directive-detector.js';
 import { monitorMemoryFiles } from './memory-monitor.js';
 import { consolidateObservationBatch, shouldConsolidate, markConsolidationRan, runDreamConsolidation } from './consolidator.js';
 import { syncUserProfiles } from './user-profile-sync.js';
@@ -108,6 +109,9 @@ export interface TickResult {
   // Phase 12: Curated Context Extraction
   curated_entries_proposed?: number;
   curated_sessions_scanned?: number;
+  // Phase 2b: Directive detection (P2)
+  directives_extracted?: number;
+  directives_errors?: number;
   // Local Intelligence Amplifier
   services_down?: string[];
   codebase_files_indexed?: number;
@@ -226,6 +230,27 @@ export async function heartbeatTick(ctx: HeartbeatContext): Promise<TickResult> 
     const unprocessed = getUnprocessedSessions(ctx.db, batchSize);
 
     for (const session of unprocessed) {
+      // Phase 2a (P2): Directive detection — runs BEFORE generic pattern
+      // extraction so that `directive_rule` artifacts are in place before the
+      // pattern-extractor's manifest-builder reads existing artifacts for
+      // dedup. Failure here must NOT block pattern extraction for the same
+      // session; see RESEARCH §1.1.
+      try {
+        const dirResult = await extractDirectivesFromSession(
+          ctx.db,
+          session.session_id,
+          session.project,
+        );
+        result.directives_extracted =
+          (result.directives_extracted ?? 0) + dirResult.inserted + dirResult.updated;
+        if (dirResult.errors > 0) {
+          result.directives_errors = (result.directives_errors ?? 0) + dirResult.errors;
+        }
+      } catch {
+        // Non-fatal — session is still marked processed by the existing
+        // pattern-extractor post-condition below.
+      }
+
       try {
         const extraction = await extractPatternsFromSession(
           ctx.db,

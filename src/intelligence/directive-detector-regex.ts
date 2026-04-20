@@ -40,16 +40,47 @@ const FENCED_BLOCK_RE = /```[\s\S]*?```/g;
 const INLINE_BACKTICK_RE = /`[^`\n]*`/g;
 
 /**
- * Strip fenced code blocks (``` ... ```) and inline single-backtick code
- * (`...`) from a user turn before regex matching. Line breaks outside the
- * stripped ranges are preserved so multi-turn context alignment is unaffected.
+ * Injected system tags that sometimes land in `conversation_turns.user_text`
+ * despite not being user-authored:
+ *   <system-reminder>...</system-reminder>
+ *   <task-notification>...</task-notification>
+ *   <teammate-message>...</teammate-message>
+ *   <command-name>...</command-name> (and sibling <command-*> blocks)
+ *
+ * 5 of the 14 labeling-review false positives at the P2 checkpoint
+ * (team-lead batch, 2026-04-20) were system-tag content. The user's actual
+ * speech lives around the tag, so stripping the tag body before regex
+ * matching prevents injected text like "stop doing that" inside a
+ * <system-reminder> from being scored as a user prohibition.
+ */
+const SYSTEM_TAG_NAMES = [
+  'system-reminder',
+  'task-notification',
+  'teammate-message',
+  'command-name',
+  'command-args',
+  'command-message',
+];
+const SYSTEM_TAG_RE = new RegExp(
+  `<(${SYSTEM_TAG_NAMES.join('|')})\\b[^>]*>[\\s\\S]*?</\\1>`,
+  'gi',
+);
+
+/**
+ * Strip fenced code blocks, inline single-backtick code, AND injected
+ * system-tag blocks from a user turn before regex matching. Line breaks
+ * outside the stripped ranges are preserved so multi-turn context alignment
+ * is unaffected.
  *
  * Per CONTEXT §Area 1: quoted speech (`"user says 'always X'"`) is NOT
  * preemptively stripped — the LLM handles quotation context.
  */
 export function stripCodeBlocks(text: string): string {
   if (!text) return '';
-  return text.replace(FENCED_BLOCK_RE, '').replace(INLINE_BACKTICK_RE, '');
+  return text
+    .replace(FENCED_BLOCK_RE, '')
+    .replace(INLINE_BACKTICK_RE, '')
+    .replace(SYSTEM_TAG_RE, '');
 }
 
 /**
