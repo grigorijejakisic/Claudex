@@ -660,12 +660,9 @@ export async function v17Main(subcmd: 'migrate:backup' | 'migrate:backup:dry-run
 import { scanStaleRows } from '../core/migration/v17-stale-scan.js';
 import { writeStaleReview } from '../core/migration/stale-review-parser.js';
 
-const STALE_REVIEW_PATH = path.join(
-  '.planning',
-  'phases',
-  '02-p1-artifact-table-unification',
-  'stale-review.md',
-);
+// Path inlined at call sites; see v17StaleScanMain + v17RunnerMain. Do not
+// reintroduce a top-level const here — CJS bundle hoisting puts the
+// isDirectRun dispatcher above any top-level init, causing TDZ errors.
 
 // ── V17 P1 migration runner CLI (Plan 02-05) ──────────────────────────
 
@@ -682,7 +679,8 @@ export async function v17RunnerMain(
     process.exit(1);
   }
   const backupDir = args.backupDir ?? path.join(path.dirname(dbPath), '..', 'backups');
-  const staleReviewPath = path.join(process.cwd(), STALE_REVIEW_PATH);
+  const staleReviewRel = path.join('.planning', 'phases', '02-p1-artifact-table-unification', 'stale-review.md');
+  const staleReviewPath = path.join(process.cwd(), staleReviewRel);
   const embedder = new EmbeddingProvider();
 
   console.log(`[v17-runner] subcommand: ${subcmd}`);
@@ -717,6 +715,9 @@ export async function v17RunnerMain(
 }
 
 export async function v17StaleScanMain(): Promise<void> {
+  // Inline path to avoid CJS bundle hoisting TDZ (STALE_REVIEW_PATH's initializer
+  // can run AFTER isDirectRun's void v17StaleScanMain() call in the emitted bundle).
+  const staleReviewRel = path.join('.planning', 'phases', '02-p1-artifact-table-unification', 'stale-review.md');
   const args = v17ParseArgs(process.argv.slice(3));
   const dbPath = args.db ?? getDbPath();
   if (!fs.existsSync(dbPath)) {
@@ -726,9 +727,9 @@ export async function v17StaleScanMain(): Promise<void> {
   const db = new Database(dbPath, { readonly: true });
   try {
     const matches = scanStaleRows(db);
-    writeStaleReview(path.join(process.cwd(), STALE_REVIEW_PATH), matches);
+    writeStaleReview(path.join(process.cwd(), staleReviewRel), matches);
     console.log(
-      `Wrote ${matches.length} heuristic matches to ${STALE_REVIEW_PATH}. Review, commit, then run migrate:v17:apply.`,
+      `Wrote ${matches.length} heuristic matches to ${staleReviewRel}. Review, commit, then run migrate:v17:apply.`,
     );
     process.exit(0);
   } finally {
