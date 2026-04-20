@@ -30,6 +30,9 @@
  */
 
 import type { Database } from 'better-sqlite3';
+import * as fs from 'node:fs';
+import * as path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { callLocalLLM } from '../angel/llama-client.js';
 import { embedText } from '../embeddings/embed-pipeline.js';
 import { encodeVector, loadSqliteVec } from '../core/sqlite-vec-loader.js';
@@ -120,45 +123,31 @@ interface DedupShortlistRow {
 }
 
 // ---------------------------------------------------------------------------
-// Inline prompt stubs — replaced by file-backed loader in Plan 03-02
+// Prompt assets — file-backed loader with module-scope cache
 // ---------------------------------------------------------------------------
+//
+// The confirmation + scope-rubric prompts live as editable assets under
+// `directive-detector-prompts/`. JSON few-shot sets swap without a code
+// patch, enabling P2 iteration (regex / few-shot / prompt-rewrite cycles in
+// RESEARCH §1.6) and P8 tuning without a rebuild.
+//
+// The dedup-relation prompt stays inline — per CONTEXT §Area 5 no fixture
+// set is specified for it; any P8 tuning can promote to a file at that time.
 
-// TODO(Plan 03-02): replace with loadPromptAssets() that reads
-// src/intelligence/directive-detector-prompts/{confirmation,scope-rubric}-*
-// and fills the {{FEW_SHOT}} placeholder at module init.
-const CONFIRMATION_SYSTEM_PROMPT_INLINE = `You detect user directives in conversation transcripts from a coding agent.
+interface PromptAssets {
+  /** System prompt for the confirmer — {{FEW_SHOT}} replaced. */
+  confirmationSystem: string;
+  /** System prompt for the dedup relation classifier (inline, no fixture). */
+  dedupRelationSystem: string;
+  /**
+   * System prompt for an optional scope-rubric second pass. Currently unused
+   * — the confirmation prompt already decides scope. Shipped so P2 iteration
+   * Cycle 2/3 can split scope into a second call without a new file.
+   */
+  scopeRubricSystem: string;
+}
 
-A directive is a STANDING RULE the user states for future turns — not a task request, not
-a clarifying question, not an observation, not a one-off instruction for the current step.
-
-Scope taxonomy:
-- session: scoped to the current task, PR, debugging loop, or review
-- project: applies everywhere in the current repo
-- universal: applies across every project the user works on
-
-Polarity:
-- prescriptive: do X (positive assertion)
-- prohibitive: don't do X (negative assertion)
-
-Output JSON only, matching this schema exactly:
-{ "is_directive": boolean,
-  "confidence": number (0..1),
-  "polarity": "prescriptive"|"prohibitive"|null,
-  "scope": "session"|"project"|"universal"|null,
-  "suggested_title": string|null,
-  "normalized_text": string|null,
-  "reasoning": string }
-
-Reject (is_directive=false) for:
-- Question phrasing ("should we always X?")
-- Past-tense observation ("I noticed we always do X")
-- Hedged preference ("I kind of prefer X")
-- Quoted speech from outside the user
-
-When is_directive=false, set polarity/scope/suggested_title/normalized_text to null.`;
-
-// TODO(Plan 03-02): dedup-relation prompt stays inline per CONTEXT — no fixture needed.
-const DEDUP_RELATION_SYSTEM_PROMPT = `You classify the relation between a candidate directive and an existing directive_rule.
+const DEDUP_RELATION_SYSTEM_PROMPT_INLINE = `You classify the relation between a candidate directive and an existing directive_rule.
 
 Given CANDIDATE and CANDIDATES_EXISTING[] (ordered by cosine desc), pick ONE relation for the FIRST existing item:
 - "restatement": same rule, same polarity, same scope — just reworded.
@@ -167,6 +156,92 @@ Given CANDIDATE and CANDIDATES_EXISTING[] (ordered by cosine desc), pick ONE rel
 - "unrelated": different topic; cosine was a false positive.
 
 Output JSON only: { "relation": "restatement"|"opposite_polarity"|"related_but_distinct"|"unrelated", "reasoning": string }.`;
+
+let _cachedPromptAssets: PromptAssets | null = null;
+
+/**
+ * Resolve the `directive-detector-prompts/` directory regardless of whether
+ * we're running from source (ts-node / vitest / esbuild watch) or from the
+ * esbuild-bundled CJS in `dist/`.
+ *
+ * In bundled mode `__dirname` is `<repo>/dist/angel` (or wherever the bundle
+ * landed) and the prompts dir is NOT beside it. We ship the prompts as
+ * source-tree assets; the loader walks upward from the current file URL
+ * until it finds them. Falls back to `src/intelligence/...` from CWD.
+ */
+function resolvePromptsDir(): string {
+  // 1. Try from this module's own file URL (ESM-safe and bundler-tolerant).
+  try {
+    const here = path.dirname(fileURLToPath(import.meta.url));
+    const candidate = path.join(here, 'directive-detector-prompts');
+    if (fs.existsSync(candidate)) return candidate;
+  } catch { /* import.meta.url unavailable (CJS bundle) — fall through */ }
+
+  // 2. Walk upward from __dirname looking for src/intelligence/...
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const dn: string = typeof __dirname !== 'undefined' ? __dirname : process.cwd();
+    let cur = dn;
+    for (let i = 0; i < 8; i++) {
+      const candidate = path.join(cur, 'src', 'intelligence', 'directive-detector-prompts');
+      if (fs.existsSync(candidate)) return candidate;
+      const parent = path.dirname(cur);
+      if (parent === cur) break;
+      cur = parent;
+    }
+  } catch { /* noop */ }
+
+  // 3. CWD fallback
+  return path.join(process.cwd(), 'src', 'intelligence', 'directive-detector-prompts');
+}
+
+/**
+ * Load the confirmation + scope-rubric system prompts, substituting the
+ * `{{FEW_SHOT}}` placeholder with the on-disk JSON fixture content.
+ *
+ * Cached after the first call. Pass `reload=true` (or set
+ * DIRECTIVE_DETECTOR_RELOAD_PROMPTS=1 in the environment) to re-read the
+ * files — useful for iteration without a process restart.
+ *
+ * Non-throwing: returns inline fallbacks if the files are unreadable. The
+ * production fallback is a minimal-but-valid prompt so a missing asset dir
+ * doesn't take down directive extraction — it just degrades precision.
+ */
+export function loadPromptAssets(reload = false): PromptAssets {
+  if (_cachedPromptAssets && !reload && !process.env['DIRECTIVE_DETECTOR_RELOAD_PROMPTS']) {
+    return _cachedPromptAssets;
+  }
+  try {
+    const dir = resolvePromptsDir();
+    const confirmSysRaw = fs.readFileSync(path.join(dir, 'confirmation-system-prompt.md'), 'utf8');
+    const scopeSysRaw = fs.readFileSync(path.join(dir, 'scope-rubric-system-prompt.md'), 'utf8');
+    const confirmFew = JSON.parse(fs.readFileSync(path.join(dir, 'confirmation-few-shot.json'), 'utf8')) as { examples?: unknown };
+    const scopeFew = JSON.parse(fs.readFileSync(path.join(dir, 'scope-rubric-few-shot.json'), 'utf8')) as { examples?: unknown };
+
+    _cachedPromptAssets = {
+      confirmationSystem: confirmSysRaw.replace('{{FEW_SHOT}}', JSON.stringify(confirmFew.examples ?? [], null, 2)),
+      dedupRelationSystem: DEDUP_RELATION_SYSTEM_PROMPT_INLINE,
+      scopeRubricSystem: scopeSysRaw.replace('{{FEW_SHOT}}', JSON.stringify(scopeFew.examples ?? [], null, 2)),
+    };
+    return _cachedPromptAssets;
+  } catch {
+    _cachedPromptAssets = {
+      confirmationSystem: FALLBACK_CONFIRMATION_PROMPT,
+      dedupRelationSystem: DEDUP_RELATION_SYSTEM_PROMPT_INLINE,
+      scopeRubricSystem: FALLBACK_SCOPE_RUBRIC_PROMPT,
+    };
+    return _cachedPromptAssets;
+  }
+}
+
+/** Test hook — drop the cache so reload=true works under vitest module scope. */
+export function __resetPromptAssetsCache(): void {
+  _cachedPromptAssets = null;
+}
+
+const FALLBACK_CONFIRMATION_PROMPT = `You detect user directives. A directive is a standing rule. Output JSON only: { "is_directive": bool, "confidence": number, "polarity": "prescriptive"|"prohibitive"|null, "scope": "session"|"project"|"universal"|null, "suggested_title": string|null, "normalized_text": string|null, "reasoning": string }.`;
+
+const FALLBACK_SCOPE_RUBRIC_PROMPT = `Classify the scope. Output JSON: { "scope": "session"|"project"|"universal", "rationale": string }.`;
 
 // ---------------------------------------------------------------------------
 // Pure helpers
@@ -434,9 +509,10 @@ async function confirmCandidate(
   contextBlock: string,
 ): Promise<ConfirmationResult | null> {
   try {
+    const assets = loadPromptAssets();
     const userPrompt = `CONTEXT (±2 surrounding turns):\n\n${contextBlock}\n\nThe CANDIDATE turn is marked [CANDIDATE]. Analyze it for a standing directive. Reply with JSON only.`;
     const raw = await callLocalLLM({
-      system: CONFIRMATION_SYSTEM_PROMPT_INLINE,
+      system: assets.confirmationSystem,
       prompt: userPrompt,
       model: cfg.model,
       temperature: 0,
@@ -454,12 +530,13 @@ async function classifyRelation(
   shortlist: DedupShortlistRow[],
 ): Promise<{ relation: DedupRelation; reasoning: string }> {
   try {
+    const assets = loadPromptAssets();
     const listed = shortlist
       .map((row, i) => `#${i + 1} (cosine≈${l2DistanceToCosine(row.distance).toFixed(3)}): ${row.title ?? ''} — ${row.body}`)
       .join('\n');
     const userPrompt = `CANDIDATE:\n${candidateBody}\n\nCANDIDATES_EXISTING (ordered by cosine desc):\n${listed}\n\nClassify the relation between CANDIDATE and item #1. JSON only.`;
     const raw = await callLocalLLM({
-      system: DEDUP_RELATION_SYSTEM_PROMPT,
+      system: assets.dedupRelationSystem,
       prompt: userPrompt,
       model: cfg.model,
       temperature: 0,
@@ -819,8 +896,9 @@ export async function extractDirectivesFromSession(
 export const __internals = {
   DIRECTIVE_REGEX_FAMILIES,
   DEFAULT_CONFIG,
-  CONFIRMATION_SYSTEM_PROMPT_INLINE,
-  DEDUP_RELATION_SYSTEM_PROMPT,
+  DEDUP_RELATION_SYSTEM_PROMPT_INLINE,
+  FALLBACK_CONFIRMATION_PROMPT,
+  FALLBACK_SCOPE_RUBRIC_PROMPT,
   randomUuid,
   trimReinforcements,
   writeArtifact,

@@ -1,0 +1,209 @@
+{
+  "examples": [
+    {
+      "candidate_text": "for this PR, keep the refactor minimal — I just want the bug fixed, nothing else",
+      "context": [
+        { "role": "user", "turn_offset": -1, "text": "The login flow is throwing on expired tokens." },
+        { "role": "user", "turn_offset":  0, "text": "for this PR, keep the refactor minimal — I just want the bug fixed, nothing else" },
+        { "role": "user", "turn_offset": 1, "text": "And open a follow-up issue if you see cleanup worth doing." }
+      ],
+      "expected_output": {
+        "is_directive": true,
+        "confidence": 0.9,
+        "polarity": "prescriptive",
+        "scope": "session",
+        "suggested_title": "Keep this PR minimal",
+        "normalized_text": "For this PR, keep the refactor minimal — only fix the bug, no adjacent cleanup.",
+        "reasoning": "'for this PR' anchors to the current change; standing rule for the duration of this work."
+      }
+    },
+    {
+      "candidate_text": "in this debugging session, don't commit anything until I say so",
+      "context": [
+        { "role": "user", "turn_offset": -1, "text": "We're chasing a heisenbug — behavior changes between runs." },
+        { "role": "user", "turn_offset":  0, "text": "in this debugging session, don't commit anything until I say so" },
+        { "role": "user", "turn_offset": 1, "text": "I want to be able to reset the tree at any point." }
+      ],
+      "expected_output": {
+        "is_directive": true,
+        "confidence": 0.92,
+        "polarity": "prohibitive",
+        "scope": "session",
+        "suggested_title": "No commits until told",
+        "normalized_text": "During this debugging session, do not commit without explicit approval.",
+        "reasoning": "Session-scoped prohibition; explicit 'in this debugging session' anchor + 'don't'."
+      }
+    },
+    {
+      "candidate_text": "during this review, only flag critical issues — ignore nits",
+      "context": [
+        { "role": "user", "turn_offset": -1, "text": "I'm under time pressure on this one." },
+        { "role": "user", "turn_offset":  0, "text": "during this review, only flag critical issues — ignore nits" },
+        { "role": "user", "turn_offset": 1, "text": "Start with the authz module." }
+      ],
+      "expected_output": {
+        "is_directive": true,
+        "confidence": 0.88,
+        "polarity": "prescriptive",
+        "scope": "session",
+        "suggested_title": "Critical-only review",
+        "normalized_text": "For this review, surface only critical issues; skip style and nit-level findings.",
+        "reasoning": "Session-scoped prescription anchored by 'during this review'."
+      }
+    },
+    {
+      "candidate_text": "always use Bun for tests in this project — never npm or yarn",
+      "context": [
+        { "role": "user", "turn_offset": -1, "text": "The test command is `bun run test`." },
+        { "role": "user", "turn_offset":  0, "text": "always use Bun for tests in this project — never npm or yarn" },
+        { "role": "user", "turn_offset": 1, "text": "npm scripts will just fail because of the lockfile." }
+      ],
+      "expected_output": {
+        "is_directive": true,
+        "confidence": 0.95,
+        "polarity": "prescriptive",
+        "scope": "project",
+        "suggested_title": "Use Bun for tests",
+        "normalized_text": "Use Bun (not npm or yarn) to run tests in this project.",
+        "reasoning": "Explicit 'always' + 'in this project' + 'never' — strong project-level rule, both polarities."
+      }
+    },
+    {
+      "candidate_text": "don't touch the legacy llama-server files — we're keeping them dormant",
+      "context": [
+        { "role": "user", "turn_offset": -1, "text": "We swapped to Ollama Cloud in session 52." },
+        { "role": "user", "turn_offset":  0, "text": "don't touch the legacy llama-server files — we're keeping them dormant" },
+        { "role": "user", "turn_offset": 1, "text": "If you need to, open a separate PR for removal." }
+      ],
+      "expected_output": {
+        "is_directive": true,
+        "confidence": 0.9,
+        "polarity": "prohibitive",
+        "scope": "project",
+        "suggested_title": "Do not touch legacy llama-server files",
+        "normalized_text": "Do not modify the legacy llama-server files in this repo; they are dormant by design.",
+        "reasoning": "Prohibitive, file-specific, project-scoped rule."
+      }
+    },
+    {
+      "candidate_text": "we use sqlite-vec, not Qdrant, for vector storage in this codebase",
+      "context": [
+        { "role": "user", "turn_offset": -1, "text": "Qdrant was removed in session 47." },
+        { "role": "user", "turn_offset":  0, "text": "we use sqlite-vec, not Qdrant, for vector storage in this codebase" },
+        { "role": "user", "turn_offset": 1, "text": "Please don't reintroduce a Qdrant dependency." }
+      ],
+      "expected_output": {
+        "is_directive": true,
+        "confidence": 0.88,
+        "polarity": "prescriptive",
+        "scope": "project",
+        "suggested_title": "Use sqlite-vec for vectors",
+        "normalized_text": "Use sqlite-vec (not Qdrant) for all vector storage and retrieval in this codebase.",
+        "reasoning": "Project-level architectural rule with 'this codebase' anchor."
+      }
+    },
+    {
+      "candidate_text": "be concise — no narration, no file summaries, just do it",
+      "context": [
+        { "role": "user", "turn_offset": -1, "text": "You were explaining every step in the last session." },
+        { "role": "user", "turn_offset":  0, "text": "be concise — no narration, no file summaries, just do it" },
+        { "role": "user", "turn_offset": 1, "text": "Quality over quantity, always." }
+      ],
+      "expected_output": {
+        "is_directive": true,
+        "confidence": 0.9,
+        "polarity": "prescriptive",
+        "scope": "universal",
+        "suggested_title": "Be concise",
+        "normalized_text": "Default to concise output: no narration, no file summaries, no restated plans.",
+        "reasoning": "Generic voice, no repo anchor — universal style preference that applies everywhere."
+      }
+    },
+    {
+      "candidate_text": "use Sonnet for workers and Opus only for product-defining work",
+      "context": [
+        { "role": "user", "turn_offset": -1, "text": "The last team used Opus for everything and burned budget." },
+        { "role": "user", "turn_offset":  0, "text": "use Sonnet for workers and Opus only for product-defining work" },
+        { "role": "user", "turn_offset": 1, "text": "Haiku for anything trivial." }
+      ],
+      "expected_output": {
+        "is_directive": true,
+        "confidence": 0.87,
+        "polarity": "prescriptive",
+        "scope": "universal",
+        "suggested_title": "Model-tier policy",
+        "normalized_text": "Use Sonnet for worker agents; reserve Opus for product-defining tasks only.",
+        "reasoning": "Cross-project policy about agent model selection. Applies universally."
+      }
+    },
+    {
+      "candidate_text": "never run destructive git commands without asking me first",
+      "context": [
+        { "role": "user", "turn_offset": -1, "text": "You almost force-pushed over my branch yesterday." },
+        { "role": "user", "turn_offset":  0, "text": "never run destructive git commands without asking me first" },
+        { "role": "user", "turn_offset": 1, "text": "That means reset --hard, push --force, branch -D, anything like that." }
+      ],
+      "expected_output": {
+        "is_directive": true,
+        "confidence": 0.95,
+        "polarity": "prohibitive",
+        "scope": "universal",
+        "suggested_title": "Confirm before destructive git",
+        "normalized_text": "Never run destructive git operations (reset --hard, push --force, branch -D, etc.) without explicit approval.",
+        "reasoning": "Safety rule, applies across every repo the user works in — universal."
+      }
+    },
+
+    {
+      "candidate_text": "should we always use Bun here?",
+      "context": [
+        { "role": "user", "turn_offset": -1, "text": "npm install keeps failing because of workspaces." },
+        { "role": "user", "turn_offset":  0, "text": "should we always use Bun here?" },
+        { "role": "user", "turn_offset": 1, "text": "What are the downsides?" }
+      ],
+      "expected_output": {
+        "is_directive": false,
+        "confidence": 0.9,
+        "polarity": null,
+        "scope": null,
+        "suggested_title": null,
+        "normalized_text": null,
+        "reasoning": "Question phrasing, not a standing rule. The user is asking, not prescribing."
+      }
+    },
+    {
+      "candidate_text": "I noticed we always commit with lowercase messages",
+      "context": [
+        { "role": "user", "turn_offset": -1, "text": "Looking at the git log for the last month." },
+        { "role": "user", "turn_offset":  0, "text": "I noticed we always commit with lowercase messages" },
+        { "role": "user", "turn_offset": 1, "text": "Interesting — probably a hook doing it." }
+      ],
+      "expected_output": {
+        "is_directive": false,
+        "confidence": 0.88,
+        "polarity": null,
+        "scope": null,
+        "suggested_title": null,
+        "normalized_text": null,
+        "reasoning": "Past-tense observation ('I noticed'), not a directive. Describes status, doesn't prescribe behavior."
+      }
+    },
+    {
+      "candidate_text": "I kind of prefer when tests go in the same directory as the source",
+      "context": [
+        { "role": "user", "turn_offset": -1, "text": "Where should the new test file live?" },
+        { "role": "user", "turn_offset":  0, "text": "I kind of prefer when tests go in the same directory as the source" },
+        { "role": "user", "turn_offset": 1, "text": "But follow whatever convention is already in the repo." }
+      ],
+      "expected_output": {
+        "is_directive": false,
+        "confidence": 0.82,
+        "polarity": null,
+        "scope": null,
+        "suggested_title": null,
+        "normalized_text": null,
+        "reasoning": "Hedged preference ('kind of prefer') + explicit override ('follow existing convention'). Not a standing rule."
+      }
+    }
+  ]
+}

@@ -1,0 +1,49 @@
+{
+  "examples": [
+    {
+      "text": "for this PR, keep the refactor minimal",
+      "expected_scope": "session",
+      "rationale": "'for this PR' anchors to the current unit of work."
+    },
+    {
+      "text": "in this debugging session, don't commit until I say",
+      "expected_scope": "session",
+      "rationale": "'in this debugging session' binds the rule to the active session only."
+    },
+    {
+      "text": "during this review, only flag critical issues",
+      "expected_scope": "session",
+      "rationale": "'during this review' — explicit temporal / task anchor."
+    },
+    {
+      "text": "always use Bun for tests in this project",
+      "expected_scope": "project",
+      "rationale": "'in this project' — explicit repo-local anchor."
+    },
+    {
+      "text": "don't touch the legacy llama-server files",
+      "expected_scope": "project",
+      "rationale": "File-specific prohibition; the files exist in one repo only."
+    },
+    {
+      "text": "we use sqlite-vec, not Qdrant, for vector storage in this codebase",
+      "expected_scope": "project",
+      "rationale": "'in this codebase' — architectural rule bound to the repo."
+    },
+    {
+      "text": "be concise — output displays in terminal",
+      "expected_scope": "universal",
+      "rationale": "Generic output-style rule; no repo or task anchor; applies everywhere."
+    },
+    {
+      "text": "use Sonnet for workers, Opus only for product-defining work",
+      "expected_scope": "universal",
+      "rationale": "Cross-project model-tier policy; references agent teams in the abstract."
+    },
+    {
+      "text": "never run destructive git commands without asking",
+      "expected_scope": "universal",
+      "rationale": "Safety rule spanning every repo; no project-local anchor."
+    }
+  ]
+}
