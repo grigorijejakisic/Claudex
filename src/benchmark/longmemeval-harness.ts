@@ -50,10 +50,17 @@ interface BenchmarkResult {
 const OLLAMA_BASE = 'http://localhost:11434';
 const CLIPROXY_BASE = 'http://127.0.0.1:8317/v1';
 const EMBED_MODEL = 'snowflake-arctic-embed2';
-const ANSWER_MODEL = 'claude-sonnet-4-6';
-const JUDGE_MODEL = 'claude-sonnet-4-6';
+// Restore the 2026-03-28 baseline configuration (90.6% Oracle):
+// deepseek-coder-v2:16b via Ollama, not claude-sonnet-4-6 via CLIProxy.
+// The CLIProxy path was a mid-session experiment and the proxy on this machine
+// returns `unknown provider for model claude-sonnet-4-6` for sonnet-4-6. Comparing
+// V4 scores against the 90.6% baseline requires the same answer model — flip back.
+// Env overrides kept for operator flexibility (e.g., switch to claude-opus-4-7 when
+// that proxy path works).
+const ANSWER_MODEL = process.env.CLAUDEX_BENCH_ANSWER_MODEL ?? 'deepseek-coder-v2:16b';
+const JUDGE_MODEL = process.env.CLAUDEX_BENCH_JUDGE_MODEL ?? 'deepseek-coder-v2:16b';
 const TOP_K_RETRIEVAL = 10;
-const USE_CLIPROXY = true;
+const USE_CLIPROXY = process.env.CLAUDEX_BENCH_USE_CLIPROXY === 'true';
 
 // ---------------------------------------------------------------------------
 // Helpers

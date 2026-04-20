@@ -66,12 +66,18 @@ interface BenchmarkResult {
 // ---------------------------------------------------------------------------
 
 const OLLAMA_BASE = 'http://localhost:11434';
-const CLIPROXY_BASE = 'http://127.0.0.1:8317/v1';
+const CLIPROXY_BASE = process.env.CLAUDEX_BENCH_CLIPROXY_BASE ?? 'http://127.0.0.1:8317/v1';
 const EMBED_MODEL = 'snowflake-arctic-embed2';
-const ANSWER_MODEL = 'claude-sonnet-4-6';
-const JUDGE_MODEL = 'claude-sonnet-4-6';
+// LoCoMo baseline (2026-03-29, 55.5%) used claude-sonnet-4-6 via CLIProxy.
+// On this machine CLIProxy no longer serves Claude models (returns
+// `unknown provider`). Flip default to a local Ollama model — scores are
+// NOT comparable to the 55.5% baseline, but run-to-run consistency
+// against deepseek-coder-v2:16b gives a new anchor. Operator can override
+// via env to re-target claude-sonnet-4-6 if a proxy serving it is running.
+const ANSWER_MODEL = process.env.CLAUDEX_BENCH_ANSWER_MODEL ?? 'deepseek-coder-v2:16b';
+const JUDGE_MODEL = process.env.CLAUDEX_BENCH_JUDGE_MODEL ?? 'deepseek-coder-v2:16b';
 const TOP_K_RETRIEVAL = 10;
-const USE_CLIPROXY = true;
+const USE_CLIPROXY = process.env.CLAUDEX_BENCH_USE_CLIPROXY === 'true';
 
 // ---------------------------------------------------------------------------
 // Helpers
