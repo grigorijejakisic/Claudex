@@ -7,7 +7,7 @@ Ten atomic phases move Claudex from v3's imperative push to v4's advisory pull. 
 ## Phases
 
 - [x] **Phase 1: P0 — Crystallization** - Lock 4 design decisions and produce `.planning/`
-- [ ] **Phase 2: P1 — Artifact table unification** - V17 migration + legacy views, zero behavior change
+- [x] **Phase 2: P1 — Artifact table unification** - V17 migration + legacy views, zero behavior change (completed 2026-04-20)
 - [ ] **Phase 3: P2 — Directive detector** - Regex + LLM-confirmed ingester writing `directive_rule` artifacts
 - [ ] **Phase 4: P3 — MEMORY.md curation + auto-dream guard** - Sectioned index at `/endsession`, sentinel write-guard
 - [ ] **Phase 5: P4 — Kill legacy injection** - Delete 9 sections, ≤500 tokens, cache-stable, `initialUserMessage` prime
@@ -201,7 +201,7 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 7 -> 8 -> 9 -> 10
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. P0 — Crystallization | 1/1 | Completed | 2026-04-19 |
-| 2. P1 — Artifact table unification | 0/0 | Not started | - |
+| 2. P1 — Artifact table unification | 7/7 | Complete   | 2026-04-20 |
 | 3. P2 — Directive detector | 0/0 | Not started | - |
 | 4. P3 — MEMORY.md curation + auto-dream guard | 0/0 | Not started | - |
 | 5. P4 — Kill legacy injection (GATE) | 0/0 | Not started | - |

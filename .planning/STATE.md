@@ -12,19 +12,19 @@ See: .planning/PROJECT.md (updated 2026-04-19)
 **Current Phase:** 2
 **Current Phase Name:** P1 — Artifact table unification
 **Total Phases:** 11
-**Current Plan:** 0
-**Total Plans in Phase:** 0
-**Status:** Ready to plan
-**Last Activity:** 2026-04-19
-**Last Activity Description:** P0 crystallization complete; Q1-Q4 decisions locked; .planning/ produced from CLAUDEX_V4_SCOPE.md
-**Progress:** [█░░░░░░░░░] 9%
+**Current Plan:** 7
+**Total Plans in Phase:** 7
+**Status:** Phase 2 complete (benchmarks in progress)
+**Last Activity:** 2026-04-20
+**Last Activity Description:** Phase 2 (P1) complete — V17 unified artifact kernel shipped; 7 plans across 3 waves; 37 new tests green; post-migration benchmark run in progress.
+**Progress:** [██░░░░░░░░] 18%
 
 Phase: 2 of 11 (P1 — Artifact table unification)
-Plan: 0 of 0 in current phase
-Status: Ready to plan
-Last activity: 2026-04-19 — P0 crystallization complete
+Plan: 7 of 7 in current phase
+Status: Phase 2 complete (benchmarks in progress)
+Last activity: 2026-04-20 — V17 shipped
 
-Progress: [█░░░░░░░░░] 9%
+Progress: [██░░░░░░░░] 18%
 
 ## Accumulated Context
 
@@ -48,6 +48,25 @@ Decisions are logged in PROJECT.md Key Decisions table. Summary of locked decisi
 
 ## Session Continuity
 
-Last session: 2026-04-19
-Stopped at: P0 crystallization complete; .planning/ produced; decisions locked
-Resume file: .planning/ROADMAP.md (Phase 2 ready to plan)
+Last session: 2026-04-20
+Stopped at: Phase 2 (P1) complete; benchmarks running in background
+Resume file: .planning/ROADMAP.md (Phase 3 — P2 Directive detector ready to plan)
+
+### Phase 2 (P1) completion notes — 2026-04-20
+
+**6 legacy knowledge tables unified into a single `artifact(kind, ...)` kernel + JSON sidecar table via V17 migration.** Legacy tables survive as views + INSTEAD OF triggers; Phase B atomic-tx Phase ships a typed RunnerResult through a backup-gated + stale-review-gated + validation-gated pipeline.
+
+**Retention notes (CRITICAL — do not drop before Phase 11/P9):**
+- `learnings_old`, `decisions_old`, `experience_patterns_old`, `angel_opinions_old`, `critical_rules_old`, `project_curated_context_old` — the 6 renamed legacy tables — survive P1→P9 as migration backstops. Do NOT drop before Phase 11.
+- `legacy_id_map(legacy_table, legacy_id, new_uuid)` — translation table for integer-legacy-id ↔ new UUID. Survives P1→P9 for view ↔ caller id translation. Do NOT drop before Phase 11.
+- `artifacts`, `artifacts_fts`, `vec_artifacts`, `artifact_links` — untouched by P1 (Amendment 1). Entity_summary migration deferred to P5 or P9.
+
+**Retired in P1 (Amendment 4):**
+- `learnings_fts` — retired; replaced by `artifact_fts` filtered on `kind='learning'`.
+- `experience_patterns_fts` — retired; replaced by `artifact_fts` filtered on `kind='experience_pattern'`.
+
+**Dormant-storage pattern:** `migrateV16toV17` is called from `initializeSchema` and creates the artifact kernel + `artifact_fts` + `legacy_id_map` + `artifact_embeddings` vec0 as empty dormant storage. The actual data migration (rename legacy tables + copy rows + create views + flag stale + install triggers) runs only through the explicit `migrate:v17:apply` CLI path.
+
+**Schema version:** 17 (bumped from 16 inside the runner's atomic tx; not bumped by the dormant-storage init-time call).
+
+**Benchmark post-migration:** Running asynchronously — LongMemEval Oracle + LoCoMo harnesses launched at end of Phase 2 session. Logs under `benchmarks/results/p1-postmigration/`. Targets: LongMemEval Oracle ≥ 90% (baseline 90.6%); LoCoMo within 2pp of 55.5% (so ≥ 53.5%). Results to be appended to backup-manifest.md or a successor record when complete.
