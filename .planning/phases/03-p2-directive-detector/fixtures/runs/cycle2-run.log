@@ -1,1 +1,13 @@
 run-precision: 106 candidates, 106 labels, model=glm-5.1:cloud thresh=0.7/0.85
+  progress: 10/106
+  progress: 20/106
+  progress: 30/106
+  progress: 40/106
+  progress: 50/106
+  progress: 60/106
+  progress: 70/106
+  progress: 80/106
+  progress: 90/106
+  progress: 100/106
+run=2026-04-20T23-29-40-752Z_cycle2_scope_fewshot joint=39.1% skipped=0 → tune
+  → C:\Users\Grigorije\Desktop\Projects\CLAUDEXv3\.planning\phases\03-p2-directive-detector\fixtures\runs\2026-04-20T23-29-40-752Z_cycle2_scope_fewshot.json

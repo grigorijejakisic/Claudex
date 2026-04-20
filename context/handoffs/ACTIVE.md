@@ -1,53 +1,64 @@
 ---
 schema: claudex/handoff
 version: 1
-handoff_id: claudex-v3-handoff-phase2-bench
+handoff_id: claudex-v3-handoff-phase3-cycle3-measure
 status: active
-created_at: 2026-04-20T10:44:35Z
-updated_at: 2026-04-20T10:44:35Z
-origin_session_id: unknown
+created_at: 2026-04-21T14:00:00Z
+updated_at: 2026-04-21T14:00:00Z
+origin_session_id: 45699c82-0fcf-4ab6-b25e-f6f15357d3df
 ---
 
-# Handoff: Phase 2 (P1) benchmark collection + Phase 3 kickoff
-Date: 2026-04-20
+# Handoff: Phase 3 (P2) Cycle 3 measurement + calibration ship
+Date: 2026-04-21
 
-## What I Was Working On
+## Commander's Intent
 
-Phase 2 (P1 — Artifact table unification) is CODE + TESTS + LIVE DB COMPLETE. Benchmarks running async in background; need to collect final results, record them, then move to Phase 3 (P2 Directive Detector).
+Measure the Cycle 3 prompt rewrite, apply runbook branch, ship Phase 3 when joint_precision clears the gate — OR escalate if the fixture-noise ceiling makes 88% unreachable.
 
-## Progress Made
+## State (actual — not what execute-3's idle message suggested)
 
-- [x] All 7 P1 plans shipped (02-01..02-07), 44 new Vitest cases green
-- [x] Live V17 migration applied to ~/.claudex/db/claudex.db — 1052 rows migrated, 9 stale flagged, user_version=17, legacy_id_map 976 rows, all 6 _old backstops present
-- [x] Backup verified PASS (6/6 checks): ~/.claudex/backups/pre-v4-P1-1776681458021.db (sha256 3680d8dcd68dc396...)
-- [x] End-to-end smoke test via learnings view: INSERT → artifact → DELETE round-trip PASS
-- [x] Angel restarted (PID 7812 via session-start hook auto-respawn)
-- [x] Benchmark harness config fixed (commit 01e80c7): deepseek-coder-v2:16b via Ollama, env-var overrides
-- [x] deepseek-coder-v2:16b pulled (8.9 GB)
-- [x] Benchmarks relaunched async 2026-04-20T12:27
+Execute-3 progressed further than its status message indicated. All three cycles are done as CODE; only Cycle 3's MEASUREMENT run is missing.
 
-## What's Actually Left To Do
+**Committed this session (3 new commits):**
+- `b344116` — Cycle 2: scope few-shot tuning (confirmation-system-prompt.md + 4 boundary examples)
+- `e478b31` — Cycle 1: synthetic threshold sweep over all 10 pairs; no winner; DEFAULT_CONFIG unchanged
+- `1e870bd` — Cycle 2 measurement (joint=0.391) + Cycle 3 prompt rewrite (new 3-property definition + 10 hard-reject categories + 4 FP-targeting negative few-shots)
 
-- [ ] Wait for LongMemEval Oracle + LoCoMo to finish (~4-10h runtime)
-- [ ] Record final scores — append to `.planning/phases/02-p1-artifact-table-unification/backup-manifest.md` or a dedicated `benchmark-results.md` in the same dir
-- [ ] Update CLAUDEX_V3/CLAUDE.md LoCoMo baseline (55.5% via sonnet-4-6 → new deepseek-v2 anchor; team-lead owns per prior message)
-- [ ] Commit: `feat(02): record post-migration benchmark scores; Phase 2 TRULY complete`
-- [ ] Kick off Phase 3 (P2 Directive Detector): `/auto-orchestrate --from-phase 3` or equivalent
+**Iteration progression (joint / is_dir / scope / polarity):**
+- Baseline (manual, session 52): 0.353 / 0.706 / 0.500 / 0.917
+- Cycle 2 (scope few-shots): 0.391 / 0.609 / 0.714 / 0.929 — scope +21pp BIG, but is_dir dropped 10pp (FPs emerged: complaints, scolding, design-discussion read as directives)
+- Cycle 3 (prompt rewrite targeting FPs): **MEASUREMENT INCOMPLETE** — harness launched at 01:40, log shows only the startup line (79 bytes). Likely killed on reboot.
 
-## Decisions Needed Before Continuing
+**Untracked work artifacts:**
+- `.planning/phases/03-p2-directive-detector/fixtures/runs/2026-04-20T23-34-37-930Z_t65u80.json` — live run at (0.65, 0.80) AFTER Cycle 2 prompt changes. joint=0.409, is_dir=0.636, scope=0.714, polarity=0.929 (22 confirmed). Slightly better than Cycle 2 default-threshold run. Data point for threshold re-tuning after a successful Cycle 3.
+- `cycle3-run.log` — 79-byte stub from the killed Cycle 3 measurement.
+- `cycle2-run.log` — log tail from the committed Cycle 2 run.
 
-None. Team-lead signed off on LoCoMo baseline change; benchmarks running with the new config are the v4 forward anchor.
+## What's Left To Do
 
-## First Action Next Session
-
-1. Check benchmark processes still alive: `wmic process where "commandline like '%benchmark%harness%'" get processid,commandline`
-2. If alive, tail logs for progress: `tail -20 benchmarks/results/p1-postmigration/longmemeval-v17-*.log` + `locomo-v17-*.log`
-3. If finished, grep for `overall` / `Oracle.*%` in both logs for final scores.
+1. **Check `glm-5.1:cloud` is responding** — the session-52 cycle 2+3 work happened after the cloud came back. Verify before re-running.
+2. **Run Cycle 3 measurement:**
+   ```
+   node dist/benchmarks/directive-detector/run-precision.cjs --tag=cycle3_prompt_rewrite
+   ```
+   (~70 min runtime at ~39 s/candidate × 106 candidates on glm-5.1:cloud.)
+3. **Compare vs Cycle 2:**
+   ```
+   node dist/benchmarks/directive-detector/compare-runs.cjs \
+     .planning/phases/03-p2-directive-detector/fixtures/runs/2026-04-20T23-29-40-752Z_cycle2_scope_fewshot.json \
+     .planning/phases/03-p2-directive-detector/fixtures/runs/<cycle3-run>.json
+   ```
+4. **Branch per runbook:**
+   - ≥ 92% → ship (03-06-06 fill CALIBRATION.md + 03-06-07 benchmark gate).
+   - 88–92% → noise-bound: **audit fixture scope labels** (several are genuine judgment calls — 88% gate may be too strict).
+   - < 88% → iteration budget EXHAUSTED (Cycle 3 is the last). Escalate per plan 03-06-05 template. Do NOT lower the gate silently.
+5. **Task #23 dependency (post-P1 LoCoMo baseline):** log at `benchmarks/results/p1-postmigration/locomo-v17-.log` stopped mid-embed phase pre-reboot. Either re-run to establish post-P1 anchor OR accept the pre-P1 anchor `locomo_2026-03-29_893270d.jsonl` before running 03-06-07 benchmark gate.
+6. **Clean up auto-gsd-pipeline team:** the session-52 team has a stale execute-3 after shutdown_request. Tomorrow's orchestrator re-launch will need to archive/delete and recreate.
 
 ## Context That Won't Be Obvious
 
-- **Benchmark PIDs (as of handoff):** LongMemEval 33672, LoCoMo 31268. Background processes independent of this session.
-- **Benchmark log paths:** `benchmarks/results/p1-postmigration/longmemeval-v17-20260420-122734.log` + `locomo-v17-.log` (empty-$TS suffix due to shell quoting in launch).
-- **Two CLI TDZ bugs were surfaced + fixed** during pre-flight (commits 4721ff8 + 4073715). Pattern: top-level const in migrate.ts gets hoisted as `var = undefined` when CJS bundle's `isDirectRun` dispatcher fires. Inline the constant at call sites, don't add new top-level ones.
-- **LongMemEval at [30/500] = 80.0% accuracy** when I handed off. Baseline 90.6% on 470 instances. First 30 are noisy but within envelope.
-- **LoCoMo baseline (55.5%) not reproducible** — CLIProxy on this machine serves only Gemini + GPT, no Claude. New deepseek anchor supersedes per team-lead.
+- **Cycle 2 was a net-positive trade:** scope +21pp, is_dir -10pp. The prompt rewrite in Cycle 3 targets the new failure mode (FPs on complaints/design-talk). If it holds scope at ~0.7 and recovers is_dir to ~0.8, joint lands around 0.55-0.60 — above 88% still unreachable without more work.
+- **Realistic ceiling is likely 75-80%, not 88%.** Baseline fixture has genuine labeler-reviewer scope disagreements (session vs project on context-dependent directives). The 88% gate was set without measuring human-vs-LLM labeler agreement. Before declaring the detector inadequate, run: pick 20 gold labels, have the human re-label blind, measure agreement. If human ceiling is ~80%, 88% is wrong.
+- **Cycle budget is hard-capped at 3.** If Cycle 3 doesn't clear 88%, the plan says escalate — don't start a Cycle 4. Valid escalation options per 03-06-05: (A) lower gate to measured human-ceiling, (B) corpus expansion to 30 sessions, (C) re-label fixture with tighter scope rubric.
+- **Session-52 note on reboot-recovery:** when /auto-orchestrate dies mid-phase, relaunch the skill rather than driving manually. It reads state from disk and picks up cleanly with atomic commits + CALIBRATION.md updates. Manual drive costs the audit trail.
+- **Injection-surface diff check (03-06-09) is still pending** at phase-completion time. Expected result: empty diff on `src/assembler/`, `src/hooks/session-start.ts`, `src/core/sections.ts` — the detector is write-only, not read-path.
