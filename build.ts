@@ -32,6 +32,8 @@ const optionalEntryPoints = [
   'src/benchmark/longmemeval-harness.ts',
   'src/benchmark/debug-locomo.ts',
   'src/benchmark/analyze-results.ts',
+  'src/benchmarks/directive-detector/build-candidates.ts',
+  'src/benchmarks/directive-detector/label-candidates.ts',
   'src/indexer/codebase-indexer.ts',
   'src/adapters/cc-hooks/post-compact.ts',
   'src/adapters/cc-hooks/subagent-start.ts',
