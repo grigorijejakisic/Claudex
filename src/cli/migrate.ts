@@ -558,6 +558,8 @@ if (isDirectRun) {
     void v17Main(subcmd);
   } else if (subcmd === 'migrate:v17:stale-scan') {
     void v17StaleScanMain();
+  } else if (subcmd === 'migrate:v17:dry-run' || subcmd === 'migrate:v17:apply') {
+    void v17RunnerMain(subcmd);
   } else {
     main();
   }
@@ -664,6 +666,55 @@ const STALE_REVIEW_PATH = path.join(
   '02-p1-artifact-table-unification',
   'stale-review.md',
 );
+
+// ── V17 P1 migration runner CLI (Plan 02-05) ──────────────────────────
+
+import { runV17Migration } from '../core/migration/v17-runner.js';
+import { EmbeddingProvider } from '../embeddings/embedding-provider.js';
+
+export async function v17RunnerMain(
+  subcmd: 'migrate:v17:dry-run' | 'migrate:v17:apply',
+): Promise<void> {
+  const args = v17ParseArgs(process.argv.slice(3));
+  const dbPath = args.db ?? getDbPath();
+  if (!fs.existsSync(dbPath)) {
+    console.error(`[ERROR] Source DB not found: ${dbPath}`);
+    process.exit(1);
+  }
+  const backupDir = args.backupDir ?? path.join(path.dirname(dbPath), '..', 'backups');
+  const staleReviewPath = path.join(process.cwd(), STALE_REVIEW_PATH);
+  const embedder = new EmbeddingProvider();
+
+  console.log(`[v17-runner] subcommand: ${subcmd}`);
+  console.log(`[v17-runner] db: ${dbPath}`);
+  console.log(`[v17-runner] backupDir: ${backupDir}`);
+  console.log(`[v17-runner] staleReview: ${staleReviewPath}`);
+
+  const result = await runV17Migration({
+    dbPath,
+    backupDir,
+    staleReviewPath,
+    embedder,
+    dryRun: subcmd === 'migrate:v17:dry-run',
+  });
+
+  console.log(`[v17-runner] verdict: ${result.verdict} (phase=${result.phase})`);
+  if (result.backupResult) {
+    console.log(`[v17-runner] backup: ${result.backupResult.verdict} (${result.backupResult.totalMs}ms)`);
+  }
+  if (result.stagedCount != null) {
+    console.log(`[v17-runner] staged rows: ${result.stagedCount}`);
+  }
+  if (result.insertedCounts) {
+    for (const [k, n] of Object.entries(result.insertedCounts)) {
+      console.log(`[v17-runner]   kind=${k}: ${n}`);
+    }
+  }
+  for (const e of result.errors) console.error(`[v17-runner] ${e}`);
+
+  const code = result.verdict === 'PASS' ? 0 : result.verdict === 'ABORTED' ? 2 : 1;
+  process.exit(code);
+}
 
 export async function v17StaleScanMain(): Promise<void> {
   const args = v17ParseArgs(process.argv.slice(3));
