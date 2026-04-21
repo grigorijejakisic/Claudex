@@ -23,7 +23,7 @@
 | t80u85 | 0.267 | 0.667 | 0.400 | 0.900 | raise general thresh to 0.80 |
 | t80u90 | 0.286 | 0.643 | 0.444 | 0.889 | raise both to max |
 | cycle2_scope_fewshot | 0.391 | 0.609 | 0.714 | 0.929 | scope taxonomy + 4 boundary few-shot examples |
-| cycle3_prompt_rewrite | TBD | TBD | TBD | TBD | hard-reject criteria + 4 FP-targeting negative examples |
+| cycle3_prompt_rewrite | 0.455 | 0.818 | 0.667 | 0.889 | hard-reject criteria + 4 FP-targeting negative examples |
 
 ### Baseline run analysis (2026-04-20T16-39-28-152Z_baseline.json)
 - 17 confirmed by detector; 12 true positives (labeler=true), 5 false positives
@@ -95,6 +95,24 @@ Changes:
 
 Re-run: node dist/benchmarks/directive-detector/run-precision.cjs --tag=cycle3_prompt_rewrite
 
+Run results (2026-04-20T23-54-58-598Z_cycle3_prompt_rewrite.json):
+- joint_precision: 0.455 (was 0.391) — +6.4pp
+- is_directive_precision: 0.818 (was 0.609) — +20.9pp (hard-reject criteria worked on FPs)
+- scope_precision_given_correct: 0.667 (was 0.714) — -4.7pp (regression)
+- polarity_precision_given_correct: 0.889 (was 0.929) — -4.0pp (minor)
+- Confirmed: 11 (down from 23); confusion: TP=9, FP=2, FN=8, TN=87
+
+Analysis: Cycle 3 materially reduced FPs (9→2) via hard-reject criteria, but now misses 8 true
+directives (FN up from 5 baseline to 8). Detector is now too conservative. Scope precision
+regressed because the single universal confirmation was wrong (0/1).
+
+Runbook: joint=0.455 << 0.88 → Cycle 3 insufficient → Task 03-06-05 escalation triggered.
+
+### Escalation decision (2026-04-21)
+
+Per task 03-06-05: 3-cycle iteration budget exhausted; joint=0.455 is far below the 0.90 gate.
+Direction required from team-lead before further iteration or gate adjustment. See message below.
+
 ## Per-scope final
 
 | Scope | confirmed | joint_correct | rate |
@@ -118,7 +136,8 @@ Baseline per-family:
 
 - Cycle 1 entered per runbook (joint < 88%). No threshold pair won (univPrec gate failed all). Proceed to Cycle 2.
 - Cycle 2 completed. joint=0.391 — scope +21pp but FP problem exposed. Proceed to Cycle 3.
-- Cycle 3 in progress. Prompt rewrite + 4 FP-targeting negatives. Re-run underway.
+- Cycle 3 measured: joint=0.455 (+6.4pp over Cycle 2). FP reduction worked (9→2), but recall dropped (5 FN → 8 FN). 3-cycle budget exhausted.
+- Escalation triggered per Task 03-06-05. Awaiting team-lead direction on: (A) lower fixture gate, (B) corpus expansion, (C) rethink scope taxonomy / detector design.
 
 ## Dependency handoffs
 
