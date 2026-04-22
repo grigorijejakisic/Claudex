@@ -391,8 +391,32 @@ export async function chunkSessionTranscript(
       return { inserted: 0, skipped: 'already_chunked', errors: 0 };
     }
 
-    // Segmentation + write path — filled in by later tasks.
-    return { inserted: 0, skipped: null, errors: 0 };
+    const fallbackLabel = `session-${sessionId.slice(0, 8)}`;
+    const firstTurn = turns[0].turn_number;
+    const lastTurn = turns[turns.length - 1].turn_number;
+
+    let segments: Segment[] | null = null;
+    let errors = 0;
+
+    // Only ask the LLM to segment when we have enough turns for its soft
+    // minimum — 1 or 2 turns produces a single chunk directly.
+    if (turns.length >= SOFT_MIN_TURNS) {
+      try {
+        segments = await segmentViaLLM(turns);
+      } catch (err) {
+        console.error('[transcript-chunker] LLM segmentation failed:', err);
+        errors++;
+      }
+    }
+
+    if (!segments) {
+      segments = [{ start: firstTurn, end: lastTurn, topic_label: fallbackLabel }];
+    } else {
+      segments = enforceBounds(segments, turns.map(t => t.turn_number), fallbackLabel);
+    }
+
+    const inserted = insertChunks(db, sessionId, project, turns, segments);
+    return { inserted, skipped: null, errors };
   } catch (err) {
     console.error('[transcript-chunker] unexpected error:', err);
     return { inserted: 0, skipped: null, errors: 1 };
