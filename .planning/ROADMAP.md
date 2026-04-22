@@ -8,7 +8,7 @@ Ten atomic phases move Claudex from v3's imperative push to v4's advisory pull. 
 
 - [x] **Phase 1: P0 — Crystallization** - Lock 4 design decisions and produce `.planning/`
 - [x] **Phase 2: P1 — Artifact table unification** - V17 migration + legacy views, zero behavior change (completed 2026-04-20)
-- [ ] **Phase 3: P2 — Directive detector** - Regex + LLM-confirmed ingester writing `directive_rule` artifacts
+- [x] **Phase 3: P2 — Directive detector** - Regex + LLM-confirmed ingester writing `directive_rule` artifacts (partial-ship B, joint=0.50 on post-relabel fixture, completed 2026-04-22)
 - [ ] **Phase 4: P3 — MEMORY.md curation + auto-dream guard** - Sectioned index at `/endsession`, sentinel write-guard
 - [ ] **Phase 5: P4 — Kill legacy injection** - Delete 9 sections, ≤500 tokens, cache-stable, `initialUserMessage` prime
 - [ ] **Phase 6: P5 — Retrieval simplification** - RRF + cross-encoder rerank only; delete the 6-multiplier chain
@@ -60,7 +60,12 @@ Plans:
 **Plans**: TBD
 
 Plans:
-- [ ] 03-01: TBD
+- [x] 03-01: Detector core (extractDirectivesFromSession + regex families)
+- [x] 03-02: Prompt assets (confirmation + scope-rubric + few-shot fixtures)
+- [x] 03-03: Fixture corpus + LLM labeling + labeling review
+- [x] 03-04: Angel heartbeat wiring (directive-detector phase before pattern-extractor)
+- [x] 03-05: Precision harness + compare-runs + runbook decision tree
+- [x] 03-06: Calibration + ship (partial-ship B at joint=0.50; 03-06-07/08 deferred)
 
 ### Phase 4: P3 — MEMORY.md curation + auto-dream guard
 **Goal**: Angel writes a sectioned ≤25KB MEMORY.md at `/endsession` and the CC auto-dream write-guard is proven collision-proof
@@ -202,7 +207,7 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 7 -> 8 -> 9 -> 10
 |-------|----------------|--------|-----------|
 | 1. P0 — Crystallization | 1/1 | Completed | 2026-04-19 |
 | 2. P1 — Artifact table unification | 7/7 | Complete   | 2026-04-20 |
-| 3. P2 — Directive detector | 0/0 | Not started | - |
+| 3. P2 — Directive detector | 6/6 | Complete (partial-ship B) | 2026-04-22 |
 | 4. P3 — MEMORY.md curation + auto-dream guard | 0/0 | Not started | - |
 | 5. P4 — Kill legacy injection (GATE) | 0/0 | Not started | - |
 | 6. P5 — Retrieval simplification | 0/0 | Not started | - |

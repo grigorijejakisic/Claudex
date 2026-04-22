@@ -5,26 +5,26 @@
 See: .planning/PROJECT.md (updated 2026-04-19)
 
 **Core value:** Memory stops acting like rules — the agent thinks again, pulling curated artifacts on demand instead of blindly following injected imperatives.
-**Current focus:** Phase 2: P1 — Artifact table unification
+**Current focus:** Phase 4: P3 — MEMORY.md curation + auto-dream guard
 
 ## Current Position
 
-**Current Phase:** 2
-**Current Phase Name:** P1 — Artifact table unification
+**Current Phase:** 4
+**Current Phase Name:** P3 — MEMORY.md curation + auto-dream guard
 **Total Phases:** 11
-**Current Plan:** 7
-**Total Plans in Phase:** 7
-**Status:** Phase 2 complete (benchmarks in progress)
-**Last Activity:** 2026-04-20
-**Last Activity Description:** Phase 2 (P1) complete — V17 unified artifact kernel shipped; 7 plans across 3 waves; 37 new tests green; post-migration benchmark run in progress.
-**Progress:** [██░░░░░░░░] 18%
+**Current Plan:** 0
+**Total Plans in Phase:** TBD
+**Status:** Phase 3 (P2 directive detector) complete (partial-ship B at joint=0.50); Phase 4 ready to plan
+**Last Activity:** 2026-04-22
+**Last Activity Description:** Phase 3 (P2) complete — directive detector shipped partial-B at joint_precision=0.50 on post-relabel fixture; scope precision 0.89 ship-quality for P8 consumer contract; negation_dont tunable surface deferred to P8; benchmark gate (03-06-07) and live-tick confirm (03-06-08) deferred to post-ship follow-ups.
+**Progress:** [███░░░░░░░] 27%
 
-Phase: 2 of 11 (P1 — Artifact table unification)
-Plan: 7 of 7 in current phase
-Status: Phase 2 complete (benchmarks in progress)
-Last activity: 2026-04-20 — V17 shipped
+Phase: 4 of 11 (P3 — MEMORY.md curation + auto-dream guard)
+Plan: 0 of TBD in current phase
+Status: Phase 3 complete; Phase 4 ready to plan
+Last activity: 2026-04-22 — P2 directive detector shipped (partial-B)
 
-Progress: [██░░░░░░░░] 18%
+Progress: [███░░░░░░░] 27%
 
 ## Accumulated Context
 
@@ -48,9 +48,29 @@ Decisions are logged in PROJECT.md Key Decisions table. Summary of locked decisi
 
 ## Session Continuity
 
-Last session: 2026-04-20
-Stopped at: Phase 2 (P1) complete; benchmarks running in background
-Resume file: .planning/ROADMAP.md (Phase 3 — P2 Directive detector ready to plan)
+Last session: 2026-04-22
+Stopped at: Phase 3 (P2) complete — partial-ship B at joint=0.50
+Resume file: .planning/ROADMAP.md (Phase 4 — P3 MEMORY.md curation + auto-dream guard ready to plan)
+
+### Phase 3 (P2) completion notes — 2026-04-22
+
+**Directive detector shipped partial-B at joint_precision=0.50 on post-relabel fixture.** Six plans landed across sessions 47-54: detector core + prompt assets + fixture corpus + Angel heartbeat wiring + precision harness + calibration-and-ship. Full iteration log in `.planning/phases/03-p2-directive-detector/03-CALIBRATION.md`.
+
+**Calibration journey:** joint 0.353 (baseline) → 0.391 (scope few-shot) → 0.455 (prompt rewrite) → [escalation + label audit + gate lowered 0.90→0.75 + 12-case hand re-label] → 0.500 (cycle3_diag post-relabel) → 0.500 (cycle4 negation tune, reverted). Path B chosen on the evidence that scope precision 0.889 is ship-quality for P8's primary consumer contract; remaining `negation_dont` family gaps are deferred to P8 as a tunable follow-up with a held-out test set.
+
+**What actually ships:**
+- `src/intelligence/directive-detector.ts` — 2-stage (regex + LLM-confirm) directive extractor writing `artifact(kind='directive_rule', scope ∈ {session, project, universal}, polarity ∈ {prescriptive, prohibitive})` rows.
+- Angel heartbeat runs the detector BEFORE the generic pattern-extractor per Plan 03-04.
+- Passive annotations (`data.possible_contradicts`, `data.related_to`, `data.related_cosine`) for dedup-shortlist hits, feeding P8's supersession/contradiction logic.
+- **Zero injection-path changes** — `git diff 32779b3..HEAD -- src/assembler/ src/hooks/session-start.ts src/core/sections.ts` is empty.
+- Harness observability hardening (commit `3ddd183`): `harness_pid=<pid>` first-line, `--heartbeat-ms` flag, `--limit=<N>` flag, success-signal doc. Killed the 3-silent-death observer-error class permanently.
+
+**Deferred to post-ship follow-ups (NOT blockers):**
+- 03-06-07 benchmark gate (LongMemEval + LoCoMo) — blocks on task #23 (post-V17 baseline still stalled).
+- 03-06-08 live-tick integration confirm — requires Angel ticks against real sessions before `directive_rule` rows appear in the live DB.
+- `llama-server-supervisor.test.ts` has 20 pre-existing test failures (since commit `c84dd61`, 45+ commits before Phase 3) — not a P2 regression, tracked as separate tech-debt.
+
+**P8 tune-queue starter set** (in CALIBRATION.md `## Follow-ups for P8`): retune `negation_dont` family with held-out test set; fixture expansion to 30 sessions; universal-scope second-pass via stubbed scope-rubric prompt; reinforcement_count distribution telemetry.
 
 ### Phase 2 (P1) completion notes — 2026-04-20
 
