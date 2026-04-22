@@ -12,6 +12,7 @@ import { CC_CAPABILITIES } from '../../shared/constants.js';
 import { emitErrorTelemetry } from '../../observability/error-telemetry.js';
 import { runSessionEndCleanup } from '../shared/lifecycle.js';
 import { clearSessionSignals, sweepExpiredSignals } from '../../core/session-signals.js';
+import { recordEvent } from '../../core/session-events.js';
 
 const main = wrapHook('SessionEnd', async (input, ctx) => {
   const gauge = getTokenGauge({
@@ -34,6 +35,21 @@ const main = wrapHook('SessionEnd', async (input, ctx) => {
   } catch (e) {
     emitErrorTelemetry(ctx.db, input.session_id, 'session_end/cleanup', e);
   }
+
+  // Enqueue MEMORY.md curation — Angel's heartbeat consumes this on its next
+  // tick (Phase 5b). Sync work is delegated so the hook returns promptly;
+  // hooks deadlock on heavy LLM work. See plan 04-04.
+  try {
+    recordEvent(
+      ctx.db,
+      input.session_id,
+      ctx.project,
+      'memory_curation_pending',
+      'angel',
+      'enqueue',
+      JSON.stringify({ project: ctx.project, session_id: input.session_id }),
+    );
+  } catch { /* telemetry-style; non-fatal */ }
 
   // Clear this session's signals + sweep expired signals globally
   try {
