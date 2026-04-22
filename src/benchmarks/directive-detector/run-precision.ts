@@ -101,6 +101,7 @@ export interface PairedCandidate {
   candidate: FixtureCandidate;
   label: LabelFields;
   detector: DetectionRecord;
+  scope_excluded_from_scoring?: boolean;
 }
 
 export interface RunMetrics {
@@ -171,7 +172,8 @@ export function computeMetrics(pairs: PairedCandidate[]): RunMetrics {
       perScope[detScope].confirmed++;
 
       if (labTrue) isDirCorrect++;
-      const scopeMatch = detectorScope(p.detector) === (p.label.scope ?? null);
+      const scopeExcluded = p.scope_excluded_from_scoring === true;
+      const scopeMatch = scopeExcluded ? true : detectorScope(p.detector) === (p.label.scope ?? null);
       const polarityMatch = detectorPolarity(p.detector) === (p.label.polarity ?? null);
       if (labTrue && scopeMatch && polarityMatch) {
         jointCorrect++;
@@ -181,8 +183,10 @@ export function computeMetrics(pairs: PairedCandidate[]): RunMetrics {
 
       if (labTrue) {
         // Conditional-on-is_directive-correct numerators/denominators
-        scopeDenominator++;
-        if (scopeMatch) scopeNumerator++;
+        if (!scopeExcluded) {
+          scopeDenominator++;
+          if (scopeMatch) scopeNumerator++;
+        }
         polDenominator++;
         if (polarityMatch) polNumerator++;
       }
@@ -284,29 +288,46 @@ async function main(argv: string[]): Promise<number> {
     }
     const db = seedDbForCandidate(c);
     try {
-      const result = await extractDirectivesFromSession(
-        db,
-        c.session_id,
-        'harness',
-        {
-          dryRun: true,
-          thresholdGeneral: args.threshold,
-          thresholdUniversal: args.thresholdUniversal,
-          model: args.model,
-        },
-      );
-      // The detector emits one decision per regex match; find ours by turn_idx.
-      const detRecord = result.decisions.find(d => d.turn_idx === c.turn_idx)
-        // Fallback: a candidate may produce a non-match if stripCodeBlocks removed
-        // all regex-triggering text; represent as rejected_regex synthetically.
-        ?? {
+      let detRecord: DetectionRecord;
+      try {
+        const result = await extractDirectivesFromSession(
+          db,
+          c.session_id,
+          'harness',
+          {
+            dryRun: true,
+            thresholdGeneral: args.threshold,
+            thresholdUniversal: args.thresholdUniversal,
+            model: args.model,
+          },
+        );
+        // The detector emits one decision per regex match; find ours by turn_idx.
+        detRecord = result.decisions.find(d => d.turn_idx === c.turn_idx)
+          // Fallback: a candidate may produce a non-match if stripCodeBlocks removed
+          // all regex-triggering text; represent as rejected_regex synthetically.
+          ?? {
+            session_id: c.session_id,
+            turn_idx: c.turn_idx,
+            raw_text: c.raw_text,
+            matched_families: c.matched_families,
+            decision: 'rejected_regex',
+          };
+      } catch (candidateErr) {
+        // Per-candidate isolation: one bad candidate should not kill the batch.
+        // Represent as rejected_regex so the pair still contributes a zero-confirm
+        // row to the metrics (consistent with treating errors as conservative rejects).
+        const msg = candidateErr instanceof Error ? candidateErr.message : String(candidateErr);
+        console.log(`  ERROR candidate=${c.candidate_id} turn=${c.turn_idx}: ${msg}`);
+        detRecord = {
           session_id: c.session_id,
           turn_idx: c.turn_idx,
           raw_text: c.raw_text,
           matched_families: c.matched_families,
           decision: 'rejected_regex',
         };
-      pairs.push({ candidate: c, label: labelRow.label, detector: detRecord });
+      }
+      const scopeExcluded = (labelRow as GoldLabelRow & { scope_excluded_from_scoring?: boolean }).scope_excluded_from_scoring === true;
+      pairs.push({ candidate: c, label: labelRow.label, detector: detRecord, scope_excluded_from_scoring: scopeExcluded });
     } finally {
       try { db.close(); } catch { /* noop */ }
     }
