@@ -16,6 +16,7 @@ import * as path from 'path';
 import * as os from 'os';
 import type { Database } from 'better-sqlite3';
 import { cachedPrepare } from '../core/stmt-cache.js';
+import { pathToCcSlug } from '../shared/cc-slug.js';
 
 /** Max MEMORY.md entries before migration triggers. */
 const MAX_ENTRIES = 5;
@@ -52,14 +53,6 @@ interface ParsedEntry {
 // ---------------------------------------------------------------------------
 
 /**
- * Compute CC project directory slug from a filesystem path.
- * Matches CC's encoding: replace special chars with dashes.
- */
-function pathToSlug(projectPath: string): string {
-  return projectPath.replace(/[:\\/. ]/g, '-');
-}
-
-/**
  * Build a lookup map: CC directory slug → Claudex project name.
  * Uses ~/.claudex/projects.json as the registry.
  */
@@ -70,7 +63,7 @@ function buildSlugToProjectMap(): Map<string, string> {
     const raw = JSON.parse(fs.readFileSync(CLAUDEX_PROJECTS_JSON, 'utf-8'));
     const projects = raw.projects ?? {};
     for (const [name, info] of Object.entries(projects)) {
-      const slug = pathToSlug((info as { path: string }).path);
+      const slug = pathToCcSlug((info as { path: string }).path);
       map.set(slug, name);
     }
   } catch {
