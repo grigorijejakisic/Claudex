@@ -15,6 +15,7 @@ import { getLastSessionSummary, synthesizeSessionSummary, getSessionEvents, save
 import { cachedPrepare } from '../../core/stmt-cache.js';
 import { captureRecallFlowEntry } from '../shared/lifecycle.js';
 import { writeClaudeEnvFile, detectCcMemoryConflict } from '../shared/env-file.js';
+import { verifyMemoryMd } from '../../core/memory-md-verify.js';
 import { predictSessionIntent, CONFIDENCE_THRESHOLD } from '../../intelligence/intent-predictor.js';
 import { seedCriticalRules, promoteFromCapabilityTracker } from '../../intelligence/critical-reminders.js';
 import { detectWindowSize } from '../../gauge/window-detector.js';
@@ -203,6 +204,18 @@ const main = wrapHook('SessionStart', async (input, ctx) => {
     await pruneStaleFileArtifacts(ctx.db, ctx.project);
   } catch (e) {
     emitErrorTelemetry(ctx.db, input.session_id, 'session_start/file_ingest', e);
+  }
+
+  // MEMORY.md verification — read-only invariant check (CUR-03 SC-5).
+  // Records memory_md_invalid session event if the Angel-managed file is
+  // oversize, missing sentinel, or malformed. Never mutates the file.
+  try {
+    verifyMemoryMd(ctx.db, ctx.project, input.session_id, {
+      scope: ctx.scope ?? undefined,
+      cwd: input.cwd,
+    });
+  } catch (e) {
+    emitErrorTelemetry(ctx.db, input.session_id, 'session_start/memory_md_verify', e);
   }
 
   // Seed critical rules from CLAUDE.md markers (Phase 2: Critical Reminders Tier)
