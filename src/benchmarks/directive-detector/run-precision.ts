@@ -23,6 +23,8 @@
  *     [--model=glm-5.1:cloud]
  *     [--output-dir=.planning/.../fixtures/runs/]
  *     [--tag=<name>]
+ *     [--heartbeat-ms=30000]  // 0 disables
+ *     [--limit=<N>]           // run only the first N candidates (smoke tests)
  */
 
 import * as fs from 'node:fs';
@@ -45,6 +47,8 @@ interface CliArgs {
   model: string;
   outputDir: string;
   tag: string | null;
+  heartbeatMs: number;
+  limit: number | null;
 }
 
 function defaultFixturePath(file: string): string {
@@ -67,6 +71,8 @@ function parseArgs(argv: string[]): CliArgs {
     model: 'glm-5.1:cloud',
     outputDir: defaultFixturePath('runs'),
     tag: null,
+    heartbeatMs: 30_000,
+    limit: null,
   };
   for (const a of argv) {
     const [k, v] = a.split('=');
@@ -78,6 +84,8 @@ function parseArgs(argv: string[]): CliArgs {
     else if (k === '--model') out.model = v;
     else if (k === '--output-dir') out.outputDir = v;
     else if (k === '--tag') out.tag = v;
+    else if (k === '--heartbeat-ms') out.heartbeatMs = parseInt(v, 10);
+    else if (k === '--limit') out.limit = parseInt(v, 10);
   }
   return out;
 }
@@ -259,8 +267,12 @@ function seedDbForCandidate(candidate: FixtureCandidate): Database.Database {
 // Main
 // ---------------------------------------------------------------------------
 
+// Success signal = the `*_<tag>.json` run file lands in outputDir with a
+// populated `metrics` block. Process-table absence alone does NOT imply
+// failure — observers must grep for the output JSON, not `wmic` the PID.
 async function main(argv: string[]): Promise<number> {
   const args = parseArgs(argv);
+  console.log(`harness_pid=${process.pid}`);
   if (!fs.existsSync(args.candidates)) {
     console.error(`run-precision: missing ${args.candidates}`);
     return 2;
@@ -270,7 +282,8 @@ async function main(argv: string[]): Promise<number> {
     return 2;
   }
 
-  const candidates = readJsonl<FixtureCandidate>(args.candidates);
+  const allCandidates = readJsonl<FixtureCandidate>(args.candidates);
+  const candidates = args.limit != null ? allCandidates.slice(0, args.limit) : allCandidates;
   const labelRows = readJsonl<GoldLabelRow>(args.labels);
   const byCid = new Map(labelRows.map(r => [r.candidate_id, r]));
 
@@ -278,6 +291,19 @@ async function main(argv: string[]): Promise<number> {
   let skipped = 0;
 
   console.log(`run-precision: ${candidates.length} candidates, ${labelRows.length} labels, model=${args.model} thresh=${args.threshold}/${args.thresholdUniversal}`);
+
+  // Heartbeat timer — fixed-interval liveness beacon independent of the
+  // 10-candidate progress bucket. Flushes to the redirected log even when
+  // an individual LLM call is slow enough that the loop hasn't advanced by
+  // 10 candidates yet. Observers should treat heartbeats as "process alive".
+  const startMs = Date.now();
+  let done = 0;
+  const heartbeatTimer = args.heartbeatMs > 0
+    ? setInterval(() => {
+        const elapsed = Math.round((Date.now() - startMs) / 1000);
+        console.log(`  heartbeat: ${done}/${candidates.length} ${elapsed}s`);
+      }, args.heartbeatMs)
+    : null;
 
   for (let i = 0; i < candidates.length; i++) {
     const c = candidates[i];
@@ -331,8 +357,11 @@ async function main(argv: string[]): Promise<number> {
     } finally {
       try { db.close(); } catch { /* noop */ }
     }
-    if ((i + 1) % 10 === 0) console.log(`  progress: ${i + 1}/${candidates.length}`);
+    done = i + 1;
+    if (done % 10 === 0) console.log(`  progress: ${done}/${candidates.length}`);
   }
+
+  if (heartbeatTimer) clearInterval(heartbeatTimer);
 
   const metrics = computeMetrics(pairs);
 
