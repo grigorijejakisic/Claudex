@@ -32,6 +32,12 @@ import { pathToCcSlug } from '../shared/cc-slug.js';
 export const MAX_BYTES = 25_000;
 export const MAX_LINES = 200;
 
+/** Max preamble lines rendered above `## Entities`. */
+const MAX_PREAMBLE_LINES = 5;
+
+/** Max bytes to sniff per user-memory sibling file (frontmatter only). */
+const MAX_FRONTMATTER_SNIFF_BYTES = 1024;
+
 /** Cold-start user-tail template. */
 export const USER_TAIL_DEFAULT = '<!-- USER EDITABLE -->\n\n## User Notes\n\n';
 
@@ -64,6 +70,77 @@ export function computeMemoryMdPath(project: string): string {
 /** Convert a project identifier to its CC slug form. */
 export function toSlug(project: string): string {
   return /[\\/:]/.test(project) ? pathToCcSlug(project) : project;
+}
+
+/**
+ * Render the preamble block: up to 5 lines of universal-user-memory
+ * descriptions, drawn from sibling `*.md` files in the same CC memory dir.
+ *
+ * Scans `~/.claude/projects/<slug>/memory/*.md` (excluding `MEMORY.md`
+ * itself), reads the first 1KB of each file, parses YAML frontmatter,
+ * keeps only `type: user` files, and renders each as `- <description>`
+ * where `<description>` comes from the frontmatter `description:` field or
+ * falls back to the filename stem.
+ *
+ * Returns an empty string if no user-memory files match — in that case
+ * `## Entities` starts at the top of the Angel-owned body.
+ */
+export function renderPreamble(slug: string): string {
+  try {
+    const memDir = path.join(os.homedir(), '.claude', 'projects', slug, 'memory');
+    if (!fs.existsSync(memDir)) return '';
+
+    let entries: string[];
+    try {
+      entries = fs.readdirSync(memDir);
+    } catch {
+      return '';
+    }
+
+    const candidates = entries
+      .filter((name) => name.toLowerCase().endsWith('.md') && name !== 'MEMORY.md')
+      .sort(); // filename ASC for deterministic ordering
+
+    const lines: string[] = [];
+    for (const name of candidates) {
+      if (lines.length >= MAX_PREAMBLE_LINES) break;
+
+      const filePath = path.join(memDir, name);
+      let raw: string;
+      try {
+        // Read up to 1KB — frontmatter is always small, body is irrelevant here.
+        const fd = fs.openSync(filePath, 'r');
+        const buf = Buffer.alloc(MAX_FRONTMATTER_SNIFF_BYTES);
+        const n = fs.readSync(fd, buf, 0, MAX_FRONTMATTER_SNIFF_BYTES, 0);
+        fs.closeSync(fd);
+        raw = buf.slice(0, n).toString('utf8');
+      } catch {
+        continue;
+      }
+
+      if (!raw.startsWith('---')) continue;
+      const endIdx = raw.indexOf('---', 3);
+      if (endIdx < 0) continue;
+      const frontmatter = raw.slice(3, endIdx);
+
+      // `type: user` filter (word-boundary to avoid matching e.g. "user_x")
+      if (!/\btype:\s*user\b/i.test(frontmatter)) continue;
+
+      const descMatch = frontmatter.match(/^\s*description:\s*(.+?)\s*$/im);
+      const description = descMatch
+        ? descMatch[1].trim().replace(/^["']|["']$/g, '')
+        : name.replace(/\.md$/i, '');
+
+      lines.push(`- ${description}`);
+    }
+
+    if (lines.length === 0) return '';
+
+    // Trailing blank line separates preamble from `## Entities`.
+    return lines.join('\n') + '\n\n';
+  } catch {
+    return '';
+  }
 }
 
 /**
