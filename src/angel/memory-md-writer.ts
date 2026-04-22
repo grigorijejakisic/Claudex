@@ -25,6 +25,7 @@
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
+import { createHash } from 'node:crypto';
 import type { Database } from 'better-sqlite3';
 import { pathToCcSlug } from '../shared/cc-slug.js';
 import { cachedPrepare } from '../core/stmt-cache.js';
@@ -406,6 +407,40 @@ export function renderHandoff(project: string): string {
   } catch {
     return header + 'No active handoff.\n';
   }
+}
+
+/**
+ * Normalize a body string to make sentinel hashing stable across platforms
+ * and editors. Contract:
+ *   - CRLF → LF
+ *   - strip trailing whitespace per line
+ *   - collapse runs of ≥2 blank lines to a single blank line
+ *   - ensure exactly one trailing `\n`
+ */
+export function normalize(text: string): string {
+  let out = text.replace(/\r\n/g, '\n');
+  out = out.replace(/[ \t]+$/gm, '');
+  out = out.replace(/\n{3,}/g, '\n\n');
+  out = out.replace(/\n+$/, '') + '\n';
+  return out;
+}
+
+/**
+ * Build the top sentinel line. `normalizedBody` must be the post-normalize
+ * Angel-owned block (between sentinel line and `<!-- USER EDITABLE -->`).
+ */
+export function sentinelLine(normalizedBody: string): string {
+  const hash = createHash('sha256').update(normalizedBody, 'utf8').digest('hex');
+  return `<!-- CLAUDEX-MANAGED: do not edit above user section. hash=${hash} -->`;
+}
+
+/**
+ * Parse a sentinel line and return the embedded sha256 hex hash, or null
+ * if the line is missing, malformed, or carries a non-64-hex-char hash.
+ */
+export function parseSentinelHash(firstLine: string): string | null {
+  const m = firstLine.match(/^<!-- CLAUDEX-MANAGED: .*? hash=([0-9a-f]{64}) -->$/);
+  return m ? m[1] : null;
 }
 
 /**
