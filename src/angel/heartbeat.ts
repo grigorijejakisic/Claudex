@@ -177,6 +177,19 @@ export async function heartbeatTick(ctx: HeartbeatContext): Promise<TickResult> 
                      'Session auto-closed after ' || ? || ' minutes idle (warned, no response)')`
           ).run(session.session_id, session.project, session.idle_minutes);
 
+          // 4b. Queue MEMORY.md curation — same trigger as /endsession hook
+          // (plan 04-04-01). The user isn't around to run the /endsession
+          // skill, so the auto-close path must enqueue too. Phase 5b picks
+          // it up on a subsequent tick.
+          cachedPrepare(ctx.db,
+            `INSERT INTO session_events (session_id, project, event_type, entity, action, detail)
+             VALUES (?, ?, 'memory_curation_pending', 'angel', 'enqueue', ?)`
+          ).run(
+            session.session_id,
+            session.project,
+            JSON.stringify({ project: session.project, session_id: session.session_id }),
+          );
+
           // 5. Git commit — every session end produces a commit
           try {
             const { execSync } = require('child_process');
