@@ -29,6 +29,7 @@ import { insertObservation } from '../../../core/observations.js';
 import { detectMilestone } from '../../../adapters/shared/lifecycle.js';
 import { buildFlowEntry, captureFlowEntry, captureSessionSummary } from '../../../adapters/shared/lifecycle.js';
 import { writeClaudeEnvFile, detectCcMemoryConflict } from '../../../adapters/shared/env-file.js';
+import { verifyMemoryMd } from '../../../core/memory-md-verify.js';
 import { recordEvent, getSessionEvents } from '../../../core/session-events.js';
 import { getActiveSignals, createSignal } from '../../../core/session-signals.js';
 import { cachedPrepare } from '../../../core/stmt-cache.js';
@@ -92,6 +93,49 @@ describe('SessionStart hook logic', () => {
     // No data -> empty or minimal content
     if (!payload.content) {
       expect(payload.content).toBeFalsy();
+    }
+  });
+
+  it('records memory_md_invalid session event when MEMORY.md is oversize (04-03-05 wiring)', () => {
+    // Pre-populate a temp HOME with an oversize MEMORY.md at the CC-style path,
+    // then drive the same invocation session-start.ts makes.
+    const tmpHome = fs.mkdtempSync(path.join(os.tmpdir(), 'claudex-mmv-wire-'));
+    const prevHome = process.env.HOME;
+    const prevUserProfile = process.env.USERPROFILE;
+    process.env.HOME = tmpHome;
+    process.env.USERPROFILE = tmpHome;
+
+    try {
+      const scope = 'wire-test-proj';
+      const memoryDir = path.join(tmpHome, '.claude', 'projects', scope, 'memory');
+      fs.mkdirSync(memoryDir, { recursive: true });
+      const sentinel = `<!-- CLAUDEX-MANAGED: do not edit above user section. hash=${'0'.repeat(64)} -->`;
+      const padding = 'x'.repeat(26_000);
+      fs.writeFileSync(
+        path.join(memoryDir, 'MEMORY.md'),
+        `${sentinel}\nbody\n${padding}\n<!-- USER EDITABLE -->\n## User Notes\n`,
+      );
+
+      createSession(db, {
+        session_id: 'verify-wire-s1',
+        project: scope,
+        scope,
+        cwd: '/tmp/test',
+        source: 'cc-hooks',
+      });
+
+      verifyMemoryMd(db, scope, 'verify-wire-s1', { scope, cwd: '/tmp/test' });
+
+      const events = getSessionEvents(db, 'verify-wire-s1')
+        .filter(e => e.event_type === 'memory_md_invalid');
+      expect(events).toHaveLength(1);
+      const detail = JSON.parse(events[0].detail!);
+      expect(detail.reason).toBe('size_exceeded');
+      expect(detail.bytes).toBeGreaterThan(25_000);
+    } finally {
+      if (prevHome === undefined) delete process.env.HOME; else process.env.HOME = prevHome;
+      if (prevUserProfile === undefined) delete process.env.USERPROFILE; else process.env.USERPROFILE = prevUserProfile;
+      try { fs.rmSync(tmpHome, { recursive: true, force: true }); } catch { /* ignore */ }
     }
   });
 });
