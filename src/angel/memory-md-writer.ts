@@ -30,6 +30,7 @@ import type { Database } from 'better-sqlite3';
 import { pathToCcSlug } from '../shared/cc-slug.js';
 import { cachedPrepare } from '../core/stmt-cache.js';
 import { resolveProjectPath } from '../shared/scope-detector.js';
+import { recordEvent } from '../core/session-events.js';
 
 /** Hard ceiling for Angel-owned content portion of MEMORY.md. */
 export const MAX_BYTES = 25_000;
@@ -444,24 +445,179 @@ export function parseSentinelHash(firstLine: string): string | null {
 }
 
 /**
- * Orchestrates curation — gathers inputs, renders body, checks sentinel,
- * writes atomically. Always non-throwing; returns a structured result so the
- * Angel heartbeat can record metrics without needing exception-safety.
+ * Record a refusal event in `session_events` so observers see when and why
+ * Angel declined to write. Sessionless — uses a synthetic session_id.
+ */
+function recordRefusal(db: Database, project: string, filePath: string, reason: string): void {
+  recordEvent(db, 'angel-memory-writer', project, 'memory_curation_refused', filePath, 'refuse', reason);
+}
+
+/**
+ * Trim the Angel-owned body until it fits in maxBytes AND maxLines.
  *
- * This scaffold implementation lands in 04-01-01. Tasks 04-01-02 through
- * 04-01-06 fill in the renderers, normalization, sentinel logic, refuse
- * path, idempotency fast-path, and atomic write.
+ * Trim order: Recent Threads tail → Active Projects tail → Entities tail →
+ * Handoff tail. Preamble and How-to-Query are never trimmed. If still over
+ * after all three lists are emptied, truncate Entities to 3 entries as a
+ * hard last resort (planner pragma in PLAN §Tasks/04-01-06).
+ */
+function enforceSizeCap(
+  body: string,
+  sections: { preamble: string; entities: string; projects: string; threads: string; handoff: string; howTo: string },
+): string {
+  const fits = (s: string): boolean =>
+    Buffer.byteLength(s, 'utf8') <= MAX_BYTES && s.split('\n').length <= MAX_LINES;
+
+  const rebuild = (): string =>
+    normalize(
+      [sections.preamble, sections.entities, sections.projects, sections.threads, sections.handoff, sections.howTo]
+        .filter(Boolean)
+        .join('\n'),
+    );
+
+  if (fits(body)) return body;
+
+  const trimTail = (section: string): string => {
+    const lines = section.split('\n');
+    // Keep header (first line) and drop the last `- ` line we find.
+    for (let i = lines.length - 1; i > 0; i--) {
+      if (lines[i].startsWith('- ')) {
+        lines.splice(i, 1);
+        return lines.join('\n');
+      }
+    }
+    return section; // no `- ` rows left to trim
+  };
+
+  // 1. Trim Recent Threads tail until header-only
+  while (!fits(body) && /^- /m.test(sections.threads)) {
+    sections.threads = trimTail(sections.threads);
+    body = rebuild();
+  }
+  // 2. Trim Active Projects tail
+  while (!fits(body) && /^- /m.test(sections.projects)) {
+    sections.projects = trimTail(sections.projects);
+    body = rebuild();
+  }
+  // 3. Trim Entities tail
+  while (!fits(body) && /^- /m.test(sections.entities)) {
+    sections.entities = trimTail(sections.entities);
+    body = rebuild();
+  }
+  // 4. Trim Handoff tail
+  while (!fits(body) && /^- /m.test(sections.handoff)) {
+    sections.handoff = trimTail(sections.handoff);
+    body = rebuild();
+  }
+
+  if (fits(body)) return body;
+
+  // Last resort — truncate Entities to first 3 rows.
+  const entityLines = sections.entities.split('\n');
+  const headerIdx = entityLines.findIndex((l) => l.startsWith('## '));
+  const keepCount = headerIdx + 1 + 3;
+  if (entityLines.length > keepCount) {
+    sections.entities = entityLines.slice(0, keepCount).join('\n');
+    body = rebuild();
+  }
+
+  return body;
+}
+
+/**
+ * Orchestrates curation — gathers inputs, renders body, checks sentinel,
+ * writes atomically. Always non-throwing; returns a structured result so
+ * the Angel heartbeat can record metrics without needing exception-safety.
  */
 export function curateMemoryMd(db: Database, project: string): CurationResult {
-  // Reference `db` to prevent a no-unused-vars diagnostic during scaffolding.
-  void db;
+  let memoryMdPath = '';
   try {
-    const memoryMdPath = computeMemoryMdPath(project);
+    memoryMdPath = computeMemoryMdPath(project);
     if (!fs.existsSync(path.dirname(memoryMdPath))) {
       return { path: memoryMdPath, written: false, reason: 'no_project_dir' };
     }
-    return { path: memoryMdPath, written: false, reason: 'idempotent_noop' };
+
+    // Assemble Angel-owned sections.
+    const sections = {
+      preamble: renderPreamble(toSlug(project)),
+      entities: renderEntities(db, project),
+      projects: renderActiveProjects(db),
+      threads: renderRecentThreads(db, project),
+      handoff: renderHandoff(project),
+      howTo: HOW_TO_QUERY_STATIC,
+    };
+
+    let body = normalize(
+      [sections.preamble, sections.entities, sections.projects, sections.threads, sections.handoff, sections.howTo]
+        .filter(Boolean)
+        .join('\n'),
+    );
+    body = enforceSizeCap(body, sections);
+
+    const sentinel = sentinelLine(body);
+
+    // Read existing file (if any) to preserve user tail and detect refuse condition.
+    const existing = fs.existsSync(memoryMdPath) ? fs.readFileSync(memoryMdPath, 'utf8') : '';
+
+    let userTail = USER_TAIL_DEFAULT;
+    const markerIdx = existing.indexOf('<!-- USER EDITABLE -->');
+    if (markerIdx >= 0) {
+      userTail = existing.slice(markerIdx);
+      if (!userTail.endsWith('\n')) userTail += '\n';
+
+      // Refuse if there's a user block but no valid sentinel on line 1.
+      const firstLine = existing.split('\n', 1)[0];
+      if (!parseSentinelHash(firstLine)) {
+        recordRefusal(db, project, memoryMdPath, 'sentinel_missing');
+        return { path: memoryMdPath, written: false, reason: 'sentinel_missing' };
+      }
+    }
+
+    const fullNew = `${sentinel}\n${body}\n${userTail}`;
+
+    // Idempotency fast-path: bytes already match.
+    if (existing === fullNew) {
+      const firstLine = existing.split('\n', 1)[0];
+      return {
+        path: memoryMdPath,
+        written: false,
+        reason: 'idempotent_noop',
+        bytes: Buffer.byteLength(existing, 'utf8'),
+        lines: existing.split('\n').length,
+        hash: parseSentinelHash(firstLine) ?? undefined,
+      };
+    }
+
+    // Atomic write: tmp → rename, with one Windows-lock retry.
+    const tmp = memoryMdPath + '.tmp';
+    try {
+      fs.writeFileSync(tmp, fullNew, 'utf8');
+    } catch {
+      try { fs.unlinkSync(tmp); } catch { /* ignore */ }
+      return { path: memoryMdPath, written: false, reason: 'write_io_error' };
+    }
+    try {
+      fs.renameSync(tmp, memoryMdPath);
+    } catch {
+      // Windows: rename can race a file lock (AV scan, editor watch). Retry once.
+      const start = Date.now();
+      while (Date.now() - start < 50) { /* busy-wait 50ms, no async here */ }
+      try {
+        fs.renameSync(tmp, memoryMdPath);
+      } catch {
+        try { fs.unlinkSync(tmp); } catch { /* ignore */ }
+        return { path: memoryMdPath, written: false, reason: 'write_io_error' };
+      }
+    }
+
+    return {
+      path: memoryMdPath,
+      written: true,
+      reason: 'wrote',
+      bytes: Buffer.byteLength(fullNew, 'utf8'),
+      lines: fullNew.split('\n').length,
+      hash: parseSentinelHash(sentinel) ?? undefined,
+    };
   } catch {
-    return { path: '', written: false, reason: 'write_io_error' };
+    return { path: memoryMdPath, written: false, reason: 'write_io_error' };
   }
 }
