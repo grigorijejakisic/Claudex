@@ -57,6 +57,126 @@ interface Segment {
 }
 
 // ---------------------------------------------------------------------------
+// LLM topic-segmenter
+// ---------------------------------------------------------------------------
+
+const SEGMENT_SYSTEM_PROMPT = `You are segmenting a conversation into topic-coherent chunks.
+
+Rules:
+- Each segment covers a contiguous range of turns [start, end] inclusive.
+- Segments must cover all turns with no gaps or overlaps.
+- Each segment gets a short topic_label (<= 60 chars).
+- Aim for 3-20 turns per segment; absolute maximum 30.
+- If the whole conversation is one topic, return one segment.
+
+Output STRICT JSON matching:
+{ "segments": [ { "start": N, "end": M, "topic_label": "..." } ] }`;
+
+/**
+ * Extract a JSON object from an LLM response using balanced-brace matching.
+ * Tolerant of leading/trailing prose. Mirrors directive-detector's helper.
+ */
+function extractFirstJsonObject(raw: string): unknown | null {
+  if (!raw) return null;
+  const start = raw.indexOf('{');
+  if (start === -1) return null;
+  let depth = 0;
+  let inString = false;
+  let end = -1;
+  for (let i = start; i < raw.length; i++) {
+    const ch = raw[i];
+    if (inString) {
+      if (ch === '\\') { i++; continue; }
+      if (ch === '"') inString = false;
+      continue;
+    }
+    if (ch === '"') { inString = true; continue; }
+    if (ch === '{') depth++;
+    else if (ch === '}') {
+      depth--;
+      if (depth === 0) { end = i; break; }
+    }
+  }
+  if (end === -1) return null;
+  try {
+    return JSON.parse(raw.substring(start, end + 1));
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Parse a raw LLM response into a validated Segment[]. Returns null if:
+ *   - response is unparseable JSON
+ *   - `segments` is missing or empty or not an array
+ *   - any element is shape-wrong (non-integer start/end, end<start, missing label)
+ *   - coverage is incomplete (first/last turn mismatch) or has gaps/overlaps
+ *
+ * Shape validation here is strict. Bounds enforcement (soft-min merge,
+ * hard-max split) is caller's responsibility (task 04-02-03).
+ */
+export function parseSegmentationResponse(
+  raw: string,
+  turnNumbers: number[],
+): Segment[] | null {
+  if (turnNumbers.length === 0) return null;
+  const obj = extractFirstJsonObject(raw) as Record<string, unknown> | null;
+  if (!obj) return null;
+  const rawSegs = obj.segments;
+  if (!Array.isArray(rawSegs) || rawSegs.length === 0) return null;
+
+  const segs: Segment[] = [];
+  for (const s of rawSegs) {
+    if (!s || typeof s !== 'object') return null;
+    const rec = s as Record<string, unknown>;
+    const start = rec.start;
+    const end = rec.end;
+    const label = rec.topic_label;
+    if (typeof start !== 'number' || !Number.isInteger(start)) return null;
+    if (typeof end !== 'number' || !Number.isInteger(end)) return null;
+    if (end < start) return null;
+    if (typeof label !== 'string' || label.length === 0) return null;
+    segs.push({ start, end, topic_label: label });
+  }
+
+  const firstTurn = turnNumbers[0];
+  const lastTurn = turnNumbers[turnNumbers.length - 1];
+  if (segs[0].start !== firstTurn) return null;
+  if (segs[segs.length - 1].end !== lastTurn) return null;
+
+  for (let i = 1; i < segs.length; i++) {
+    if (segs[i].start !== segs[i - 1].end + 1) return null;
+  }
+
+  return segs;
+}
+
+/**
+ * Ask the local LLM to segment a transcript into topic-coherent chunks.
+ * Returns null on shape-invalid output; throws on transport errors so the
+ * caller can distinguish transient failure (counted as `errors`) from
+ * deterministic rejection.
+ */
+async function segmentViaLLM(turns: ConvTurn[]): Promise<Segment[] | null> {
+  const preview = turns.map(t => ({
+    n: t.turn_number,
+    u: (t.user_text ?? '').slice(0, 200),
+    a: (t.assistant_text ?? '').slice(0, 200),
+  }));
+  const userPrompt = `Turns:\n${JSON.stringify(preview)}`;
+
+  const raw = await callLocalLLM({
+    system: SEGMENT_SYSTEM_PROMPT,
+    prompt: userPrompt,
+    temperature: 0.2,
+    maxTokens: 1024,
+  });
+
+  const turnNumbers = turns.map(t => t.turn_number);
+  return parseSegmentationResponse(raw, turnNumbers);
+}
+
+// ---------------------------------------------------------------------------
 // Entry point
 // ---------------------------------------------------------------------------
 
