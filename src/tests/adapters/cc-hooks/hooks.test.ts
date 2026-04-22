@@ -643,6 +643,7 @@ describe('writeClaudeEnvFile', () => {
 
     const content = fs.readFileSync(tmpFile, 'utf-8');
     expect(content).toContain('export CLAUDE_CODE_DISABLE_AUTO_MEMORY=1');
+    expect(content).toContain('export CLAUDE_CODE_DISABLE_AUTO_DREAM=1');
     expect(content).toContain('export CLAUDE_CODE_SAVE_HOOK_ADDITIONAL_CONTEXT=1');
 
     // Clean up

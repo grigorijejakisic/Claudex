@@ -22,6 +22,13 @@ import { cachedPrepare } from '../../core/stmt-cache.js';
  *
  * T1/T2: Disable CC auto-memory (~11K tokens/turn saved).
  * T8: Preserve hook additionalContext in transcripts for session resume.
+ * CUR-03: Disable CC auto-dream (guards Angel-owned MEMORY.md from consolidation
+ *   subagent overwrites). Exact CC env var name is not documented in
+ *   context/research/cc-source/06-dream-kairos.md — CC's autoDream.ts gates on
+ *   `settings.autoDreamEnabled` / `tengu_onyx_plover` GrowthBook / auto-memory
+ *   disable, not on a named env var. The `CLAUDE_CODE_DISABLE_AUTO_DREAM=1`
+ *   form is provisional, mirroring the T1/T2 pattern; update when CC exposes
+ *   a canonical var or when GrowthBook override plumbing lands.
  * B6: Only session-agnostic flags — session ID sourced from hook payload, not env file.
  *
  * Non-throwing. Silently skips if CLAUDE_ENV_FILE is not set.
@@ -33,6 +40,7 @@ export function writeClaudeEnvFile(): void {
 
     fs.writeFileSync(envFilePath, [
       'export CLAUDE_CODE_DISABLE_AUTO_MEMORY=1',
+      'export CLAUDE_CODE_DISABLE_AUTO_DREAM=1',
       'export CLAUDE_CODE_SAVE_HOOK_ADDITIONAL_CONTEXT=1',
       '',
     ].join('\n'));

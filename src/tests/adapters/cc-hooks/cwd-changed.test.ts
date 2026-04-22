@@ -65,6 +65,7 @@ describe('CwdChanged hook logic', () => {
       expect(fs.existsSync(envFile)).toBe(true);
       const content = fs.readFileSync(envFile, 'utf-8');
       expect(content).toContain('CLAUDE_CODE_DISABLE_AUTO_MEMORY=1');
+      expect(content).toContain('CLAUDE_CODE_DISABLE_AUTO_DREAM=1');
       expect(content).toContain('CLAUDE_CODE_SAVE_HOOK_ADDITIONAL_CONTEXT=1');
     } finally {
       process.env.CLAUDE_ENV_FILE = origEnv;
