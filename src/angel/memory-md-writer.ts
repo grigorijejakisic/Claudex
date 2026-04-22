@@ -28,6 +28,7 @@ import * as path from 'path';
 import type { Database } from 'better-sqlite3';
 import { pathToCcSlug } from '../shared/cc-slug.js';
 import { cachedPrepare } from '../core/stmt-cache.js';
+import { resolveProjectPath } from '../shared/scope-detector.js';
 
 /** Hard ceiling for Angel-owned content portion of MEMORY.md. */
 export const MAX_BYTES = 25_000;
@@ -47,6 +48,19 @@ const RECENT_SESSIONS_WINDOW = 10;
 
 /** Active-projects activity window: 7 days in seconds. */
 const ACTIVE_WINDOW_SECONDS = 7 * 86_400;
+
+/** Max distilled lines in the `## Handoff` section body (excludes header + `See:`). */
+const MAX_HANDOFF_LINES = 10;
+
+/** Static footer body — this block is byte-stable and drives idempotency. */
+export const HOW_TO_QUERY_STATIC = `## How to Query
+
+- claudex_search("topic") — decisions, learnings, prior sessions
+- claudex_events — latest session history
+- claudex_recall(id|path) — fetch a specific artifact
+
+See ~/.claude/CLAUDE.md for Claudex tool reference.
+`;
 
 /** Cold-start user-tail template. */
 export const USER_TAIL_DEFAULT = '<!-- USER EDITABLE -->\n\n## User Notes\n\n';
@@ -303,6 +317,95 @@ export function renderRecentThreads(db: Database, project: string): string {
     lines.push(`- ${label} — session ${sidShort}`);
   }
   return lines.join('\n') + '\n';
+}
+
+/**
+ * Distill an ACTIVE.md body into up to 10 lines drawn from the
+ * `## Commander's Intent` and `## What's Left To Do` blocks.
+ *
+ * Extraction: after splitting on `^## ` headers, take the body between
+ * `## Commander's Intent` and the next `## ` header, then the body under
+ * `## What's Left To Do`. Concatenate, drop empty lines, cap at 10 total
+ * lines (never mid-line).
+ */
+function distillHandoffBody(raw: string): string[] {
+  // Normalize CRLF first — some editors on Windows save CRLF and we want
+  // deterministic line splitting here, independent of the top-level normalize.
+  const text = raw.replace(/\r\n/g, '\n');
+  const sections = new Map<string, string[]>();
+  let currentHeader: string | null = null;
+  let currentLines: string[] = [];
+
+  for (const line of text.split('\n')) {
+    const headerMatch = line.match(/^##\s+(.+?)\s*$/);
+    if (headerMatch) {
+      if (currentHeader) sections.set(currentHeader.toLowerCase(), currentLines);
+      currentHeader = headerMatch[1];
+      currentLines = [];
+      continue;
+    }
+    if (currentHeader) currentLines.push(line);
+  }
+  if (currentHeader) sections.set(currentHeader.toLowerCase(), currentLines);
+
+  const out: string[] = [];
+  const pushBlock = (key: string) => {
+    const block = sections.get(key);
+    if (!block) return;
+    for (const line of block) {
+      if (out.length >= MAX_HANDOFF_LINES) break;
+      const trimmed = line.replace(/\s+$/, '');
+      if (trimmed.length === 0) continue;
+      out.push(trimmed);
+    }
+  };
+
+  // Find Commander's Intent variants (typographic apostrophes included).
+  for (const key of sections.keys()) {
+    if (/^commander.?s?\s+intent$/i.test(key.replace(/’/g, "'"))) {
+      pushBlock(key);
+      break;
+    }
+  }
+  for (const key of sections.keys()) {
+    if (/^what.?s?\s+left\s+to\s+do$/i.test(key.replace(/’/g, "'"))) {
+      pushBlock(key);
+      break;
+    }
+  }
+
+  return out;
+}
+
+/**
+ * Render the `## Handoff` section from `context/handoffs/ACTIVE.md`.
+ *
+ * Missing file → single-line `No active handoff.` under the header — keeps
+ * file shape stable so idempotency tests don't flake on a missing handoff.
+ */
+export function renderHandoff(project: string): string {
+  const header = '## Handoff\n\n';
+  try {
+    const projectPath = resolveProjectPath(project);
+    if (!projectPath) return header + 'No active handoff.\n';
+
+    const handoffPath = path.join(projectPath, 'context', 'handoffs', 'ACTIVE.md');
+    if (!fs.existsSync(handoffPath)) return header + 'No active handoff.\n';
+
+    let raw: string;
+    try {
+      raw = fs.readFileSync(handoffPath, 'utf8');
+    } catch {
+      return header + 'No active handoff.\n';
+    }
+
+    const distilled = distillHandoffBody(raw);
+    if (distilled.length === 0) return header + 'No active handoff.\n';
+
+    return header + distilled.join('\n') + '\nSee: context/handoffs/ACTIVE.md\n';
+  } catch {
+    return header + 'No active handoff.\n';
+  }
 }
 
 /**
