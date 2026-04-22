@@ -252,6 +252,19 @@ export function monitorMemoryFiles(db: Database): MemoryMonitorResult {
         continue;
       }
 
+      // Angel-managed files are owned by `src/angel/memory-md-writer.ts`.
+      // The monitor's prune pass assumes CC-managed files (append-only
+      // indexes of sibling user-memory `.md` files). Rewriting the top of a
+      // curated MEMORY.md would clobber our sentinel + section structure,
+      // so we skip any project whose MEMORY.md has the CLAUDEX-MANAGED
+      // sentinel on line 1.
+      try {
+        const firstLine = content.split('\n', 1)[0];
+        if (/^<!-- CLAUDEX-MANAGED: .* hash=[0-9a-f]+ -->$/.test(firstLine)) {
+          continue;
+        }
+      } catch { /* fall through to existing prune path */ }
+
       const { entries } = parseMemoryMd(content);
       const unpinnedEntries = entries.filter(e => !e.pinned);
 
