@@ -283,6 +283,75 @@ export function enforceBounds(
 }
 
 // ---------------------------------------------------------------------------
+// Artifact insertion
+// ---------------------------------------------------------------------------
+
+/**
+ * Insert one `artifact(kind='transcript_chunk')` row per segment.
+ *
+ * - `title` = segment.topic_label
+ * - `body`  = joined full text of all turns in the segment
+ *             (`user_text\nassistant_text` per turn; turns separated by `\n\n`).
+ *             NOT truncated — full text is the source of truth for embeds.
+ * - `created_at_epoch` = last in-segment turn's `timestamp_epoch`.
+ * - `data` = `{turn_range:[start,end], topic_label}`.
+ * - `embedding_ref` left null — Phase 6b's backfill picks these up.
+ *
+ * Returns the count inserted. No transaction — Angel is cooperative and a
+ * partial write leaves readable artifacts, which is preferable to an
+ * all-or-nothing abort on a benign mid-loop error.
+ */
+function insertChunks(
+  db: Database,
+  sessionId: string,
+  project: string,
+  turns: ConvTurn[],
+  segments: Segment[],
+): number {
+  const byTurnNumber = new Map<number, ConvTurn>();
+  for (const t of turns) byTurnNumber.set(t.turn_number, t);
+
+  const stmt = db.prepare(
+    `INSERT INTO artifact(
+       id, kind, title, body, scope, status, confidence,
+       created_at_epoch, updated_at_epoch, session_id, project_id, data
+     ) VALUES (?, 'transcript_chunk', ?, ?, NULL, 'active', NULL, ?, ?, ?, ?, ?)`,
+  );
+
+  let inserted = 0;
+  for (const seg of segments) {
+    const segTurns: ConvTurn[] = [];
+    for (let n = seg.start; n <= seg.end; n++) {
+      const t = byTurnNumber.get(n);
+      if (t) segTurns.push(t);
+    }
+    if (segTurns.length === 0) continue;
+
+    const body = segTurns
+      .map(t => [t.user_text, t.assistant_text].filter((s): s is string => !!s).join('\n'))
+      .join('\n\n');
+    const lastTs = segTurns[segTurns.length - 1].timestamp_epoch;
+    const data = JSON.stringify({
+      turn_range: [seg.start, seg.end],
+      topic_label: seg.topic_label,
+    });
+
+    stmt.run(
+      randomUUID(),
+      seg.topic_label,
+      body,
+      lastTs,
+      lastTs,
+      sessionId,
+      project,
+      data,
+    );
+    inserted++;
+  }
+  return inserted;
+}
+
+// ---------------------------------------------------------------------------
 // Entry point
 // ---------------------------------------------------------------------------
 
