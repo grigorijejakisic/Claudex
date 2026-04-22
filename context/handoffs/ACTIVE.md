@@ -28,10 +28,13 @@ Launch the Cycle 3 post-relabel precision harness **with the per-candidate error
 
 ## The harness is NOT done
 
-Three launches today (2026-04-22), all died silently:
-- **01:21 launch (PID 45624, original from prior handoff's resume path)** — reached `progress: 60/106`, then process vanished; no output JSON emitted.
-- **~01:22 launch via `run_in_background: true`** — wrote the 79-byte header, then process vanished; no output JSON.
-- **02:14 debug-relaunch (PID 172332)** — killed per team-lead instruction; was alive for <1 min.
+**Two genuine silent deaths** today (2026-04-22); a third launch below was killed by team-lead, not a spontaneous death:
+- **01:21 launch (PID 47232, original from prior handoff's resume path)** — reached `progress: 60/106` (per prior observations), then process vanished ~02:18 without emitting output JSON. PID was verified live via `wmic process where "name='node.exe'" get processid,commandline` between ~02:02 and ~02:17; vanished from process table by ~02:18. Logfile `cycle3_post_relabel-run.log` stuck at the 79-byte startup header throughout.
+  - Prior session-53 handoff draft stated PID 45624 for this same launch — that was a transcription error; the authoritative PID captured live was 47232.
+- **~01:22 launch via `run_in_background: true`** (a sibling Bash call from the same teammate) — wrote the 79-byte header, then process vanished; no output JSON. This may actually be the same launch as the 01:21 one double-counted across teammate Bash invocations — unclear from the records. Treat as "one or two deaths" not "definitely two."
+- **02:14 debug-relaunch (PID 32400, team-lead debug command)** — was killed intentionally via `taskkill /F` at ~02:16 after team-lead confirmed the original harness was actually alive and didn't want the two running concurrently. **This was NOT a silent death.** Don't include in failure-mode analysis.
+
+**Communication gap to flag for tomorrow's orchestrator:** execute-3 (the teammate running through 02:20) read every team-lead SendMessage but sent zero replies. Its actual work was excellent — all commits landed atomically and this handoff is execute-3's own write — but its message responses were null. If this is a systemic pattern with `general-purpose` in-process teammates under `/auto-orchestrate`, budget for "teammate works silently; don't mistake message-silence for work-silence." Verify progress by reading git log and disk, not by waiting for replies.
 
 **Root cause (hypothesis, not proven):** an unhandled promise rejection inside the `for` loop's `await extractDirectivesFromSession(...)` call kills the node process without bubbling to the `main().catch(...)` handler. The shape is: silent exit, no stderr line, no final JSON. Per-candidate try/catch (committed `bdca0a3`) should surface the offending candidate(s) as `ERROR candidate=<id>` log lines and let the batch complete.
 
