@@ -1,0 +1,2125 @@
+{
+  "run_id": "2026-04-20T23-48-42-518Z_cycle2_scope_fewshot",
+  "tag": "cycle2_scope_fewshot",
+  "config": {
+    "threshold": 0.7,
+    "threshold_universal": 0.85,
+    "model": "glm-5.1:cloud"
+  },
+  "corpus": {
+    "candidates": 106,
+    "labeled": 106,
+    "confirmed_by_detector": 21
+  },
+  "metrics": {
+    "joint_precision": 0.38095238095238093,
+    "is_directive_precision": 0.6190476190476191,
+    "scope_precision_given_correct": 0.6923076923076923,
+    "polarity_precision_given_correct": 0.9230769230769231
+  },
+  "per_regex_family": {
+    "never_emphasis": {
+      "candidates": 22,
+      "confirmed": 1,
+      "joint_correct": 0,
+      "rate": 0
+    },
+    "always_emphasis": {
+      "candidates": 38,
+      "confirmed": 6,
+      "joint_correct": 3,
+      "rate": 0.5
+    },
+    "negation_dont": {
+      "candidates": 33,
+      "confirmed": 13,
+      "joint_correct": 4,
+      "rate": 0.3076923076923077
+    },
+    "use_x_instead": {
+      "candidates": 3,
+      "confirmed": 0,
+      "joint_correct": 0,
+      "rate": null
+    },
+    "in_the_future": {
+      "candidates": 1,
+      "confirmed": 0,
+      "joint_correct": 0,
+      "rate": null
+    },
+    "remember_this_that_to": {
+      "candidates": 5,
+      "confirmed": 0,
+      "joint_correct": 0,
+      "rate": null
+    },
+    "polite_imperative": {
+      "candidates": 2,
+      "confirmed": 0,
+      "joint_correct": 0,
+      "rate": null
+    },
+    "stop_doing_using": {
+      "candidates": 2,
+      "confirmed": 1,
+      "joint_correct": 1,
+      "rate": 1
+    }
+  },
+  "per_scope": {
+    "project": {
+      "confirmed": 17,
+      "joint_correct": 5,
+      "rate": 0.29411764705882354
+    },
+    "session": {
+      "confirmed": 2,
+      "joint_correct": 2,
+      "rate": 1
+    },
+    "universal": {
+      "confirmed": 2,
+      "joint_correct": 1,
+      "rate": 0.5
+    }
+  },
+  "confusion_matrix": {
+    "detector_true_labeler_true": 13,
+    "detector_true_labeler_false": 8,
+    "detector_false_labeler_true": 4,
+    "detector_false_labeler_false": 81
+  },
+  "decisions": [
+    {
+      "candidate_id": "ba9eeaf8-b666-41f9-8ce7-1a320e683a61:3",
+      "matched_families": [
+        "never_emphasis",
+        "negation_dont"
+      ],
+      "labeler": {
+        "is_directive": false,
+        "scope": null,
+        "polarity": null,
+        "self_confidence": 0.95,
+        "reasoning": "This is a task notification output from an agent investigation, not a user directive. The user is receiving a report about skill definitions analysis. No directive is being stated here."
+      },
+      "detector_decision": "rejected_regex"
+    },
+    {
+      "candidate_id": "ba9eeaf8-b666-41f9-8ce7-1a320e683a61:4",
+      "matched_families": [
+        "always_emphasis",
+        "never_emphasis",
+        "negation_dont"
+      ],
+      "labeler": {
+        "is_directive": false,
+        "scope": null,
+        "polarity": null,
+        "self_confidence": 0.95,
+        "reasoning": "This is another task notification output from an agent investigation about learning mechanisms, not a user directive. The user is receiving a report, not issuing a standing rule."
+      },
+      "detector_decision": "rejected_regex"
+    },
+    {
+      "candidate_id": "ba9eeaf8-b666-41f9-8ce7-1a320e683a61:5",
+      "matched_families": [
+        "always_emphasis"
+      ],
+      "labeler": {
+        "is_directive": false,
+        "scope": null,
+        "polarity": null,
+        "self_confidence": 0.95,
+        "reasoning": "This is a task notification output from an agent investigation about handoff routing, not a user directive. The user is receiving a report, not issuing a standing rule."
+      },
+      "detector_decision": "rejected_regex"
+    },
+    {
+      "candidate_id": "ba9eeaf8-b666-41f9-8ce7-1a320e683a61:6",
+      "matched_families": [
+        "negation_dont"
+      ],
+      "labeler": {
+        "is_directive": false,
+        "scope": null,
+        "polarity": null,
+        "self_confidence": 0.95,
+        "reasoning": "This is a task notification output from an agent investigation about Angel activity, not a user directive. The user is receiving a status report, not issuing a standing rule."
+      },
+      "detector_decision": "rejected_regex"
+    },
+    {
+      "candidate_id": "ba9eeaf8-b666-41f9-8ce7-1a320e683a61:9",
+      "matched_families": [
+        "use_x_instead"
+      ],
+      "labeler": {
+        "is_directive": false,
+        "scope": null,
+        "polarity": null,
+        "self_confidence": 0.95,
+        "reasoning": "This is an observation about current problems with skills and agent behavior, phrased as a question ('do you understand what I mean?'). It's describing a current issue rather than stating a standing rule for future behavior."
+      },
+      "detector_decision": "rejected_confirm",
+      "detector_confirmation": {
+        "is_directive": false,
+        "confidence": 0.55,
+        "polarity": null,
+        "scope": null,
+        "suggested_title": null,
+        "normalized_text": null,
+        "reasoning": "The candidate turn is an observation and opinion about how the skills currently behave — that they reduce necessary input and that agents get confused and explore the codebase instead of using Claudex. It ends with a question ('do you understand what I mean?'), not a prescription. While it implies a desired direction (agents should understand the situation via Claudex rather than investigating the codebase), it's phrased as diagnostic feedback and a clarifying question, not as a standing rule or directive. The user is identifying a problem for discussion, not issuing a prescriptive or prohibitive instruction."
+      }
+    },
+    {
+      "candidate_id": "ba9eeaf8-b666-41f9-8ce7-1a320e683a61:10",
+      "matched_families": [
+        "negation_dont"
+      ],
+      "labeler": {
+        "is_directive": false,
+        "scope": null,
+        "polarity": null,
+        "self_confidence": 0.9,
+        "reasoning": "This is a complaint about current low awareness and a statement of desire ('I would love a bit more global awareness'), not a directive. It's describing a problem rather than establishing a rule for future behavior."
+      },
+      "detector_decision": "inserted",
+      "detector_confirmation": {
+        "is_directive": true,
+        "confidence": 0.82,
+        "polarity": "prescriptive",
+        "scope": "project",
+        "suggested_title": "Improve global Claudex awareness for agents",
+        "normalized_text": "Agents should have sufficient global awareness of Claudex (project locations, MCP tools, how to use them) so they don't need to explore the filesystem to orient themselves. This awareness should be injected at the prompting layer, not just in skills.",
+        "reasoning": "The user is identifying a systemic problem — agents lack global awareness of Claudex and project locations — and prescribing that this needs to be fixed. The emphatic 'WHERE ALL THE PROJECTS ARE - Desktop\\Projects' and 'I would love a bit more global awareness' signal a standing desire for how the system should work. The parenthetical 'I don't say this just for the skills fix, I am identifying additional problem' explicitly scopes this beyond the current task, making it a project-level directive about how Claudex should orient agents. It's not universal because it's specific to this Claudex codebase's architecture. Confidence is 0.82 because the directive is somewhat implicit — expressed as a complaint/observation with strong prescriptive undertones rather than a clean 'always do X' statement."
+      }
+    },
+    {
+      "candidate_id": "ba9eeaf8-b666-41f9-8ce7-1a320e683a61:11",
+      "matched_families": [
+        "negation_dont"
+      ],
+      "labeler": {
+        "is_directive": false,
+        "scope": null,
+        "polarity": null,
+        "self_confidence": 0.85,
+        "reasoning": "This is an observation about current system behavior ('Sometimes agent gets way too excited and ignores rules') and a suggestion about how Claudex should work. It's not phrased as a standing rule for future agent behavior."
+      },
+      "detector_decision": "rejected_confirm",
+      "detector_confirmation": {
+        "is_directive": false,
+        "confidence": 0.82,
+        "polarity": null,
+        "scope": null,
+        "suggested_title": null,
+        "normalized_text": null,
+        "reasoning": "The candidate turn is an observation and reflection about the system's current state — that Claude Code as a wrapper doesn't expose enough to the LLM about the Claudex layer, and that agents get 'excited' and ignore rules. The user is musing about where prompting should happen and suggesting possibilities ('should start there,' 'probably have their own place'). The phrasing is exploratory and diagnostic ('as if,' 'I don't think it finishes there,' 'probably have their own place??'), not a standing rule or directive. The user is identifying a problem space, not prescribing a persistent rule for future behavior."
+      }
+    },
+    {
+      "candidate_id": "ba9eeaf8-b666-41f9-8ce7-1a320e683a61:17",
+      "matched_families": [
+        "always_emphasis",
+        "never_emphasis",
+        "negation_dont"
+      ],
+      "labeler": {
+        "is_directive": true,
+        "scope": "universal",
+        "polarity": "prescriptive",
+        "self_confidence": 0.8,
+        "reasoning": "The statement 'WE ALWAYS AIM FOR THE PRODUCTION! ALWAYS! No versioning!' appears to be establishing a standing rule about development approach. However, it's somewhat embedded in a larger critique about learning systems, which reduces confidence slightly."
+      },
+      "detector_decision": "rejected_confirm"
+    },
+    {
+      "candidate_id": "ba9eeaf8-b666-41f9-8ce7-1a320e683a61:19",
+      "matched_families": [
+        "negation_dont"
+      ],
+      "labeler": {
+        "is_directive": false,
+        "scope": null,
+        "polarity": null,
+        "self_confidence": 0.95,
+        "reasoning": "This is a complaint about past behavior ('You rushed into development breaking the rule') and a list of issues to address. The rhetorical question at the end is not a directive but a question about what remains to be done."
+      },
+      "detector_decision": "inserted",
+      "detector_confirmation": {
+        "is_directive": true,
+        "confidence": 0.88,
+        "polarity": "prescriptive",
+        "scope": "project",
+        "suggested_title": "Learnings include directives, not just corrections",
+        "normalized_text": "Learnings must capture both corrections and directives; the Angel extraction system must be extended to extract user-stated standing rules as behavioral patterns, not just reactive corrections.",
+        "reasoning": "The user is stating a principle about how the Claudex learning system should work: learnings are not just corrections but also directives. This is a standing rule about the architecture of the system being built. The scope is project (Claudex codebase), not universal — it's about how this specific system's Angel should extract patterns. The emphatic exclamation doesn't upgrade scope. The user is correcting a design assumption that will persist across sessions for this project."
+      }
+    },
+    {
+      "candidate_id": "ba9eeaf8-b666-41f9-8ce7-1a320e683a61:22",
+      "matched_families": [
+        "negation_dont",
+        "use_x_instead"
+      ],
+      "labeler": {
+        "is_directive": false,
+        "scope": null,
+        "polarity": null,
+        "self_confidence": 0.9,
+        "reasoning": "This is a complaint about past behavior ('Why did I build Claudex if you are not even going to look at the previous project and learn from it?') and an observation about lack of learning application. It's not establishing a rule for future behavior."
+      },
+      "detector_decision": "rejected_confirm",
+      "detector_confirmation": {
+        "is_directive": false,
+        "confidence": 0.88,
+        "polarity": null,
+        "scope": null,
+        "suggested_title": null,
+        "normalized_text": null,
+        "reasoning": "The candidate turn is a multi-paragraph narrative from the assistant analyzing what went right and wrong in the conversation. It contains no user directive — it's the assistant's own reflection. The surrounding context shows the user expressing frustration ('0 used learning... 0!!!') and asking questions ('am I wrong on something?!'), but the candidate turn itself is entirely the assistant's output, not a user directive. There is no standing rule to extract from an assistant monologue."
+      }
+    },
+    {
+      "candidate_id": "ba9eeaf8-b666-41f9-8ce7-1a320e683a61:24",
+      "matched_families": [
+        "never_emphasis",
+        "negation_dont"
+      ],
+      "labeler": {
+        "is_directive": false,
+        "scope": null,
+        "polarity": null,
+        "self_confidence": 0.95,
+        "reasoning": "The candidate is a question ('How do you want to address these?') asking for a plan, not stating a standing rule for future turns. It's a request for immediate action on specific issues (#1, #2, #3), not a directive."
+      },
+      "detector_decision": "rejected_confirm",
+      "detector_confirmation": {
+        "is_directive": false,
+        "confidence": 0.85,
+        "polarity": null,
+        "scope": null,
+        "suggested_title": null,
+        "normalized_text": null,
+        "reasoning": "The candidate turn is a question ('How do you want to address these?') asking the assistant for its approach to a set of issues. It is not a standing rule or directive — it's soliciting input about how to proceed with the current task. The user is asking the assistant to propose solutions, not prescribing future behavior."
+      }
+    },
+    {
+      "candidate_id": "ba9eeaf8-b666-41f9-8ce7-1a320e683a61:25",
+      "matched_families": [
+        "in_the_future"
+      ],
+      "labeler": {
+        "is_directive": false,
+        "scope": null,
+        "polarity": null,
+        "self_confidence": 0.9,
+        "reasoning": "The candidate is a rhetorical question expressing skepticism ('So you mean to tell me this will not happen in the future? Why are you so sure, I need to hear your reasoning?'). It's a challenge or request for explanation, not a directive establishing a rule."
+      },
+      "detector_decision": "rejected_confirm",
+      "detector_confirmation": {
+        "is_directive": false,
+        "confidence": 0.88,
+        "polarity": null,
+        "scope": null,
+        "suggested_title": null,
+        "normalized_text": null,
+        "reasoning": "The candidate turn is a question challenging the assistant's confidence ('Why are you so sure, I need to hear your reasoning?'). It demands justification for a claim the assistant made, not establishing a standing rule for future behavior. The phrasing is interrogative and skeptical, not prescriptive or prohibitive. There is no 'always', 'never', or similar directive language — just a request for the assistant to explain its reasoning about a specific prediction."
+      }
+    },
+    {
+      "candidate_id": "ba9eeaf8-b666-41f9-8ce7-1a320e683a61:27",
+      "matched_families": [
+        "always_emphasis",
+        "never_emphasis",
+        "in_the_future",
+        "negation_dont"
+      ],
+      "labeler": {
+        "is_directive": false,
+        "scope": null,
+        "polarity": null,
+        "self_confidence": 0.99,
+        "reasoning": "This is a system-generated task notification output (research report), not a user utterance. It contains no directive from the user."
+      },
+      "detector_decision": "rejected_regex"
+    },
+    {
+      "candidate_id": "ba9eeaf8-b666-41f9-8ce7-1a320e683a61:29",
+      "matched_families": [
+        "remember_this_that_to",
+        "always_emphasis",
+        "never_emphasis",
+        "in_the_future",
+        "negation_dont"
+      ],
+      "labeler": {
+        "is_directive": false,
+        "scope": null,
+        "polarity": null,
+        "self_confidence": 0.99,
+        "reasoning": "This is a system-generated task notification output (research report), not a user utterance. It contains no directive from the user."
+      },
+      "detector_decision": "rejected_regex"
+    },
+    {
+      "candidate_id": "ba9eeaf8-b666-41f9-8ce7-1a320e683a61:30",
+      "matched_families": [
+        "always_emphasis",
+        "never_emphasis",
+        "stop_doing_using"
+      ],
+      "labeler": {
+        "is_directive": false,
+        "scope": null,
+        "polarity": null,
+        "self_confidence": 0.99,
+        "reasoning": "This is a system-generated task notification output (research report), not a user utterance. It contains no directive from the user."
+      },
+      "detector_decision": "rejected_regex"
+    },
+    {
+      "candidate_id": "ba9eeaf8-b666-41f9-8ce7-1a320e683a61:31",
+      "matched_families": [
+        "always_emphasis"
+      ],
+      "labeler": {
+        "is_directive": false,
+        "scope": null,
+        "polarity": null,
+        "self_confidence": 0.99,
+        "reasoning": "This is a system-generated task notification output (research report), not a user utterance. It contains no directive from the user."
+      },
+      "detector_decision": "rejected_regex"
+    },
+    {
+      "candidate_id": "ba9eeaf8-b666-41f9-8ce7-1a320e683a61:32",
+      "matched_families": [
+        "always_emphasis",
+        "never_emphasis",
+        "negation_dont"
+      ],
+      "labeler": {
+        "is_directive": false,
+        "scope": null,
+        "polarity": null,
+        "self_confidence": 0.95,
+        "reasoning": "This is a task notification output from an agent completing a research report. It's not a user turn containing a directive - it's system output summarizing completed work. No standing rule is being stated here."
+      },
+      "detector_decision": "rejected_regex"
+    },
+    {
+      "candidate_id": "ba9eeaf8-b666-41f9-8ce7-1a320e683a61:34",
+      "matched_families": [
+        "always_emphasis"
+      ],
+      "labeler": {
+        "is_directive": true,
+        "scope": "project",
+        "polarity": "prescriptive",
+        "self_confidence": 0.9,
+        "reasoning": "The user is giving a standing rule about how the system should work: 'Proven principles now inject on EVERY turn via assembleRegularPrompt, not just session start. Capped at 30% of budget.' This is a prescriptive directive about system behavior that applies to the current project's operation going forward, not just a one-off task request."
+      },
+      "detector_decision": "rejected_confirm",
+      "detector_confirmation": {
+        "is_directive": false,
+        "confidence": 0.9,
+        "polarity": null,
+        "scope": null,
+        "suggested_title": null,
+        "normalized_text": null,
+        "reasoning": "The candidate turn contains two parts: (1) 'Implement all 5 please!' — a task request for the current session, not a standing rule. (2) A clarifying question about the 30% budget cap ('did I misunderstand?'). Neither is a directive. The first is a one-off instruction to implement specific items now; the second is a question seeking clarification about an existing design decision. No standing rule is established."
+      }
+    },
+    {
+      "candidate_id": "ba9eeaf8-b666-41f9-8ce7-1a320e683a61:38",
+      "matched_families": [
+        "negation_dont"
+      ],
+      "labeler": {
+        "is_directive": false,
+        "scope": null,
+        "polarity": null,
+        "self_confidence": 0.85,
+        "reasoning": "These are rhetorical questions and complaints about delays, not directives. They express frustration and ask for explanations ('Why not today?', 'How will the angel reach me?'), but don't establish standing rules for future behavior. The last line 'Again delay for no apparent reason' is a complaint about past/current situation."
+      },
+      "detector_decision": "rejected_confirm",
+      "detector_confirmation": {
+        "is_directive": false,
+        "confidence": 0.88,
+        "polarity": null,
+        "scope": null,
+        "suggested_title": null,
+        "normalized_text": null,
+        "reasoning": "The candidate turn consists entirely of questions and expressions of frustration about pacing decisions ('Why not today?', 'How will the angel reach me?', 'I don't see why are we delaying stuff?', 'delay for no apparent reason'). These are challenge-questions and complaints about the current session's decisions, not standing rules for future behavior. There is no prescriptive or prohibitive language establishing a norm — the user is pushing back on the assistant's reasoning, not issuing a directive."
+      }
+    },
+    {
+      "candidate_id": "ba9eeaf8-b666-41f9-8ce7-1a320e683a61:39",
+      "matched_families": [
+        "negation_dont"
+      ],
+      "labeler": {
+        "is_directive": true,
+        "scope": "project",
+        "polarity": "prescriptive",
+        "self_confidence": 0.8,
+        "reasoning": "'I would like a more visual and direct communication with angel!' expresses a preference that functions as a directive about how the user wants to interact with the system going forward. 'I don't like this mid-session because I might not see it' reinforces this as a standing preference rather than a one-off request."
+      },
+      "detector_decision": "inserted",
+      "detector_confirmation": {
+        "is_directive": true,
+        "confidence": 0.82,
+        "polarity": "prescriptive",
+        "scope": "project",
+        "suggested_title": "Visual and direct Angel communication channel",
+        "normalized_text": "Angel communication must be visual and direct, not buried in mid-session system-reminders that the user might miss.",
+        "reasoning": "The user expresses a clear preference with 'I would like' and 'I don't like' — while somewhat hedged compared to 'always' or 'never', the follow-up turn (40) reinforces this as a standing architectural principle by proposing a dedicated Angel project workspace. The directive is about how the Angel system in this codebase communicates with the user, making it project-scoped. The polarity is prescriptive: Angel should communicate visually and directly."
+      }
+    },
+    {
+      "candidate_id": "ba9eeaf8-b666-41f9-8ce7-1a320e683a61:48",
+      "matched_families": [
+        "remember_this_that_to"
+      ],
+      "labeler": {
+        "is_directive": false,
+        "scope": null,
+        "polarity": null,
+        "self_confidence": 0.9,
+        "reasoning": "This is a conversational reference ('remember that comment from reddit?') asking if the agent recalls something. It's not establishing a rule for future behavior - it's a question about past information."
+      },
+      "detector_decision": "rejected_confirm",
+      "detector_confirmation": {
+        "is_directive": false,
+        "confidence": 0.92,
+        "polarity": null,
+        "scope": null,
+        "suggested_title": null,
+        "normalized_text": null,
+        "reasoning": "The candidate text 'remember that comment from reddit?' is a question asking the assistant to recall a specific past event or comment. It is not a standing rule or directive — it's a conversational prompt referencing something previously discussed. Question phrasing with no prescriptive or prohibitive language."
+      }
+    },
+    {
+      "candidate_id": "ba9eeaf8-b666-41f9-8ce7-1a320e683a61:51",
+      "matched_families": [
+        "negation_dont"
+      ],
+      "labeler": {
+        "is_directive": false,
+        "scope": null,
+        "polarity": null,
+        "self_confidence": 1,
+        "reasoning": "REVIEWER: questions/exploratory ideas (\"Can we have this?\"), no always/never rule"
+      },
+      "detector_decision": "rejected_confirm",
+      "detector_confirmation": {
+        "is_directive": false,
+        "confidence": 0.92,
+        "polarity": null,
+        "scope": null,
+        "suggested_title": null,
+        "normalized_text": null,
+        "reasoning": "The candidate turn quotes the assistant's own analysis back at it and then asks two questions: 'Can we have this?' and 'Can we develop upgrades to match them here?' This is a task request / clarifying question about the current session's work, not a standing rule for future behavior. There is no imperative language establishing a persistent policy (no 'always', 'never', 'from now on'). The user is asking whether these features are feasible to implement, not issuing a directive."
+      }
+    },
+    {
+      "candidate_id": "ba9eeaf8-b666-41f9-8ce7-1a320e683a61:53",
+      "matched_families": [
+        "always_emphasis",
+        "negation_dont"
+      ],
+      "labeler": {
+        "is_directive": true,
+        "scope": "session",
+        "polarity": "prescriptive",
+        "self_confidence": 0.9,
+        "reasoning": "The phrase 'Always check your usage before comming to any conclusion! DO NOT SKIP THIS STEP!' establishes a standing rule for the current session, not just a one-off instruction. It's prescriptive ('always check') and scoped to the session (context shows they're in a specific development session)."
+      },
+      "detector_decision": "inserted",
+      "detector_confirmation": {
+        "is_directive": true,
+        "confidence": 0.85,
+        "polarity": "prescriptive",
+        "scope": "session",
+        "suggested_title": "Verify context usage before drawing conclusions",
+        "normalized_text": "Before drawing any conclusion about remaining context capacity, always check the actual usage counter.",
+        "reasoning": "The user is emphatically instructing the assistant to always verify context usage before making claims about it. The ALL CAPS and exclamation marks signal urgency but do NOT upgrade scope — this was triggered by a specific session error (the assistant incorrectly claimed context was depleted). The phrase 'Lets hope angel gets this' suggests the user wants this remembered within this session's memory system, not as a universal cross-project rule. The directive is session-scoped because it addresses a correction within the current working session."
+      }
+    },
+    {
+      "candidate_id": "ba9eeaf8-b666-41f9-8ce7-1a320e683a61:56",
+      "matched_families": [
+        "always_emphasis",
+        "never_emphasis",
+        "negation_dont"
+      ],
+      "labeler": {
+        "is_directive": true,
+        "scope": "universal",
+        "polarity": "prohibitive",
+        "self_confidence": 1,
+        "reasoning": "REVIEWER: mirrors global CLAUDE.md \"no quick fixes\" rule; applies across every project, not just this one"
+      },
+      "detector_decision": "inserted",
+      "detector_confirmation": {
+        "is_directive": true,
+        "confidence": 0.92,
+        "polarity": "prescriptive",
+        "scope": "universal",
+        "suggested_title": "Always pursue production fixes, never quick fixes",
+        "normalized_text": "Always pursue root-cause production fixes rather than quick workarounds or downgrades. Never take the shortcut of changing a default or configuration to avoid diagnosing the actual problem.",
+        "reasoning": "The user emphatically states 'NEVER A QUICK FIX!' and 'We always go for the production fixes!' — this is a meta-engineering principle about how to approach ANY technical problem, not specific to this repo's code. The rule transcends the specific glm-5:cloud incident; it's a standing personal working style that applies across all projects. Universal scope."
+      }
+    },
+    {
+      "candidate_id": "ba9eeaf8-b666-41f9-8ce7-1a320e683a61:59",
+      "matched_families": [
+        "never_emphasis"
+      ],
+      "labeler": {
+        "is_directive": true,
+        "scope": "session",
+        "polarity": "prescriptive",
+        "self_confidence": 0.8,
+        "reasoning": "The user is asking for an upgrade to '/starthere' to always produce detailed overviews and plans. While phrased as a question ('Do you understand what I want?'), the intent is to establish a new standing behavior for the tool in the current session context."
+      },
+      "detector_decision": "inserted",
+      "detector_confirmation": {
+        "is_directive": true,
+        "confidence": 0.82,
+        "polarity": "prescriptive",
+        "scope": "project",
+        "suggested_title": "Upgrade /starthere to produce task overview and approach recommendation",
+        "normalized_text": "The /starthere command should write a detailed overview of tasks from the handoff and produce a recommendation for how to approach completing the full handoff, then ask whether to proceed with that plan or do something else. Never use plan mode.",
+        "reasoning": "The user is prescribing a permanent change to the /starthere command's behavior — it should always produce a task overview and approach recommendation from the handoff. This is a project-scoped rule about how a custom command in this codebase should work. The parenthetical 'not plan mode - never that' is a prohibitive sub-rule also scoped to this project. The trailing question 'Do you understand what I want?' is a comprehension check, not a hedge on the directive itself."
+      }
+    },
+    {
+      "candidate_id": "be1e3376-62a4-493b-b914-9ab3132afeca:6",
+      "matched_families": [
+        "always_emphasis"
+      ],
+      "labeler": {
+        "is_directive": false,
+        "scope": null,
+        "polarity": null,
+        "self_confidence": 0.95,
+        "reasoning": "This is a system notification (task-notification) showing the completion of an agent review. It's not a user directive but an automated status report from the system."
+      },
+      "detector_decision": "rejected_regex"
+    },
+    {
+      "candidate_id": "be1e3376-62a4-493b-b914-9ab3132afeca:7",
+      "matched_families": [
+        "never_emphasis",
+        "negation_dont"
+      ],
+      "labeler": {
+        "is_directive": false,
+        "scope": null,
+        "polarity": null,
+        "self_confidence": 0.95,
+        "reasoning": "This is another system notification (task-notification) showing completion of a code quality review. It's automated output, not a user directive."
+      },
+      "detector_decision": "rejected_regex"
+    },
+    {
+      "candidate_id": "be1e3376-62a4-493b-b914-9ab3132afeca:11",
+      "matched_families": [
+        "negation_dont"
+      ],
+      "labeler": {
+        "is_directive": true,
+        "scope": "project",
+        "polarity": "prescriptive",
+        "self_confidence": 0.75,
+        "reasoning": "'Proceed with all of them! If you want to do the simpler ones first, that is fine! But do not stop the work until you fix all of them' establishes a standing rule about completing all fixes in the current project work. It's prescriptive and applies to the ongoing project work."
+      },
+      "detector_decision": "inserted",
+      "detector_confirmation": {
+        "is_directive": true,
+        "confidence": 0.88,
+        "polarity": "prescriptive",
+        "scope": "project",
+        "suggested_title": "Claudex must maintain offline/local-only DB",
+        "normalized_text": "Claudex must always use an offline local database — even for multi-user or solo use. This is a core design decision, not a bug.",
+        "reasoning": "The user emphatically states that Claudex's DB must remain local/offline as a design principle ('That is what we decided! If they don't like it they can make their own versions!'). This is a standing rule about the project's architecture, not a one-off task. It's project-scoped because it's specifically about Claudex's DB design, not a universal principle across all repos. The H7 part ('do not stop the work until you fix all of them') is a session-scoped task instruction for the current M7 wiring work, not a standing directive."
+      }
+    },
+    {
+      "candidate_id": "be1e3376-62a4-493b-b914-9ab3132afeca:16",
+      "matched_families": [
+        "always_emphasis",
+        "never_emphasis",
+        "negation_dont"
+      ],
+      "labeler": {
+        "is_directive": false,
+        "scope": null,
+        "polarity": null,
+        "self_confidence": 0.95,
+        "reasoning": "This is a task notification output from an agent summarizing research findings. It's a report, not a user directive. The user is receiving information, not stating a rule for future behavior."
+      },
+      "detector_decision": "rejected_regex"
+    },
+    {
+      "candidate_id": "be1e3376-62a4-493b-b914-9ab3132afeca:17",
+      "matched_families": [
+        "never_emphasis",
+        "negation_dont"
+      ],
+      "labeler": {
+        "is_directive": false,
+        "scope": null,
+        "polarity": null,
+        "self_confidence": 0.95,
+        "reasoning": "This is another task notification output from an agent (Layer 1: Implementations research). It's a research report, not a user directive. The user is receiving information, not stating a rule."
+      },
+      "detector_decision": "rejected_regex"
+    },
+    {
+      "candidate_id": "be1e3376-62a4-493b-b914-9ab3132afeca:18",
+      "matched_families": [
+        "never_emphasis",
+        "negation_dont"
+      ],
+      "labeler": {
+        "is_directive": false,
+        "scope": null,
+        "polarity": null,
+        "self_confidence": 0.95,
+        "reasoning": "This is a task notification output from an agent (Layer 5: Frontier and emerging). It's a research report, not a user directive. The user is receiving information, not stating a rule."
+      },
+      "detector_decision": "rejected_regex"
+    },
+    {
+      "candidate_id": "be1e3376-62a4-493b-b914-9ab3132afeca:19",
+      "matched_families": [
+        "always_emphasis",
+        "never_emphasis",
+        "negation_dont"
+      ],
+      "labeler": {
+        "is_directive": false,
+        "scope": null,
+        "polarity": null,
+        "self_confidence": 0.95,
+        "reasoning": "This is a task notification output from an agent (Layer 4: Adjacent field solutions). It's a research report, not a user directive. The user is receiving information, not stating a rule."
+      },
+      "detector_decision": "rejected_regex"
+    },
+    {
+      "candidate_id": "be1e3376-62a4-493b-b914-9ab3132afeca:20",
+      "matched_families": [
+        "always_emphasis",
+        "never_emphasis",
+        "negation_dont"
+      ],
+      "labeler": {
+        "is_directive": false,
+        "scope": null,
+        "polarity": null,
+        "self_confidence": 0.95,
+        "reasoning": "This is a task notification output from an agent (Layer 3: Failures and anti-patterns). It's a research report summarizing findings, not a user directive. The user is receiving information, not stating a rule."
+      },
+      "detector_decision": "rejected_regex"
+    },
+    {
+      "candidate_id": "be1e3376-62a4-493b-b914-9ab3132afeca:27",
+      "matched_families": [
+        "always_emphasis",
+        "never_emphasis"
+      ],
+      "labeler": {
+        "is_directive": false,
+        "scope": null,
+        "polarity": null,
+        "self_confidence": 0.95,
+        "reasoning": "This is a task notification output from an agent (Codex review session comms). It's a code review report, not a user directive. The user is receiving information, not stating a rule."
+      },
+      "detector_decision": "rejected_regex"
+    },
+    {
+      "candidate_id": "be1e3376-62a4-493b-b914-9ab3132afeca:29",
+      "matched_families": [
+        "negation_dont"
+      ],
+      "labeler": {
+        "is_directive": false,
+        "scope": null,
+        "polarity": null,
+        "self_confidence": 0.9,
+        "reasoning": "This is a general statement of intent ('lets address it all') and a motivational comment ('we should chase production with this'), not a standing rule for future turns. It's a one-off declaration about the current task."
+      },
+      "detector_decision": "inserted",
+      "detector_confirmation": {
+        "is_directive": true,
+        "confidence": 0.82,
+        "polarity": "prescriptive",
+        "scope": "project",
+        "suggested_title": "Pursue production-grade quality for all features",
+        "normalized_text": "Always pursue production-grade completeness for features in this codebase — address all findings and gaps rather than leaving items deferred or partially implemented.",
+        "reasoning": "The user says 'lets address it all' and 'we should chase production with this' — a prescriptive stance that all findings should be fixed and the feature should be production-grade, not left with gaps. The context is this specific codebase's session communication feature, so scope is project. The phrasing is somewhat informal ('lets', 'I don't see why not') which keeps confidence below 0.9, but the intent is clearly a standing rule: don't defer or skip — push everything to production quality."
+      }
+    },
+    {
+      "candidate_id": "be1e3376-62a4-493b-b914-9ab3132afeca:43",
+      "matched_families": [
+        "always_emphasis",
+        "never_emphasis"
+      ],
+      "labeler": {
+        "is_directive": false,
+        "scope": null,
+        "polarity": null,
+        "self_confidence": 0.95,
+        "reasoning": "This is a task notification output from an agent, not a user statement. The user did not speak in this turn; it's a system-generated report. Therefore it cannot be a directive."
+      },
+      "detector_decision": "rejected_regex"
+    },
+    {
+      "candidate_id": "be1e3376-62a4-493b-b914-9ab3132afeca:52",
+      "matched_families": [
+        "never_emphasis"
+      ],
+      "labeler": {
+        "is_directive": false,
+        "scope": null,
+        "polarity": null,
+        "self_confidence": 0.95,
+        "reasoning": "This is another task notification output from an agent (PM report), not a user statement. The user did not speak in this turn; it's system-generated content."
+      },
+      "detector_decision": "rejected_regex"
+    },
+    {
+      "candidate_id": "be1e3376-62a4-493b-b914-9ab3132afeca:54",
+      "matched_families": [
+        "never_emphasis"
+      ],
+      "labeler": {
+        "is_directive": false,
+        "scope": null,
+        "polarity": null,
+        "self_confidence": 0.95,
+        "reasoning": "This is a task notification output from an agent (benchmark report), not a user statement. The user did not speak in this turn; it's system-generated content."
+      },
+      "detector_decision": "rejected_regex"
+    },
+    {
+      "candidate_id": "be1e3376-62a4-493b-b914-9ab3132afeca:64",
+      "matched_families": [
+        "negation_dont"
+      ],
+      "labeler": {
+        "is_directive": false,
+        "scope": null,
+        "polarity": null,
+        "self_confidence": 0.85,
+        "reasoning": "This is motivational encouragement ('You are good! GO!') and a status update ('I will message you when we reach 60%'). 'don't stop!' is a one-off instruction for the current moment, not a standing rule. It's about immediate continuation, not a future directive."
+      },
+      "detector_decision": "rejected_confirm",
+      "detector_confirmation": {
+        "is_directive": false,
+        "confidence": 0.88,
+        "polarity": null,
+        "scope": null,
+        "suggested_title": null,
+        "normalized_text": null,
+        "reasoning": "The candidate turn is enthusiastic encouragement for the current session's work ('You are good! GO! I got you, don't stop!'). The context-monitoring mention ('I will message you when we reach 60%') is a one-off statement about what the user will do in this specific session, not a standing rule for future behavior. There is no prescriptive or prohibitive language establishing a persistent norm — it's session-specific cheerleading and a situational update."
+      }
+    },
+    {
+      "candidate_id": "be1e3376-62a4-493b-b914-9ab3132afeca:69",
+      "matched_families": [
+        "negation_dont"
+      ],
+      "labeler": {
+        "is_directive": false,
+        "scope": null,
+        "polarity": null,
+        "self_confidence": 0.8,
+        "reasoning": "This is motivational encouragement ('Lets try to do it all!', 'LEts push!') and reassurance ('I am your context guardian! Do not worry about that!'). 'Do not worry about that' is a one-off reassurance about the current context limit, not a standing prohibitive rule for future turns."
+      },
+      "detector_decision": "rejected_confirm",
+      "detector_confirmation": {
+        "is_directive": false,
+        "confidence": 0.6,
+        "polarity": null,
+        "scope": null,
+        "suggested_title": null,
+        "normalized_text": null,
+        "reasoning": "The candidate turn is enthusiastic encouragement for the current session's work ('Lets try to do it all!', 'LEts push!'). The phrase 'I am your context guardian! Do not worry about that!' is reassurance about context capacity for this session, not a standing rule about context management. There is no 'always', 'never', or future-oriented prescription — it's a motivational push to complete the remaining tasks in the current session. The exclamation marks signal enthusiasm, not a standing directive."
+      }
+    },
+    {
+      "candidate_id": "be1e3376-62a4-493b-b914-9ab3132afeca:82",
+      "matched_families": [
+        "negation_dont"
+      ],
+      "labeler": {
+        "is_directive": false,
+        "scope": null,
+        "polarity": null,
+        "self_confidence": 0.95,
+        "reasoning": "This is a series of observations and statements about current project status, not a standing rule for future behavior. The user is commenting on decisions already made ('we are not as a decision we agreed upon'), expressing satisfaction ('makes me happy'), and making observations about technical gaps. No prescriptive or prohibitive rule is established."
+      },
+      "detector_decision": "inserted",
+      "detector_confirmation": {
+        "is_directive": true,
+        "confidence": 0.82,
+        "polarity": "prescriptive",
+        "scope": "project",
+        "suggested_title": "Prioritize usability over perfectionism",
+        "normalized_text": "Prioritize usability over perfectionism; we are not chasing perfectionism, we are chasing usability.",
+        "reasoning": "The user explicitly states a guiding principle: 'We are not chasing perfectionism! We are chasing usability!' This is a prescriptive standing rule about how to approach feature decisions in the Claudex project. The double exclamation and contrastive framing ('not X, Y') signal a deliberate stance. It's project-scoped because it's about the Claudex codebase's design philosophy, not a universal meta-preference. The other numbered points are observations/reactions about specific gaps, not standing rules."
+      }
+    },
+    {
+      "candidate_id": "257380ce-1516-4e91-816e-d486d62d1dcc:4",
+      "matched_families": [
+        "never_emphasis"
+      ],
+      "labeler": {
+        "is_directive": false,
+        "scope": null,
+        "polarity": null,
+        "self_confidence": 0.99,
+        "reasoning": "This is purely a task notification output from an agent review, containing no user speech at all. The user didn't say anything in this turn - it's just system output being displayed."
+      },
+      "detector_decision": "rejected_regex"
+    },
+    {
+      "candidate_id": "8fac41a9-022f-4c16-83a5-f4120e8dc096:3",
+      "matched_families": [
+        "remember_this_that_to"
+      ],
+      "labeler": {
+        "is_directive": false,
+        "scope": null,
+        "polarity": null,
+        "self_confidence": 0.9,
+        "reasoning": "This is a command to execute a specific action ('/ask-session skill') with a rhetorical question ('remember this?!'). It's a one-off instruction for immediate execution, not a standing rule for future behavior. The 'remember this?!' appears to be rhetorical emphasis rather than establishing a directive."
+      },
+      "detector_decision": "rejected_confirm",
+      "detector_confirmation": {
+        "is_directive": false,
+        "confidence": 0.85,
+        "polarity": null,
+        "scope": null,
+        "suggested_title": null,
+        "normalized_text": null,
+        "reasoning": "The candidate turn '/ask-session skill - remember this?!' is a task request directed at the current moment — the user is telling the agent to use a specific skill/command right now, not establishing a standing rule for future turns. The exasperated 'remember this?!' references a past capability the user expected the agent to already know about, but it's a correction about the current interaction, not a forward-looking directive. The subsequent turn (Turn 4) clarifies the user's intent was to invoke a skill, not a session, confirming this was a one-off instruction."
+      }
+    },
+    {
+      "candidate_id": "8fac41a9-022f-4c16-83a5-f4120e8dc096:4",
+      "matched_families": [
+        "always_emphasis"
+      ],
+      "labeler": {
+        "is_directive": true,
+        "scope": "project",
+        "polarity": "prescriptive",
+        "self_confidence": 0.85,
+        "reasoning": "The user states 'we have to change permissions and always let agents reply without my strict HITL permission for them to respond!' This establishes a standing rule about agent permissions that should apply going forward. The 'always' indicates it's not a one-off instruction. It's prescriptive ('let agents reply') and appears scoped to the current project's agent interaction patterns."
+      },
+      "detector_decision": "inserted",
+      "detector_confirmation": {
+        "is_directive": true,
+        "confidence": 0.82,
+        "polarity": "prescriptive",
+        "scope": "project",
+        "suggested_title": "Always allow agents to reply without HITL permission",
+        "normalized_text": "Always allow agents to reply to cross-session messages without requiring explicit human-in-the-loop permission approval.",
+        "reasoning": "The user says 'always let agents reply without my strict HITL permission' — the word 'always' signals a standing rule, not a one-off. The context is about cross-session agent communication in this project's infrastructure (Angel, Oracle sessions, CliProxy). The directive is about changing permissions for agent behavior in this codebase, making it project-scoped. The first sentence about 'skill' vs 'session' is a correction/clarification, not a directive itself."
+      }
+    },
+    {
+      "candidate_id": "8fac41a9-022f-4c16-83a5-f4120e8dc096:10",
+      "matched_families": [
+        "negation_dont"
+      ],
+      "labeler": {
+        "is_directive": false,
+        "scope": null,
+        "polarity": null,
+        "self_confidence": 0.8,
+        "reasoning": "This is a question about priorities and a statement of preference ('I do not want to chase the score, I want benchmark to actually be useful'). While it expresses a preference, it's not framed as a standing rule or directive for future behavior - it's more of a guiding principle or preference statement. The phrasing 'I want' rather than 'we should' or 'always' makes it less directive-like."
+      },
+      "detector_decision": "inserted",
+      "detector_confirmation": {
+        "is_directive": true,
+        "confidence": 0.78,
+        "polarity": "prescriptive",
+        "scope": "project",
+        "suggested_title": "Prioritize real memory improvement over benchmark scores",
+        "normalized_text": "When evaluating changes to the memory system, prioritize whether the fix genuinely improves long-term memory quality rather than just improving benchmark scores.",
+        "reasoning": "The user is stating a standing priority for this project: they don't want to chase benchmark scores, they want benchmarks to be useful for actually upgrading memory. This is a prescriptive rule about how to approach memory system improvements in this codebase. The phrasing 'I do not want X, I want Y' is directive-like, though it's somewhat framed as a personal preference rather than an emphatic standing rule. The scope is project-specific (about Claudex's memory system), not universal. Confidence is moderate-high because while the intent is clearly directive, it's expressed as a preference statement rather than with emphatic markers like 'always' or 'never'."
+      }
+    },
+    {
+      "candidate_id": "8fac41a9-022f-4c16-83a5-f4120e8dc096:13",
+      "matched_families": [
+        "polite_imperative"
+      ],
+      "labeler": {
+        "is_directive": false,
+        "scope": null,
+        "polarity": null,
+        "self_confidence": 0.9,
+        "reasoning": "This is a one-off task instruction for the current research effort ('Please do a proper research... and fix all of these!'). The 'be meticulous, systematic and thorough' are qualities for this specific task, not standing rules for all future work. It's a direct request for immediate action rather than a directive establishing ongoing behavior."
+      },
+      "detector_decision": "rejected_confirm",
+      "detector_confirmation": {
+        "is_directive": false,
+        "confidence": 0.55,
+        "polarity": null,
+        "scope": null,
+        "suggested_title": null,
+        "normalized_text": null,
+        "reasoning": "The candidate turn is a task request for the current step: 'fix all of these' refers to the specific list of issues just identified in the previous turn. The adverbs 'meticulous, systematic and thorough' describe how to approach this particular fix task, not a standing rule for all future work. There is no language indicating this should apply beyond the current task (no 'always', 'from now on', 'going forward'). The exclamation marks signal urgency for this task, not a persistent directive."
+      }
+    },
+    {
+      "candidate_id": "8fac41a9-022f-4c16-83a5-f4120e8dc096:39",
+      "matched_families": [
+        "negation_dont"
+      ],
+      "labeler": {
+        "is_directive": true,
+        "scope": "universal",
+        "polarity": "prescriptive",
+        "self_confidence": 0.9,
+        "reasoning": "The user states a standing rule about context management ('I will be the guardian of your context and that you should not worry about it!') that applies across all sessions, not just the current task. It's prescriptive ('you should not worry about it') and intended to persist beyond the current interaction."
+      },
+      "detector_decision": "inserted",
+      "detector_confirmation": {
+        "is_directive": true,
+        "confidence": 0.88,
+        "polarity": "prescriptive",
+        "scope": "universal",
+        "suggested_title": "User is context guardian — agent should not worry about context",
+        "normalized_text": "The user is the guardian of the agent's context; the agent should not worry about or manage context limits on its own.",
+        "reasoning": "The user explicitly states a standing rule they've repeated 'many many many many times' across sessions: 'I will be the guardian of your context and that you should not worry about it.' This is a meta-preference about how the agent should behave regarding context management — a cognitive/workflow rule that transcends any specific repo. The emphasis on cross-session repetition ('yesterday I told you') and the urgency ('very important') confirm this is intended as a universal standing directive, not a one-off session instruction."
+      }
+    },
+    {
+      "candidate_id": "8fac41a9-022f-4c16-83a5-f4120e8dc096:41",
+      "matched_families": [
+        "negation_dont"
+      ],
+      "labeler": {
+        "is_directive": false,
+        "scope": null,
+        "polarity": null,
+        "self_confidence": 0.95,
+        "reasoning": "This is a technical discussion about the extraction pipeline's design and implementation details. It's describing a problem ('directive keywords must be introduced!!') and listing action items for the current task, not stating a standing rule for future behavior."
+      },
+      "detector_decision": "inserted",
+      "detector_confirmation": {
+        "is_directive": true,
+        "confidence": 0.82,
+        "polarity": "prescriptive",
+        "scope": "project",
+        "suggested_title": "Use Sonnet via CliProxy for extraction and add directive keyword pre-filtering",
+        "normalized_text": "Use Sonnet via CliProxy as the extraction model. Add directive keyword pre-filtering to the extraction pipeline so user directives/preferences are detected alongside corrections and decisions.",
+        "reasoning": "The user is selecting and endorsing specific approaches for the Angel extraction pipeline in this codebase. Items 1 and 3 are prescriptive choices about which implementation path to take. Item 2 identifies a gap (directive keywords must be introduced) and prescribes adding them. This is a project-scoped rule about how the Angel system should work — specifically which model to use and what the extraction pipeline must handle. The emphatic 'must be introduced!!' signals a standing requirement for this codebase's architecture."
+      }
+    },
+    {
+      "candidate_id": "8fac41a9-022f-4c16-83a5-f4120e8dc096:54",
+      "matched_families": [
+        "negation_dont"
+      ],
+      "labeler": {
+        "is_directive": false,
+        "scope": null,
+        "polarity": null,
+        "self_confidence": 0.85,
+        "reasoning": "This is a one-off instruction about what to do in the current situation ('check it out, if you don't find anything I will just write the spec in the other session'). It's specific to the immediate debugging task, not a standing rule for future interactions."
+      },
+      "detector_decision": "rejected_confirm",
+      "detector_confirmation": {
+        "is_directive": false,
+        "confidence": 0.88,
+        "polarity": null,
+        "scope": null,
+        "suggested_title": null,
+        "normalized_text": null,
+        "reasoning": "The candidate turn is a conditional task request for the current situation ('check it out, if you don't find anything I will just...'). It describes a one-off action plan for this immediate moment — investigate the MCP restart question, and if nothing turns up, the user will handle it themselves. There's no standing rule, no 'always/never' language, no prescription for future turns. It's a task-level instruction with a contingency, not a directive."
+      }
+    },
+    {
+      "candidate_id": "8fac41a9-022f-4c16-83a5-f4120e8dc096:62",
+      "matched_families": [
+        "negation_dont"
+      ],
+      "labeler": {
+        "is_directive": false,
+        "scope": null,
+        "polarity": null,
+        "self_confidence": 0.8,
+        "reasoning": "This expresses a preference about communication style ('only thing I want to hear from you is if you also agree with me') but appears to be specific to the current implementation discussion. It's more of a one-off communication preference than a standing directive that would apply to all future interactions."
+      },
+      "detector_decision": "rejected_confirm",
+      "detector_confirmation": {
+        "is_directive": false,
+        "confidence": 0.88,
+        "polarity": null,
+        "scope": null,
+        "suggested_title": null,
+        "normalized_text": null,
+        "reasoning": "The candidate turn contains two parts: (1) a task approval ('You should implement them') which is a one-off instruction for the current step, not a standing rule for future turns; and (2) a communication preference ('only thing I want to hear from you is if you also agree with me'). The second part could be interpreted as a directive about verbosity/communication style, but it's phrased as a session-specific preference tied to this particular implementation decision ('only thing I want to hear'), not as a general standing rule like 'always just tell me if you agree.' The hedged framing and context-specificity make it insufficient to register as a durable directive."
+      }
+    },
+    {
+      "candidate_id": "8fac41a9-022f-4c16-83a5-f4120e8dc096:69",
+      "matched_families": [
+        "negation_dont"
+      ],
+      "labeler": {
+        "is_directive": false,
+        "scope": null,
+        "polarity": null,
+        "self_confidence": 0.85,
+        "reasoning": "This is a task instruction for addressing specific points ('1 and 2 should be addressed') and giving permission for implementation order. The 'I do not want us to introduce downgrades!' is a general preference but appears tied to the current implementation task rather than a standing rule for all future work."
+      },
+      "detector_decision": "inserted",
+      "detector_confirmation": {
+        "is_directive": true,
+        "confidence": 0.82,
+        "polarity": "prohibitive",
+        "scope": "project",
+        "suggested_title": "Do not introduce downgrades",
+        "normalized_text": "Do not introduce downgrades when adding new features or making changes to this codebase.",
+        "reasoning": "The user says 'I do not want us to introduce downgrades!' — a prohibitive standing rule. The exclamation marks signal urgency but don't upgrade scope. The context is about specific codebase issues (require() calls, Bellman propagation), making this project-scoped rather than universal. The rule is about not letting new code degrade existing quality in this repo, not a meta-principle across all projects."
+      }
+    },
+    {
+      "candidate_id": "8fac41a9-022f-4c16-83a5-f4120e8dc096:73",
+      "matched_families": [
+        "always_emphasis"
+      ],
+      "labeler": {
+        "is_directive": false,
+        "scope": null,
+        "polarity": null,
+        "self_confidence": 0.95,
+        "reasoning": "This is a system notification output (task-notification XML) showing the results of an agent review. It's purely informational reporting from the system, not a user statement at all, let alone a directive."
+      },
+      "detector_decision": "rejected_regex"
+    },
+    {
+      "candidate_id": "8fac41a9-022f-4c16-83a5-f4120e8dc096:90",
+      "matched_families": [
+        "use_x_instead"
+      ],
+      "labeler": {
+        "is_directive": false,
+        "scope": null,
+        "polarity": null,
+        "self_confidence": 0.95,
+        "reasoning": "This is a task notification output from a Codex security review agent, presenting findings. It's not a user statement at all - it's system-generated content reporting on a completed task. No directive is present."
+      },
+      "detector_decision": "rejected_regex"
+    },
+    {
+      "candidate_id": "8fac41a9-022f-4c16-83a5-f4120e8dc096:91",
+      "matched_families": [
+        "never_emphasis"
+      ],
+      "labeler": {
+        "is_directive": false,
+        "scope": null,
+        "polarity": null,
+        "self_confidence": 0.95,
+        "reasoning": "Another task notification output from a Codex security review agent (chunk 2). This is system-generated content reporting review findings, not a user statement containing a directive."
+      },
+      "detector_decision": "rejected_regex"
+    },
+    {
+      "candidate_id": "8fac41a9-022f-4c16-83a5-f4120e8dc096:95",
+      "matched_families": [
+        "negation_dont"
+      ],
+      "labeler": {
+        "is_directive": false,
+        "scope": null,
+        "polarity": null,
+        "self_confidence": 0.9,
+        "reasoning": "This is a user request for a list of bugs that weren't addressed. It's a one-off task instruction ('give me that list') for the current step, not a standing rule for future turns. The emotional emphasis ('I don't care!') doesn't make it a directive."
+      },
+      "detector_decision": "rejected_confirm",
+      "detector_confirmation": {
+        "is_directive": false,
+        "confidence": 0.6,
+        "polarity": null,
+        "scope": null,
+        "suggested_title": null,
+        "normalized_text": null,
+        "reasoning": "The user is asking for a list of unaddressed bugs in the current session. This is a task request ('give me a list'), not a standing rule for future behavior. The emphatic language ('I don't care!', 'Every bug') signals urgency and completeness for this specific request, not a universal or project-level directive. There is no 'always', 'never', or forward-looking language establishing a rule for future turns."
+      }
+    },
+    {
+      "candidate_id": "3c4196f4-2c7f-4c72-a9c8-2541455d9c74:3",
+      "matched_families": [
+        "negation_dont"
+      ],
+      "labeler": {
+        "is_directive": false,
+        "scope": null,
+        "polarity": null,
+        "self_confidence": 0.95,
+        "reasoning": "This is a task notification output from a Gemini review agent, presenting findings. It's system-generated content reporting on completed review work, not a user statement containing a directive."
+      },
+      "detector_decision": "rejected_regex"
+    },
+    {
+      "candidate_id": "3c4196f4-2c7f-4c72-a9c8-2541455d9c74:8",
+      "matched_families": [
+        "use_x_instead"
+      ],
+      "labeler": {
+        "is_directive": false,
+        "scope": null,
+        "polarity": null,
+        "self_confidence": 0.95,
+        "reasoning": "This is a task notification output from a Codex review agent, presenting comprehensive review results. It's system-generated content, not a user statement containing a directive."
+      },
+      "detector_decision": "rejected_regex"
+    },
+    {
+      "candidate_id": "3c4196f4-2c7f-4c72-a9c8-2541455d9c74:13",
+      "matched_families": [
+        "always_emphasis",
+        "never_emphasis"
+      ],
+      "labeler": {
+        "is_directive": false,
+        "scope": null,
+        "polarity": null,
+        "self_confidence": 0.95,
+        "reasoning": "This is a task notification output from an investigation agent, presenting analysis findings and changes made. It's system-generated content reporting on completed work, not a user statement containing a directive."
+      },
+      "detector_decision": "rejected_regex"
+    },
+    {
+      "candidate_id": "3c4196f4-2c7f-4c72-a9c8-2541455d9c74:16",
+      "matched_families": [
+        "negation_dont"
+      ],
+      "labeler": {
+        "is_directive": false,
+        "scope": null,
+        "polarity": null,
+        "self_confidence": 0.95,
+        "reasoning": "This is a task notification from the system, not a user directive. It's reporting completion of an agent task 'Write regression tests for fixes'. No user instruction or standing rule is present."
+      },
+      "detector_decision": "rejected_regex"
+    },
+    {
+      "candidate_id": "3c4196f4-2c7f-4c72-a9c8-2541455d9c74:18",
+      "matched_families": [
+        "always_emphasis",
+        "never_emphasis"
+      ],
+      "labeler": {
+        "is_directive": false,
+        "scope": null,
+        "polarity": null,
+        "self_confidence": 0.95,
+        "reasoning": "This is another task notification from the system reporting completion of 'Investigate and wire correction_detected'. It's not a user turn containing a directive - it's a system status update."
+      },
+      "detector_decision": "rejected_regex"
+    },
+    {
+      "candidate_id": "3c4196f4-2c7f-4c72-a9c8-2541455d9c74:22",
+      "matched_families": [
+        "never_emphasis",
+        "negation_dont"
+      ],
+      "labeler": {
+        "is_directive": false,
+        "scope": null,
+        "polarity": null,
+        "self_confidence": 0.95,
+        "reasoning": "This is a task notification from the system reporting completion of 'Codex review round 2'. It's not a user turn containing a directive - it's a system status update with detailed review results."
+      },
+      "detector_decision": "rejected_regex"
+    },
+    {
+      "candidate_id": "3c4196f4-2c7f-4c72-a9c8-2541455d9c74:24",
+      "matched_families": [
+        "stop_doing_using"
+      ],
+      "labeler": {
+        "is_directive": true,
+        "scope": "session",
+        "polarity": "prohibitive",
+        "self_confidence": 0.9,
+        "reasoning": "'stop doing that, I told you already' is a prohibitive directive telling the agent to cease some ongoing behavior. The phrase 'I told you already' suggests this is reinforcing a previous instruction, making it a standing rule for the current session. It's not a one-off task instruction but a behavioral directive."
+      },
+      "detector_decision": "inserted",
+      "detector_confirmation": {
+        "is_directive": true,
+        "confidence": 0.75,
+        "polarity": "prohibitive",
+        "scope": "session",
+        "suggested_title": "Stop previously corrected behavior",
+        "normalized_text": "Stop repeating the behavior that was already corrected earlier in this session.",
+        "reasoning": "The user says 'stop doing that, I told you already' — a prohibitive directive referencing a prior correction in the same session. 'I told you already' signals this is a repeated correction, not a new universal rule. Without knowing what 'that' refers to concretely, the directive cannot generalize beyond this session. The emphatic language does not upgrade scope."
+      }
+    },
+    {
+      "candidate_id": "3c4196f4-2c7f-4c72-a9c8-2541455d9c74:25",
+      "matched_families": [
+        "stop_doing_using"
+      ],
+      "labeler": {
+        "is_directive": false,
+        "scope": null,
+        "polarity": null,
+        "self_confidence": 1,
+        "reasoning": "REVIEWER: directive text is inside <system-reminder>, not user-authored; user message is just \"how are we looking?\""
+      },
+      "detector_decision": "rejected_regex"
+    },
+    {
+      "candidate_id": "3af60620-a060-4646-9cc5-c07f60a15904:6",
+      "matched_families": [
+        "remember_this_that_to",
+        "next_time"
+      ],
+      "labeler": {
+        "is_directive": true,
+        "scope": "project",
+        "polarity": "prescriptive",
+        "self_confidence": 0.8,
+        "reasoning": "'remember this, I token won't expire next time' is a directive telling the agent to remember something for future use. The phrase 'next time' suggests it applies beyond the current session to future interactions in this project context. It's prescriptive ('remember this') rather than prohibitive."
+      },
+      "detector_decision": "rejected_confirm",
+      "detector_confirmation": {
+        "is_directive": false,
+        "confidence": 0.6,
+        "polarity": null,
+        "scope": null,
+        "suggested_title": null,
+        "normalized_text": null,
+        "reasoning": "The candidate text 'remember this, I token won't expire next time' is ambiguous and poorly formed — likely a typo or garbled input. It could mean 'remember: the token won't expire next time' (a prediction/observation) or 'remember this: [the] token won't expire next time' (a note about future behavior). Either reading is an observation about what will happen, not a prescriptive standing rule. The follow-up turn (turn 7) clarifies the user's actual intent — they want to prevent token expiration problems from recurring — but that's expressed as a task request ('we need to make sure it does not happen again'), not a standing directive. The candidate itself lacks the clarity and imperative force of a standing rule."
+      }
+    },
+    {
+      "candidate_id": "3af60620-a060-4646-9cc5-c07f60a15904:15",
+      "matched_families": [
+        "negation_dont"
+      ],
+      "labeler": {
+        "is_directive": false,
+        "scope": null,
+        "polarity": null,
+        "self_confidence": 0.95,
+        "reasoning": "This is a question asking for an opinion ('how good do you think this would be?') and a request for advice ('Is it worth the upgrade?'), not a standing rule for future behavior. The 'I don't want to waste context' expresses a preference but doesn't establish a directive."
+      },
+      "detector_decision": "rejected_confirm",
+      "detector_confirmation": {
+        "is_directive": false,
+        "confidence": 0.92,
+        "polarity": null,
+        "scope": null,
+        "suggested_title": null,
+        "normalized_text": null,
+        "reasoning": "The candidate turn is a question asking for an honest assessment ('tell me how good do you think this would be? honestly!') and expressing a preference about context usage ('I don't want to waste context'). This is seeking an evaluation, not establishing a standing rule. The user is asking the assistant to justify the upgrade's value, not directing future behavior. The follow-up turn (16) actually establishes the real directive — study the source to improve Claudex rather than fork — but that's a separate candidate."
+      }
+    },
+    {
+      "candidate_id": "d8c2005c-5929-4918-ad38-088ceea77dc9:2",
+      "matched_families": [
+        "negation_dont"
+      ],
+      "labeler": {
+        "is_directive": true,
+        "scope": "session",
+        "polarity": "prescriptive",
+        "self_confidence": 0.85,
+        "reasoning": "Contains a clear standing rule: 'We should make that you inform me whenever something like this happens, I should know you got the transfer instead of asking you!' This establishes a future expectation for notification behavior. The 'optimize token usage' part is also prescriptive but more general. Scope appears session-specific (about session transfers)."
+      },
+      "detector_decision": "inserted",
+      "detector_confirmation": {
+        "is_directive": true,
+        "confidence": 0.82,
+        "polarity": "prescriptive",
+        "scope": "project",
+        "suggested_title": "Proactively inform user when session transfers arrive",
+        "normalized_text": "When a session transfer is received, proactively inform the user instead of waiting for them to ask about it.",
+        "reasoning": "The user is prescribing a standing rule: they should be proactively notified when transfers arrive, rather than having to ask. The 'whenever something like this happens' framing generalizes beyond this one instance. The context is specific to the Claudex system (session transfers), so project scope is appropriate. The rest of the turn contains task-specific discussion about token optimization and injection frequency, but the directive about informing on transfers is a clear standing rule. Confidence is moderate-high: the phrasing 'We should make that you inform me' is slightly hedged with 'should' but the urgency and subsequent turns (user frustrated it wasn't applied, assistant already saved it as a rule) confirm it's intended as a directive."
+      }
+    },
+    {
+      "candidate_id": "d8c2005c-5929-4918-ad38-088ceea77dc9:3",
+      "matched_families": [
+        "negation_dont"
+      ],
+      "labeler": {
+        "is_directive": false,
+        "scope": null,
+        "polarity": null,
+        "self_confidence": 0.9,
+        "reasoning": "This is a one-off instruction for immediate action: 'Don't start just yet' and 'I want you to get another transfer from desktop agent!' It's a specific command for the current moment, not a standing rule for future turns."
+      },
+      "detector_decision": "rejected_confirm",
+      "detector_confirmation": {
+        "is_directive": false,
+        "confidence": 0.88,
+        "polarity": null,
+        "scope": null,
+        "suggested_title": null,
+        "normalized_text": null,
+        "reasoning": "The candidate turn is a one-off instruction for the current moment ('Don't start just yet') combined with a task request ('get another transfer'). The user is telling the assistant to pause before beginning work, not establishing a standing rule for future behavior. There is no 'always', 'never', or language indicating a persistent policy — it's a situational hold for this specific interaction."
+      }
+    },
+    {
+      "candidate_id": "d8c2005c-5929-4918-ad38-088ceea77dc9:9",
+      "matched_families": [
+        "negation_dont"
+      ],
+      "labeler": {
+        "is_directive": false,
+        "scope": null,
+        "polarity": null,
+        "self_confidence": 1,
+        "reasoning": "REVIEWER: one-off task request disguised as imperative; not a persistent rule"
+      },
+      "detector_decision": "inserted",
+      "detector_confirmation": {
+        "is_directive": true,
+        "confidence": 0.88,
+        "polarity": "prescriptive",
+        "scope": "project",
+        "suggested_title": "No prioritization triage — complete and present all work items",
+        "normalized_text": "When presenting research findings or work plans, list every item without prioritization tiers. Verbally justify each item with what and why, then execute all of them. Do not defer items as lower priority or 'later' work.",
+        "reasoning": "The user is emphatically prescribing a workflow rule for this project: never triage work items by priority, always present the full list, justify each, and execute all. The ALL CAPS and exclamation marks signal urgency but don't upgrade scope. The rule is about how this specific project's research and implementation work should be handled — it references 'the project and our work' and is tied to the current Claudex codebase context. It's not a universal meta-principle about the user's cognitive style across all projects; it's a project-specific workflow mandate about not losing track of work items in this complex multi-session project."
+      }
+    },
+    {
+      "candidate_id": "d8c2005c-5929-4918-ad38-088ceea77dc9:14",
+      "matched_families": [
+        "always_emphasis"
+      ],
+      "labeler": {
+        "is_directive": false,
+        "scope": null,
+        "polarity": null,
+        "self_confidence": 0.99,
+        "reasoning": "This is purely a task notification output from an agent (XML-formatted research results). The user is not speaking here; it's system output. No directive is present."
+      },
+      "detector_decision": "rejected_regex"
+    },
+    {
+      "candidate_id": "d8c2005c-5929-4918-ad38-088ceea77dc9:15",
+      "matched_families": [
+        "never_emphasis"
+      ],
+      "labeler": {
+        "is_directive": false,
+        "scope": null,
+        "polarity": null,
+        "self_confidence": 0.99,
+        "reasoning": "This is another task notification output from an agent (XML-formatted research results). The user is not speaking; it's system output. No directive is present."
+      },
+      "detector_decision": "rejected_regex"
+    },
+    {
+      "candidate_id": "d8c2005c-5929-4918-ad38-088ceea77dc9:18",
+      "matched_families": [
+        "never_emphasis"
+      ],
+      "labeler": {
+        "is_directive": false,
+        "scope": null,
+        "polarity": null,
+        "self_confidence": 0.95,
+        "reasoning": "This is a task notification output from an agent completing research. It's reporting results, not giving a directive for future behavior."
+      },
+      "detector_decision": "rejected_regex"
+    },
+    {
+      "candidate_id": "d8c2005c-5929-4918-ad38-088ceea77dc9:20",
+      "matched_families": [
+        "always_emphasis"
+      ],
+      "labeler": {
+        "is_directive": false,
+        "scope": null,
+        "polarity": null,
+        "self_confidence": 0.95,
+        "reasoning": "Another task notification output summarizing research findings. This is informational reporting, not a directive."
+      },
+      "detector_decision": "rejected_regex"
+    },
+    {
+      "candidate_id": "d8c2005c-5929-4918-ad38-088ceea77dc9:22",
+      "matched_families": [
+        "never_emphasis"
+      ],
+      "labeler": {
+        "is_directive": false,
+        "scope": null,
+        "polarity": null,
+        "self_confidence": 0.95,
+        "reasoning": "Task notification output reporting research results about Reddit community builds. Not a directive."
+      },
+      "detector_decision": "rejected_regex"
+    },
+    {
+      "candidate_id": "d8c2005c-5929-4918-ad38-088ceea77dc9:26",
+      "matched_families": [
+        "always_emphasis",
+        "never_emphasis"
+      ],
+      "labeler": {
+        "is_directive": false,
+        "scope": null,
+        "polarity": null,
+        "self_confidence": 0.95,
+        "reasoning": "Task notification output summarizing cache system research findings. This is informational, not a directive."
+      },
+      "detector_decision": "rejected_regex"
+    },
+    {
+      "candidate_id": "d8c2005c-5929-4918-ad38-088ceea77dc9:27",
+      "matched_families": [
+        "never_emphasis"
+      ],
+      "labeler": {
+        "is_directive": false,
+        "scope": null,
+        "polarity": null,
+        "self_confidence": 0.95,
+        "reasoning": "Task notification output reporting GitHub issues research. This is informational reporting, not a directive."
+      },
+      "detector_decision": "rejected_regex"
+    },
+    {
+      "candidate_id": "d8c2005c-5929-4918-ad38-088ceea77dc9:44",
+      "matched_families": [
+        "negation_dont"
+      ],
+      "labeler": {
+        "is_directive": true,
+        "scope": "project",
+        "polarity": "prescriptive",
+        "self_confidence": 0.85,
+        "reasoning": "This is a directive asking whether Angel can use /dream to its advantage to avoid clashes and work together. It's a standing rule about how Angel should interact with CC's /dream feature in this project context."
+      },
+      "detector_decision": "inserted",
+      "detector_confirmation": {
+        "is_directive": true,
+        "confidence": 0.82,
+        "polarity": "prescriptive",
+        "scope": "project",
+        "suggested_title": "Cooperate, don't fight — Angel and CC features should work together",
+        "normalized_text": "When integrating Angel with CC features, always aim for cooperative symbiosis rather than conflict or replacement — design them to complement each other.",
+        "reasoning": "The user says 'This concept should always be our goal! COOPERATE - Do not fight!' — the word 'always' and emphatic capitalization signal a standing rule, not a one-off request. However, the context is specifically about Angel/CC integration within this Claudex project (the /dream symbiosis discussion), so scope is project, not universal. The directive is prescriptive: always design for cooperation between Angel and CC systems."
+      }
+    },
+    {
+      "candidate_id": "d8c2005c-5929-4918-ad38-088ceea77dc9:46",
+      "matched_families": [
+        "always_emphasis",
+        "negation_dont"
+      ],
+      "labeler": {
+        "is_directive": true,
+        "scope": "universal",
+        "polarity": "prescriptive",
+        "self_confidence": 0.9,
+        "reasoning": "The phrase 'This concept should always be our goal! COOPERATE - Do not fight!' expresses a standing rule for future behavior ('always'), not a one-off task instruction. It's prescriptive ('should always be our goal') and appears to apply universally across all projects."
+      },
+      "detector_decision": "inserted",
+      "detector_confirmation": {
+        "is_directive": true,
+        "confidence": 0.82,
+        "polarity": "prescriptive",
+        "scope": "project",
+        "suggested_title": "Cooperate, don't fight — Angel/Dream symbiosis principle",
+        "normalized_text": "When designing Angel and Dream integration, always prioritize cooperation and symbiosis over independent or competing approaches.",
+        "reasoning": "The user says 'This concept should always be our goal! COOPERATE - Do not fight!' — 'always' and the emphatic ALL CAPS signal a standing rule. However, the directive is specifically about the Angel/Dream architecture in this codebase (the symbiosis concept just discussed), not a universal meta-principle. The scope is project: it governs how Angel and Dream should interact within Claudex. The second sentence ('Tell me about /buddy please?') is a question, not a directive."
+      }
+    },
+    {
+      "candidate_id": "5ad74da3-8ea6-4dcd-8251-d57518ad35f9:3",
+      "matched_families": [
+        "never_emphasis",
+        "next_time",
+        "use_x_instead"
+      ],
+      "labeler": {
+        "is_directive": false,
+        "scope": null,
+        "polarity": null,
+        "self_confidence": 0.95,
+        "reasoning": "This is a complaint about past behavior and a rhetorical question ('Does Claudex and claude.md mean nothing to you?'), not a standing rule for future turns. It's expressing frustration about the agent not following existing guidelines, not establishing new directives."
+      },
+      "detector_decision": "rejected_confirm",
+      "detector_confirmation": {
+        "is_directive": false,
+        "confidence": 0.75,
+        "polarity": null,
+        "scope": null,
+        "suggested_title": null,
+        "normalized_text": null,
+        "reasoning": "The candidate turn is a complaint about a specific agent's past behavior on the Lacuna betting project, not a standing directive. The user is venting frustration about what happened ('didn't follow claude.md', 'wasted tokens', 'not following learnings'). While the underlying values (be systematic, follow instructions, don't waste tokens) could be directive material, the user is describing what went wrong in a specific session, not prescribing a standing rule for future behavior. The numbered list reads as observations/complaints about past performance, not as 'from now on, always X' or 'never do Y' directives. The user's follow-up in Turn 4 ('You should add this for sure') is more directive-like but is a separate turn."
+      }
+    },
+    {
+      "candidate_id": "5ad74da3-8ea6-4dcd-8251-d57518ad35f9:5",
+      "matched_families": [
+        "always_emphasis",
+        "never_emphasis",
+        "negation_dont"
+      ],
+      "labeler": {
+        "is_directive": false,
+        "scope": null,
+        "polarity": null,
+        "self_confidence": 0.99,
+        "reasoning": "This is a task notification output from an agent, not a user turn containing a directive. The user didn't speak in this turn; it's just the system reporting on a completed research task."
+      },
+      "detector_decision": "rejected_regex"
+    },
+    {
+      "candidate_id": "5ad74da3-8ea6-4dcd-8251-d57518ad35f9:7",
+      "matched_families": [
+        "never_emphasis",
+        "negation_dont"
+      ],
+      "labeler": {
+        "is_directive": false,
+        "scope": null,
+        "polarity": null,
+        "self_confidence": 0.99,
+        "reasoning": "This is another task notification output from an agent, not a user turn containing a directive. The user didn't speak in this turn; it's just the system reporting on another completed research task."
+      },
+      "detector_decision": "rejected_regex"
+    },
+    {
+      "candidate_id": "5ad74da3-8ea6-4dcd-8251-d57518ad35f9:9",
+      "matched_families": [
+        "always_emphasis",
+        "never_emphasis",
+        "negation_dont"
+      ],
+      "labeler": {
+        "is_directive": false,
+        "scope": null,
+        "polarity": null,
+        "self_confidence": 0.99,
+        "reasoning": "This is another task notification output from an agent, not a user turn containing a directive. The user didn't speak in this turn; it's just the system reporting on another completed research task."
+      },
+      "detector_decision": "rejected_regex"
+    },
+    {
+      "candidate_id": "5ad74da3-8ea6-4dcd-8251-d57518ad35f9:10",
+      "matched_families": [
+        "always_emphasis",
+        "never_emphasis",
+        "negation_dont"
+      ],
+      "labeler": {
+        "is_directive": false,
+        "scope": null,
+        "polarity": null,
+        "self_confidence": 0.99,
+        "reasoning": "This is another task notification output from an agent, not a user turn containing a directive. The user didn't speak in this turn; it's just the system reporting on another completed research task."
+      },
+      "detector_decision": "rejected_regex"
+    },
+    {
+      "candidate_id": "5ad74da3-8ea6-4dcd-8251-d57518ad35f9:11",
+      "matched_families": [
+        "always_emphasis",
+        "negation_dont"
+      ],
+      "labeler": {
+        "is_directive": false,
+        "scope": null,
+        "polarity": null,
+        "self_confidence": 0.95,
+        "reasoning": "This is a task notification output from an agent summarizing research findings. It's not a user turn stating a standing rule for future behavior. The user is receiving information, not issuing a directive."
+      },
+      "detector_decision": "rejected_regex"
+    },
+    {
+      "candidate_id": "5ad74da3-8ea6-4dcd-8251-d57518ad35f9:43",
+      "matched_families": [
+        "always_emphasis"
+      ],
+      "labeler": {
+        "is_directive": true,
+        "scope": "project",
+        "polarity": "prescriptive",
+        "self_confidence": 0.9,
+        "reasoning": "This is a standing rule about permissions: 'You need to always be able to change your own settings, you need to add that to the list of permissions.' It's prescriptive ('need to'), applies to the project (settings/permissions), and is a rule for future behavior."
+      },
+      "detector_decision": "inserted",
+      "detector_confirmation": {
+        "is_directive": true,
+        "confidence": 0.82,
+        "polarity": "prescriptive",
+        "scope": "project",
+        "suggested_title": "Agent must always be able to modify its own settings",
+        "normalized_text": "The agent must always have permission to change its own settings; include this in the permissions configuration.",
+        "reasoning": "The user uses 'always' to establish a standing rule that the agent must retain the ability to modify its own settings. The context is about configuring permissions for this project's agent architecture (injection restructure, CLAUDE.md, permissions list), making it project-scoped. The follow-up turn ('I want all the auto-edits to be allowed! ALL OF THEM!') reinforces the intent but is more of an emphatic session-level demand, while the candidate turn itself articulates a principle ('always be able to change your own settings') that functions as a standing rule for how permissions should be configured in this project."
+      }
+    },
+    {
+      "candidate_id": "5ad74da3-8ea6-4dcd-8251-d57518ad35f9:89",
+      "matched_families": [
+        "never_emphasis",
+        "use_x_instead"
+      ],
+      "labeler": {
+        "is_directive": false,
+        "scope": null,
+        "polarity": null,
+        "self_confidence": 0.95,
+        "reasoning": "This is another task notification output from an agent (Gemini review). It's not a user turn stating a directive. The user is receiving a code review report."
+      },
+      "detector_decision": "rejected_regex"
+    },
+    {
+      "candidate_id": "5ad74da3-8ea6-4dcd-8251-d57518ad35f9:91",
+      "matched_families": [
+        "always_emphasis",
+        "never_emphasis"
+      ],
+      "labeler": {
+        "is_directive": false,
+        "scope": null,
+        "polarity": null,
+        "self_confidence": 0.95,
+        "reasoning": "This is a task notification output from an agent (Codex review). It's not a user turn stating a directive. The user is receiving another code review report."
+      },
+      "detector_decision": "rejected_regex"
+    },
+    {
+      "candidate_id": "812a07cf-5089-47a6-acb0-9bc59aab8a0d:14",
+      "matched_families": [
+        "always_emphasis",
+        "negation_dont"
+      ],
+      "labeler": {
+        "is_directive": false,
+        "scope": null,
+        "polarity": null,
+        "self_confidence": 0.95,
+        "reasoning": "This is a task notification output from an agent (research on CC leaked codebase). It's not a user turn stating a directive. The user is receiving research findings."
+      },
+      "detector_decision": "rejected_regex"
+    },
+    {
+      "candidate_id": "812a07cf-5089-47a6-acb0-9bc59aab8a0d:15",
+      "matched_families": [
+        "always_emphasis",
+        "never_emphasis"
+      ],
+      "labeler": {
+        "is_directive": false,
+        "scope": null,
+        "polarity": null,
+        "self_confidence": 0.95,
+        "reasoning": "This is a task notification output from an agent (research on KAIROS). It's not a user turn stating a directive. The user is receiving research findings."
+      },
+      "detector_decision": "rejected_regex"
+    },
+    {
+      "candidate_id": "812a07cf-5089-47a6-acb0-9bc59aab8a0d:16",
+      "matched_families": [
+        "never_emphasis",
+        "negation_dont"
+      ],
+      "labeler": {
+        "is_directive": false,
+        "scope": null,
+        "polarity": null,
+        "self_confidence": 0.95,
+        "reasoning": "This is a task notification output from an agent completing research, not a user directive. The user is receiving information, not stating a standing rule."
+      },
+      "detector_decision": "rejected_regex"
+    },
+    {
+      "candidate_id": "812a07cf-5089-47a6-acb0-9bc59aab8a0d:25",
+      "matched_families": [
+        "always_emphasis"
+      ],
+      "labeler": {
+        "is_directive": false,
+        "scope": null,
+        "polarity": null,
+        "self_confidence": 0.95,
+        "reasoning": "This is another task notification output from an agent completing analysis, not a user directive. The user is receiving information about token cost analysis."
+      },
+      "detector_decision": "rejected_regex"
+    },
+    {
+      "candidate_id": "812a07cf-5089-47a6-acb0-9bc59aab8a0d:26",
+      "matched_families": [
+        "negation_dont"
+      ],
+      "labeler": {
+        "is_directive": true,
+        "scope": "session",
+        "polarity": "prescriptive",
+        "self_confidence": 0.85,
+        "reasoning": "This is a standing rule about prioritization: 'you know we don't have low priorities!' It's prescriptive (do treat everything as high priority) and scoped to the current session/work context."
+      },
+      "detector_decision": "rejected_confirm",
+      "detector_confirmation": {
+        "is_directive": false,
+        "confidence": 0.88,
+        "polarity": null,
+        "scope": null,
+        "suggested_title": null,
+        "normalized_text": null,
+        "reasoning": "The user is making a playful/exclamatory correction about terminology ('lower priority' vs 'low priority') in response to the assistant's backlog categorization. This is a conversational quip about word choice, not a standing rule for future behavior. There is no prescriptive or prohibitive directive being established — the user is not instructing the agent to never use the phrase 'low priority' or to always use 'lower priority' going forward."
+      }
+    },
+    {
+      "candidate_id": "812a07cf-5089-47a6-acb0-9bc59aab8a0d:31",
+      "matched_families": [
+        "always_emphasis",
+        "never_emphasis"
+      ],
+      "labeler": {
+        "is_directive": false,
+        "scope": null,
+        "polarity": null,
+        "self_confidence": 0.95,
+        "reasoning": "This is a task notification output from an agent completing a code review, not a user directive. The user is receiving assessment information."
+      },
+      "detector_decision": "rejected_regex"
+    },
+    {
+      "candidate_id": "812a07cf-5089-47a6-acb0-9bc59aab8a0d:32",
+      "matched_families": [
+        "never_emphasis"
+      ],
+      "labeler": {
+        "is_directive": false,
+        "scope": null,
+        "polarity": null,
+        "self_confidence": 0.95,
+        "reasoning": "This is another task notification output from an agent completing a code review, not a user directive. The user is receiving critical findings from a review."
+      },
+      "detector_decision": "rejected_regex"
+    },
+    {
+      "candidate_id": "2029f591-1d6f-4145-89a4-8617195d2708:1",
+      "matched_families": [
+        "never_emphasis",
+        "negation_dont"
+      ],
+      "labeler": {
+        "is_directive": false,
+        "scope": null,
+        "polarity": null,
+        "self_confidence": 0.9,
+        "reasoning": "This appears to be the agent's response to a user query about remembering a conversation, not a user directive. It's the agent reporting search results and explaining what it found/didn't find."
+      },
+      "detector_decision": "rejected_confirm",
+      "detector_confirmation": {
+        "is_directive": false,
+        "confidence": 0.92,
+        "polarity": null,
+        "scope": null,
+        "suggested_title": null,
+        "normalized_text": null,
+        "reasoning": "The candidate turn is a question ('Do you remember...?') followed by a recounting of a past incident and a question about a principle. The user is testing memory and asking for information, not establishing a standing rule for future behavior. There is no prescriptive or prohibitive language directing how the agent should act going forward."
+      }
+    },
+    {
+      "candidate_id": "2029f591-1d6f-4145-89a4-8617195d2708:2",
+      "matched_families": [
+        "remember_this_that_to"
+      ],
+      "labeler": {
+        "is_directive": false,
+        "scope": null,
+        "polarity": null,
+        "self_confidence": 0.95,
+        "reasoning": "This is a question expressing confusion about why Claudex couldn't remember something ('I wander why Claudex... could not remember this'). It's not a standing rule for future behavior but rather an observation/question about past behavior."
+      },
+      "detector_decision": "rejected_confirm",
+      "detector_confirmation": {
+        "is_directive": false,
+        "confidence": 0.92,
+        "polarity": null,
+        "scope": null,
+        "suggested_title": null,
+        "normalized_text": null,
+        "reasoning": "The candidate turn is a question ('why could Claudex not remember this?'), not a standing directive. The user is asking about the cause of a specific failure mode, not prescribing or prohibiting future behavior. The follow-up turn ('So is this a bug or intended behavior?') confirms this is an inquiry/investigation, not a rule being established."
+      }
+    },
+    {
+      "candidate_id": "2029f591-1d6f-4145-89a4-8617195d2708:4",
+      "matched_families": [
+        "polite_imperative"
+      ],
+      "labeler": {
+        "is_directive": false,
+        "scope": null,
+        "polarity": null,
+        "self_confidence": 0.9,
+        "reasoning": "This is a response to a previous question about whether something is a bug or intended behavior ('please do! This is an important fix'). It's an encouragement to fix something that was just identified as potentially problematic, not a standing rule for future turns."
+      },
+      "detector_decision": "rejected_confirm",
+      "detector_confirmation": {
+        "is_directive": false,
+        "confidence": 0.88,
+        "polarity": null,
+        "scope": null,
+        "suggested_title": null,
+        "normalized_text": null,
+        "reasoning": "The candidate turn 'please do! This is an important fix' is a task request for the current step, not a standing rule. The user is approving the assistant's proposed action ('Want me to look at the search implementation and wire experience patterns into it?') and emphasizing its importance for this specific fix. There is no 'always', 'never', or any language establishing a future-standing rule. It's a one-off instruction for the current task."
+      }
+    },
+    {
+      "candidate_id": "2029f591-1d6f-4145-89a4-8617195d2708:10",
+      "matched_families": [
+        "negation_dont"
+      ],
+      "labeler": {
+        "is_directive": false,
+        "scope": null,
+        "polarity": null,
+        "self_confidence": 0.85,
+        "reasoning": "This is a concluding statement summarizing the session ('Than we don't have any work ahead of us! Great session! Fixed meaningful bug! Good job! /endsession please'). The '/endsession please' is a one-off request to end the current session, not a standing rule for future behavior."
+      },
+      "detector_decision": "rejected_confirm",
+      "detector_confirmation": {
+        "is_directive": false,
+        "confidence": 0.92,
+        "polarity": null,
+        "scope": null,
+        "suggested_title": null,
+        "normalized_text": null,
+        "reasoning": "This is a session-concluding statement expressing satisfaction and explicitly ending the session with '/endsession'. It contains no standing rules, no prescriptions, and no prohibitions for future turns. It's a one-off command to end the current session, not a directive."
+      }
+    },
+    {
+      "candidate_id": "fade30a9-5fa0-41f2-b688-c36bcbb7f436:4",
+      "matched_families": [
+        "always_emphasis",
+        "never_emphasis",
+        "negation_dont"
+      ],
+      "labeler": {
+        "is_directive": false,
+        "scope": null,
+        "polarity": null,
+        "self_confidence": 0.8,
+        "reasoning": "This is a complex reflection on the conversation about implementing features, expressing uncertainty about whether to proceed ('Maybe none of this is needed for Claudex'). It's not a clear standing rule but rather a reconsideration of the current discussion direction."
+      },
+      "detector_decision": "rejected_confirm",
+      "detector_confirmation": {
+        "is_directive": false,
+        "confidence": 0.88,
+        "polarity": null,
+        "scope": null,
+        "suggested_title": null,
+        "normalized_text": null,
+        "reasoning": "The candidate turn is the user quoting back the assistant's own text and then responding to it with a question and a reflection. The quoted text is the assistant's proposal, not the user's directive. The user's actual statements — 'Sorry but, I think you basically told me not to do it with all this info! Is this a step backward?' and 'None of these, I want to improve claude in real life... Maybe none of this is needed for Claudex' — are a challenge/question and a hedged reflection ('Maybe none of this is needed'), not a standing rule. There is no prescriptive or prohibitive language establishing a future behavior pattern."
+      }
+    },
+    {
+      "candidate_id": "fade30a9-5fa0-41f2-b688-c36bcbb7f436:23",
+      "matched_families": [
+        "always_emphasis",
+        "negation_dont"
+      ],
+      "labeler": {
+        "is_directive": false,
+        "scope": null,
+        "polarity": null,
+        "self_confidence": 0.9,
+        "reasoning": "This is a reflective statement about the development process and motivations ('We are constantly chasing production but when it is all said and done it works best for us!'). It's an observation about current state and philosophy, not a rule for future behavior."
+      },
+      "detector_decision": "rejected_confirm",
+      "detector_confirmation": {
+        "is_directive": false,
+        "confidence": 0.88,
+        "polarity": null,
+        "scope": null,
+        "suggested_title": null,
+        "normalized_text": null,
+        "reasoning": "The candidate turn is an enthusiastic expression of satisfaction and motivation ('You always find a way to overachieve, incredible!'), a statement of fact about the repo being public, and a personal philosophy about why they maintain it ('we are constantly chasing production but when it is all said and done it works best for us'). While 'constantly chasing production' sounds like it could be a rule, it's used here as a description of their existing approach and motivation, not as a prescriptive standing directive for future behavior. The user is celebrating and contextualizing, not issuing a rule."
+      }
+    },
+    {
+      "candidate_id": "4a20a39d-3c85-4697-98ce-22d09383ce53:13",
+      "matched_families": [
+        "negation_dont"
+      ],
+      "labeler": {
+        "is_directive": false,
+        "scope": null,
+        "polarity": null,
+        "self_confidence": 1,
+        "reasoning": "REVIEWER: task-specific concern, \"but that is about it\" signals casualness; not a standing rule"
+      },
+      "detector_decision": "rejected_confirm",
+      "detector_confirmation": {
+        "is_directive": false,
+        "confidence": 0.85,
+        "polarity": null,
+        "scope": null,
+        "suggested_title": null,
+        "normalized_text": null,
+        "reasoning": "The candidate text 'Make sure we don't have future issues with reranker but that is about it' is a task request for the current session — asking the assistant to verify/fix reranker robustness. It lacks standing-rule markers ('always', 'never', 'from now on') and reads as a one-off instruction to address a specific concern in this debugging session. 'That is about it' further signals this is a bounded task scope, not an ongoing rule."
+      }
+    },
+    {
+      "candidate_id": "d4e1d7e0-48c3-4449-abaf-eb04f05eeeb6:1",
+      "matched_families": [
+        "negation_dont"
+      ],
+      "labeler": {
+        "is_directive": false,
+        "scope": null,
+        "polarity": null,
+        "self_confidence": 0.95,
+        "reasoning": "This is a detailed analysis of a problem with /starthere functionality and proposed specific fixes for a particular project. It's describing past issues and suggesting concrete edits to files, but it's framed as a discussion starter ('What do you think') and appears to be part of a collaborative problem-solving conversation rather than stating a standing rule for future behavior. The content is specific to one project's documentation issues, not a general directive."
+      },
+      "detector_decision": "rejected_confirm",
+      "detector_confirmation": {
+        "is_directive": false,
+        "confidence": 0.82,
+        "polarity": null,
+        "scope": null,
+        "suggested_title": null,
+        "normalized_text": null,
+        "reasoning": "The candidate turn is a long, enthusiastic exposition of a problem the user has observed, illustrated with a concrete example from another project, and an invitation to collaborate ('I want to tackle this with you today! What do you think'). While it contains emphatic language ('We need a global approach to this!'), this is framing a problem and a goal for the current session's work, not stating a standing rule for future behavior. The user is proposing a design direction and asking for input, not issuing a directive like 'always do X' or 'never do Y'. The observation about /starthere's shortcomings is a past-tense/evaluative claim, not a prescriptive rule."
+      }
+    },
+    {
+      "candidate_id": "d4e1d7e0-48c3-4449-abaf-eb04f05eeeb6:2",
+      "matched_families": [
+        "always_emphasis"
+      ],
+      "labeler": {
+        "is_directive": false,
+        "scope": null,
+        "polarity": null,
+        "self_confidence": 0.9,
+        "reasoning": "This turn expresses agreement with previous analysis, raises questions about system capabilities ('does claudex even has the ability to work around this problem'), and expresses frustration about artifacts not working. It's primarily observations about current system limitations and questions about how things should work, not a clear standing rule for future behavior. The phrase 'This should be job for our Angel' could be interpreted as a suggestion but is vague and embedded in a stream of consciousness about system problems."
+      },
+      "detector_decision": "rejected_confirm",
+      "detector_confirmation": {
+        "is_directive": false,
+        "confidence": 0.55,
+        "polarity": null,
+        "scope": null,
+        "suggested_title": null,
+        "normalized_text": null,
+        "reasoning": "The candidate turn expresses strong agreement and enthusiasm ('I agree with you 100%') and adds design input ('This should be job for our Angel!'), but it reads as a collaborative contribution to the current design discussion rather than a standing rule. The statements about what Angel 'should' do and what the user 'always believed' are opinions and preferences shaping the current task, not prescriptive or prohibitive directives for future behavior. The frustration about artifacts not working is a complaint about the past/present state, not a rule for the future. There is no clear 'always do X' or 'never do Y' standing rule being established here."
+      }
+    },
+    {
+      "candidate_id": "d4e1d7e0-48c3-4449-abaf-eb04f05eeeb6:3",
+      "matched_families": [
+        "negation_dont"
+      ],
+      "labeler": {
+        "is_directive": false,
+        "scope": null,
+        "polarity": null,
+        "self_confidence": 0.95,
+        "reasoning": "This is not a directive but a conversational response continuing a discussion about /starthere issues. The user is referencing a previous example (the Lacuna agent's analysis) to illustrate a point about confirmation. This is an observation about past behavior ('the agent on Lacuna did') rather than a standing rule for future turns. The content is descriptive, not prescriptive or prohibitive."
+      },
+      "detector_decision": "rejected_confirm",
+      "detector_confirmation": {
+        "is_directive": false,
+        "confidence": 0.6,
+        "polarity": null,
+        "scope": null,
+        "suggested_title": null,
+        "normalized_text": null,
+        "reasoning": "The candidate turn is responding to two specific design questions about the current session's feature spec. Point 1 ('which ever catches the most') is a preference for the current design decision (multiple slots vs. one). Point 2 ('agent that worked should confirm') is a design decision about the confirmation flow for this feature. Neither is phrased as a standing rule with universal or project-wide language — they are answers to the assistant's two gates. While 'agent that worked should confirm' could be interpreted as a general principle, in context it's specifically about the mental-model confirmation flow being designed right now, and the user is citing the Lacuna example to justify their position in this design discussion. No 'always', 'never', 'from now on' or similar directive markers. This is a design-shaping conversation turn, not a standing directive."
+      }
+    },
+    {
+      "candidate_id": "d4e1d7e0-48c3-4449-abaf-eb04f05eeeb6:5",
+      "matched_families": [
+        "always_emphasis",
+        "never_emphasis"
+      ],
+      "labeler": {
+        "is_directive": true,
+        "scope": "universal",
+        "polarity": "prescriptive",
+        "self_confidence": 0.85,
+        "reasoning": "This contains directive elements about 'global mental model' being behavior learned throughout sessions, with examples like 'Never do this, or always do that, or we should always tend to... etc... Rules, preferences, and other global concepts are also mental model.' While phrased somewhat abstractly, it establishes that rules/preferences/global concepts should be considered part of mental models, which applies across all projects ('global mental model'). The 'should always tend to' phrasing suggests prescriptive guidance. However, some hedging exists ('Would add something very interesting'), reducing confidence slightly."
+      },
+      "detector_decision": "inserted",
+      "detector_confirmation": {
+        "is_directive": true,
+        "confidence": 0.82,
+        "polarity": "prescriptive",
+        "scope": "project",
+        "suggested_title": "Global mental model includes behavioral rules and preferences",
+        "normalized_text": "The global mental model type should encompass behavioral rules, preferences, and learned tendencies (e.g., 'never do X', 'always do Y', 'we tend to Z') — not just domain theory.",
+        "reasoning": "The user is prescribing an expansion of the mental_model type's semantics to include behavioral rules and preferences at the global scope. This is a design directive about how the curated context system in this codebase should categorize entries. It's project-scoped because it's about this system's type definitions and how entries are classified within this repo's architecture. The confidence is moderate because it's phrased as an observation/suggestion ('Would add something very interesting') rather than a flat imperative, but the substantive content is a clear design rule for the system."
+      }
+    },
+    {
+      "candidate_id": "d4e1d7e0-48c3-4449-abaf-eb04f05eeeb6:12",
+      "matched_families": [
+        "negation_dont"
+      ],
+      "labeler": {
+        "is_directive": false,
+        "scope": null,
+        "polarity": null,
+        "self_confidence": 0.95,
+        "reasoning": "This is a series of questions asking for analysis and opinion ('Do you see potential...', 'What do you think?', 'Would something like that actually improve...', 'Be honest!'). It's soliciting feedback and discussion about potential improvements, not stating a standing rule for future behavior. The 'Do not say stuff to please me!' is part of requesting honest feedback, not a prohibitive directive about how the agent should operate in future turns."
+      },
+      "detector_decision": "rejected_confirm",
+      "detector_confirmation": {
+        "is_directive": false,
+        "confidence": 0.92,
+        "polarity": null,
+        "scope": null,
+        "suggested_title": null,
+        "normalized_text": null,
+        "reasoning": "The candidate turn is a question and brainstorming invitation, not a standing rule. The user asks 'What do you think? Would something like that actually improve Claudex?' and explicitly requests an honest opinion ('Do not say stuff to please me! Be honest!'). The examples given ('For example and this is from the top of my head!') further signal this is exploratory ideation, not a directive. The emphatic language about honesty is about the current response, not a standing rule for future behavior."
+      }
+    },
+    {
+      "candidate_id": "7947f681-ef01-4e6a-8fec-9652cbda60ce:1",
+      "matched_families": [
+        "never_emphasis",
+        "negation_dont"
+      ],
+      "labeler": {
+        "is_directive": false,
+        "scope": null,
+        "polarity": null,
+        "self_confidence": 0.9,
+        "reasoning": "This is a one-off task instruction ('Urgently swap Gemma 4 for best ollama cloud model!', 'Analyze all the cloud models, select the best one, download it if we don't have it and swap!') to address an immediate problem with resource usage. It's a specific action request for the current situation, not a standing rule that applies to future interactions. The 'I cannot have full ram and Vram all the time' is an explanation/observation, not a directive."
+      },
+      "detector_decision": "rejected_confirm",
+      "detector_confirmation": {
+        "is_directive": false,
+        "confidence": 0.88,
+        "polarity": null,
+        "scope": null,
+        "suggested_title": null,
+        "normalized_text": null,
+        "reasoning": "The candidate turn is an urgent task request ('Urgently swap Gemma 4 for best ollama cloud model!'), not a standing rule. The user is describing a current problem (Gemma consumes all resources) and requesting an immediate action (analyze models, select best, download, swap). While emphatic, this is a one-off task directive for the current situation, not a policy for future behavior. There is no language like 'always', 'never', or 'from now on' that would elevate this to a standing directive."
+      }
+    }
+  ]
+}

@@ -1,0 +1,46 @@
+harness_pid=43064
+run-precision: 106 candidates, 106 labels, model=glm-5.1:cloud thresh=0.7/0.85
+  heartbeat: 4/106 30s
+  heartbeat: 5/106 60s
+  heartbeat: 6/106 90s
+  heartbeat: 8/106 120s
+  progress: 10/106
+  heartbeat: 10/106 150s
+  heartbeat: 11/106 180s
+  heartbeat: 18/106 210s
+  heartbeat: 19/106 240s
+  progress: 20/106
+  heartbeat: 21/106 270s
+  heartbeat: 22/106 300s
+  heartbeat: 23/106 330s
+  heartbeat: 27/106 360s
+  progress: 30/106
+  heartbeat: 34/106 390s
+  progress: 40/106
+  heartbeat: 42/106 420s
+  heartbeat: 43/106 450s
+  heartbeat: 47/106 480s
+  heartbeat: 49/106 510s
+  progress: 50/106
+  heartbeat: 54/106 540s
+  progress: 60/106
+  heartbeat: 64/106 570s
+  heartbeat: 66/106 600s
+  progress: 70/106
+  heartbeat: 75/106 630s
+  heartbeat: 76/106 660s
+  progress: 80/106
+  heartbeat: 83/106 690s
+  progress: 90/106
+  heartbeat: 90/106 720s
+  heartbeat: 94/106 750s
+  heartbeat: 96/106 780s
+  progress: 100/106
+  heartbeat: 100/106 810s
+  heartbeat: 100/106 840s
+  heartbeat: 101/106 870s
+  heartbeat: 102/106 900s
+  heartbeat: 103/106 930s
+  heartbeat: 104/106 960s
+run=2026-04-22T21-42-16-292Z_cycle4_negation_fewshot joint=50.0% skipped=0 → tune
+  → C:\Users\Grigorije\Desktop\Projects\CLAUDEXv3\.planning\phases\03-p2-directive-detector\fixtures\runs\2026-04-22T21-42-16-292Z_cycle4_negation_fewshot.json
