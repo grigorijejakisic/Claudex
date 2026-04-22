@@ -27,6 +27,7 @@ import * as os from 'os';
 import * as path from 'path';
 import type { Database } from 'better-sqlite3';
 import { pathToCcSlug } from '../shared/cc-slug.js';
+import { cachedPrepare } from '../core/stmt-cache.js';
 
 /** Hard ceiling for Angel-owned content portion of MEMORY.md. */
 export const MAX_BYTES = 25_000;
@@ -37,6 +38,15 @@ const MAX_PREAMBLE_LINES = 5;
 
 /** Max bytes to sniff per user-memory sibling file (frontmatter only). */
 const MAX_FRONTMATTER_SNIFF_BYTES = 1024;
+
+/** Section caps. */
+const MAX_ENTITIES = 15;
+const MAX_ACTIVE_PROJECTS = 5;
+const MAX_RECENT_THREADS = 5;
+const RECENT_SESSIONS_WINDOW = 10;
+
+/** Active-projects activity window: 7 days in seconds. */
+const ACTIVE_WINDOW_SECONDS = 7 * 86_400;
 
 /** Cold-start user-tail template. */
 export const USER_TAIL_DEFAULT = '<!-- USER EDITABLE -->\n\n## User Notes\n\n';
@@ -141,6 +151,158 @@ export function renderPreamble(slug: string): string {
   } catch {
     return '';
   }
+}
+
+/**
+ * Render the `## Entities` section — top-N entity summaries for the project,
+ * ranked by `importance DESC, timestamp_epoch DESC, id ASC`.
+ *
+ * Reads the legacy `artifacts` table (`artifact_type='entity_summary'`).
+ * Per RESEARCH §2: `entity_summary` rows have NOT migrated to V17, so the
+ * `importance` column still lives on `artifacts`, not on `artifact`. The
+ * `id ASC` final tiebreaker guarantees deterministic ordering when two
+ * entities share the same importance + timestamp.
+ *
+ * Cold-start (no matching rows) → header + blank line, for shape stability.
+ */
+export function renderEntities(db: Database, project: string): string {
+  let rows: Array<{ artifact_ref: string | null; summary: string }> = [];
+  try {
+    rows = cachedPrepare(
+      db,
+      `SELECT artifact_ref, summary
+       FROM artifacts
+       WHERE artifact_type = 'entity_summary'
+         AND project = ?
+         AND state IN ('packed','fresh','materialized')
+       ORDER BY importance DESC, timestamp_epoch DESC, id ASC
+       LIMIT ${MAX_ENTITIES}`,
+    ).all(project) as typeof rows;
+  } catch {
+    rows = [];
+  }
+
+  const lines = ['## Entities'];
+  if (rows.length === 0) {
+    lines.push('');
+  } else {
+    for (const row of rows) {
+      const ref = (row.artifact_ref ?? 'entity').toString();
+      const summary = (row.summary ?? '').replace(/\s+/g, ' ').trim().slice(0, 80);
+      lines.push(`- ${ref} — ${summary}`);
+    }
+  }
+  return lines.join('\n') + '\n';
+}
+
+/**
+ * Render the `## Active Projects` section — up to 5 projects with activity
+ * in the last 7 days, ranked by activity count DESC.
+ *
+ * Reads the V17 `artifact` table. Dashboard style: the section is
+ * cross-project by design — MEMORY.md is per-project but this list shows
+ * what's hot everywhere. Ties broken by most-recent touch, then project_id
+ * ASC for determinism.
+ */
+export function renderActiveProjects(db: Database): string {
+  const cutoff = Math.floor(Date.now() / 1000) - ACTIVE_WINDOW_SECONDS;
+
+  let rows: Array<{ project_id: string; activity_cnt: number; last_touched: number }> = [];
+  try {
+    rows = cachedPrepare(
+      db,
+      `SELECT project_id,
+              COUNT(*) AS activity_cnt,
+              MAX(updated_at_epoch) AS last_touched
+       FROM artifact
+       WHERE updated_at_epoch >= ?
+         AND project_id IS NOT NULL
+         AND project_id != ''
+       GROUP BY project_id
+       ORDER BY activity_cnt DESC, last_touched DESC, project_id ASC
+       LIMIT ${MAX_ACTIVE_PROJECTS}`,
+    ).all(cutoff) as typeof rows;
+  } catch {
+    rows = [];
+  }
+
+  const lines = ['## Active Projects'];
+  if (rows.length === 0) {
+    lines.push('');
+  } else {
+    for (const row of rows) {
+      lines.push(`- ${row.project_id} — ${row.activity_cnt} edits in last 7d`);
+    }
+  }
+  return lines.join('\n') + '\n';
+}
+
+/**
+ * Render the `## Recent Threads` section — up to 5 deduplicated topic_labels
+ * from the most recent 10 sessions' `transcript_chunk` artifacts.
+ *
+ * Two-step resolution (avoids relying on SQLite window-function edge cases):
+ *   1. Find the 10 most-recent sessions by MAX(created_at_epoch) of their
+ *      transcript_chunk rows for this project.
+ *   2. Within that set, group by topic_label → latest chunk time, order
+ *      DESC, break ties by session_id ASC then topic_label ASC, take 5.
+ *
+ * Cold-start (no transcript_chunk rows yet) → header + blank line.
+ */
+export function renderRecentThreads(db: Database, project: string): string {
+  const lines = ['## Recent Threads'];
+  let candidates: Array<{ topic_label: string; latest: number; session_id: string }> = [];
+
+  try {
+    const sessionRows = cachedPrepare(
+      db,
+      `SELECT session_id
+       FROM artifact
+       WHERE kind = 'transcript_chunk'
+         AND project_id = ?
+         AND session_id IS NOT NULL
+       GROUP BY session_id
+       ORDER BY MAX(created_at_epoch) DESC
+       LIMIT ${RECENT_SESSIONS_WINDOW}`,
+    ).all(project) as Array<{ session_id: string }>;
+
+    if (sessionRows.length === 0) {
+      lines.push('');
+      return lines.join('\n') + '\n';
+    }
+
+    const placeholders = sessionRows.map(() => '?').join(',');
+    const params = [project, ...sessionRows.map((r) => r.session_id)];
+
+    candidates = cachedPrepare(
+      db,
+      `SELECT json_extract(data, '$.topic_label') AS topic_label,
+              MAX(created_at_epoch) AS latest,
+              MAX(session_id) AS session_id
+       FROM artifact
+       WHERE kind = 'transcript_chunk'
+         AND project_id = ?
+         AND session_id IN (${placeholders})
+         AND json_extract(data, '$.topic_label') IS NOT NULL
+       GROUP BY json_extract(data, '$.topic_label')
+       ORDER BY latest DESC, session_id ASC, topic_label ASC
+       LIMIT ${MAX_RECENT_THREADS}`,
+    ).all(...params) as typeof candidates;
+  } catch {
+    candidates = [];
+  }
+
+  if (candidates.length === 0) {
+    lines.push('');
+    return lines.join('\n') + '\n';
+  }
+
+  for (const row of candidates) {
+    const label = (row.topic_label ?? '').toString().trim() || 'untitled';
+    const sidShort = (row.session_id ?? '').toString().slice(0, 8);
+    lines.push(`- ${label} — session ${sidShort}`);
+  }
+  return lines.join('\n') + '\n';
 }
 
 /**
