@@ -177,6 +177,112 @@ async function segmentViaLLM(turns: ConvTurn[]): Promise<Segment[] | null> {
 }
 
 // ---------------------------------------------------------------------------
+// Bounds enforcement
+// ---------------------------------------------------------------------------
+
+const SOFT_MIN_TURNS = 3;
+const HARD_MAX_TURNS = 30;
+
+/**
+ * Enforce post-LLM bounds on a validated, gap-free segment list:
+ *
+ *   1. Merge-up pass  — any segment shorter than soft-min (3 turns) that is
+ *                       not the only segment is merged into its neighbor
+ *                       (predecessor by default; first segment merges into
+ *                       its successor and inherits the successor's label).
+ *   2. Split-down pass — any segment longer than hard-max (30 turns) is
+ *                        chopped into consecutive 30-turn spans; the first
+ *                        span keeps the original label, continuations get
+ *                        `<label> (cont.)`.
+ *   3. Coverage invariant — first.start == firstTurn, last.end == lastTurn,
+ *                           no gaps, no overlaps. If any fail after the
+ *                           two passes (defensive only), fall back to a
+ *                           single chunk covering the full range with the
+ *                           supplied fallback label.
+ *
+ * `turnNumbers` is the full ordered list of turn IDs; the first and last
+ * entries define the valid range.
+ */
+export function enforceBounds(
+  segments: Segment[],
+  turnNumbers: number[],
+  fallbackLabel: string,
+): Segment[] {
+  if (turnNumbers.length === 0) return segments;
+  const firstTurn = turnNumbers[0];
+  const lastTurn = turnNumbers[turnNumbers.length - 1];
+
+  if (segments.length === 0) {
+    return [{ start: firstTurn, end: lastTurn, topic_label: fallbackLabel }];
+  }
+
+  // ── 1. Merge-up pass ──────────────────────────────────────────────
+  let merged: Segment[] = segments.map(s => ({ ...s }));
+  let changed = true;
+  while (changed && merged.length > 1) {
+    changed = false;
+    for (let i = 0; i < merged.length; i++) {
+      const span = merged[i].end - merged[i].start + 1;
+      if (span >= SOFT_MIN_TURNS) continue;
+      if (merged.length === 1) break;
+      if (i === 0) {
+        // Merge first into successor; keep successor's label.
+        merged[1] = {
+          start: merged[0].start,
+          end: merged[1].end,
+          topic_label: merged[1].topic_label,
+        };
+        merged.splice(0, 1);
+      } else {
+        // Merge into predecessor; keep predecessor's label.
+        merged[i - 1] = {
+          start: merged[i - 1].start,
+          end: merged[i].end,
+          topic_label: merged[i - 1].topic_label,
+        };
+        merged.splice(i, 1);
+      }
+      changed = true;
+      break; // restart scan — indices shifted
+    }
+  }
+
+  // ── 2. Split-down pass ────────────────────────────────────────────
+  const split: Segment[] = [];
+  for (const seg of merged) {
+    const span = seg.end - seg.start + 1;
+    if (span <= HARD_MAX_TURNS) {
+      split.push(seg);
+      continue;
+    }
+    let s = seg.start;
+    let firstSpan = true;
+    while (s <= seg.end) {
+      const e = Math.min(s + HARD_MAX_TURNS - 1, seg.end);
+      split.push({
+        start: s,
+        end: e,
+        topic_label: firstSpan ? seg.topic_label : `${seg.topic_label} (cont.)`,
+      });
+      s = e + 1;
+      firstSpan = false;
+    }
+  }
+
+  // ── 3. Coverage invariant ─────────────────────────────────────────
+  const ok =
+    split.length > 0 &&
+    split[0].start === firstTurn &&
+    split[split.length - 1].end === lastTurn &&
+    split.every((seg, i) => i === 0 || seg.start === split[i - 1].end + 1);
+  if (!ok) {
+    return [{ start: firstTurn, end: lastTurn, topic_label: fallbackLabel }];
+  }
+
+  return split;
+}
+
+// ---------------------------------------------------------------------------
 // Entry point
 // ---------------------------------------------------------------------------
 
