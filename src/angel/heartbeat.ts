@@ -112,6 +112,10 @@ export interface TickResult {
   // Phase 2b: Directive detection (P2)
   directives_extracted?: number;
   directives_errors?: number;
+  // Phase 5b: Session-completion artifact curation (P3, plan 04-04)
+  chunks_created?: number;
+  memory_md_written?: number;
+  memory_curation_errors?: number;
   // Local Intelligence Amplifier
   services_down?: string[];
   codebase_files_indexed?: number;
@@ -391,6 +395,85 @@ export async function heartbeatTick(ctx: HeartbeatContext): Promise<TickResult> 
       }
     } catch {
       // Non-critical — memory monitoring failure doesn't break the heartbeat
+    }
+
+    // Phase 5b: Session-completion artifact curation (P3, plan 04-04).
+    // Consumes `memory_curation_pending` events: runs transcript chunker per
+    // session, then MEMORY.md curator per unique project. Idempotent — chunker
+    // short-circuits when chunks already exist; curator fast-paths when input
+    // bytes and sentinel match.
+    //
+    // Ordering invariants:
+    //   - MUST run AFTER Phase 2 (pattern extraction) — Recent Threads in the
+    //     curated MEMORY.md reads freshly-chunked artifacts.
+    //   - MUST run AFTER Phase 5 (memory_monitor) — the monitor's prune pass
+    //     targets files WITHOUT the Angel sentinel today. Plan 04-04-04
+    //     guards the monitor from touching Angel-managed files so our
+    //     curated write isn't stomped within the same tick.
+    //   - MUST run BEFORE Phase 6b (embedding backfill) — chunker inserts
+    //     artifacts with `embedding_ref=null`; backfill sees them in this
+    //     tick (or the next, still fine) and embeds them.
+    try {
+      const pending = cachedPrepare(ctx.db,
+        `SELECT se.id, se.session_id, se.project, se.timestamp_epoch
+         FROM session_events se
+         WHERE se.event_type = 'memory_curation_pending'
+           AND NOT EXISTS (
+             SELECT 1 FROM session_events done
+             WHERE done.event_type = 'memory_curation_done'
+               AND done.session_id = se.session_id
+           )
+         ORDER BY se.timestamp_epoch ASC
+         LIMIT 20`
+      ).all() as Array<{ id: number; session_id: string; project: string; timestamp_epoch: number }>;
+
+      const curatedProjects = new Set<string>();
+
+      for (const p of pending) {
+        // Chunker: per-session.
+        try {
+          const { chunkSessionTranscript } = await import('./transcript-chunker.js');
+          const cr = await chunkSessionTranscript(ctx.db, p.session_id, p.project);
+          result.chunks_created = (result.chunks_created ?? 0) + cr.inserted;
+          if (cr.errors > 0) {
+            result.memory_curation_errors = (result.memory_curation_errors ?? 0) + cr.errors;
+          }
+        } catch {
+          result.memory_curation_errors = (result.memory_curation_errors ?? 0) + 1;
+        }
+
+        // Curator: dedup per project within this tick — batch sessions for
+        // the same project trigger a single MEMORY.md write.
+        if (!curatedProjects.has(p.project)) {
+          try {
+            const { curateMemoryMd } = await import('./memory-md-writer.js');
+            const mr = curateMemoryMd(ctx.db, p.project);
+            if (mr.written) {
+              result.memory_md_written = (result.memory_md_written ?? 0) + 1;
+            } else if (mr.reason !== 'idempotent_noop' && mr.reason !== 'no_project_dir') {
+              result.memory_curation_errors = (result.memory_curation_errors ?? 0) + 1;
+            }
+            curatedProjects.add(p.project);
+          } catch {
+            result.memory_curation_errors = (result.memory_curation_errors ?? 0) + 1;
+          }
+        }
+
+        // Mark done — a `memory_curation_done` event with the originating
+        // pending id, so the SELECT above skips this session on the next tick.
+        try {
+          cachedPrepare(ctx.db,
+            `INSERT INTO session_events (session_id, project, event_type, entity, action, detail)
+             VALUES (?, ?, 'memory_curation_done', 'angel', 'processed', ?)`
+          ).run(
+            p.session_id,
+            p.project,
+            JSON.stringify({ pending_event_id: p.id, tick_epoch: Math.floor(Date.now() / 1000) }),
+          );
+        } catch { /* non-fatal — both sides of the pipeline are idempotent */ }
+      }
+    } catch {
+      // Non-critical — queue processing failure doesn't break the heartbeat.
     }
 
     // Phase 6: Bulk artifact linking — populate artifact_links via Qdrant similarity
