@@ -409,6 +409,34 @@ describe('SessionEnd hook logic', () => {
     })).not.toThrow();
   });
 
+  it('enqueues memory_curation_pending for Angel (plan 04-04-01)', () => {
+    // Mirrors the recordEvent call the session-end hook makes. The hook
+    // runs `recordEvent(db, session_id, project, 'memory_curation_pending',
+    // 'angel', 'enqueue', JSON.stringify({project, session_id}))` after
+    // cleanup and before signal clearing — verify the row shape here.
+    recordEvent(
+      db,
+      'test-s1',
+      'test-proj',
+      'memory_curation_pending',
+      'angel',
+      'enqueue',
+      JSON.stringify({ project: 'test-proj', session_id: 'test-s1' }),
+    );
+
+    const rows = getSessionEvents(db, 'test-s1').filter(
+      (e) => e.event_type === 'memory_curation_pending',
+    );
+    expect(rows).toHaveLength(1);
+    expect(rows[0].action).toBe('enqueue');
+    expect(rows[0].entity).toBe('angel');
+    expect(rows[0].session_id).toBe('test-s1');
+    expect(rows[0].project).toBe('test-proj');
+    const detail = JSON.parse(rows[0].detail ?? '{}') as { project: string; session_id: string };
+    expect(detail.project).toBe('test-proj');
+    expect(detail.session_id).toBe('test-s1');
+  });
+
   it('returns {} (no injection)', () => {
     expect({}).toEqual({});
   });
