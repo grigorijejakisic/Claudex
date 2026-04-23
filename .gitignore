@@ -10,3 +10,4 @@ context/reasoning/
 context/logs/
 .qdrant-initialized
 SYSTEM_ANALYSIS_REPORT.md
+.planning/agent-history.json
