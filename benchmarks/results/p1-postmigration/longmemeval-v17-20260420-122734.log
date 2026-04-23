@@ -1,0 +1,23 @@
+=== LongMemEval Benchmark — Claudex Memory System ===
+Mode: oracle
+Dataset: C:/Users/GRIGOR~1/AppData/Local/Temp/longmemeval/longmemeval_oracle.json
+Answer/Judge: deepseek-coder-v2:16b
+Embeddings: snowflake-arctic-embed2 (1024-dim)
+
+Loading dataset...
+Instances: 500
+Embeddings: available
+  [10/500] accuracy: 90.0% | abstention: 0/0
+  [20/500] accuracy: 80.0% | abstention: 0/0
+  [30/500] accuracy: 80.0% | abstention: 0/0
+  [40/500] accuracy: 82.5% | abstention: 0/0
+  [50/500] accuracy: 78.0% | abstention: 0/0
+  [60/500] accuracy: 77.8% | abstention: 0/6
+  [70/500] accuracy: 79.7% | abstention: 0/6
+  [80/500] accuracy: 82.4% | abstention: 0/6
+  [90/500] accuracy: 84.5% | abstention: 0/6
+  [100/500] accuracy: 84.0% | abstention: 0/6
+  [110/500] accuracy: 85.6% | abstention: 0/6
+  [120/500] accuracy: 86.4% | abstention: 0/10
+  [130/500] accuracy: 86.4% | abstention: 0/12
+  [140/500] accuracy: 85.9% | abstention: 0/12

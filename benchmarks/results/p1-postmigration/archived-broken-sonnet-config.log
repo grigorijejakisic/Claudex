@@ -1,0 +1,15 @@
+=== LongMemEval Benchmark — Claudex Memory System ===
+Mode: oracle
+Dataset: C:/Users/GRIGOR~1/AppData/Local/Temp/longmemeval/longmemeval_oracle.json
+Answer/Judge: claude-sonnet-4-6
+Embeddings: snowflake-arctic-embed2 (1024-dim)
+
+Loading dataset...
+Instances: 500
+Embeddings: available
+  [10/500] accuracy: 0.0% | abstention: 0/0
+  [20/500] accuracy: 0.0% | abstention: 0/0
+  [30/500] accuracy: 0.0% | abstention: 0/0
+  [40/500] accuracy: 0.0% | abstention: 0/0
+  [50/500] accuracy: 0.0% | abstention: 0/0
+  [60/500] accuracy: 0.0% | abstention: 0/6
