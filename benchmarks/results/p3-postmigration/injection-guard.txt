@@ -1,0 +1,18 @@
+Dual-injection guard — Phase 4 must add NO consumer of MEMORY.md in assembly layer
+====================================================================================
+
+Command: grep -rn "memory-md-writer\|memory-md-verify\|MEMORY\.md" src/assembly/
+Date: 2026-04-22
+Working dir: C:/Users/Grigorije/Desktop/Projects/CLAUDEXv3
+
+Files scanned in src/assembly/:
+  - assembler.ts
+  - sections.ts
+  - worker-context.ts
+
+Result: NO MATCHES.
+
+Verdict: PASS. Phase 4 added zero consumers of MEMORY.md in the session-start assembler.
+         Dual-injection preserved — old injection sections continue to fire alongside
+         the new MEMORY.md on disk. MEMORY.md injection into the assembled prompt
+         is Phase 5 (P4) work.

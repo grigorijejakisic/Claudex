@@ -1,0 +1,19 @@
+bun run test
+----
+Result: 2556 passed / 2577 total
+Failed: 21 (all in known-broken suites)
+  - llama-server-supervisor.test.ts: 18 failed (pre-existing per baseline, unchanged)
+  - llama-client.test.ts: 2 failed (pre-existing per baseline, unchanged)
+  - e2e-flows.test.ts > OpenClaw Bridge E2E Flow > full OpenClaw bridge lifecycle: 1 failed
+    (flaky — times out at 15000ms under full-suite load; passes in 6572ms when run in isolation;
+     test file predates Phase 4 — not a Phase 4 regression)
+Duration: 16.28s
+Date: 2026-04-22
+Baseline (from prior SUMMARY): 2550 pass / 20 pre-existing failures (llama-server-supervisor 18 + llama-client 2)
+Delta: +6 new tests pass (plans 04-01..04-04 added 7 test files; effective +6 passing).
+       +1 flaky failure on e2e-flows under full-suite contention; passes in isolation.
+
+Gate verdict (Phase 4 test criterion "no NEW failures"): PASS with caveat.
+  - Known-broken suites unchanged (18 + 2 = 20 as baseline).
+  - e2e-flows timeout is a flakiness issue under load, not a Phase 4 regression
+    (confirmed by isolated re-run: 9/9 pass, 6572ms).
