@@ -152,41 +152,67 @@ export function initializeSchema(db: Database): void {
   // took the fast-path return (already at TARGET_VERSION). Idempotent
   // per-connection — safe to call multiple times.
   loadSqliteVec(db);
-  // Create vec0 virtual tables explicitly. For fresh in-memory or brand-new
-  // DBs, runMigrations returns early (no `observations` table → assumes
-  // nothing to migrate) and V14→V15 never runs. The SCHEMA_V3 DDL below
-  // creates the regular tables but not the virtual ones. Run the V15
-  // migration step directly here so vec0 tables exist regardless of
-  // whether initialization came via migration or fresh creation.
-  migrateV14toV15(db);
 
-  // V15→V16: project_curated_context table. No extension required, so the
-  // fresh-DB path can call it unconditionally. Idempotent via IF NOT EXISTS.
-  migrateV15toV16(db);
+  // Version-aware skip: on a post-V17 DB, the 6 legacy knowledge tables
+  // (learnings/decisions/experience_patterns/angel_opinions/critical_rules/
+  // project_curated_context) have been replaced by views over `artifact`.
+  // SQLite throws "views may not be indexed" for any re-run CREATE INDEX
+  // against those names, so every V1–V16 "belt and braces" DDL block below
+  // is unsafe on V17 DBs. The data has already been migrated; the schema
+  // is already shaped. Skip them. Still run loadSqliteVec (done above),
+  // cleanupOrphanTables, and the schema_versions write at the end.
+  const currentUv = (db.pragma('user_version') as Array<{ user_version: number }>)[0]?.user_version ?? 0;
+  const isPostV17 = currentUv >= 17;
 
-  // V16→V17 DDL — create the artifact kernel + artifact_fts + legacy_id_map
-  // as DORMANT storage. Data migration is CLI-driven via migrate:v17:apply
-  // (Plan 02-05 runner) because Phase A requires Ollama. Creating the tables
-  // up-front lets callers port their FTS5 MATCH queries to artifact_fts even
-  // before the actual row migration runs. Matches the V14→V15 vec0 pattern.
-  try { migrateV16toV17(db); } catch { /* non-fatal: may fail on older sqlite-vec */ }
+  if (!isPostV17) {
+    // Create vec0 virtual tables explicitly. For fresh in-memory or brand-new
+    // DBs, runMigrations returns early (no `observations` table → assumes
+    // nothing to migrate) and V14→V15 never runs. The SCHEMA_V3 DDL below
+    // creates the regular tables but not the virtual ones. Run the V15
+    // migration step directly here so vec0 tables exist regardless of
+    // whether initialization came via migration or fresh creation.
+    migrateV14toV15(db);
 
-  // FTS5: detect stale v2 index with wrong column count and rebuild
-  rebuildStaleFts5(db);
+    // V15→V16: project_curated_context table. No extension required, so the
+    // fresh-DB path can call it unconditionally. Idempotent via IF NOT EXISTS.
+    migrateV15toV16(db);
 
-  db.exec(SCHEMA_V3);
-  db.exec(TELEMETRY_SCHEMA);
-  db.exec(TEAM_COORDINATION_SCHEMA);
+    // V16→V17 DDL — create the artifact kernel + artifact_fts + legacy_id_map
+    // as DORMANT storage. Data migration is CLI-driven via migrate:v17:apply
+    // (Plan 02-05 runner) because Phase A requires Ollama. Creating the tables
+    // up-front lets callers port their FTS5 MATCH queries to artifact_fts even
+    // before the actual row migration runs. Matches the V14→V15 vec0 pattern.
+    try { migrateV16toV17(db); } catch { /* non-fatal: may fail on older sqlite-vec */ }
 
-  // Rebuild FTS5 content index from observations table
-  if (hasTable(db, 'observations') && hasTable(db, 'observations_fts')) {
-    try {
-      db.exec("INSERT INTO observations_fts(observations_fts) VALUES('rebuild')");
-    } catch { /* FTS rebuild failed — non-fatal */ }
+    // FTS5: detect stale v2 index with wrong column count and rebuild
+    rebuildStaleFts5(db);
+
+    db.exec(SCHEMA_V3);
+    db.exec(TELEMETRY_SCHEMA);
+    db.exec(TEAM_COORDINATION_SCHEMA);
+
+    // Rebuild FTS5 content index from observations table
+    if (hasTable(db, 'observations') && hasTable(db, 'observations_fts')) {
+      try {
+        db.exec("INSERT INTO observations_fts(observations_fts) VALUES('rebuild')");
+      } catch { /* FTS rebuild failed — non-fatal */ }
+    }
+
+    // Schema fixes: single-owner artifact_claims, porter stemmer on FTS, etc.
+    migrateSchemaFixes(db);
+  } else {
+    // Post-V17 DB: the artifact kernel DDL is still worth re-asserting
+    // (it's fully idempotent via IF NOT EXISTS and doesn't touch the views).
+    // This keeps the "dormant storage" contract for any connection that
+    // opens a V17 DB after a fresh checkout.
+    try { migrateV16toV17(db); } catch { /* non-fatal: may fail on older sqlite-vec */ }
+
+    // Telemetry + team coordination schemas are orthogonal to the artifact
+    // migration — their tables are NOT replaced by V17 views, so re-exec is
+    // safe and cheap. Keeps fresh-V17 clones bootstrap-able.
+    db.exec(TELEMETRY_SCHEMA);
+    db.exec(TEAM_COORDINATION_SCHEMA);
   }
-
-  // Schema fixes: single-owner artifact_claims, porter stemmer on FTS, etc.
-  migrateSchemaFixes(db);
 
   // Drop orphan tables from pre-V6 schemas (runs unconditionally, not gated by migrateSchemaFixes guard)
   cleanupOrphanTables(db);
@@ -198,7 +224,10 @@ export function initializeSchema(db: Database): void {
   } else {
     db.prepare('INSERT OR IGNORE INTO schema_versions (version) VALUES (?)').run(SCHEMA_VERSION);
   }
-  db.pragma('user_version = 16');
+  // Do not demote a V17 (or newer) DB back to 16. The live DB's user_version
+  // is set by the V17 runner; every hook re-open used to silently demote it,
+  // which would confuse any future `>= 17` version gate.
+  if (currentUv < 16) db.pragma('user_version = 16');
 }
 
 // ---------------------------------------------------------------------------
