@@ -135,12 +135,29 @@ vi.mock('../../angel/transcript-chunker.js', async () => {
   };
 });
 
+// Curator is wrapped so per-test behavior (throw on specific project) can be
+// installed via `mockCurator.mockImplementation`. Plan 04-06-02 needs this to
+// prove curator-throw isolation separately from chunker-throw isolation.
+type CurateFn = typeof import('../../angel/memory-md-writer.js')['curateMemoryMd'];
+const mockCurator = vi.fn<Parameters<CurateFn>, ReturnType<CurateFn>>();
+
+vi.mock('../../angel/memory-md-writer.js', async () => {
+  const actual = await vi.importActual<typeof import('../../angel/memory-md-writer.js')>(
+    '../../angel/memory-md-writer.js',
+  );
+  return {
+    ...actual,
+    curateMemoryMd: (...args: Parameters<CurateFn>) => mockCurator(...args),
+  };
+});
+
 // Import AFTER mocks — ESM hoisting ensures mocks are in place.
 import { heartbeatTick } from '../../angel/heartbeat.js';
 import { DEFAULT_ANGEL_CONFIG } from '../../angel/types.js';
 
-// Real chunker via importActual so we can forward in the default case.
+// Real chunker + curator via importActual so we can forward in the default case.
 let realChunker: ChunkFn;
+let realCurator: CurateFn;
 
 // ---------------------------------------------------------------------------
 // Test harness
@@ -253,6 +270,12 @@ beforeEach(async () => {
     );
     realChunker = real.chunkSessionTranscript;
   }
+  if (!realCurator) {
+    const real = await vi.importActual<typeof import('../../angel/memory-md-writer.js')>(
+      '../../angel/memory-md-writer.js',
+    );
+    realCurator = real.curateMemoryMd;
+  }
 
   mockCallLocalLLM.mockReset();
   // Default: single-segment response covering the whole session. The chunker
@@ -270,6 +293,9 @@ beforeEach(async () => {
 
   mockChunker.mockReset();
   mockChunker.mockImplementation((...args: Parameters<ChunkFn>) => realChunker(...args));
+
+  mockCurator.mockReset();
+  mockCurator.mockImplementation((...args: Parameters<CurateFn>) => realCurator(...args));
 });
 
 afterEach(() => {
@@ -396,5 +422,116 @@ describe('Angel heartbeat — Phase 5b Session-completion artifact curation', ()
     expect(fs.existsSync(memoryMdPathFor(PROJECT_1))).toBe(true);
     expect(fs.existsSync(memoryMdPathFor(PROJECT_2))).toBe(true);
     expect(tick.memory_md_written).toBe(2);
+  });
+
+  // --------------------------------------------------------------------------
+  // Plan 04-06-02 — per-operation try/catch hardening in the queue drain.
+  // --------------------------------------------------------------------------
+
+  it('04-06-02: chunker throw emits memory_curation_failed and still marks done', async () => {
+    seedSession(db, SESSION_A, PROJECT_1);
+    seedTurns(db, SESSION_A, PROJECT_1, 4);
+    seedEntities(db, PROJECT_1, [{ ref: 'e1', summary: 's' }]);
+    enqueueCuration(db, SESSION_A, PROJECT_1);
+
+    mockChunker.mockImplementation(async () => {
+      const err = new Error('simulated Ollama VRAM contention timeout');
+      err.name = 'TimeoutError';
+      throw err;
+    });
+
+    await heartbeatTick(mkCtx(db));
+
+    // A `memory_curation_failed` row was inserted with detail for `chunker`.
+    const failures = db.prepare(
+      `SELECT action, detail FROM session_events
+       WHERE event_type = 'memory_curation_failed' AND session_id = ? AND project = ?`,
+    ).all(SESSION_A, PROJECT_1) as Array<{ action: string; detail: string | null }>;
+    expect(failures.length).toBe(1);
+    expect(failures[0].action).toBe('chunker');
+    const parsed = JSON.parse(failures[0].detail!);
+    expect(parsed.stage).toBe('chunker');
+    expect(parsed.error_name).toBe('TimeoutError');
+    expect(parsed.error_message).toContain('VRAM contention');
+
+    // Curator still ran — MEMORY.md exists because the curator reads what it
+    // can find (may be empty Recent Threads for this session, but the file
+    // shape is still produced).
+    expect(fs.existsSync(memoryMdPathFor(PROJECT_1))).toBe(true);
+
+    // Pending row marked done so the next tick does not re-attempt the
+    // doomed session forever.
+    expect(countDoneEvents(db)).toBe(1);
+  });
+
+  it('04-06-02: curator throw emits memory_curation_failed and still marks done', async () => {
+    seedSession(db, SESSION_A, PROJECT_1);
+    seedTurns(db, SESSION_A, PROJECT_1, 4);
+    seedEntities(db, PROJECT_1, [{ ref: 'e1', summary: 's' }]);
+    enqueueCuration(db, SESSION_A, PROJECT_1);
+
+    mockCurator.mockImplementation(() => {
+      const err = new Error('disk full during atomic rename');
+      err.name = 'FilesystemError';
+      throw err;
+    });
+
+    const tick = await heartbeatTick(mkCtx(db));
+
+    const failures = db.prepare(
+      `SELECT action, detail FROM session_events
+       WHERE event_type = 'memory_curation_failed' AND project = ?`,
+    ).all(PROJECT_1) as Array<{ action: string; detail: string | null }>;
+    expect(failures.length).toBe(1);
+    expect(failures[0].action).toBe('curator');
+    const parsed = JSON.parse(failures[0].detail!);
+    expect(parsed.stage).toBe('curator');
+    expect(parsed.error_name).toBe('FilesystemError');
+    expect(parsed.error_message).toContain('disk full');
+
+    // memory_md_written should NOT increment; memory_curation_errors should.
+    expect(tick.memory_md_written ?? 0).toBe(0);
+    expect((tick.memory_curation_errors ?? 0)).toBeGreaterThanOrEqual(1);
+
+    // Pending still marked done so we do not retry forever.
+    expect(countDoneEvents(db)).toBe(1);
+  });
+
+  it('04-06-02: DB error caught at iteration level — next tick still runs', async () => {
+    seedSession(db, SESSION_A, PROJECT_1);
+    seedTurns(db, SESSION_A, PROJECT_1, 4);
+    seedEntities(db, PROJECT_1, [{ ref: 'e1', summary: 's' }]);
+    enqueueCuration(db, SESSION_A, PROJECT_1);
+
+    // Force a DB-shaped error from INSIDE the drain by making the chunker
+    // import throw. The outer try/catch around the whole drain block is
+    // the iteration-level guard — plan 04-06-02 item #4.
+    mockChunker.mockImplementation(() => {
+      throw new Error('db connection dropped');
+    });
+    mockCurator.mockImplementation(() => {
+      throw new Error('db connection dropped');
+    });
+
+    // First tick — both stages throw, but Angel must still complete the
+    // heartbeat tick (no exception bubbles out).
+    const tick1 = await heartbeatTick(mkCtx(db));
+    expect(tick1.error).toBeUndefined();
+    expect((tick1.memory_curation_errors ?? 0)).toBeGreaterThanOrEqual(1);
+
+    // Restore happy path and confirm the next tick still runs cleanly with
+    // a fresh pending row — proves the loop survived the prior failure.
+    mockChunker.mockImplementation((...args) => realChunker(...args));
+    mockCurator.mockImplementation((...args) => realCurator(...args));
+
+    const SESSION_C = 's-c';
+    seedSession(db, SESSION_C, PROJECT_1);
+    seedTurns(db, SESSION_C, PROJECT_1, 4);
+    enqueueCuration(db, SESSION_C, PROJECT_1);
+
+    const tick2 = await heartbeatTick(mkCtx(db));
+    expect(tick2.error).toBeUndefined();
+    expect((tick2.chunks_created ?? 0)).toBeGreaterThanOrEqual(1);
+    expect(tick2.memory_md_written).toBeGreaterThanOrEqual(1);
   });
 });

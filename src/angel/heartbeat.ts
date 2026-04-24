@@ -413,6 +413,23 @@ export async function heartbeatTick(ctx: HeartbeatContext): Promise<TickResult> 
     //   - MUST run BEFORE Phase 6b (embedding backfill) — chunker inserts
     //     artifacts with `embedding_ref=null`; backfill sees them in this
     //     tick (or the next, still fine) and embeds them.
+    // Plan 04-06-02: the drain is wrapped at iteration level AND per-operation.
+    // Outer try/catch protects against DB connection errors etc. so one bad
+    // SELECT cannot kill the heartbeat loop. Inner try/catches wrap the two
+    // risky calls (chunker + curator) so one poisoned session/project logs
+    // a `memory_curation_failed` event and the drain continues.
+    //
+    // Design choice: on failure we STILL insert `memory_curation_done` for
+    // the pending row. The alternative (retry counter, N-failures-then-drop)
+    // would pin a deterministically-broken session in the queue forever;
+    // dropping after one attempt plus a failure event gives the next tick a
+    // clean queue without hiding the failure. Error surfaces via the
+    // `memory_curation_errors` tick counter AND the session_events row — the
+    // full stack goes to ~/.claudex/logs/angel.log (from 04-06-01).
+    //
+    // Mirrors the Phase 3 `bdca0a3` per-candidate pattern in run-precision.ts:
+    // narrow try/catch around the single risky async call, fallback/continue,
+    // wider try/catch around the whole iteration.
     try {
       const pending = cachedPrepare(ctx.db,
         `SELECT se.id, se.session_id, se.project, se.timestamp_epoch
@@ -430,7 +447,12 @@ export async function heartbeatTick(ctx: HeartbeatContext): Promise<TickResult> 
       const curatedProjects = new Set<string>();
 
       for (const p of pending) {
-        // Chunker: per-session.
+        // Chunker: per-session. Errors record `memory_curation_failed` with
+        // the error name + message (not the stack — the stack goes to
+        // angel.log via the 04-06-01 stderr capture). Curator still runs
+        // even if chunking failed — the two are independent: the curator
+        // reads existing transcript_chunk rows from prior ticks and can
+        // still produce a valid MEMORY.md even when today's chunk fails.
         try {
           const { chunkSessionTranscript } = await import('./transcript-chunker.js');
           const cr = await chunkSessionTranscript(ctx.db, p.session_id, p.project);
@@ -438,8 +460,15 @@ export async function heartbeatTick(ctx: HeartbeatContext): Promise<TickResult> 
           if (cr.errors > 0) {
             result.memory_curation_errors = (result.memory_curation_errors ?? 0) + cr.errors;
           }
-        } catch {
+        } catch (err) {
           result.memory_curation_errors = (result.memory_curation_errors ?? 0) + 1;
+          recordCurationFailure(
+            ctx.db,
+            p.session_id,
+            p.project,
+            'chunker',
+            err,
+          );
         }
 
         // Curator: dedup per project within this tick — batch sessions for
@@ -454,13 +483,25 @@ export async function heartbeatTick(ctx: HeartbeatContext): Promise<TickResult> 
               result.memory_curation_errors = (result.memory_curation_errors ?? 0) + 1;
             }
             curatedProjects.add(p.project);
-          } catch {
+          } catch (err) {
             result.memory_curation_errors = (result.memory_curation_errors ?? 0) + 1;
+            recordCurationFailure(
+              ctx.db,
+              p.session_id,
+              p.project,
+              'curator',
+              err,
+            );
+            // Still mark the project as curated-this-tick so batched pending
+            // rows for the same project don't repeatedly trigger the throw.
+            curatedProjects.add(p.project);
           }
         }
 
         // Mark done — a `memory_curation_done` event with the originating
         // pending id, so the SELECT above skips this session on the next tick.
+        // We mark done even on chunker/curator failure: this is a
+        // deliberate design choice (see block-level comment above).
         try {
           cachedPrepare(ctx.db,
             `INSERT INTO session_events (session_id, project, event_type, entity, action, detail)
@@ -472,8 +513,22 @@ export async function heartbeatTick(ctx: HeartbeatContext): Promise<TickResult> 
           );
         } catch { /* non-fatal — both sides of the pipeline are idempotent */ }
       }
-    } catch {
-      // Non-critical — queue processing failure doesn't break the heartbeat.
+    } catch (err) {
+      // DB connection error, SELECT throw, any unexpected failure inside the
+      // drain. Record a single rollup failure so we can see it in telemetry
+      // and continue — one bad tick must not kill Angel.
+      result.memory_curation_errors = (result.memory_curation_errors ?? 0) + 1;
+      try {
+        cachedPrepare(ctx.db,
+          `INSERT INTO session_events (session_id, project, event_type, entity, action, detail)
+           VALUES ('', '', 'memory_curation_failed', 'angel', 'drain_iteration', ?)`
+        ).run(
+          JSON.stringify({
+            error_name: err instanceof Error ? err.name : 'Unknown',
+            error_message: err instanceof Error ? err.message : String(err),
+          }),
+        );
+      } catch { /* double-failure — DB itself is sick; angel.log still has the stack */ }
     }
 
     // Phase 6: Bulk artifact linking — populate artifact_links via Qdrant similarity
@@ -1076,6 +1131,37 @@ export async function heartbeatTick(ctx: HeartbeatContext): Promise<TickResult> 
 
   result.duration_ms = Date.now() - start;
   return result;
+}
+
+// ---------------------------------------------------------------------------
+// Plan 04-06-02 helpers
+// ---------------------------------------------------------------------------
+
+/**
+ * Record a `memory_curation_failed` session_events row with enough detail to
+ * diagnose (error.name + error.message — NOT the full stack; stacks go to
+ * ~/.claudex/logs/angel.log via the 04-06-01 stderr capture). Non-throwing
+ * by design — if the DB itself is sick, we swallow the insert failure; the
+ * unrecoverable error was already routed to the log file.
+ */
+function recordCurationFailure(
+  db: Database,
+  sessionId: string,
+  project: string,
+  stage: 'chunker' | 'curator',
+  err: unknown,
+): void {
+  try {
+    const detail = JSON.stringify({
+      stage,
+      error_name: err instanceof Error ? err.name : 'Unknown',
+      error_message: err instanceof Error ? err.message : String(err),
+    });
+    cachedPrepare(db,
+      `INSERT INTO session_events (session_id, project, event_type, entity, action, detail)
+       VALUES (?, ?, 'memory_curation_failed', 'angel', ?, ?)`
+    ).run(sessionId, project, stage, detail);
+  } catch { /* non-fatal — angel.log still has the stack */ }
 }
 
 // ---------------------------------------------------------------------------
