@@ -4,6 +4,7 @@
  */
 
 import { wrapHook } from './infrastructure.js';
+import { openAngelLogForAppend } from './angel-log.js';
 import { createSession } from '../../core/sessions.js';
 import { recoverFromDb } from '../../checkpoint/loader.js';
 import { pruneTelemetry, emitTelemetry } from '../../observability/telemetry.js';
@@ -12,6 +13,7 @@ import { assembleFullContext } from '../../assembly/assembler.js';
 import { getIdentityDir } from '../../shared/paths.js';
 import { ingestFileArtifacts, pruneStaleFileArtifacts } from '../../core/file-ingester.js';
 import { getLastSessionSummary, synthesizeSessionSummary, getSessionEvents, saveSessionSummary, recordEvent } from '../../core/session-events.js';
+import type { Database } from 'better-sqlite3';
 import { cachedPrepare } from '../../core/stmt-cache.js';
 import { captureRecallFlowEntry } from '../shared/lifecycle.js';
 import { writeClaudeEnvFile, detectCcMemoryConflict } from '../shared/env-file.js';
@@ -40,8 +42,24 @@ import { spawn } from 'child_process';
 /**
  * Ensure the Angel process is running. Checks PID file, spawns if not alive.
  * Non-throwing — Angel is optional enhancement.
+ *
+ * Plan 04-06-01: stdout/stderr are captured to ~/.claudex/logs/angel.log
+ * (appended, with one-generation 10 MB rotation). If the log file cannot be
+ * opened, we fall back to `stdio: 'ignore'` and record a one-off
+ * `angel_log_open_failed` session event so the failure is observable.
+ *
+ * Plan 04-06-03 (hook-driven liveness): this is also called from
+ * user-prompt-submit so each user turn verifies Angel is alive and restarts
+ * on death. The `isUserTurn` flag is recorded in a `angel_respawn` event
+ * whenever a respawn was actually attempted, so we can see in telemetry how
+ * often hook-driven recovery kicks in.
  */
-async function ensureAngelRunning(): Promise<void> {
+export async function ensureAngelRunning(
+  db?: Database,
+  sessionId?: string,
+  project?: string,
+  isUserTurn: boolean = false,
+): Promise<void> {
   const pidPath = path.join(os.homedir(), '.claudex', 'angel.pid');
   // Resolve Angel from THIS file's install directory, not CWD (security: prevents
   // malicious repos from placing a trojan dist/angel/index.cjs)
@@ -63,15 +81,54 @@ async function ensureAngelRunning(): Promise<void> {
     }
   }
 
+  // Attempt to capture stdout/stderr to the Angel log file. On failure (disk
+  // full, permission denied, etc.) fall back to stdio:'ignore' so Angel still
+  // comes up; we record one angel_log_open_failed event per attempt so the
+  // failure is observable instead of silent.
+  const { fd: logFd, reason: logErr } = openAngelLogForAppend();
+  if (logFd === null && db && sessionId) {
+    recordEvent(
+      db,
+      sessionId,
+      project ?? '',
+      'angel_log_open_failed',
+      'angel',
+      'fallback_stdio_ignore',
+      logErr ?? 'unknown error',
+    );
+  }
+
   // Spawn detached Angel process using absolute Node path (security: prevents
   // PATH hijacking with a malicious node.exe in the project directory)
+  const stdio: ['ignore', number | 'ignore', number | 'ignore'] = logFd !== null
+    ? ['ignore', logFd, logFd]
+    : ['ignore', 'ignore', 'ignore'];
   const child = spawn(process.execPath, [angelDist], {
     detached: true,
-    stdio: 'ignore',
+    stdio,
     env: { ...process.env },
     cwd: os.homedir(), // Safe CWD — not the project directory
   });
   child.unref();
+
+  // Close our copy of the fd — the spawned child now owns it via dup2. The
+  // parent CC hook is ephemeral and exits in milliseconds; leaving the fd
+  // open would briefly pin the file handle but not cause correctness issues.
+  if (logFd !== null) {
+    try { fs.closeSync(logFd); } catch { /* child holds the real handle */ }
+  }
+
+  if (isUserTurn && db && sessionId) {
+    recordEvent(
+      db,
+      sessionId,
+      project ?? '',
+      'angel_respawn',
+      'angel',
+      'hook_driven_liveness',
+      JSON.stringify({ log_captured: logFd !== null }),
+    );
+  }
 }
 
 const main = wrapHook('SessionStart', async (input, ctx) => {
@@ -85,8 +142,9 @@ const main = wrapHook('SessionStart', async (input, ctx) => {
 
   // Ensure Angel is running (non-blocking, non-fatal — optional enhancement).
   // When Angel starts it auto-launches the llama-server via LlamaServerSupervisor.
+  // DB is passed so a failed log-file open records an observable telemetry event.
   try {
-    await ensureAngelRunning();
+    await ensureAngelRunning(ctx.db, input.session_id, ctx.project);
   } catch { /* Angel is optional */ }
 
   // Write CLAUDE_ENV_FILE — inject env flags for CC's bash environment.
