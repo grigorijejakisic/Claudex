@@ -1,113 +1,83 @@
 ---
 schema: claudex/handoff
 version: 1
-handoff_id: claudex-v3-handoff-phase3-post-relabel-harness-retry
+handoff_id: claudex-v3-handoff-phase4-post-v17-hook-regression
 status: active
-created_at: 2026-04-22T02:16:00Z
-updated_at: 2026-04-22T02:16:00Z
-origin_session_id: current
-supersedes: claudex-v3-handoff-phase3-post-audit-resume
+created_at: 2026-04-24T02:00:00Z
+updated_at: 2026-04-24T02:00:00Z
+origin_session_id: fdbe1dd9-e654-462b-b16d-2eeaae6da698
+supersedes: claudex-v3-handoff-phase3-post-relabel-harness-retry
 ---
 
-# Handoff: Phase 3 (P2) — post-relabel harness retry after 3 silent deaths
+# Handoff: Phase 4 (P3) — post-04-06, blocked on 04-07 V17-hook fix
 
-Date: 2026-04-22 (session 53). Replaces the prior handoff `...post-audit-resume`; the "Rebuild + re-run" step of that plan has been attempted and failed 3 times. This handoff captures the failure mode + the hardening fix so the next session launches a relaunch that can actually survive.
+Date: 2026-04-24 (session 54). Phase 4 gate was 80% driven by this session; LongMemEval passed, Angel resilience landed, but a V17 migration regression uncovered mid-soak blocks closure. Next session implements 04-07, retries soak, closes Phase 4.
 
 ## Commander's Intent
 
-Launch the Cycle 3 post-relabel precision harness **with the per-candidate error isolation committed in `bdca0a3`**, wait ~70 min, then ship Phase 3 per the runbook (CALIBRATION.md + 03-06 SUMMARY + phase-complete commit).
+Land plan 04-07 (V15→V16 migration idempotency fix + version-aware initializeSchema), retry the live soak on scratch project `~/Desktop/Projects/soak-test-p4`, re-kick LoCoMo cleanly (glm-5.1:cloud, no VRAM contention), then write 04-05 SUMMARY.md and flip Phase 4 to `[x]` in ROADMAP + advance STATE.md to Phase 5.
 
-## What happened this session
+## What's Left To Do
 
-1. **5 retrospective SUMMARY.md files committed** for plans 03-01 through 03-05 (code had landed in prior sessions, summaries were missing): commits `05062c9 5e9611c 8db4b8e 7aa6ed7 60cf578`.
-2. **03-RESEARCH.md committed** (`8d7d4cf`) — was untracked.
-3. **Plan 03-06 gate lowered 0.90→0.75** and user re-label of 12 cases merged into gold-labels.jsonl: commit `72833f6`.
-4. **run-precision.ts hardening**: commit `bdca0a3` adds per-candidate try/catch (one bad candidate no longer kills the batch) and honors the `scope_excluded_from_scoring` row flag.
-5. **Post-P1 injection-surface diff (task 03-06-09)**: `git diff 32779b3..HEAD -- src/assembler/ src/hooks/session-start.ts src/core/sections.ts` → empty. Gate passes.
-6. **Test suite**: 2498/2518 pass. The 20 failures are all in `src/tests/angel/llama-server-supervisor.test.ts`, pre-existing since commit `c84dd61` swapped local Gemma for Ollama Cloud (45 commits ago, well before Phase 3). Not a P2 regression. Tracked as tech-debt follow-up.
+1. **Read `.planning/phases/04-p3-memory-md-curation-auto-dream-guard/04-07-debug-findings.md` first.** 311 lines, has root cause + evidence chain + proposed fix + test gap. Written by debug-04-07 this session. Do not re-investigate — pick scope from the findings and start planning.
 
-## The harness is NOT done
+2. **Write plan 04-07 and execute.** Minimum scope per findings:
+   - Wrap `migrateV15toV16(db)` call in try/catch symmetric to the V16→V17 wrap at `src/core/migrations.ts:172`. That's the critical fix.
+   - Guard `db.pragma('user_version = 16')` at line 201 so it doesn't demote a V17 DB back to 16.
+   - **Better fix** (pick if time permits): make `initializeSchema` version-aware — read `user_version` first, only invoke the specific VN→VN+1 migrations actually needed. Makes future migrations robust by construction.
+   - Test: new fixture "open a post-V17 DB via `openDatabase`" — the 2556-test suite never exercised this because all migration tests use fresh `:memory:`. Cover: no-throw, successful INSERT into `session_events` post-open, `user_version` stays at 17.
+   - After fix lands: spot-check that `session_events` now accepts writes. Trigger a real CC hook (e.g., user-prompt-submit) and query `MAX(timestamp_epoch)` — expect a row from today.
 
-**Two genuine silent deaths** today (2026-04-22); a third launch below was killed by team-lead, not a spontaneous death:
-- **01:21 launch (PID 47232, original from prior handoff's resume path)** — reached `progress: 60/106` (per prior observations), then process vanished ~02:18 without emitting output JSON. PID was verified live via `wmic process where "name='node.exe'" get processid,commandline` between ~02:02 and ~02:17; vanished from process table by ~02:18. Logfile `cycle3_post_relabel-run.log` stuck at the 79-byte startup header throughout.
-  - Prior session-53 handoff draft stated PID 45624 for this same launch — that was a transcription error; the authoritative PID captured live was 47232.
-- **~01:22 launch via `run_in_background: true`** (a sibling Bash call from the same teammate) — wrote the 79-byte header, then process vanished; no output JSON. This may actually be the same launch as the 01:21 one double-counted across teammate Bash invocations — unclear from the records. Treat as "one or two deaths" not "definitely two."
-- **02:14 debug-relaunch (PID 32400, team-lead debug command)** — was killed intentionally via `taskkill /F` at ~02:16 after team-lead confirmed the original harness was actually alive and didn't want the two running concurrently. **This was NOT a silent death.** Don't include in failure-mode analysis.
+3. **Retry the live soak.** Scratch project `~/Desktop/Projects/soak-test-p4` already exists with a 651 KB transcript from this session's attempt. Either do a fresh session there or (cleaner) start a new scratch project `soak-test-p4b`. Run the 8-step protocol from plan 04-05-04. MEMORY.md must materialize at `~/.claude/projects/<slug>/memory/MEMORY.md` within ~60s of closing the CC terminal.
 
-**Communication gap to flag for tomorrow's orchestrator:** execute-3 (the teammate running through 02:20) read every team-lead SendMessage but sent zero replies. Its actual work was excellent — all commits landed atomically and this handoff is execute-3's own write — but its message responses were null. If this is a systemic pattern with `general-purpose` in-process teammates under `/auto-orchestrate`, budget for "teammate works silently; don't mistake message-silence for work-silence." Verify progress by reading git log and disk, not by waiting for replies.
-
-**Root cause (hypothesis, not proven):** an unhandled promise rejection inside the `for` loop's `await extractDirectivesFromSession(...)` call kills the node process without bubbling to the `main().catch(...)` handler. The shape is: silent exit, no stderr line, no final JSON. Per-candidate try/catch (committed `bdca0a3`) should surface the offending candidate(s) as `ERROR candidate=<id>` log lines and let the batch complete.
-
-**Alternative cause (less likely):** cloud LLM (glm-5.1:cloud) rate-limiting or connection drops during the ~35-min mark. Same fix applies — one bad candidate becomes `rejected_regex` rather than batch-kill.
-
-## What's Left To Do (in order)
-
-1. **Relaunch the harness with the hardened build:**
+4. **Re-kick LoCoMo.** After 04-07 fix verified. Command pattern (from exec-04-05b's earlier re-kick plan):
    ```
-   bun run build
-   node dist/benchmarks/directive-detector/run-precision.cjs --tag=cycle3_post_relabel > .planning/phases/03-p2-directive-detector/fixtures/runs/cycle3_post_relabel-run.log 2>&1 &
-   disown
-   echo PID=$!
+   mv benchmarks/results/p3-postmigration/locomo-run.log benchmarks/results/p3-postmigration/locomo-run-stalled-contention.log
+   CLAUDEX_BENCH_ANSWER_MODEL=glm-5.1:cloud CLAUDEX_BENCH_JUDGE_MODEL=glm-5.1:cloud \
+     node dist/benchmark/locomo-harness.cjs \
+     C:/Users/GRIGOR~1/AppData/Local/Temp/locomo/data/locomo10.json \
+     > benchmarks/results/p3-postmigration/locomo-run.log 2>&1 &
    ```
-   Then verify PID is in the process table. **Do NOT pipe the output via `| head` or `| tail`** — earlier deaths may have been SIGPIPE on pipe consumer exit.
+   Runtime estimate ~4-6h (cloud path — no local VRAM contention this time). This is a NEW ANCHOR, not a gate — no within-2pp criterion applies (sonnet/CLIProxy baseline not reproducible, scope-locked earlier).
 
-2. **Wait ~70 min.** Periodically check:
-   - `wmic process where "name='node.exe'" get processid,commandline | grep run-precision` — alive?
-   - `tail -20 .planning/phases/03-p2-directive-detector/fixtures/runs/cycle3_post_relabel-run.log` — any `ERROR candidate=` lines?
-
-3. **Locate output JSON** after process exit:
-   ```
-   ls -la .planning/phases/03-p2-directive-detector/fixtures/runs/*cycle3_post_relabel*.json
-   ```
-
-4. **Compare to pre-relabel Cycle 3 baseline:**
-   ```
-   node dist/benchmarks/directive-detector/compare-runs.cjs \
-     .planning/phases/03-p2-directive-detector/fixtures/runs/2026-04-20T23-54-58-598Z_cycle3_prompt_rewrite.json \
-     .planning/phases/03-p2-directive-detector/fixtures/runs/<new run>.json
-   ```
-
-5. **Branch on joint_precision:**
-   - `joint >= 0.75` → ship path (A).
-   - `0.55 <= joint < 0.75` → partial-ship path (B): document caveat in CALIBRATION.md, ship anyway, surface the FP/FN class that kept us under gate.
-   - `joint < 0.55` → regression path (C): compare per-candidate decisions against the `2026-04-20T23-54-58-598Z_cycle3_prompt_rewrite.json` run to locate what changed; do NOT ship.
-   - If `ERROR candidate=` lines appeared, note affected candidate IDs in CALIBRATION.md regardless of branch.
-
-6. **Ship (paths A/B):**
-   - Write `03-CALIBRATION.md` final section (post-relabel metrics, escalation resolution, benchmark-gate deferral).
-   - Write `03-06-calibration-and-ship-SUMMARY.md`.
-   - Commit: `docs(03-06): calibration report + SUMMARY — ship at joint=X.XX`.
-   - Run `gsd-tools phase complete 03` + follow-up commit.
-
-7. **Deferred to a separate task (NOT blocking Phase 3 ship):**
-   - Task 03-06-07 (LongMemEval + LoCoMo benchmark gate) — depends on Task #23 (post-P1 LoCoMo baseline) which stalled mid-embed during prior session. Log at `benchmarks/results/p1-postmigration/locomo-v17-.log`. Either re-run that benchmark first, or use the pre-P1 `locomo_2026-03-29_893270d.jsonl` anchor with a documented caveat. Document in CALIBRATION.md as a follow-up.
-   - Task 03-06-08 (integration-confirm: live tick writes directive_rule row) — requires Angel to run a heartbeat against new sessions. Live DB currently has 0 directive_rule rows; `directive_rule` not yet in `kind_registry`. After Phase 3 ship, let Angel tick a few times on real sessions, then verify `SELECT COUNT(*) FROM artifact WHERE kind='directive_rule'`. If still 0 after a few hours, investigate the heartbeat wiring.
+5. **Write 04-05 SUMMARY.md and close Phase 4.** Plan 04-05 (the phase gate) remains the bookkeeping entry point. After (2)-(4) all pass:
+   - Post-process `LONGMEMEVAL_ORACLE_RESULTS.json` (or re-read the run log) into `benchmarks/results/p3-postmigration/longmemeval-oracle.json` with the fields per plan task 04-05-02 (model, total, correct, accuracy, timestamp, commit_sha).
+   - Post-process LoCoMo output similarly into `benchmarks/results/p3-postmigration/locomo-summary.json`.
+   - Write `soak-report.md` with the 8-step inspection results.
+   - Write `04-05-phase-gate-SUMMARY.md` per plan lines 189-198. Include explicit notes: (a) LongMemEval PASS at 89.6%, (b) LoCoMo new-anchor-only (no within-2pp gate this time + why), (c) Phase 4 required inline bugfixes 04-06 and 04-07 to ship a working pipeline, (d) static-verification-vs-runtime-reality learning, (e) next phase (P4) is the LEGACY INJECTION deletion — the REAL benchmark gate where within-2pp must apply.
+   - Edit ROADMAP.md Phase 4 row `[x] (completed 2026-04-24 OR tomorrow's date)`, Progress table update, Plans list check off 04-01 through 04-07.
+   - Edit STATE.md `current_phase: 5`, `current_phase_name: "P4 — Kill legacy injection"`, updated status + last_activity + last_activity_desc.
+   - Atomic commit: `feat(04-05): Phase 4 complete — MEMORY.md curation + auto-dream guard`.
 
 ## Context That Won't Be Obvious
 
-- **Phase 3 plans 01–05 are complete in code and in summary docs.** Only 03-06 remains open. Don't re-do any of 01–05.
-- **`run-precision.cjs` rebuilt at commit `bdca0a3` — do `bun run build` before relaunching.** The prior runs were against the pre-hardening build that lacked per-candidate isolation.
-- **Expected harness runtime: ~70 min** on glm-5.1:cloud at temp=0. Actual observed pace: ~5 min per 10 candidates through candidate 60; then the process died around the 35-min mark.
-- **Test failures in llama-server-supervisor are pre-existing.** Do not try to "fix" them as part of Phase 3. Surface as a separate cleanup task.
-- **Injection-surface diff gate (03-06-09): passes.** Zero diff on `src/assembler/`, `src/hooks/session-start.ts`, `src/core/sections.ts` vs post-P1 baseline `32779b3`.
+- **The Claudex-hooks regression hit every project on this machine, not just claudex-v3.** All observability/telemetry writes have been frozen since 2026-04-20T10:38Z. The 04-07 fix restores this for every project simultaneously — a single-line try/catch fix with machine-wide impact. Flag this in the SUMMARY.
+- **Static verification passed; runtime was broken.** Phase 4's 7 ROADMAP success criteria all pass on code inspection, yet MEMORY.md never materializes in production. Method-level lesson: verification methodology needs a "does the chosen side-effect actually land on disk in prod conditions?" check beyond "does the code path exist and return cleanly?" This is a follow-up for the P5+ verification protocol — worth noting in SUMMARY's Learnings section.
+- **Angel is cloud-mode only now.** `llama-server` (local Gemma 4 31B on 8081) isn't running and Angel detected this correctly via `isCloudModel(LLAMA_MODEL_ALIAS)`, using Ollama Cloud's `glm-5.1:cloud` via daemon instead. The 9-day-old `context/logs/llama-server.log` is expected, not a bug.
+- **CLIProxy is not available.** User explicitly offered Gemma 4 local as alternative; chose to stay on glm-5.1:cloud for the LoCoMo anchor. Do NOT try to restore CLIProxy for Phase 4 — defer that discussion to P5 if it matters for the injection-gate benchmarks.
+- **Hearthstone on 32 GB VRAM + deepseek 163840-context (61 GB CPU/GPU split) is a stutter storm.** Don't run LoCoMo and LongMemEval concurrently on this hardware — serialize. Deepseek evicts arctic-embed2 every few seconds when both are active. Phase 5 benchmark-gate planning should account for this or reduce deepseek's context length.
+- **Plan 04-07 scope is small (~1-3h).** Do not overscope. The findings doc already has the fix sketched. Focus on idempotency + test fixture + spot-check. Do NOT also try to backfill the 3.5 days of missing session_events — data loss is accepted.
+- **Angel is currently alive (PID 15212, spawned 2026-04-24 03:16 local).** Leave it running. 04-07 fix doesn't need Angel restart — it's a DB-open path fix, Angel's own DB connection (opened pre-regression at 03:16) stays valid. But a fresh CC session after 04-07 will re-open the DB and exercise the fix.
+- **Exec-04-05b's static verification doc is still useful.** See their earlier message (the "Phase 4 gate readiness report" in this session's transcript) for the 7-SC breakdown — copy that into the SUMMARY with PASS status confirmed, don't re-derive.
 
-## Key file touchpoints (this session's commits)
+## Key commits this session (10 total)
 
-- `05062c9` docs(03-01): PLAN + SUMMARY for detector core
-- `5e9611c` docs(03-02): PLAN + SUMMARY for prompt fixture assets
-- `8db4b8e` docs(03-03): PLAN + SUMMARY for fixture corpus + LLM labeling
-- `7aa6ed7` docs(03-04): PLAN + SUMMARY for Angel heartbeat wiring
-- `60cf578` docs(03-05): PLAN + SUMMARY for precision harness
-- `8d7d4cf` docs(03): research document for P2 directive detector
-- `72833f6` docs(03-06): plan gate lowered 0.90→0.75 + user re-label 12 cases
-- `bdca0a3` feat(03-05): per-candidate error isolation + scope_excluded_from_scoring
+- `3e3af07` docs(04-05): pre-benchmark gate artifacts — test-run.txt + injection-guard.txt both PASS
+- `b01b6b6` chore(benchmarks): commit p1-postmigration logs with broken-sonnet run archived
+- `65027ed` docs(02): retroactive Phase 2 research + context amendment committed
+- `958603d` chore: ignore .planning/agent-history.json (per-machine agent scratch)
+- `051564b` feat(04-06-01): Angel stderr capture with size-based rotation
+- `a75fcb4` feat(04-06-02): heartbeat queue drain per-op try/catch hardening
+- `750c82a` feat(04-06-03): hook-driven Angel liveness check (Option B chosen)
+- `d6c8f88` test(04-06-04): live-fire verification report
+- `79c8312` docs(04-06): summary for Angel resilience hardening
+- `367dda8` docs(04-07): debug findings — session_events writes frozen since V17 migration
 
-## Still uncommitted in working tree
+## Still uncommitted (for tomorrow's SUMMARY commit)
 
-- `.claude/settings.local.json` — session-local settings (don't commit as part of Phase 3)
-- `context/checkpoints/latest.yaml` — session checkpoint (don't commit as part of Phase 3)
-- `context/handoffs/ACTIVE.md` — this file (handoff-flow file; refreshed by each /endsession)
-- `node_modules/.vite/vitest/results.json` — test artifact (gitignored by intent or should be)
-- `benchmarks/results/p1-postmigration/` — stalled post-P1 benchmark logs; don't commit as part of Phase 3
-
-Working tree after the 8 Phase-3 commits is clean for Phase-3 artifacts; only the above session/env files remain.
+- `benchmarks/results/p3-postmigration/longmemeval-run.log` — full LongMemEval output incl. 89.6% result
+- `benchmarks/results/p3-postmigration/longmemeval-pid.txt` — historical PID trace
+- `benchmarks/results/p3-postmigration/locomo-run.log` — stall evidence for SUMMARY's "known issue" note
+- `benchmarks/results/p3-postmigration/locomo-pid.txt` — historical PID trace
+- `context/checkpoints/latest.yaml` — session checkpoint (managed by hook, don't commit manually)
+- `node_modules/.vite/vitest/results.json` — test artifact (gitignore-worthy but not this session's job)
