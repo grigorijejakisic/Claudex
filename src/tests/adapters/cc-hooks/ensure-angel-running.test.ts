@@ -32,7 +32,7 @@ vi.mock('../../../adapters/cc-hooks/angel-log.js', () => ({
 }));
 
 // Import AFTER mocks.
-import { ensureAngelRunning } from '../../../adapters/cc-hooks/session-start.js';
+import { ensureAngelRunning } from '../../../adapters/cc-hooks/angel-launcher.js';
 
 let tmpHome: string;
 let prevHome: string | undefined;

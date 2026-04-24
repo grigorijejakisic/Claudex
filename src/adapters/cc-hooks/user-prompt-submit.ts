@@ -4,6 +4,7 @@
  */
 
 import { wrapHook, getTranscriptPath } from './infrastructure.js';
+import { ensureAngelRunning } from './angel-launcher.js';
 import { getCheckpointTracking, clearPostCompactPending } from '../../core/checkpoint-tracking.js';
 import { getTokenGauge } from '../../gauge/token-gauge.js';
 import { CC_CAPABILITIES } from '../../shared/constants.js';
@@ -45,6 +46,17 @@ const main = wrapHook('UserPromptSubmit', async (input, ctx) => {
   if (CC_INTERNAL_RE.test(prompt)) {
     return {};
   }
+
+  // Plan 04-06-03 (hook-driven Angel liveness) — each user turn verifies
+  // Angel is alive and restarts if dead. This is the chosen recovery path in
+  // place of a separate detached AngelSupervisor launcher process — see
+  // SUMMARY.md decision record. The check is a cheap PID-file existence +
+  // kill(pid, 0) probe when Angel is healthy; only on death do we pay the
+  // spawn cost. Non-throwing: if Angel can't come up, the user turn still
+  // assembles context normally.
+  try {
+    await ensureAngelRunning(ctx.db, input.session_id, ctx.project, /* isUserTurn */ true);
+  } catch { /* Angel is optional */ }
 
   // ---------------------------------------------------------------------------
   // Intent classification (Phase 18) — pure regex, <1ms, non-throwing.
