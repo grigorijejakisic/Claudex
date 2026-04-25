@@ -28,9 +28,11 @@ Memory stops acting like rules — the agent thinks again, pulling curated artif
 - [ ] Gut Angel heartbeat: delete CARA, autonomous-investigator, dream consolidation, skill crystallization, cross-project consolidator, proactive curator, data-quality phase
 - [ ] Add `directive_rule` lifecycle: scope detection, supersession edges via LLM contradiction check, confidence decay with auto-archive below threshold
 - [ ] Path-scoped artifacts (`scope='project'` + `paths:` glob) surface via `.claude/rules/` lazy-load
-- [ ] Pass the Vesna test: `claudex_search("Vesna")` from a fresh session returns the entity artifact in rank 1-3 without filesystem exploration
+- [ ] **Prove the "thinks again" thesis is falsifiable**: capture pre-v4 baseline of agent-initiated `claudex_search` frequency in P3; gate every phase from P4 onward on median calls per non-trivial session ≥ baseline (post-v4 target ≥ 2× baseline). Without this, the reframe could "succeed" by amnesia.
+- [ ] Vesna smoke check: `claudex_search("Vesna")` from a fresh session returns the entity artifact in rank 1-3 (smoke check, not ship gate; BENCH-09 carries the load)
 - [ ] Pass full v3 test suite (2020 tests) after every phase with zero regression
 - [ ] Maintain LongMemEval Oracle ≥88% floor at every phase boundary; LoCoMo never regresses >2pp per phase
+- [ ] MEMORY.md write-time integrity defense — sha256 read-back compare, alert + skip on external mutation; agents-don't-edit-above-sentinel rule documented
 
 ### Out of Scope
 
@@ -44,6 +46,7 @@ Memory stops acting like rules — the agent thinks again, pulling curated artif
 - Agent Teams integration (`CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS`) — experimental API, unstable
 - LongMemEval baseline — 90.6% is strong, never risk it
 - `conversation_turns` schema — raw turn storage is correct; only new chunking pipeline layers on top
+- **Public-release polish (LICENSE, install ergonomics, cross-platform audit, README rewrite, self-diagnosis tooling, stranger-onboarding fixture)** — addressed in **v4.1 = Distribution** as a dedicated follow-up milestone. v4.0 README will carry a "v4 in progress — not yet installable by strangers; v4.1 will fix this" banner so the 9 GitHub stargazers (and future discoverers) aren't misled. Bolting v4.1 onto v4 dilutes the focused behavioral reframe.
 
 ## Context
 
@@ -52,7 +55,7 @@ Memory stops acting like rules — the agent thinks again, pulling curated artif
 - **Prior `.planning/`:** Archived to `.planning.archive.2026-04-20/` — it was the "CC Source Upgrades" project, never started, unrelated to v4
 - **Runtime substrate (unchanged):** SQLite at `~/.claudex/db/claudex.db`, V15 schema with 33 tables, sqlite-vec embedded, Ollama snowflake-arctic-embed2 (1024d), BGE-reranker-v2-m3 cross-encoder (port 7439, Python service supervised by Angel's `RerankerSupervisor`)
 - **Components:** CC Hooks (26 ephemeral Node scripts), Angel (persistent guardian, auto-spawned), OpenClaw Bridge (long-lived process)
-- **Benchmarks (v3 baseline):** LongMemEval Oracle 90.6% (426/470, `deepseek-coder-v2:16b`), LoCoMo 55.5% (855/1540, `claude-sonnet-4-6`)
+- **Benchmarks (v3 baseline):** LongMemEval Oracle 90.6% (426/470, `deepseek-coder-v2:16b`), LoCoMo 55.5% (855/1540, `claude-sonnet-4-6`). **Internal-validation only** — these numbers are not for public leaderboards. Mem0/Zep cite GPT-4o; we use deepseek (LongMemEval) and Sonnet (LoCoMo). Cross-comparison is misleading and not in scope. v4.0 README will say so explicitly.
 - **User hardware:** Ryzen 9 9950X, 128GB RAM, RTX 5090 32GB — maximize parallelism, latency budget is generous
 
 ## Constraints
@@ -68,6 +71,7 @@ Memory stops acting like rules — the agent thinks again, pulling curated artif
 - **Build tool:** `bun run test` NOT `bun test` — `bun test` invokes Bun's native runner, not Vitest.
 - **Hook safety:** Never call CC's CLIProxyAPI from a hook (deadlock). Ollama only.
 - **Windows-specific:** File-lock and subprocess quirks live in `docs/platform.md`. Codex CLI on Windows has its own caveats (`docs/codex.md`).
+- **Benchmark deterministic measurement:** The 2pp LoCoMo tolerance and 88% LongMemEval floor assume deterministic input. Pin model snapshot, harness sha, judge prompt sha for every recorded number. The "honest harness" rewrite alone moved LoCoMo by ~35pp (90.8% → 55.5% in session 47ish); a 1pp infra-side shift would trip the 2pp gate on noise. Every benchmark commit message must include the pinned hashes.
 
 ## Key Decisions
 
@@ -81,6 +85,25 @@ Memory stops acting like rules — the agent thinks again, pulling curated artif
 | RL deletion gated on P6.5 ablation | Scope-hedge: if the 6-multiplier chain is quietly load-bearing for LoCoMo, deleting it blind would collapse the benchmark. A feature-flag ablation decides deterministically. | P6.5 runs full LoCoMo with `CLAUDEX_DISABLE_RL_SCORING=1`. ≤2pp drop clears P7 deletion; >2pp forces redesign. Decision committed to `context/specs/V4_RL_ABLATION.md`. |
 | Phases are atomic and revertible; DB backups before P1 and P5 drops | Migration and scoring-chain deletion are the high-risk commits; reversible by design. | `~/.claudex/backups/pre-v4-{phase}-{ts}.db` before each irreversible commit. Restore verified before the drop itself runs. |
 
+## Next Milestones
+
+### v4.1 — Distribution (planned, follows v4.0 tag)
+
+**Intent:** Make Claudex installable by strangers without dilluting v4's behavioral focus. Triggered immediately after `v4.0.0` tag lands.
+
+**Sketch (subject to refinement at v4.1 = Distribution `/gsd:new-milestone`):**
+- LICENSE file (decision: MIT vs Apache 2.0 vs AGPL — copyleft consideration because Claudex has opinions about agent memory)
+- `package.json` metadata — remove `private: true`, version, repo, keywords, engines
+- Cross-platform audit — Mac/Linux path handling, hook scripts, file locks (currently Windows-first)
+- Bootstrap script — one-command setup that handles Ollama, snowflake-arctic-embed2 pull, BGE reranker on 7439, useful errors on missing deps
+- Hardcoded path discovery — `~/Desktop/Projects/` is in MCP instructions; needs to be configurable/discovered
+- README rewrite for outsiders — what Claudex does, why (the v4 thesis is the actual selling point), install, basic usage, troubleshooting
+- `claudex doctor` self-diagnosis tool
+- Onboarding fixture — install on a fresh VM, document every friction
+- CHANGELOG + release notes for v4
+
+**Why scoped separately:** Distribution work is cross-platform debugging + product polish, fundamentally different from v4's behavioral reframe + deletion work. Combined scope would push v4 ship by weeks AND contaminate the focused work. Sequencing keeps both clean.
+
 ---
 
-*Last updated: 2026-04-19 after crystallize*
+*Last updated: 2026-04-26 after honest-review feedback (BENCH-09 thesis falsification gate, deterministic-measurement constraint, v4.1 = Distribution scoping)*

@@ -2,13 +2,18 @@
 
 ## Overview
 
-Ten atomic phases move Claudex from v3's imperative push to v4's advisory pull. P0 (this crystallization) locks decisions; P1 consolidates nine knowledge tables into one artifact table under legacy views; P2 teaches Angel to detect directives; P3 curates the ≤25KB MEMORY.md index and kills auto-dream collisions; P4 is the big benchmark gate — deleting nine injection sections and collapsing to ≤500 session-start tokens; P5 simplifies retrieval; P6 rewrites framing to advisory voice; P6.5 gates RL-stack deletion on a deterministic LoCoMo ablation; P7 guts Angel of CARA, dreams, and (conditionally) the RL stack; P8 adds directive-rule lifecycle; P9 runs the Vesna test and tags v4. Every phase has a rollback; P1 and P5 are backed by DB snapshots; LongMemEval stays ≥88% and LoCoMo never regresses >2pp per phase.
+Ten atomic phases move Claudex from v3's imperative push to v4's advisory pull. P0 (this crystallization) locks decisions; P1 consolidates nine knowledge tables into one artifact table under legacy views; P2 teaches Angel to detect directives; P3 curates the ≤25KB MEMORY.md index, kills auto-dream collisions, and **captures the BENCH-09 baseline** (pre-v4 agent-initiated retrieval frequency); P4 is the big benchmark gate — deleting nine injection sections, collapsing to ≤500 session-start tokens, and **proving BENCH-09 holds (the agent now pulls instead of relying on injection)** with an explicit fallback ladder if benchmarks regress; P5 simplifies retrieval; P6 rewrites framing to advisory voice; P6.5 gates RL-stack deletion on a deterministic LoCoMo ablation; **P7 sub-phases each module deletion separately (one commit per module, not one mega-commit)**; P8 adds directive-rule lifecycle with a held-out detector-recall sub-gate that owns the P2 follow-ups; P9 verifies BENCH-09 (the falsifiable "thinks again" thesis) and tags v4. Vesna becomes a smoke check, not a ship gate. **v4.1 = Distribution** is scaffolded in P9 close as a dedicated follow-up milestone (LICENSE, install ergonomics, cross-platform, README rewrite). Every phase has a rollback; P1 and P5 are backed by DB snapshots; LongMemEval stays ≥88% and LoCoMo never regresses >2pp per phase.
+
+**Status legend:**
+- `[ ]` Pending
+- `[x]` Complete
+- `[~]` Partial-with-followups — shipped at reduced acceptance with explicit follow-up tracked in a later phase
 
 ## Phases
 
 - [x] **Phase 1: P0 — Crystallization** - Lock 4 design decisions and produce `.planning/`
 - [x] **Phase 2: P1 — Artifact table unification** - V17 migration + legacy views, zero behavior change (completed 2026-04-20)
-- [x] **Phase 3: P2 — Directive detector** - Regex + LLM-confirmed ingester writing `directive_rule` artifacts (partial-ship B, joint=0.50 on post-relabel fixture, completed 2026-04-22)
+- [~] **Phase 3: P2 — Directive detector** - Regex + LLM-confirmed ingester writing `directive_rule` artifacts (partial-ship B, joint=0.50 on post-relabel fixture, completed 2026-04-22; held-out recall measurement + `negation_dont` tune owned by Phase 10 LIFE-04 sub-gate)
 - [ ] **Phase 4: P3 — MEMORY.md curation + auto-dream guard** - Sectioned index at `/endsession`, sentinel write-guard
 - [ ] **Phase 5: P4 — Kill legacy injection** - Delete 9 sections, ≤500 tokens, cache-stable, `initialUserMessage` prime
 - [ ] **Phase 6: P5 — Retrieval simplification** - RRF + cross-encoder rerank only; delete the 6-multiplier chain
@@ -70,7 +75,7 @@ Plans:
 ### Phase 4: P3 — MEMORY.md curation + auto-dream guard
 **Goal**: Angel writes a sectioned ≤25KB MEMORY.md at `/endsession` and the CC auto-dream write-guard is proven collision-proof
 **Depends on**: Phase 2 (artifact table supplies entities, projects)
-**Requirements**: CUR-01, CUR-02, CUR-03, CUR-04, STOR-06, EXTR-06
+**Requirements**: CUR-01, CUR-02, CUR-03, CUR-04, CUR-08, STOR-06, EXTR-06, BENCH-09 (baseline)
 **Success Criteria** (what must be TRUE):
   1. MEMORY.md produced with sections `## Entities`, `## Active Projects`, `## Recent Threads`, `## Handoff`, `## How to Query` respecting caps (15/5/5/1/1)
   2. Sort order importance DESC with recency tiebreaker; universal user memories included
@@ -78,7 +83,9 @@ Plans:
   4. Curation idempotent — re-running Angel's writer on unchanged inputs produces byte-identical output
   5. File size ≤25KB / 200 lines verified by checksum on next session-start
   6. Transcript chunking pipeline writes `artifact(kind='transcript_chunk')` with `topic_label` + `turn_range` at `/endsession`
-  7. Still dual-injecting old sections; benchmarks remain ≥ P2 baseline
+  7. Write-time integrity defense (CUR-08) — sha256 read-back compare, alert + skip on external mutation, agents-don't-edit-above-sentinel rule documented
+  8. **BENCH-09 baseline captured** — pre-v4 median `claudex_search` calls per non-trivial session measured on existing telemetry; value committed to `benchmarks/results/p3-postmigration/bench09-baseline.json`. Sets the floor (N) used by Phase 5+ gates.
+  9. Still dual-injecting old sections; benchmarks remain ≥ P2 baseline
 **Plans**: TBD
 
 Plans:
@@ -86,8 +93,8 @@ Plans:
 
 ### Phase 5: P4 — Kill legacy injection (BIG BENCHMARK GATE)
 **Goal**: Remove 9 legacy injection sections, drop session-start to ≤500 tokens, UPS to ≤1KB, cache-stable; add `initialUserMessage` auto-prime
-**Depends on**: Phase 4 (MEMORY.md replaces injected bulk)
-**Requirements**: INJ-01, INJ-02, INJ-03, INJ-04, INJ-05, INJ-06, INJ-07, BENCH-05, BENCH-06, BENCH-07
+**Depends on**: Phase 4 (MEMORY.md replaces injected bulk; BENCH-09 baseline captured)
+**Requirements**: INJ-01, INJ-02, INJ-03, INJ-04, INJ-05, INJ-06, INJ-07, BENCH-05, BENCH-06, BENCH-07, BENCH-09 (gate)
 **Success Criteria** (what must be TRUE):
   1. Assembler `assembler.ts` deletes Proven Principles, Entity Summaries, Angel Opinions, Predicted Context, Curated Context, Experience Warnings auto-surface, Flow, Reference Layer, Materialization
   2. Assembler keeps Identity, Project (CLAUDE.md), Session Continuity, Checkpoint, GSD, MEMORY.md (native load)
@@ -96,7 +103,12 @@ Plans:
   5. All surviving injected text free of timestamps/turn-counts/session-IDs/wall-clock; cache-stable prefix proven by byte-identical repeat
   6. `initialUserMessage` auto-prime fires only when `ACTIVE.md` handoff exists
   7. Experience-warning content surfaces only on explicit query or path/command trigger
-  8. **Benchmark gate**: LongMemEval ≥88%; LoCoMo within 2pp of P3 baseline — violating either reverts the phase
+  8. **Behavioral gate (BENCH-09)**: post-P4 median `claudex_search` calls per non-trivial session ≥ baseline N captured in P3. If post-P4 < baseline, the agent has gone amnesic — falsifies the "thinks again" thesis.
+  9. **Benchmark gate (with explicit fallback ladder)**: LongMemEval ≥88%; LoCoMo within 2pp of P3 baseline. **On violation, do not revert immediately** — escalate the ladder in order:
+     - **L1**: Raise UPS budget 1KB → 2KB; re-run benchmarks. If recovers, ship at 2KB and document.
+     - **L2**: Keep one injection section (start with Entity Summaries — highest signal density per token). Re-run. If recovers, ship with one section + spec the path to retire it.
+     - **L3**: Dual-inject diagnostic mode — re-enable old sections alongside MEMORY.md for one full LongMemEval run, attribute the gap to specific deletion(s), then narrow-revert only the responsible section(s).
+     - **L4**: Full revert. Phase 4 (MEMORY.md curation) needs measurable improvement before re-attempt — define "improvement" concretely (entity recall on Vesna-style probes, MEMORY.md size utilization, etc.) before the next attempt.
 **Plans**: TBD
 
 Plans:
@@ -149,50 +161,64 @@ Plans:
 Plans:
 - [ ] 08-01: TBD
 
-### Phase 9: P7 — Angel simplification
-**Goal**: Delete CARA, autonomous-investigator, dream, skill crystallization, cross-project consolidator, proactive curator, data-quality; conditionally delete RL stack per P6.5
+### Phase 9: P7 — Angel simplification (sub-phased)
+**Goal**: Delete CARA, autonomous-investigator, dream, skill crystallization, cross-project consolidator, proactive curator, data-quality; conditionally delete RL stack per P6.5. **Each module deletion is its own commit**, gated by tests + a fast benchmark spot-check. A 4000-LOC mega-deletion in one commit would be unbisectable; per-module commits keep regressions attributable.
 **Depends on**: Phase 8 (RL decision locked)
 **Requirements**: CUR-05, CUR-06, CUR-07, EXTR-05, RETR-05
 **Success Criteria** (what must be TRUE):
-  1. Deleted: `cara-reasoning.ts`, `autonomous-investigator.ts`, `consolidator.ts::runDreamConsolidation`, `pattern-extractor.ts::crystallizePatternToSkill`, `cross-project-consolidator.ts`, `proactive-curator.ts`, `data-quality.ts`
-  2. If P6.5 cleared: also delete `retrieval-rl.ts`, `memrl-scorer.ts`, `rl-trainer.ts`, `rl-policy.ts`, `rl-model.ts`, `rl-reward.ts`, `policy-registry.ts`, `policy_weights` table (V19)
-  3. Heartbeat tick count drops from ~20 phases to ~8; dropped phases: CARA, investigation, dream, skill crystallization, proactive curation, cross-project consolidation
-  4. Associated tests deleted; 2020-count adjusted downward to reflect removed features; remaining tests all pass
-  5. Net LOC delta ~−3000 to −4000 lines for this phase alone
-  6. No benchmark regression
+  1. Per-module deletion sub-phases land in order; each sub-phase: delete one module → vitest pass → LongMemEval Oracle spot-check (fast subset, ~30 min) ≥88% → atomic commit. No grouped deletions.
+  2. Modules deleted (one per sub-phase): `cara-reasoning.ts` (9.1), `autonomous-investigator.ts` (9.2), `consolidator.ts::runDreamConsolidation` (9.3), `pattern-extractor.ts::crystallizePatternToSkill` (9.4), `cross-project-consolidator.ts` (9.5), `proactive-curator.ts` (9.6), `data-quality.ts` (9.7)
+  3. **Conditional 9.8 (RL stack)** — only if P6.5 cleared: `retrieval-rl.ts`, `memrl-scorer.ts`, `rl-trainer.ts`, `rl-policy.ts`, `rl-model.ts`, `rl-reward.ts`, `policy-registry.ts`, `policy_weights` table (V19). Same per-module discipline applies.
+  4. Heartbeat tick count drops from ~20 phases to ~8; dropped phases: CARA, investigation, dream, skill crystallization, proactive curation, cross-project consolidation
+  5. Associated tests deleted; 2020-count adjusted downward to reflect removed features; remaining tests all pass after every sub-phase
+  6. Net LOC delta ~−3000 to −4000 lines for the umbrella phase total
+  7. Full LongMemEval + LoCoMo run after the umbrella phase closes; no regression vs Phase 8 baseline
+  8. BENCH-09 gate continues to hold across all sub-phases
 **Plans**: TBD
 
 Plans:
-- [ ] 09-01: TBD
+- [ ] 09-01: TBD (umbrella plan + sub-phase scaffolding)
+- [ ] 09-02: Delete `cara-reasoning.ts` (sub-phase 9.1)
+- [ ] 09-03: Delete `autonomous-investigator.ts` (sub-phase 9.2)
+- [ ] 09-04: Delete `consolidator.ts::runDreamConsolidation` (sub-phase 9.3)
+- [ ] 09-05: Delete `pattern-extractor.ts::crystallizePatternToSkill` (sub-phase 9.4)
+- [ ] 09-06: Delete `cross-project-consolidator.ts` (sub-phase 9.5)
+- [ ] 09-07: Delete `proactive-curator.ts` (sub-phase 9.6)
+- [ ] 09-08: Delete `data-quality.ts` (sub-phase 9.7)
+- [ ] 09-09: Conditional RL stack deletion (sub-phase 9.8) — only if P6.5 cleared
+- [ ] 09-10: Umbrella close — full benchmark run, heartbeat tick recount, LOC delta verification
 
 ### Phase 10: P8 — Rule lifecycle
 **Goal**: Bound directive-rule accumulation via scope, supersession, and confidence decay
 **Depends on**: Phase 9 (Angel is lean so lifecycle code is isolated)
-**Requirements**: LIFE-01, LIFE-02, LIFE-03, LIFE-04
+**Requirements**: LIFE-01, LIFE-02, LIFE-03, LIFE-04 (with sub-gate)
 **Success Criteria** (what must be TRUE):
   1. Scope detection (`session | project | universal`) lands at ingestion from directive detector (already stored from P2; now actioned)
   2. Supersession edges — LLM contradiction check on new directive vs. existing active directives of the same scope; generates `supersedes_id` on confirmed contradiction
   3. Confidence decay — daily sweep reduces confidence for unreinforced rules; auto-archive below threshold
   4. Fixture sessions with contradictory directives resolve correctly (new supersedes old; decayed rule archives)
-  5. No benchmark regression
+  5. **Sub-gate (prerequisite to SC#4)**: detector recall on a held-out fixture set ≥ N% (target 0.85, floor 0.70). Owns the `negation_dont`-family followup deferred from EXTR-04 (P2 partial-ship). Without this, supersession evaluates over silently-truncated input — looks correct while under-firing. Held-out set is built and labeled at the start of P8, NOT reused from P2's calibration corpus.
+  6. No benchmark regression; BENCH-09 floor maintained
 **Plans**: TBD
 
 Plans:
 - [ ] 10-01: TBD
 
 ### Phase 11: P9 — Final validation + cleanup
-**Goal**: Ship v4 — run the Vesna test, drop legacy tables if safe, tag the release
+**Goal**: Ship v4 — verify thesis (BENCH-09), drop legacy tables if safe, tag the release
 **Depends on**: Phase 10 (lifecycle live; all functional pieces present)
-**Requirements**: BENCH-04, BENCH-01, BENCH-02, BENCH-03
+**Requirements**: BENCH-01, BENCH-02, BENCH-03, BENCH-09 (final), BENCH-04 (smoke)
 **Success Criteria** (what must be TRUE):
-  1. Full v3 test suite (adjusted) passes
+  1. Full v3 test suite (adjusted for deletions) passes
   2. LongMemEval Oracle ≥88%; ideally ≥90%
   3. LoCoMo ≥70% target (stretch 80%+); no single phase regressed >2pp
-  4. Vesna test — fresh session, `claudex_search("Vesna")` returns `entity_summary` artifact in rank 1-3 without filesystem exploration
-  5. Legacy tables (`learnings`, `decisions`, `experience_patterns`, etc.) dropped *if and only if* zero-caller audit passes; otherwise views remain
-  6. `CLAUDE.md` and `README.md` updated to reflect v4 architecture; out-of-date phrasing removed
-  7. Git tag `v4.0.0` pushed
-  8. Net LOC target of −8000 to −10000 lines verified
+  4. **BENCH-09 final**: post-v4 median `claudex_search` calls per non-trivial session ≥ 2× baseline N (target) or ≥ baseline N (floor). Falsification check on the v4 thesis. Captured over a 7-day window post-tag.
+  5. Vesna smoke check — fresh session, `claudex_search("Vesna")` returns `entity_summary` in rank 1-3 without filesystem exploration. Reduced from ship-blocking to smoke check; failure logged but does not block tag if BENCH-09 passes.
+  6. Legacy tables (`learnings`, `decisions`, `experience_patterns`, etc.) dropped *if and only if* zero-caller audit passes; otherwise views remain
+  7. `CLAUDE.md` and `README.md` updated to reflect v4 architecture; out-of-date phrasing removed; banner added: *"v4.0 is internal infrastructure. v4.1 = Distribution will make it installable by strangers."*
+  8. Git tag `v4.0.0` pushed
+  9. Net LOC target of −8000 to −10000 lines verified
+  10. v4.1 = Distribution milestone scaffolded (`.planning/` next-cycle stub committed) so the follow-up doesn't get forgotten
 **Plans**: TBD
 
 Plans:
@@ -207,7 +233,7 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 7 -> 8 -> 9 -> 10
 |-------|----------------|--------|-----------|
 | 1. P0 — Crystallization | 1/1 | Completed | 2026-04-19 |
 | 2. P1 — Artifact table unification | 7/7 | Complete   | 2026-04-20 |
-| 3. P2 — Directive detector | 6/6 | Complete (partial-ship B) | 2026-04-22 |
+| 3. P2 — Directive detector | 6/6 | Partial-with-followups (path B) | 2026-04-22 |
 | 4. P3 — MEMORY.md curation + auto-dream guard | 0/0 | Not started | - |
 | 5. P4 — Kill legacy injection (GATE) | 0/0 | Not started | - |
 | 6. P5 — Retrieval simplification | 0/0 | Not started | - |

@@ -21,7 +21,7 @@
 - [x] **EXTR-01**: Build `src/intelligence/directive-detector.ts` — regex pass for emphasis signals ("remember this", "always X", "never Y", "from now on", "next time do Z", "please X"), followed by LLM confirmation with starting threshold ≥0.7
 - [x] **EXTR-02**: Directive detector writes `artifact(kind='directive_rule', scope=...)` with LLM-classified `scope ∈ {session, project, universal}`
 - [x] **EXTR-03**: Directive detector runs in Angel extraction phase *before* generic ingester; accumulates rules without changing injection
-- [x] **EXTR-04**: Precision ≥90% on fixture sessions; calibrate final threshold against fixtures during P2 — **partial**: gate lowered 0.90→0.75 per 03-LABEL-AUDIT + 12-case re-label; shipped path B at joint=0.50 (scope precision 0.89); negation_dont family tune deferred to P8
+- [~] **EXTR-04**: Precision ≥90% on fixture sessions; calibrate final threshold against fixtures during P2 — **partial-with-followups**: gate lowered 0.90→0.75 per 03-LABEL-AUDIT + 12-case re-label; shipped path B at joint=0.50 (scope precision 0.89); negation_dont family tune + held-out recall measurement gated as P8 prerequisite (see LIFE-04 sub-gate)
 - [ ] **EXTR-05**: Replace the 6 v3 extractors (`pattern-extractor`, `entity-summarizer`, `curated-context-extractor`, `consolidator` pattern-merge, CARA, `classifySessionDomains`) with one Angel semantic ingester that emits mixed-kind artifacts with confidence + provenance
 - [ ] **EXTR-06**: Transcript chunking uses LLM topic-segmentation at `/endsession`; accepts ~20-30s latency cost per user decision in Q1
 
@@ -52,6 +52,7 @@
 - [ ] **CUR-05**: Delete from Angel: `cara-reasoning.ts`, `autonomous-investigator.ts`, `consolidator.ts::runDreamConsolidation`, `pattern-extractor.ts::crystallizePatternToSkill`, `cross-project-consolidator.ts`, `proactive-curator.ts`, `data-quality.ts`
 - [ ] **CUR-06**: Gut `heartbeat.ts` phases: drop CARA, investigation, dream, skill crystallization, proactive curation, cross-project consolidation. Heartbeat tick drops from ~20 phases to ~8
 - [ ] **CUR-07**: Angel keeps: idle monitoring, session auto-close, pattern→artifact extraction, entity resolution, embedding backfill, retention sweep, artifact promotion, MEMORY.md maintenance, service health supervision (reranker, llama/Ollama)
+- [ ] **CUR-08**: MEMORY.md write-time integrity defense — Angel snapshots sha256 of last managed-region write; on next write, reads the file back and compares against snapshot. Mismatch → log `memory_md_external_mutation` event, skip write (preserve external edit), and alert. Documented rule: agents do not edit MEMORY.md above the `<!-- USER EDITABLE -->` sentinel; everything below is user/agent territory. Combined defense covers both auto-dream collisions (CUR-03) and mid-session agent edits via slash commands.
 
 ### Framing (FRAM)
 
@@ -65,18 +66,19 @@
 - [ ] **LIFE-01**: Every `artifact(kind='directive_rule')` carries `scope ∈ {session, project, universal}` detected at ingestion by LLM
 - [ ] **LIFE-02**: Supersession edges — when a new directive contradicts an existing active directive of the same scope, LLM confirms contradiction and writes `supersedes_id`
 - [ ] **LIFE-03**: Confidence decay — daily sweep reduces confidence for rules not reinforced since last seen; rules below threshold → `status='archived'`
-- [ ] **LIFE-04**: Rule accumulation bounded — contradiction and decay logic verified against fixture sessions before acceptance
+- [ ] **LIFE-04**: Rule accumulation bounded — contradiction and decay logic verified against fixture sessions before acceptance. **Sub-gate (prerequisite)**: detector recall on held-out fixture set ≥ N% before supersession evaluated. Rationale: P2 shipped at joint=0.50 with `negation_dont` family deferred; if missing directives are silently absent from input, P8's supersession logic looks correct while under-firing. The held-out recall measurement is owned by P8, not deferred to P2's followup queue. Acceptance threshold N to be set during P8 plan from a labeled held-out set (target ≥0.85 recall on held-out; floor ≥0.70).
 
 ### Benchmarks & Validation (BENCH)
 
 - [ ] **BENCH-01**: LongMemEval Oracle ≥88% hard floor at every phase boundary; crossing the floor is a revert trigger
 - [ ] **BENCH-02**: LoCoMo final target ≥70% (stretch 80%+); no single phase may regress LoCoMo >2pp from the prior phase baseline
 - [ ] **BENCH-03**: Full v3 test suite (2020 Vitest tests) passes after every phase
-- [ ] **BENCH-04**: Pass the Vesna test — `claudex_search("Vesna")` from a fresh session returns the `entity_summary` artifact in rank 1-3 without filesystem exploration
+- [ ] **BENCH-04**: Vesna smoke check — `claudex_search("Vesna")` from a fresh session returns the `entity_summary` artifact in rank 1-3 without filesystem exploration. **Demoted from ship-blocking gate to smoke check** because BENCH-09 measures the same behavior (agent-initiated retrieval) continuously across sessions instead of single-point. Keep as cheap CI sanity, not phase gate.
 - [ ] **BENCH-05**: Session-start injection ≤500 tokens verified by tokenizer on actual session-start output
 - [ ] **BENCH-06**: UPS per-turn payload ≤1KB verified on live turns
 - [ ] **BENCH-07**: Prefix-stable cache proven — repeated session-starts produce byte-identical cacheable prefix
 - [ ] **BENCH-08**: P6.5 RL ablation report committed to `context/specs/V4_RL_ABLATION.md` with LoCoMo-with-flag vs. baseline numbers and the go/no-go decision
+- [ ] **BENCH-09**: Agent-initiated retrieval frequency gate — measures whether the v4 reframe actually causes the agent to "think again." Pre-v4 baseline: median `claudex_search` calls per non-trivial session captured before P4 ships (Phase 4 close deliverable). Post-P4 floor: median ≥ N where N is set from baseline (target ≥ 2× baseline, hard floor ≥ baseline). Verified at every phase boundary from P5 onward. Falsifies the "agent now pulls on demand" thesis if the agent stops retrieving entirely instead of switching from injected to pulled context. Without this gate, P4 can pass by amnesia.
 
 ## v2 Requirements
 
@@ -96,6 +98,7 @@
 | Agent Teams integration | Experimental unstable API |
 | LongMemEval baseline work | 90.6% is strong, don't risk improvement attempts |
 | `conversation_turns` schema change | Raw turn storage correct; only new chunking pipeline layers on top |
+| Public-release polish (LICENSE, install ergonomics, cross-platform audit, README rewrite, self-diagnosis tooling) | Addressed in **v4.1 = Distribution** as a dedicated follow-up milestone. v4 is "make it work better"; v4.1 is "make it installable by strangers." Bolting v4.1 onto v4 dilutes both. v4.0 README will carry a "v4 in progress — not yet installable by strangers; v4.1 will fix this" banner. |
 
 ## Traceability
 
@@ -112,7 +115,7 @@
 | EXTR-01 | Phase 3 (P2) | Complete |
 | EXTR-02 | Phase 3 (P2) | Complete |
 | EXTR-03 | Phase 3 (P2) | Complete |
-| EXTR-04 | Phase 3 (P2) | Complete (partial — gate lowered 0.90→0.75, shipped path B at joint=0.50) |
+| EXTR-04 | Phase 3 (P2) | Partial-with-followups — gate lowered 0.90→0.75, shipped path B at joint=0.50; held-out recall measurement owned by LIFE-04 sub-gate in P8 |
 | EXTR-05 | Phase 8 (P7) | Pending |
 | EXTR-06 | Phase 4 (P3) | Pending |
 | INJ-01 | Phase 5 (P4) | Pending |
@@ -134,6 +137,7 @@
 | CUR-05 | Phase 8 (P7) | Pending |
 | CUR-06 | Phase 8 (P7) | Pending |
 | CUR-07 | Phase 8 (P7) | Pending |
+| CUR-08 | Phase 4 (P3) | Pending |
 | FRAM-01 | Phase 7 (P6) | Pending |
 | FRAM-02 | Phase 7 (P6) | Pending |
 | FRAM-03 | Phase 7 (P6) | Pending |
@@ -145,13 +149,19 @@
 | BENCH-01 | All phases (gate) | Pending |
 | BENCH-02 | All phases (gate) | Pending |
 | BENCH-03 | All phases (gate) | Pending |
-| BENCH-04 | Phase 10 (P9) | Pending |
+| BENCH-04 | Phase 11 (P9) | Pending — smoke check only |
 | BENCH-05 | Phase 5 (P4) | Pending |
 | BENCH-06 | Phase 5 (P4) | Pending |
 | BENCH-07 | Phase 5 (P4) | Pending |
-| BENCH-08 | Phase 7.5 (P6.5) | Pending |
+| BENCH-08 | Phase 8 (P6.5) | Pending |
+| BENCH-09 | Phase 4 (P3) baseline + Phase 5 (P4) onward gate | Pending — Phase 4 close captures pre-v4 baseline N |
 
 **Coverage:**
-- v1 requirements: 49 total
-- Mapped to phases: 49
+- v1 requirements: 51 total (49 original + CUR-08 + BENCH-09 added 2026-04-26 from honest-review)
+- Mapped to phases: 51
 - Unmapped: 0
+
+**Status legend:**
+- `[ ]` Pending
+- `[x]` Complete
+- `[~]` Partial-with-followups — shipped at reduced acceptance with explicit follow-up tracked in a later phase. Status field must name the owning phase.
