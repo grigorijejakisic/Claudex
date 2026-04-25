@@ -124,6 +124,7 @@ async function ollamaGenerate(model: string, prompt: string, maxTokens: number =
       model,
       prompt,
       stream: false,
+      think: false,
       options: { temperature: 0, num_predict: maxTokens },
     }),
   });
