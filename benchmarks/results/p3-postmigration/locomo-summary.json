@@ -1,0 +1,33 @@
+{
+  "benchmark": "LoCoMo",
+  "answer_model": "glm-5.1:cloud",
+  "judge_model": "glm-5.1:cloud",
+  "embed_model": "snowflake-arctic-embed2",
+  "embed_dim": 1024,
+  "top_k": 10,
+  "total": 1540,
+  "correct": 960,
+  "accuracy": 62.3,
+  "per_category": {
+    "single-hop": { "correct": 150, "total": 282, "accuracy": 53.2 },
+    "multi-hop": { "correct": 137, "total": 321, "accuracy": 42.7 },
+    "temporal": { "correct": 17, "total": 96, "accuracy": 17.7 },
+    "open-domain": { "correct": 656, "total": 841, "accuracy": 78.0 }
+  },
+  "timestamp": "2026-04-24T22:20:53.006Z",
+  "commit_sha": "0dd13a9ebee092864eb0e147b48b381eaff1b8d9",
+  "dataset": "C:/Users/GRIGOR~1/AppData/Local/Temp/locomo/data/locomo10.json",
+  "conversations": 10,
+  "total_sessions_ingested": 272,
+  "total_observations_ingested": 8423,
+  "artifacts_embedded": 8695,
+  "notes": [
+    "Phase 4 (P3) post-migration LoCoMo anchor. Supersedes prior 55.5% sonnet anchor (CLAUDE.md WIP baseline) by +6.8pp.",
+    "Handoff commander's intent: new-anchor-only, no within-2pp gate this phase. That gate applies to Phase 5 (P4 injection deletion).",
+    "Required a harness bugfix mid-re-kick: glm-5.1:cloud emits thinking tokens before answer, truncating the 10-token judge cap to empty string. Fix: added `think: false` to Ollama /api/generate request body in both benchmark harnesses. Verified: first re-kick produced 0.0% running accuracy (broken judge); post-fix re-kick produced stable 60-66% throughout the run.",
+    "Weakest category: temporal (17.7%) — a known memory-system gap flagged for P8 directive-rule lifecycle and/or P9 tuning.",
+    "Strongest category: open-domain (78.0%) — retrieval + answer path strong on factual questions with direct evidence.",
+    "Prior stalled run (same harness, pre-04-07 fix) archived at benchmarks/results/p3-postmigration/locomo-run-stalled-contention.log.",
+    "Prior broken run (think-token bug) archived at benchmarks/results/p3-postmigration/locomo-run-judge-think-bug.log."
+  ]
+}

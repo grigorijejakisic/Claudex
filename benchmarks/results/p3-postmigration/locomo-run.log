@@ -1,0 +1,153 @@
+=== LoCoMo Benchmark — Claudex Memory System ===
+Dataset: C:/Users/GRIGOR~1/AppData/Local/Temp/locomo/data/locomo10.json
+Answer model: glm-5.1:cloud
+Judge model: glm-5.1:cloud
+Embedding model: snowflake-arctic-embed2
+
+Benchmark DB: C:\Users\GRIGOR~1\AppData\Local\Temp\claudex_locomo_1777044301851.db
+Embeddings: available
+Conversations: 10
+
+--- Phase 1: Ingest ---
+  conv-26: 19 sessions, 603 observations
+  conv-30: 19 sessions, 538 observations
+  conv-41: 32 sessions, 987 observations
+  conv-42: 29 sessions, 895 observations
+  conv-43: 29 sessions, 947 observations
+  conv-44: 28 sessions, 952 observations
+  conv-47: 31 sessions, 957 observations
+  conv-48: 30 sessions, 972 observations
+  conv-49: 25 sessions, 749 observations
+  conv-50: 30 sessions, 823 observations
+Total: 272 sessions, 8423 observations
+
+--- Phase 2: Embed ---
+Embedded 8695 artifacts at 1024-dim
+FTS5 index rebuilt
+
+--- Phase 3: Evaluate ---
+
+  conv-26 (152 questions):
+    [20/1540] running accuracy: 55.0%
+    [40/1540] running accuracy: 60.0%
+    [60/1540] running accuracy: 56.7%
+    [80/1540] running accuracy: 55.0%
+    [100/1540] running accuracy: 61.0%
+    [120/1540] running accuracy: 64.2%
+    [140/1540] running accuracy: 65.0%
+
+  conv-30 (81 questions):
+    [160/1540] running accuracy: 66.9%
+    [180/1540] running accuracy: 65.6%
+    [200/1540] running accuracy: 66.0%
+    [220/1540] running accuracy: 66.8%
+
+  conv-41 (152 questions):
+    [240/1540] running accuracy: 65.0%
+    [260/1540] running accuracy: 63.5%
+    [280/1540] running accuracy: 62.1%
+    [300/1540] running accuracy: 62.0%
+    [320/1540] running accuracy: 62.5%
+    [340/1540] running accuracy: 63.8%
+    [360/1540] running accuracy: 65.3%
+    [380/1540] running accuracy: 66.1%
+
+  conv-42 (199 questions):
+    [400/1540] running accuracy: 65.5%
+    [420/1540] running accuracy: 63.8%
+    [440/1540] running accuracy: 62.7%
+    [460/1540] running accuracy: 62.2%
+    [480/1540] running accuracy: 60.4%
+    [500/1540] running accuracy: 61.6%
+    [520/1540] running accuracy: 61.7%
+    [540/1540] running accuracy: 62.6%
+    [560/1540] running accuracy: 63.0%
+    [580/1540] running accuracy: 64.1%
+
+  conv-43 (178 questions):
+    [600/1540] running accuracy: 63.2%
+    [620/1540] running accuracy: 61.8%
+    [640/1540] running accuracy: 60.8%
+    [660/1540] running accuracy: 60.5%
+    [680/1540] running accuracy: 61.0%
+    [700/1540] running accuracy: 61.9%
+    [720/1540] running accuracy: 62.1%
+    [740/1540] running accuracy: 62.8%
+    [760/1540] running accuracy: 62.8%
+
+  conv-44 (123 questions):
+    [780/1540] running accuracy: 62.7%
+    [800/1540] running accuracy: 62.3%
+    [820/1540] running accuracy: 61.8%
+    [840/1540] running accuracy: 62.1%
+    [860/1540] running accuracy: 62.0%
+    [880/1540] running accuracy: 62.5%
+
+  conv-47 (150 questions):
+    [900/1540] running accuracy: 62.1%
+    [920/1540] running accuracy: 61.4%
+    [940/1540] running accuracy: 60.7%
+    [960/1540] running accuracy: 60.6%
+    [980/1540] running accuracy: 61.2%
+    [1000/1540] running accuracy: 61.9%
+    [1020/1540] running accuracy: 62.5%
+
+  conv-48 (191 questions):
+    [1040/1540] running accuracy: 62.7%
+    [1060/1540] running accuracy: 62.5%
+    [1080/1540] running accuracy: 61.9%
+    [1100/1540] running accuracy: 61.5%
+    [1120/1540] running accuracy: 61.2%
+    [1140/1540] running accuracy: 61.1%
+    [1160/1540] running accuracy: 61.1%
+    [1180/1540] running accuracy: 61.6%
+    [1200/1540] running accuracy: 62.3%
+    [1220/1540] running accuracy: 62.5%
+
+  conv-49 (156 questions):
+    [1240/1540] running accuracy: 62.3%
+    [1260/1540] running accuracy: 61.9%
+    [1280/1540] running accuracy: 61.8%
+    [1300/1540] running accuracy: 61.5%
+    [1320/1540] running accuracy: 61.7%
+    [1340/1540] running accuracy: 61.6%
+    [1360/1540] running accuracy: 61.8%
+    [1380/1540] running accuracy: 62.0%
+
+  conv-50 (158 questions):
+    [1400/1540] running accuracy: 62.0%
+    [1420/1540] running accuracy: 62.1%
+    [1440/1540] running accuracy: 61.8%
+    [1460/1540] running accuracy: 61.6%
+    [1480/1540] running accuracy: 61.8%
+    [1500/1540] running accuracy: 62.0%
+    [1520/1540] running accuracy: 62.1%
+    [1540/1540] running accuracy: 62.3%
+
+
+=== RESULTS ===
+
+Category Breakdown:
+────────────────────────────────────────────────────────────
+  single-hop       150/ 282  53.2%
+  multi-hop        137/ 321  42.7%
+  temporal          17/  96  17.7%
+  open-domain      656/ 841  78.0%
+────────────────────────────────────────────────────────────
+  OVERALL          960/1540  62.3%
+
+
+Comparison with Published Systems:
+────────────────────────────────────────
+  OpenAI Memory      52.9%
+  Mem0               67.1%
+  Zep                75.1%
+  Claudex            62.3%  ← YOU ARE HERE
+  Memori             82.0%
+  MemMachine         84.9%
+  Hindsight          89.6%
+────────────────────────────────────────
+
+Detailed results saved to: C:\Users\Grigorije\Desktop\Projects\CLAUDEXv3\LOCOMO_RESULTS.json
+
+Done.

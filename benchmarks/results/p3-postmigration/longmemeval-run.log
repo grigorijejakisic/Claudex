@@ -1,0 +1,89 @@
+=== LongMemEval Benchmark — Claudex Memory System ===
+Mode: oracle
+Dataset: C:/Users/GRIGOR~1/AppData/Local/Temp/longmemeval/longmemeval_oracle.json
+Answer/Judge: deepseek-coder-v2:16b
+Embeddings: snowflake-arctic-embed2 (1024-dim)
+
+Loading dataset...
+Instances: 500
+Embeddings: available
+  [10/500] accuracy: 90.0% | abstention: 0/0
+  [20/500] accuracy: 80.0% | abstention: 0/0
+  [30/500] accuracy: 80.0% | abstention: 0/0
+  [40/500] accuracy: 82.5% | abstention: 0/0
+  [50/500] accuracy: 80.0% | abstention: 0/0
+  [60/500] accuracy: 79.6% | abstention: 0/6
+  [70/500] accuracy: 81.3% | abstention: 0/6
+  [80/500] accuracy: 82.4% | abstention: 0/6
+  [90/500] accuracy: 84.5% | abstention: 0/6
+  [100/500] accuracy: 84.0% | abstention: 0/6
+  [110/500] accuracy: 85.6% | abstention: 0/6
+  [120/500] accuracy: 86.4% | abstention: 1/10
+  [130/500] accuracy: 86.4% | abstention: 1/12
+  [140/500] accuracy: 86.7% | abstention: 1/12
+  [150/500] accuracy: 86.2% | abstention: 1/12
+  [160/500] accuracy: 87.2% | abstention: 1/12
+  [170/500] accuracy: 87.3% | abstention: 1/12
+  [180/500] accuracy: 86.3% | abstention: 1/12
+  [190/500] accuracy: 86.0% | abstention: 1/12
+  [200/500] accuracy: 85.7% | abstention: 1/18
+  [210/500] accuracy: 85.9% | abstention: 1/18
+  [220/500] accuracy: 85.6% | abstention: 1/18
+  [230/500] accuracy: 86.3% | abstention: 1/18
+  [240/500] accuracy: 86.0% | abstention: 1/18
+  [250/500] accuracy: 86.6% | abstention: 1/18
+  [260/500] accuracy: 87.2% | abstention: 1/18
+  [270/500] accuracy: 87.7% | abstention: 1/18
+  [280/500] accuracy: 87.8% | abstention: 1/18
+  [290/500] accuracy: 88.2% | abstention: 1/18
+  [300/500] accuracy: 88.7% | abstention: 1/18
+  [310/500] accuracy: 89.0% | abstention: 1/18
+  [320/500] accuracy: 89.4% | abstention: 1/18
+  [330/500] accuracy: 89.7% | abstention: 1/18
+  [340/500] accuracy: 90.1% | abstention: 1/18
+  [350/500] accuracy: 90.4% | abstention: 1/18
+  [360/500] accuracy: 90.5% | abstention: 1/24
+  [370/500] accuracy: 90.5% | abstention: 1/24
+  [380/500] accuracy: 90.7% | abstention: 1/24
+  [390/500] accuracy: 90.7% | abstention: 1/24
+  [400/500] accuracy: 90.7% | abstention: 1/24
+  [410/500] accuracy: 90.7% | abstention: 1/24
+  [420/500] accuracy: 90.4% | abstention: 1/24
+  [430/500] accuracy: 90.4% | abstention: 1/24
+  [440/500] accuracy: 90.1% | abstention: 1/24
+  [450/500] accuracy: 89.9% | abstention: 1/24
+  [460/500] accuracy: 89.7% | abstention: 1/24
+  [470/500] accuracy: 89.7% | abstention: 1/24
+  [480/500] accuracy: 89.7% | abstention: 1/24
+  [490/500] accuracy: 89.5% | abstention: 1/24
+  [500/500] accuracy: 89.6% | abstention: 1/30
+
+
+=== RESULTS ===
+
+Category Breakdown (excluding abstention):
+─────────────────────────────────────────────────────────────────
+  single-session-user            64/  64  100.0%
+  single-session-assistant       53/  56  94.6%
+  single-session-preference      27/  30  90.0%
+  multi-session                 107/ 121  88.4%
+  temporal-reasoning            109/ 127  85.8%
+  knowledge-update               61/  72  84.7%
+─────────────────────────────────────────────────────────────────
+  OVERALL                       421/ 470  89.6%
+
+  abstention                      1/  30  3.3%
+
+
+Comparison (LongMemEval published):
+─────────────────────────────────────────────
+  GPT-4o full-context (115k)   60.6%
+  Zep (GPT-4o)                 71.2%
+  Supermemory (GPT-4o)         81.6%
+  Claudex (oracle)              89.6%  ← YOU ARE HERE
+  Hindsight (OSS-120B)         89.0%
+  Hindsight (Gemini-3)         91.4%
+─────────────────────────────────────────────
+
+Results saved to: C:\Users\Grigorije\Desktop\Projects\CLAUDEXv3\LONGMEMEVAL_ORACLE_RESULTS.json
+Done.

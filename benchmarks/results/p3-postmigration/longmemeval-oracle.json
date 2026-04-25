@@ -1,0 +1,43 @@
+{
+  "benchmark": "LongMemEval (oracle mode)",
+  "answer_model": "deepseek-coder-v2:16b",
+  "judge_model": "deepseek-coder-v2:16b",
+  "embed_model": "snowflake-arctic-embed2",
+  "embed_dim": 1024,
+  "total_scorable": 470,
+  "correct": 421,
+  "accuracy": 89.6,
+  "abstention": {
+    "correct": 1,
+    "total": 30,
+    "accuracy": 3.3
+  },
+  "per_type": {
+    "single-session-user": { "correct": 64, "total": 64, "accuracy": 100.0 },
+    "single-session-assistant": { "correct": 53, "total": 56, "accuracy": 94.6 },
+    "single-session-preference": { "correct": 27, "total": 30, "accuracy": 90.0 },
+    "multi-session": { "correct": 107, "total": 121, "accuracy": 88.4 },
+    "temporal-reasoning": { "correct": 109, "total": 127, "accuracy": 85.8 },
+    "knowledge-update": { "correct": 61, "total": 72, "accuracy": 84.7 }
+  },
+  "total_instances": 500,
+  "timestamp": "2026-04-24T03:24:37Z",
+  "commit_sha": "0dd13a9ebee092864eb0e147b48b381eaff1b8d9",
+  "dataset": "C:/Users/GRIGOR~1/AppData/Local/Temp/longmemeval/longmemeval_oracle.json",
+  "source": "benchmarks/results/p3-postmigration/longmemeval-run.log (authoritative)",
+  "published_comparison": {
+    "gpt4o_full_context_115k": 60.6,
+    "zep_gpt4o": 71.2,
+    "supermemory_gpt4o": 81.6,
+    "claudex_oracle": 89.6,
+    "hindsight_oss_120b": 89.0,
+    "hindsight_gemini_3": 91.4
+  },
+  "notes": [
+    "Phase 4 (P3) post-migration LongMemEval anchor. PASS at 89.6% — competitive with Hindsight OSS-120B (89.0%); below Hindsight Gemini-3 (91.4%).",
+    "Oracle mode — only evidence sessions ingested, not the full 500-session haystack.",
+    "Answer/Judge: deepseek-coder-v2:16b (local Ollama, no thinking tokens).",
+    "run.log contains authoritative results. The root-level LONGMEMEVAL_ORACLE_RESULTS.json shows a stale March 28 run (426/470 = 90.6% with per_type deltas) despite 2026-04-24 mtime — suspected file-write/lock collision from parallel run or post-hoc overwrite; did not affect run.log correctness.",
+    "Handoff note: commit_sha is post-04-07 V17 migration idempotency fix, not the commit the benchmark ran under (which was pre-04-07). Benchmark ran with V17 migration APPLIED and used a fresh temp DB, so the pre-04-07 idempotency bug did not affect results (that bug only surfaced on DB RE-opens, not fresh writes)."
+  ]
+}

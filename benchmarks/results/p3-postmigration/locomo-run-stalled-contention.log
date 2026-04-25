@@ -1,0 +1,24 @@
+=== LoCoMo Benchmark — Claudex Memory System ===
+Dataset: C:/Users/GRIGOR~1/AppData/Local/Temp/locomo/data/locomo10.json
+Answer model: glm-5.1:cloud
+Judge model: glm-5.1:cloud
+Embedding model: snowflake-arctic-embed2
+
+Benchmark DB: C:\Users\GRIGOR~1\AppData\Local\Temp\claudex_locomo_1776979221579.db
+Embeddings: available
+Conversations: 10
+
+--- Phase 1: Ingest ---
+  conv-26: 19 sessions, 603 observations
+  conv-30: 19 sessions, 538 observations
+  conv-41: 32 sessions, 987 observations
+  conv-42: 29 sessions, 895 observations
+  conv-43: 29 sessions, 947 observations
+  conv-44: 28 sessions, 952 observations
+  conv-47: 31 sessions, 957 observations
+  conv-48: 30 sessions, 972 observations
+  conv-49: 25 sessions, 749 observations
+  conv-50: 30 sessions, 823 observations
+Total: 272 sessions, 8423 observations
+
+--- Phase 2: Embed ---
