@@ -14,7 +14,7 @@ Ten atomic phases move Claudex from v3's imperative push to v4's advisory pull. 
 - [x] **Phase 1: P0 — Crystallization** - Lock 4 design decisions and produce `.planning/`
 - [x] **Phase 2: P1 — Artifact table unification** - V17 migration + legacy views, zero behavior change (completed 2026-04-20)
 - [~] **Phase 3: P2 — Directive detector** - Regex + LLM-confirmed ingester writing `directive_rule` artifacts (partial-ship B, joint=0.50 on post-relabel fixture, completed 2026-04-22; held-out recall measurement + `negation_dont` tune owned by Phase 10 LIFE-04 sub-gate)
-- [ ] **Phase 4: P3 — MEMORY.md curation + auto-dream guard** - Sectioned index at `/endsession`, sentinel write-guard
+- [x] **Phase 4: P3 — MEMORY.md curation + auto-dream guard** (completed 2026-04-26) - Sectioned index at `/endsession`, sentinel write-guard
 - [ ] **Phase 5: P4 — Kill legacy injection** - Delete 9 sections, ≤500 tokens, cache-stable, `initialUserMessage` prime
 - [ ] **Phase 6: P5 — Retrieval simplification** - RRF + cross-encoder rerank only; delete the 6-multiplier chain
 - [ ] **Phase 7: P6 — Framing rewrite** - Advisory voice across every surviving formatter
@@ -89,7 +89,14 @@ Plans:
 **Plans**: TBD
 
 Plans:
-- [ ] 04-01: TBD
+- [x] 04-01: MEMORY.md writer (sectioned + capped + sentinel)
+- [x] 04-02: Transcript chunker (LLM topic-segmentation at /endsession)
+- [x] 04-03: Auto-dream guard (sentinel + env disable + monitor exemption)
+- [x] 04-04: Heartbeat wiring (Phase 5b drain pattern)
+- [x] 04-05: Phase gate (SUMMARY + close)
+- [x] 04-06: Angel resilience (inline bugfix — silent crash hardening)
+- [x] 04-07: V17 migration idempotency (inline bugfix — version-aware initializeSchema)
+- [x] 04-08: memory-md-writer project ID resolution (inline bugfix — writer never wrote)
 
 ### Phase 5: P4 — Kill legacy injection (BIG BENCHMARK GATE)
 **Goal**: Remove 9 legacy injection sections, drop session-start to ≤500 tokens, UPS to ≤1KB, cache-stable; add `initialUserMessage` auto-prime
@@ -234,7 +241,7 @@ Phases execute in numeric order: 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 7 -> 8 -> 9 -> 10
 | 1. P0 — Crystallization | 1/1 | Completed | 2026-04-19 |
 | 2. P1 — Artifact table unification | 7/7 | Complete   | 2026-04-20 |
 | 3. P2 — Directive detector | 6/6 | Partial-with-followups (path B) | 2026-04-22 |
-| 4. P3 — MEMORY.md curation + auto-dream guard | 0/0 | Not started | - |
+| 4. P3 — MEMORY.md curation + auto-dream guard | 8/8 | Complete | 2026-04-26 |
 | 5. P4 — Kill legacy injection (GATE) | 0/0 | Not started | - |
 | 6. P5 — Retrieval simplification | 0/0 | Not started | - |
 | 7. P6 — Framing rewrite | 0/0 | Not started | - |

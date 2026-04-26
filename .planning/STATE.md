@@ -9,22 +9,22 @@ See: .planning/PROJECT.md (updated 2026-04-19)
 
 ## Current Position
 
-**Current Phase:** 4
-**Current Phase Name:** P3 — MEMORY.md curation + auto-dream guard
+**Current Phase:** 5
+**Current Phase Name:** P4 — Kill legacy injection
 **Total Phases:** 11
 **Current Plan:** 0
 **Total Plans in Phase:** TBD
-**Status:** Phase 3 (P2 directive detector) complete (partial-ship B at joint=0.50); Phase 4 ready to plan
-**Last Activity:** 2026-04-22
-**Last Activity Description:** Phase 3 (P2) complete — directive detector shipped partial-B at joint_precision=0.50 on post-relabel fixture; scope precision 0.89 ship-quality for P8 consumer contract; negation_dont tunable surface deferred to P8; benchmark gate (03-06-07) and live-tick confirm (03-06-08) deferred to post-ship follow-ups.
-**Progress:** [███░░░░░░░] 27%
+**Status:** Phase 4 complete (LongMemEval 89.6% PASS, LoCoMo 62.3% +6.8pp anchor, soak PASS 8/8 post-04-08-fix); Phase 5 (BIG benchmark gate) ready to plan
+**Last Activity:** 2026-04-26
+**Last Activity Description:** Phase 4 (P3) closed — MEMORY.md curation + auto-dream guard shipped with three inline bugfixes (04-06/07/08); BENCH-09 baseline captured at median N=1; static-vs-runtime methodology learning crystallized.
+**Progress:** [████░░░░░░] 36%
 
-Phase: 4 of 11 (P3 — MEMORY.md curation + auto-dream guard)
+Phase: 5 of 11 (P4 — Kill legacy injection)
 Plan: 0 of TBD in current phase
-Status: Phase 3 complete; Phase 4 ready to plan
-Last activity: 2026-04-22 — P2 directive detector shipped (partial-B)
+Status: Phase 4 complete; Phase 5 ready to plan
+Last activity: 2026-04-26 — P3 MEMORY.md curation + auto-dream guard closed
 
-Progress: [███░░░░░░░] 27%
+Progress: [████░░░░░░] 36%
 
 ## Accumulated Context
 
@@ -38,19 +38,38 @@ Decisions are logged in PROJECT.md Key Decisions table. Summary of locked decisi
 
 ### Pending Todos
 
-- Human review of `project_curated_context` entries flagged `status='stale'` during the P1 migration dry-run. Known-stale keyword markers: `Gemma 4 31B`, `llama-server:8081`, `local llama-server` (all superseded by session 50's swap to Ollama Cloud `glm-5.1:cloud`).
+- (None blocking Phase 5. `project_curated_context` stale-flagging completed during P1 migration — 9 mental_model rows flagged `status='stale'` per stale-review.md. Human review was a P0 deliverable per Phase 2 SUMMARY.)
 
 ### Blockers/Concerns
 
-- P4 is the high-risk benchmark gate — if LoCoMo drops >2pp after removing injection sections, the pull-based model isn't strong enough and MEMORY.md curation must improve before re-attempt
-- P6.5 is a deterministic gate on RL deletion; if flagged LoCoMo drops >2pp, v4 scope must adjust (keep RL or redesign scoring)
-- Stale `project_curated_context` entries carry claims contradicting current state — migration must flag, not silently carry forward
+- **Phase 5 (P4) is the first hard within-2pp LoCoMo gate.** If injection deletion drops LoCoMo >2pp, the fallback ladder (L1..L4 in ROADMAP) kicks in before any revert. L1: raise UPS budget; L2: keep Entity Summaries section; L3: dual-inject diagnostic; L4: full revert + MEMORY.md curation improvement required.
+- **BENCH-09 gate activates in Phase 5.** Baseline median=1 claudex_search call/non-trivial session (n=122). If post-P4 median drops below 1, the agent went amnesic rather than switching to pull-mode — fails the "thinks again" thesis even if benchmarks pass.
+- **Phase 6.5 RL ablation gate still pending.** If RL stack is load-bearing for LoCoMo (flagged-LoCoMo drop >2pp), scope adjustment needed — either keep the RL stack or redesign with a simpler learned signal.
 
 ## Session Continuity
 
-Last session: 2026-04-22
-Stopped at: Phase 3 (P2) complete — partial-ship B at joint=0.50
-Resume file: .planning/ROADMAP.md (Phase 4 — P3 MEMORY.md curation + auto-dream guard ready to plan)
+Last session: 2026-04-26
+Stopped at: Phase 4 closed; Phase 5 ready to plan
+Resume file: .planning/ROADMAP.md (Phase 5 — P4 Kill legacy injection)
+
+### Phase 4 (P3) completion notes — 2026-04-26
+
+**Phase 4 (P3 — MEMORY.md curation + auto-dream guard) closed 2026-04-26.**
+
+All gates PASS: LongMemEval 89.6% (floor ≥88%), LoCoMo 62.3% new anchor (+6.8pp over pre-migration 55.5%), soak 8/8 PASS, test suite 2577/2597 (20 pre-existing llama-server-supervisor failures unchanged), BENCH-09 baseline captured at median=1.
+
+**Three inline bugfixes shipped alongside the four planned delivery plans:**
+- 04-06: Angel resilience hardening — `stdio:'ignore'` child spawns caused silent heartbeat crashes; MEMORY.md was never written because the heartbeat phase died without trace.
+- 04-07: V17 migration idempotency — `initializeSchema` ran V16-era DDL on post-V17 DBs, causing SQLite to throw on `CREATE INDEX ... ON <view>`; 3.5 days of hook data lost before diagnosis.
+- 04-08: memory-md-writer project ID resolution — `computeMemoryMdPath` skipped `resolveProjectPath`, producing wrong slugs on Windows; CLAUDEXv3 MEMORY.md was 17 days stale; zero projects had received a valid MEMORY.md.
+
+All three failures passed the full static test suite. All three were caught by the live-fire / soak protocol.
+
+**Methodology learning established:** Static tests are necessary but not sufficient for writer/processor components that produce side effects. Any plan that ships such a component must include a live-fire verification step as a blocking acceptance gate. The `verify-soak.cjs` verifier is the template.
+
+**BENCH-09 baseline:** median=1 claudex_search call per non-trivial session, n=122 sessions over 30 days. Floor for Phase 5 gate.
+
+**Phase 5 (P4 — Kill legacy injection)** is next. It is the highest-risk phase of v4. Start with `/gsd:plan-phase 5`. Read ROADMAP.md Phase 5 success criteria and the L1..L4 fallback ladder before writing the PLAN. Confirm DB backup (STOR-08) before any assembler commits.
 
 ### Phase 3 (P2) completion notes — 2026-04-22
 

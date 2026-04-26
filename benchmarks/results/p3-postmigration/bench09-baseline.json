@@ -1,0 +1,18 @@
+{
+  "schema": "claudex/bench-09-baseline/v1",
+  "captured_at": "2026-04-26T00:00:00Z",
+  "captured_by": "Phase 4 close (plan 04-05-06)",
+  "data_window_days": 30,
+  "non_trivial_session_threshold": "≥10 user_framing events",
+  "n_sessions": 122,
+  "claudex_search_calls_per_session": {
+    "median": 1,
+    "p25": 1,
+    "p75": 1,
+    "mean": 2.3
+  },
+  "post_v4_floor": 1,
+  "post_v4_target": 2,
+  "methodology_notes": "claudex_search calls counted as DISTINCT query_text values per session in retrieval_events table. Each row in retrieval_events represents one retrieved artifact; DISTINCT query_text gives the true search-invocation count. Sessions with no retrieval_events rows (n=17/122, 14%) are included as 0. The session-start hybrid-retrieval pipeline also writes to retrieval_events, but those entries share query_text with the MCP surface — DISTINCT collapse means automatic deduplication. The heavy-tailed distribution (max=56, mean=2.3, median=1) reflects that most context is injected pre-v4; the agent rarely needs to search. The 56-call outlier session is a deep research session where the agent explicitly queried for patterns repeatedly.",
+  "notes": "Baseline measures v3 behavior — agent rarely searches because most context is injected. Phase 5 (P4 injection deletion) is expected to drive this UP. If post-P4 median < baseline (< 1), the agent went amnesic instead of switching to pull. See REQUIREMENTS.md BENCH-09. post_v4_floor=1 (= baseline median), post_v4_target=2 (= 2× baseline median). Distribution: 17 sessions at 0, 70 sessions at exactly 1, 12 sessions at 2-3, 23 sessions at 4+."
+}
