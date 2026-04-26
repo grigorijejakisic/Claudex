@@ -534,4 +534,32 @@ describe('Angel heartbeat — Phase 5b Session-completion artifact curation', ()
     expect((tick2.chunks_created ?? 0)).toBeGreaterThanOrEqual(1);
     expect(tick2.memory_md_written).toBeGreaterThanOrEqual(1);
   });
+
+  // --------------------------------------------------------------------------
+  // Plan 04-08-03 — memory_curation_no_project_dir telemetry counter
+  // --------------------------------------------------------------------------
+
+  it('04-08-03: no_project_dir increments memory_curation_no_project_dir, not errors', async () => {
+    seedSession(db, SESSION_A, PROJECT_1);
+    seedTurns(db, SESSION_A, PROJECT_1, 4);
+    seedEntities(db, PROJECT_1, [{ ref: 'e1', summary: 's' }]);
+    enqueueCuration(db, SESSION_A, PROJECT_1);
+
+    // Make the curator return no_project_dir by making the mock return that reason.
+    mockCurator.mockImplementation(() => ({
+      path: '/tmp/no-such-dir/MEMORY.md',
+      written: false,
+      reason: 'no_project_dir' as const,
+    }));
+
+    const tick = await heartbeatTick(mkCtx(db));
+
+    // no_project_dir must increment its own counter, NOT memory_curation_errors.
+    expect(tick.memory_curation_no_project_dir).toBe(1);
+    expect(tick.memory_curation_errors ?? 0).toBe(0);
+    expect(tick.memory_md_written ?? 0).toBe(0);
+
+    // Pending row still marked done (no_project_dir is whitelisted by design).
+    expect(countDoneEvents(db)).toBe(1);
+  });
 });

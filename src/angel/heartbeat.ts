@@ -115,6 +115,7 @@ export interface TickResult {
   // Phase 5b: Session-completion artifact curation (P3, plan 04-04)
   chunks_created?: number;
   memory_md_written?: number;
+  memory_curation_no_project_dir?: number;
   memory_curation_errors?: number;
   // Local Intelligence Amplifier
   services_down?: string[];
@@ -479,7 +480,9 @@ export async function heartbeatTick(ctx: HeartbeatContext): Promise<TickResult> 
             const mr = curateMemoryMd(ctx.db, p.project);
             if (mr.written) {
               result.memory_md_written = (result.memory_md_written ?? 0) + 1;
-            } else if (mr.reason !== 'idempotent_noop' && mr.reason !== 'no_project_dir') {
+            } else if (mr.reason === 'no_project_dir') {
+              result.memory_curation_no_project_dir = (result.memory_curation_no_project_dir ?? 0) + 1;
+            } else if (mr.reason !== 'idempotent_noop') {
               result.memory_curation_errors = (result.memory_curation_errors ?? 0) + 1;
             }
             curatedProjects.add(p.project);
