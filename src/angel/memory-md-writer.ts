@@ -84,11 +84,29 @@ export interface CurationResult {
 
 /**
  * Compute the target MEMORY.md path for a given project identifier.
- * `project` may already be a resolved filesystem path (slugged) or a logical
- * project ID — we only translate through `pathToCcSlug` when it looks like a
- * full path (contains separators or drive colons).
+ *
+ * Resolution chain:
+ *   1. Try `resolveProjectPath(project)` — looks up the Claudex project
+ *      registry (`~/.claudex/projects.json`) and, if necessary, scans
+ *      `~/Desktop/Projects/` for a directory whose derived ID matches.
+ *      If a filesystem path is returned, convert it to a CC slug via
+ *      `pathToCcSlug` and build the `~/.claude/projects/<slug>/memory/MEMORY.md`
+ *      path. This is the normal production path for Claudex project IDs like
+ *      `claudex-v3` or `soak-test-p4b-1df6c0f2`.
+ *   2. Fallback: if `resolveProjectPath` returns null (unregistered project or
+ *      test fixture), apply the legacy heuristic — use `pathToCcSlug` only when
+ *      `project` contains path separators or drive colons, otherwise use it
+ *      verbatim. This preserves behaviour for path-shaped inputs (e.g. some
+ *      older callers that pass a resolved FS path directly) and for test
+ *      fixtures that deliberately do not register a project.
  */
 export function computeMemoryMdPath(project: string): string {
+  // First try to resolve as a Claudex project ID → filesystem path → CC slug
+  const projectPath = resolveProjectPath(project);
+  if (projectPath) {
+    return path.join(os.homedir(), '.claude', 'projects', pathToCcSlug(projectPath), 'memory', 'MEMORY.md');
+  }
+  // Fallback: input might already be a path (e.g., test fixtures, edge cases)
   const slug = /[\\/:]/.test(project) ? pathToCcSlug(project) : project;
   return path.join(os.homedir(), '.claude', 'projects', slug, 'memory', 'MEMORY.md');
 }

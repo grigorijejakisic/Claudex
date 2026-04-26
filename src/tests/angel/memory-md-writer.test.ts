@@ -17,6 +17,7 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import { initializeSchema } from '../../core/migrations.js';
+import { pathToCcSlug } from '../../shared/cc-slug.js';
 
 import {
   curateMemoryMd,
@@ -589,10 +590,15 @@ describe('curateMemoryMd — CRLF normalization', () => {
       JSON.stringify({ schema: 'claudex/project-registry', version: 1, projects: { LineEnds: { path: projDir } } }),
     );
 
-    ensureMemoryDir('LineEnds');
+    // With the project-ID resolution fix, computeMemoryMdPath('LineEnds') now
+    // resolves 'LineEnds' → projDir → pathToCcSlug(projDir). We must create
+    // the memory dir at that resolved slug, not the raw 'LineEnds' slug.
+    const resolvedMemDir = path.join(tmpHome, '.claude', 'projects', pathToCcSlug(projDir), 'memory');
+    fs.mkdirSync(resolvedMemDir, { recursive: true });
+
     const result = curateMemoryMd(db, 'LineEnds');
     expect(result.written).toBe(true);
-    const raw = fs.readFileSync(memoryMdPathFor('LineEnds'));
+    const raw = fs.readFileSync(path.join(resolvedMemDir, 'MEMORY.md'));
     expect(raw.includes(0x0d)).toBe(false); // no CR anywhere
   });
 });
@@ -612,5 +618,76 @@ describe('helpers', () => {
     expect(HOW_TO_QUERY_STATIC).toContain('claudex_events');
     expect(HOW_TO_QUERY_STATIC).toContain('claudex_recall');
     expect(HOW_TO_QUERY_STATIC).toContain('~/.claude/CLAUDE.md');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 04-08-02: computeMemoryMdPath project-ID resolution fix
+// ---------------------------------------------------------------------------
+
+describe('computeMemoryMdPath — project-ID resolution (04-08-02)', () => {
+  /**
+   * Register a synthetic project in the temp HOME's projects.json so that
+   * resolveProjectPath returns the given fsPath for the given projectId.
+   */
+  function registerProject(projectId: string, fsPath: string): void {
+    const claudexDir = path.join(tmpHome, '.claudex');
+    fs.mkdirSync(claudexDir, { recursive: true });
+    fs.writeFileSync(
+      path.join(claudexDir, 'projects.json'),
+      JSON.stringify({
+        schema: 'claudex/project-registry',
+        version: 1,
+        projects: {
+          [projectId]: { path: fsPath, created: '2026-01-01', status: 'active' },
+        },
+      }),
+    );
+  }
+
+  it('registered project ID resolves to CC slug, not raw project ID', () => {
+    // Simulate: project ID "claudex-v3" maps to a Windows-style absolute path.
+    // The CC slug for that path (via pathToCcSlug) must appear in the result —
+    // NOT the raw project ID "claudex-v3".
+    const fakeProjectPath = path.join(tmpHome, 'Desktop', 'Projects', 'CLAUDEXv3');
+    registerProject('claudex-v3', fakeProjectPath);
+
+    const result = computeMemoryMdPath('claudex-v3');
+
+    // The resolved path must NOT use 'claudex-v3' as the slug directly
+    // (that's the broken old behavior).
+    // Check: the path must not contain '.claude/projects/claudex-v3/'
+    const badSlugSegment = path.join('.claude', 'projects', 'claudex-v3', 'memory', 'MEMORY.md');
+    expect(result).not.toContain(badSlugSegment);
+
+    // The result must end with the correct MEMORY.md tail.
+    expect(result.endsWith(path.join('memory', 'MEMORY.md'))).toBe(true);
+
+    // The slug portion must contain 'CLAUDEXv3' (derived from the project path
+    // via pathToCcSlug, which replaces separators/colons with dashes but keeps
+    // alphanumeric chars and tildes intact).
+    expect(result).toContain('CLAUDEXv3');
+  });
+
+  it('path-shaped input (contains separator) falls through to pathToCcSlug without registry lookup', () => {
+    // No projects.json registered — resolveProjectPath returns null for a
+    // path-shaped string. The heuristic must still apply pathToCcSlug.
+    const pathInput = '/home/user/projects/MyApp';
+    const result = computeMemoryMdPath(pathInput);
+    expect(result.endsWith(path.join('memory', 'MEMORY.md'))).toBe(true);
+    // No separator-containing segment in the slug portion
+    const parts = result.split(path.sep);
+    const projectsIdx = parts.lastIndexOf('.claude') + 2;
+    const slugInPath = parts[projectsIdx];
+    expect(slugInPath).not.toContain('/');
+    expect(slugInPath).not.toContain('\\');
+  });
+
+  it('unresolvable project ID falls back to raw-ID slug (old behavior preserved)', () => {
+    // No projects.json, no matching Desktop/Projects scan entry.
+    // resolveProjectPath returns null → falls back to using the ID verbatim.
+    const unknownId = 'some-unknown-project-id';
+    const result = computeMemoryMdPath(unknownId);
+    expect(result).toContain(path.join('.claude', 'projects', unknownId, 'memory', 'MEMORY.md'));
   });
 });
