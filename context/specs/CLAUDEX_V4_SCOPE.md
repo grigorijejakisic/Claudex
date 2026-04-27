@@ -298,3 +298,71 @@ Use `/auto-orchestrate` to run P1–P9 end-to-end. Within phases that decompose 
 **Commander's intent for spawned agents:** Memory must stop acting like rules. Every decision — schema shape, injection content, framing, extraction boundaries — serves that goal. When in doubt, choose advisory over imperative, pull over push, one substrate over many.
 
 — Crux (session 51), ratified by Grigorije.
+
+---
+
+## 2026-04-27 Corrigendum — audit-driven rebind
+
+**Status:** This original 2026-04-19 spec is preserved verbatim above for historical record. **Current authoritative state lives in `.planning/PROJECT.md`, `.planning/ROADMAP.md`, `.planning/REQUIREMENTS.md`** and the rebind proposal at `.planning/audits/2026-04-27-v4-proposal.md`. On any conflict, the planning docs win.
+
+### What the audit found (2026-04-27)
+
+A trajectory audit triggered mid-Phase-5 planning surfaced three load-bearing problems that this original spec missed:
+
+1. **Phase 5 gates as written cannot mechanically be moved by Phase 5 changes.** LongMemEval harness (`src/benchmark/longmemeval-harness.ts:212`) uses a bespoke local `retrieveContext` and does not call `assembleFullContext`. LoCoMo harness skips `assembleFullContext` and session-start entirely. Phase 5 deletes 9 sections in `assembler.ts` — the gates can't see the change.
+2. **BENCH-09 ("agent thinks again") is doubly contaminated.** Its data writer (`retrieval_events` via `assembler.ts:607,:1021`) is the very code Phase 5 deletes — metric mechanically drops regardless of behavior. AND the threshold (`≥10 user_framing/session`) is mathematically impossible because `recordUserFraming` caps at 3 (`lifecycle.ts:978`, added 2026-03-21, predates baseline).
+3. **Phase 4 (MEMORY.md curation) shipped with visible content regressions** while reporting PASS on benchmarks that don't read MEMORY.md. Live evidence at session start of audit: `entity:-` (literal quote as entity), `entity:--2--1` (shell redirect as entity), 50% of `## Recent Threads` are session-IDs as topics, duplicate `<!-- USER EDITABLE -->` markers, writer reach 2/5 active projects (pre 04-08 fix). Three inline bugfixes (04-06, 04-07, 04-08) all hit the "static tests passed but live was broken" pattern — methodology learning for v4 cross-cutting principle 5.
+
+The user reframed: *"why is benchmarking such a big part of this? Are we chasing benchmarks or are we chasing actual quality?"* And again: *"I want your in-session thinking to be enriched by real experiences and not just be there to retrieve context when I tell you to!"*
+
+### What changed in the rebind
+
+The v4 thesis ("memory stops acting like rules") is unchanged. The way it's pursued changed substantially:
+
+| | Original (2026-04-19) | Rebind (2026-04-27) |
+|---|---|---|
+| **Goal sentence** | "memory stops acting like rules; agent thinks again, pulls curated artifacts on demand" | "agent USES Claudex organically as part of how it works in Claude Code — memory tools used like Read/Grep, natural extensions of reasoning" (verb, not vibe) |
+| **Primary gates** | LongMemEval ≥88% floor, LoCoMo ≥70% target, BENCH-09 ≥2× baseline | **SC#1 Vesna ≥80%** (behavioral), **SC#2 ≤500 token cache-stable** (structural), **SC#3 MEMORY.md content-quality ≥80%** (mechanical), **SC#4 one-turn handoff pickup** (continuity) |
+| **Benchmark role** | Hard gates per phase | **Dropped entirely.** Not gates, not floors, not sanity. Harness on disk; one-shot at v4 ship for archival record only. |
+| **MEMORY.md schema** | `## Entities` (≤15) + `## Active Projects` (≤5) + `## Recent Threads` (≤5) + `## Handoff` (≤1) + `## How to Query` (≤1) | Drop Entities (frequency-extraction noise) + Recent Threads (50% session-IDs as topics). **Add `## Lessons`** (curated, task-pattern indexed — the surface organic recall reaches when framing similar work). Promote `## User Notes` (user-authored verbatim). |
+| **Phase count** | 11 | 16 (added 4.1, 5.5, 6.5, 7.5, 8.5; promoted Vesna to Phase 10; merged Phase 3 with Phase 10 as one shippable unit) |
+| **Phase 3 ship criterion** | Detector precision; "no injection-path changes" framed as virtue | Writer ships with consumer (PreToolUse hook); production consumer count > 0 verifiable. Cross-cutting principle: writers ship with consumers. |
+| **Phase 4 status** | Complete | `[~]` Partial-corrective-pending — Phase 4.1 supersedes |
+| **Phase 9 deletions** | "Cumulative -3000 to -4000 LOC reduction" framed as cognitive simplification | T6 verified all consumers are in `assembler.ts` (Phase 5 deletion target). Reframed as **dead-infrastructure cleanup**, not cognitive-capacity cut. |
+| **Cross-project recall** | Not addressed | New Phase 6.5 — task-pattern fingerprint matching across projects. Default-ON. The shadowban-from-Lacuna applies to investigate-another-backend mechanism. |
+| **Recall observability** | Not addressed | New Phase 8.5 — per-session retrieval log; visible token cost; agent narrates retrieval gaps; `/claudex-why` slash command |
+| **Curation feedback loop** | Not addressed | New Phase 5.5 — `pointer_recall_log`; auto-archive dead pointers; auto-promote high-recall pointers |
+| **Handoff format** | 372-line frontmatter-rigid schema | New Phase 7.5 — hybrid 2-line YAML status header + ADR-style body. ~15 lines target. |
+| **Vesna role** | Single-point smoke check (Phase 11) | Promoted to **Phase 10 central validation** — ~20 probes mined from real session histories, CI-gated, primary gate at every behaviorally-exposed phase boundary |
+| **Live-fire verification** | Phase 4 footnote | Cross-cutting principle 5: writers/processors that produce side effects must include live-fire verification as blocking acceptance gate |
+
+### Key decisions locked at rebind (Q5-Q12)
+
+| Q | Decision |
+|---|---|
+| Q5 | MEMORY.md schema redesign — drop Entities + Recent Threads; add Lessons; promote User Notes |
+| Q6 | Goal: agent USES Claudex organically (verb-centered, not vibe) |
+| Q7 | Success criteria SC#1-#4 replace benchmark gates |
+| Q8 | Benchmarks dropped entirely from v4 |
+| Q9 | Phase 3 + Phase 10 merge — directive detector ships with PreToolUse + lifecycle as one unit |
+| Q10 | Cross-project recall default-ON |
+| Q11 | Handoff format = hybrid YAML header + ADR body |
+| Q12 | Phase ordering: 4.1 first, then 5 |
+
+Full Key Decisions table maintained in `.planning/PROJECT.md` (rows Q1-Q12).
+
+### Why this corrigendum exists rather than rewriting the spec in place
+
+The original 2026-04-19 spec was authored by Crux + ratified by Grigorije. It captures a specific point in v4's design history. Rewriting it in place would lose that record — the original framing matters for understanding why the rebind happened (the spec wasn't wrong, the *gates were wrong*; benchmarks slipped from instruments into product values without anyone noticing).
+
+The planning artifacts (`PROJECT.md`, `ROADMAP.md`, `REQUIREMENTS.md`) are the working source of truth and have been rewritten in full. This file is the historical record + change log.
+
+### Pointer to evidence
+
+- Audit framework + T1+T2 evidence: `.planning/audits/2026-04-27-v4-trajectory-audit.md`
+- Locked rebind proposal (drives planning artifact rewrites): `.planning/audits/2026-04-27-v4-proposal.md`
+- Persistent rule (future sessions inherit): `feedback_benchmarks_are_sanity_not_gates.md` — *"benchmarks are not used. Period."*
+- Persistent goal definition: `project_organic_recall_definition.md` — *"agent USES Claudex organically; canonical example: shadowban"*
+
+— Audit synthesized in session 4844c48c, ratified by Grigorije via §1-§9 lock at 2026-04-27.
+
