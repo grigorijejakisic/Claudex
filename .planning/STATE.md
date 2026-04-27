@@ -13,16 +13,16 @@ See: .planning/PROJECT.md (updated 2026-04-19)
 **Current Phase Name:** P4 — Kill legacy injection
 **Total Phases:** 11
 **Current Plan:** 0
-**Total Plans in Phase:** TBD
-**Status:** Phase 4 complete (LongMemEval 89.6% PASS, LoCoMo 62.3% +6.8pp anchor, soak PASS 8/8 post-04-08-fix); Phase 5 (BIG benchmark gate) ready to plan
-**Last Activity:** 2026-04-26
-**Last Activity Description:** Phase 4 (P3) closed — MEMORY.md curation + auto-dream guard shipped with three inline bugfixes (04-06/07/08); BENCH-09 baseline captured at median N=1; static-vs-runtime methodology learning crystallized.
-**Progress:** [████░░░░░░] 36%
+**Total Plans in Phase:** TBD (replan pending audit)
+**Status:** **PAUSED 2026-04-27 pending v4 trajectory audit (phases 1-11).** Phase 5 discuss step ran but produced a CONTEXT.md whose decisions were superseded by mid-session findings; planning paused before plan-phase. See `context/handoffs/ACTIVE.md` and `.planning/audits/2026-04-27-v4-trajectory-audit.md`.
+**Last Activity:** 2026-04-27
+**Last Activity Description:** Phase 5 design discussion surfaced gating-story problems (LongMemEval/LoCoMo don't exercise the assembler; BENCH-09 metric contaminated; MEMORY.md content quality issues visible right now). User reframed: benchmarks are sanity, not gates. Audit of all 11 phases (shipped + planned) is the next session's main work.
+**Progress:** [████░░░░░░] 36% (un-banked — Phase 4 close validity is part of the audit)
 
-Phase: 5 of 11 (P4 — Kill legacy injection)
+Phase: 5 of 11 (P4 — Kill legacy injection — PAUSED for audit)
 Plan: 0 of TBD in current phase
-Status: Phase 4 complete; Phase 5 ready to plan
-Last activity: 2026-04-26 — P3 MEMORY.md curation + auto-dream guard closed
+Status: v4 trajectory audit pending (1-11)
+Last activity: 2026-04-27 — Phase 5 planning paused; audit framework + handoff written
 
 Progress: [████░░░░░░] 36%
 
@@ -42,15 +42,21 @@ Decisions are logged in PROJECT.md Key Decisions table. Summary of locked decisi
 
 ### Blockers/Concerns
 
-- **Phase 5 (P4) is the first hard within-2pp LoCoMo gate.** If injection deletion drops LoCoMo >2pp, the fallback ladder (L1..L4 in ROADMAP) kicks in before any revert. L1: raise UPS budget; L2: keep Entity Summaries section; L3: dual-inject diagnostic; L4: full revert + MEMORY.md curation improvement required.
-- **BENCH-09 gate activates in Phase 5.** Baseline median=1 claudex_search call/non-trivial session (n=122). If post-P4 median drops below 1, the agent went amnesic rather than switching to pull-mode — fails the "thinks again" thesis even if benchmarks pass.
-- **Phase 6.5 RL ablation gate still pending.** If RL stack is load-bearing for LoCoMo (flagged-LoCoMo drop >2pp), scope adjustment needed — either keep the RL stack or redesign with a simpler learned signal.
+**AUDIT PENDING — these supersede prior Phase 5 concerns until audit closes:**
+
+- **Phase 4 MEMORY.md content quality is junk in the live system right now.** `entity:-` (literal `"` quote as entity), `entity:--2--1` (shell redirect `" 2>&1` as entity), `Recent Threads` with topic = session ID, stale Handoff section (was 17 days stale until session 2026-04-27 noticed), duplicated `<!-- USER EDITABLE -->` markers. Phase 4 reported PASS on benchmarks that don't actually test MEMORY.md. Cannot rely on MEMORY.md as Phase 5's replacement context surface until content quality is fixed.
+- **Benchmarks don't measure assembler changes.** Verified by codex grep: LongMemEval (`src/benchmark/longmemeval-harness.ts:212`) uses bespoke `retrieveContext`, not production retrieval. LoCoMo calls `hybridSearchAsync` but bypasses `assembleFullContext`. Phase 5's ROADMAP gates are wrong-fit; the L1..L4 ladder triggers on metrics that can't move.
+- **BENCH-09 metric is contaminated.** `retrieval_events` is written by assembly-time materialization in `src/assembly/assembler.ts:607` and `:1021`. Phase 5 deletion mechanically drops the metric. Plus: baseline threshold `≥10 user_framing events` is mathematically impossible because `recordUserFraming` caps at 3/session.
+- **Phase 3 directive_rule artifact consumers may be deleted by Phase 5.** Phase 3 ships outputs that feed Experience Warnings and Curated Context (both Phase 5 deletion targets). Need to verify what reads `directive_rule` post-Phase 5 before deletion lands.
+- **Phase 9 cognitive-layer deletion (-3 to -4k LOC) is a leap of faith.** Deletes CARA, dream consolidation, skill crystallization, etc. Without quality audit of what they currently produce, deletion premature.
+- **Phase 11 LoCoMo growth path (62.3% → 70%+ target) is unspecified.** Roadmap doesn't say which phases drive the +8pp growth. Math may not reach target.
 
 ## Session Continuity
 
-Last session: 2026-04-26
-Stopped at: Phase 4 closed; Phase 5 ready to plan
-Resume file: .planning/ROADMAP.md (Phase 5 — P4 Kill legacy injection)
+Last session: 2026-04-27 (e0d0a138)
+Stopped at: Phase 5 planning paused; v4 audit framework written.
+Resume file: `context/handoffs/ACTIVE.md` (rewritten 2026-04-27).
+Audit evidence: `.planning/audits/2026-04-27-v4-trajectory-audit.md`.
 
 ### Phase 4 (P3) completion notes — 2026-04-26
 
