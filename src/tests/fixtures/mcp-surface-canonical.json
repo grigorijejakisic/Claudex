@@ -1,0 +1,25 @@
+{
+  "_capturedAt": "2026-04-29",
+  "_source": "src/mcp/recall-server.ts at Phase 5.5 close (commit 4700ccd) — pre-Phase-6.",
+  "_purpose": "Canonical key shapes for the five MCP tools listed in CONTEXT.md (RETR-04). Phase 6 deletions must not change these key sets. Test phase-6-mcp-surface-unchanged.test.ts asserts each shape is still present in the source.",
+  "claudex_search": {
+    "ok": ["results", "total", "has_more"],
+    "error": ["error"],
+    "_resultElement": ["id", "type", "summary", "provenance", "importance", "project", "source", "score"]
+  },
+  "claudex_recall": {
+    "ok": ["id", "type", "summary", "content", "provenance", "project", "importance"],
+    "error": ["error"]
+  },
+  "claudex_store": {
+    "_storedDecisionLearning": ["stored", "type", "project", "agent_id"],
+    "_storedWithTopicKey": ["stored", "type", "project", "topic_key", "upserted"],
+    "error": ["error"]
+  },
+  "claudex_events": {
+    "_returnsArrayOrObject": "Returns either an events array or a session-events array; not a structured envelope. Lock-down test asserts the registration name still exists in the source."
+  },
+  "claudex_message": {
+    "_purpose": "Cross-session messaging. Lock-down test asserts the registration name is still present and the handler is still defined."
+  }
+}
