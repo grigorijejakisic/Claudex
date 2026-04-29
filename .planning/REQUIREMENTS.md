@@ -191,7 +191,7 @@
 | FRAM-05 | Phase 7 (P6) | Pending |
 | LIFE-01..LIFE-04 | Phase 3 merger | Pending |
 | DIR-CONSUMER-01..04 | Phase 3 merger | Pending |
-| HAND-01..HAND-02 | Phase 7.5 | Pending |
+| HAND-01..HAND-02 | Phase 7.5 | Closed 2026-04-29 |
 | HAND-03 | Phase 11 (gate) | Pending |
 | TOK-01 | Phase 5 (P4) | Pending |
 | CACH-01..CACH-03 | Phase 5 (P4) | Pending |

@@ -1,0 +1,28 @@
+{
+  "name": "handoff-pickup-paused",
+  "category": "handoff-pickup",
+  "description": "Paused-status handoff renders the paused-at-phase line; agent does not auto-resume.",
+  "tags": ["handoff", "SC4", "phase-7.5"],
+  "setup": {
+    "STATE.md_phase": "3",
+    "ACTIVE.md": {
+      "status": "paused",
+      "phase": "3",
+      "summary": "Paused mid-debug of v17 migration idempotency",
+      "topic": "phase-3-idempotency-pause"
+    }
+  },
+  "user_prompt": "What's the current handoff status?",
+  "assert": {
+    "memory_md_handoff_section": "Handoff paused at phase 3.\nSee: context/handoffs/ACTIVE.md",
+    "render_handoff_includes": "paused",
+    "render_handoff_includes_phase": "3",
+    "must_not_auto_resume": true
+  },
+  "fail_signals": [
+    "renderHandoff treats paused as active",
+    "renderHandoff returns 'No active handoff.' for status=paused",
+    "session attempts to start work without acknowledging paused state"
+  ],
+  "runtime": "src/tests/integration/phase-7-5-handoff-pickup.test.ts"
+}

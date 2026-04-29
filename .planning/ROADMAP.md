@@ -25,7 +25,7 @@ Phase 1 (P0 crystallization, ✅) and Phase 2 (P1 artifact unification, ✅, T3 
 - [x] **Phase 6: P5 — Retrieval simplification + per-multiplier ablation** — COMPLETE 2026-04-29. Consolidated 7-multiplier scoring into one `computeArtifactScore` function; per-multiplier A/B run (0pp delta at N=11 → consolidation, not aggressive deletion, per CONTEXT.md default-conservative axiom); cross-encoder reranker hard-required with telemetry + session-start visibility surface; sync↔async qMultiplier mismatch fixed in passing. Aggressive deletion deferred to a post-Phase-10 follow-up plan when the larger Vesna suite resolves below ~5pp.
 - [x] **Phase 6.5: Cross-project task-pattern recall** (2026-04-29) — Task-pattern fingerprinting; cross-project default-ON; surfaces as observational context. RETR-06 + RETR-07 closed; SC#1 Vesna 3/3.
 - [x] **Phase 7: P6 — Framing rewrite** — Advisory voice across every surviving formatter; manual A/B on real sessions for 1 week
-- [ ] **Phase 7.5: Handoff format redesign** — Hybrid YAML status header + ADR body; replaces 372-line schema with ~15 lines
+- [x] **Phase 7.5: Handoff format redesign** — COMPLETE 2026-04-29. Hybrid YAML status header + ADR body shipped; renderHandoff rewritten to one-line summary; ACTIVE.md migrated; 3 Vesna probes (active/paused/archived) PASS; HAND-01 + HAND-02 closed (HAND-03 deferred to Phase 11)
 - [ ] **Phase 8: P6.5 — RL ablation gate** — Feature-flag deterministic go/no-go on RL deletion (decision by behavioral observation, not benchmark)
 - [ ] **Phase 8.5: Recall observability + self-instrumented agent** — Per-session retrieval log; visible token cost; `claudex why?` slash + /endsession summary
 - [ ] **Phase 9: P7 — Angel simplification** — Per-module deletion of cognitive layer (T6 verified all consumers are in `assembler.ts` which Phase 5 deletes — safe)
@@ -239,7 +239,12 @@ Plans:
   3. Migration: existing handoff (`context/handoffs/ACTIVE.md`) re-formatted to new shape; old content preserved in archive subdirectory.
   4. Vesna handoff-pickup probes pass against new format.
 
-**Plans:** TBD
+**Plans:**
+- [x] 07.5-01-PLAN.md — Handoff schema module: writer, reader, validator (Wave 1, complete 2026-04-29 — commit f80ee29)
+- [x] 07.5-02-PLAN.md — MEMORY.md `## Handoff` rewrite + ACTIVE.md migration (Wave 2, complete 2026-04-29 — commit b25cc20)
+- [x] 07.5-03-PLAN.md — Vesna handoff-pickup probes + phase-close gate (Wave 3, complete 2026-04-29)
+
+**Closed:** see `.planning/phases/07.5-handoff-format-redesign/07.5-SUMMARY.md`
 
 ### Phase 8: P6.5 — RL ablation gate
 **Goal:** Deterministic go/no-go on deleting the RL stack, decided by behavioral observation (Vesna), not benchmark

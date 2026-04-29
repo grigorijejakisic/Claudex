@@ -6,24 +6,24 @@ See: .planning/PROJECT.md (updated 2026-04-27)
 
 **Core value:** v4 makes the agent USE Claudex organically as part of how it works in Claude Code. Memory tools (`claudex_search`, `claudex_recall`, `claudex_events`) are reached for the same way `Read` or `Grep` are used — natural extensions of reasoning, not a separate "fetch context" step that has to be remembered.
 
-**Current focus:** Phase 7 STRUCTURALLY COMPLETE 2026-04-29. End-of-week behavioral A/B verdict due 2026-05-06. Phase 7.5 (handoff format redesign) unblocked.
+**Current focus:** Phase 7.5 COMPLETE 2026-04-29. HAND-01 + HAND-02 closed; HAND-03 deferred to Phase 11. Phase 8 (RL ablation gate) unblocked. End-of-week Phase 7 behavioral A/B verdict still due 2026-05-06.
 
 ## Current Position
 
-**Current Phase:** 7 (COMPLETE structural; A/B verdict pending)
-**Current Phase Name:** P6 — Framing rewrite (advisory voice)
+**Current Phase:** 8
+**Current Phase Name:** P6.5 — RL ablation gate
 **Total Phases:** 16
-**Current Plan:** 3
-**Total Plans in Phase:** 3
-**Status:** **PHASE 7 STRUCTURALLY COMPLETE 2026-04-29.** All 3 plans landed across 3 waves. Three formatters in `src/assembly/sections.ts` rewritten to advisory voice (`formatProvenPrinciplesSection`, `renderExperienceWarnings`, `formatPressureResponse`). `<experience-data>` wrap + framing preamble retained verbatim per FRAM-03. SC#1 Vesna gate: 8/8 probes pass (FRAM-04 + 6.5 cross-project re-run, no retrieval regression). Behavioral A/B scaffold committed in `07-BEHAVIORAL-AB.md` with pre-merge baseline filled in; end-of-week subjective verdict due 2026-05-06, signed by user. FRAM-01..FRAM-04 closed.
+**Current Plan:** 0 (planning not yet started)
+**Total Plans in Phase:** TBD
+**Status:** **PHASE 7.5 COMPLETE 2026-04-29.** Hybrid YAML+ADR handoff schema shipped (status, phase + optional summary/topic/created_at_epoch_ms). `src/angel/handoff-writer.ts` exports writer/parser/validator/renderer; `src/angel/memory-md-writer.ts:renderHandoff` rewritten to consume parsed YAML and emit one-line summary (never body). `distillHandoffBody` + `MAX_HANDOFF_LINES` deleted (~50 LOC). Live `context/handoffs/ACTIVE.md` migrated; pre-migration verbatim copy archived. 3 Vesna probes (active/paused/archived) PASS. Phase 6.5 + Phase 7 baselines unchanged: 20/20 cross-phase probes still PASS. SC#4 prime contract preserved (`summary:` field present). CACH-01 invariance verified 3× consecutive. HAND-01 + HAND-02 closed; HAND-03 (SC#4 enforcement gate) deferred to Phase 11.
 **Last Activity:** 2026-04-29
-**Last Activity Description:** Phase 7 shipped end-to-end across 3 waves. W1: imperative-voice purge in `src/assembly/sections.ts` (3 atomic commits, one per substantive task). W2: production no-imperative regex probe (`phase-7-advisory-voice.test.ts`, 11 cases) + Phase 6.5 cross-project Vesna gate re-run (4/4 PASS, zero retrieval regression) + `07-VESNA-RESULT.md`. W3: 1-week behavioral A/B scaffold (loose interpretation, no env-flag toggle) with pre-merge baseline notes filled in; STATE/ROADMAP/REQUIREMENTS updated; phase-close commit lands. Phase 7.5 (handoff format redesign) now unblocked.
+**Last Activity Description:** Phase 7.5 shipped end-to-end across 3 waves (strict serial; all touch handoff surface or consumers). W1 (Plan 01) — `src/angel/handoff-writer.ts` + 29 unit tests (atomic commit f80ee29). W2 (Plan 02) — `scripts/migrate-handoff.ts` + `renderHandoff` rewrite + ACTIVE.md migration + memory-md-writer test refresh + cache-stability gate verification 3× (atomic commit b25cc20). W3 (Plan 03) — 3 Vesna probe JSONs + runtime probe test (`phase-7-5-handoff-pickup.test.ts`, 5 tests) + STATE/ROADMAP/REQUIREMENTS update + 07.5-SUMMARY.md. Phase 8 (RL ablation gate) now unblocked per ROADMAP dependency chain.
 **Progress:** [██████████] 102%
 
-Phase: 7 of 16 (P6 — Framing rewrite advisory voice — COMPLETE structural; A/B verdict pending end-of-week)
-Plan: 3 of 3 in current phase
-Status: complete (structural); end-of-week verdict due 2026-05-06
-Last activity: 2026-04-29 — Phase 7 shipped end-to-end
+Phase: 8 of 16 (P6.5 — RL ablation gate)
+Plan: 0 of TBD in current phase
+Status: ready to plan
+Last activity: 2026-04-29 — Phase 7.5 shipped end-to-end
 
 Progress: [██████████░░░░░░] 50%
 

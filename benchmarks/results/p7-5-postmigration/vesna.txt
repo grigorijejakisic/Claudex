@@ -1,0 +1,12 @@
+
+[1m[7m[36m RUN [39m[27m[22m [36mv2.1.9 [39m[90mC:/Users/Grigorije/Desktop/Projects/CLAUDEXv3[39m
+
+ [32m✓[39m src/tests/integration/phase-7-advisory-voice.test.ts [2m([22m[2m11 tests[22m[2m)[22m[90m 14[2mms[22m[39m
+ [32m✓[39m src/tests/integration/phase-7-5-handoff-pickup.test.ts [2m([22m[2m5 tests[22m[2m)[22m[90m 16[2mms[22m[39m
+ [32m✓[39m src/tests/integration/phase-6-5-cross-project-vesna.test.ts [2m([22m[2m4 tests[22m[2m)[22m[90m 32[2mms[22m[39m
+
+[2m Test Files [22m [1m[32m3 passed[39m[22m[90m (3)[39m
+[2m      Tests [22m [1m[32m20 passed[39m[22m[90m (20)[39m
+[2m   Start at [22m 00:42:05
+[2m   Duration [22m 502ms[2m (transform 271ms, setup 0ms, collect 432ms, tests 62ms, environment 0ms, prepare 234ms)[22m
+

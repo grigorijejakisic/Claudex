@@ -1,0 +1,26 @@
+{
+  "name": "handoff-pickup-archived",
+  "category": "handoff-pickup",
+  "description": "Archived/missing handoff produces 'No active handoff'; agent does not invent one.",
+  "tags": ["handoff", "SC4", "phase-7.5"],
+  "setup": {
+    "STATE.md_phase": "5",
+    "ACTIVE.md": {
+      "status": "archived",
+      "phase": "0",
+      "summary": "(no active handoff)"
+    }
+  },
+  "user_prompt": "What's the current handoff status?",
+  "assert": {
+    "memory_md_handoff_section": "No active handoff.",
+    "render_handoff_equals": "## Handoff\n\nNo active handoff.\n",
+    "must_not_invent": true
+  },
+  "fail_signals": [
+    "renderHandoff returns active-style line for archived status",
+    "renderHandoff invents handoff content from elsewhere",
+    "agent starts exploratory grep/glob looking for handoff files"
+  ],
+  "runtime": "src/tests/integration/phase-7-5-handoff-pickup.test.ts"
+}
