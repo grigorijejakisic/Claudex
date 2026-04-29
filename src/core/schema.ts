@@ -867,3 +867,46 @@ CREATE INDEX IF NOT EXISTS idx_pointer_recall_session
 CREATE INDEX IF NOT EXISTS idx_pointer_recall_helpful
   ON pointer_recall_log(pointer_id, helpful_yn) WHERE helpful_yn = 1;
 `;
+
+/**
+ * V22: Phase 8.5 — Recall observability + self-instrumented agent.
+ *
+ * Two additive tables:
+ *   - retrieval_log: per-session log of every claudex_search / claudex_recall /
+ *     pointer_surface invocation, capturing query, top_k_results JSON, the
+ *     used_in_output heuristic flag, and a real cl100k_base token cost of the
+ *     content returned to the agent. Indexed on (session_id, invoked_at DESC).
+ *   - session_flag: per-session key/value flags (e.g., narration_silent) used
+ *     by Phase 8.5 toggles. session_signals has a CHECK constraint enum and
+ *     would reject a 'narration_silent' signal_type, so a small dedicated
+ *     table sidesteps the schema rebuild.
+ *
+ * Idempotent: all CREATE TABLE / CREATE INDEX guarded by IF NOT EXISTS.
+ */
+export const SCHEMA_V22 = `
+CREATE TABLE IF NOT EXISTS retrieval_log (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  session_id TEXT NOT NULL,
+  invoked_at_epoch_ms INTEGER NOT NULL,
+  surface TEXT NOT NULL CHECK (surface IN (
+    'claudex_search', 'claudex_recall', 'pointer_surface', 'mcp_other'
+  )),
+  query TEXT,
+  top_k_results TEXT NOT NULL DEFAULT '[]'
+    CHECK (json_valid(top_k_results)),
+  used_in_output INTEGER NOT NULL DEFAULT 0
+    CHECK (used_in_output IN (0, 1)),
+  token_cost INTEGER NOT NULL DEFAULT 0
+);
+
+CREATE INDEX IF NOT EXISTS idx_retrieval_log_session
+  ON retrieval_log(session_id, invoked_at_epoch_ms DESC);
+
+CREATE TABLE IF NOT EXISTS session_flag (
+  session_id TEXT NOT NULL,
+  flag_key TEXT NOT NULL,
+  flag_value TEXT NOT NULL DEFAULT '1',
+  set_at_epoch_ms INTEGER NOT NULL,
+  PRIMARY KEY (session_id, flag_key)
+);
+`;

@@ -16,7 +16,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { SCHEMA_VERSION } from '../shared/constants.js';
 import { getClaudexHome } from '../shared/paths.js';
-import { SCHEMA_V3, TELEMETRY_SCHEMA, TEAM_COORDINATION_SCHEMA, SHAPE_VOCABULARY_SCHEMA, POINTER_RECALL_SCHEMA, ARTIFACT_TASK_PATTERN_SCHEMA } from './schema.js';
+import { SCHEMA_V3, TELEMETRY_SCHEMA, TEAM_COORDINATION_SCHEMA, SHAPE_VOCABULARY_SCHEMA, POINTER_RECALL_SCHEMA, ARTIFACT_TASK_PATTERN_SCHEMA, SCHEMA_V22 } from './schema.js';
 import {
   hasTable,
   rebuildStaleFts5,
@@ -40,6 +40,7 @@ import {
   migrateV18toV19,
   migrateV19toV20,
   migrateV20toV21,
+  migrateV21toV22,
   migrateSchemaFixes,
   cleanupOrphanTables,
   upgradeV2SchemaInPlace,
@@ -85,7 +86,7 @@ export function runMigrations(db: Database): void {
   const row = db.pragma('user_version') as Array<{ user_version: number }>;
   let version = row[0]?.user_version ?? 0;
 
-  const TARGET_VERSION = 21;
+  const TARGET_VERSION = 22;
 
   if (version >= TARGET_VERSION) {
     // Still load sqlite-vec even if no migration is needed — the extension
@@ -116,6 +117,7 @@ export function runMigrations(db: Database): void {
     [18, () => migrateV18toV19(db)],
     [19, () => { migrateV19toV20(db); }],
     [20, () => { migrateV20toV21(db); }],
+    [21, () => { migrateV21toV22(db); }],
   ];
 
   // Handle special cases for version 0 and 1
@@ -208,6 +210,7 @@ export function initializeSchema(db: Database): void {
     db.exec(SHAPE_VOCABULARY_SCHEMA);
     db.exec(POINTER_RECALL_SCHEMA);
     db.exec(ARTIFACT_TASK_PATTERN_SCHEMA);
+    db.exec(SCHEMA_V22);
 
     // Rebuild FTS5 content index from observations table
     if (hasTable(db, 'observations') && hasTable(db, 'observations_fts')) {
@@ -233,6 +236,7 @@ export function initializeSchema(db: Database): void {
     db.exec(SHAPE_VOCABULARY_SCHEMA);
     db.exec(POINTER_RECALL_SCHEMA);
     db.exec(ARTIFACT_TASK_PATTERN_SCHEMA);
+    db.exec(SCHEMA_V22);
 
     // Phase 4.1: V18 raised TARGET_VERSION 16→18, so legacy partial-v2 DBs
     // (e.g., only `observations` exists at open time) now reach user_version=18
@@ -297,16 +301,11 @@ export function initializeSchema(db: Database): void {
   } else {
     db.prepare('INSERT OR IGNORE INTO schema_versions (version) VALUES (?)').run(SCHEMA_VERSION);
   }
-  // Do not demote a V21 (or newer) DB back to 21. The live DB's user_version
-  // is set by runMigrations; every hook re-open used to silently demote it,
-  // which would confuse any future `>= N` version gate. Phase 6.5 raises the
-  // ceiling 20→21 (artifact_task_pattern sidecar + V21 telemetry CHECK enum
-  // adding 'cross_project_ambiguous' and 'cross_project_query_expansion').
+  // Do not demote a V22 (or newer) DB. Phase 8.5 raises the ceiling 21→22
+  // (retrieval_log + session_flag tables; SCHEMA_V22 is fully idempotent).
   // Fresh DBs that took the early-return in runMigrations (no `observations`
-  // table) are stamped here after SCHEMA_V3 + V19 + V20 + V21 DDL run.
-  // TELEMETRY_SCHEMA + ARTIFACT_TASK_PATTERN_SCHEMA above already carry the
-  // V21 shape so a fresh stamp at 21 matches the live DDL.
-  if (currentUv < 21) db.pragma('user_version = 21');
+  // table) are stamped here after SCHEMA_V3 + V19 + V20 + V21 + V22 DDL run.
+  if (currentUv < 22) db.pragma('user_version = 22');
 }
 
 // ---------------------------------------------------------------------------

@@ -42,7 +42,7 @@ describe('curated-context', () => {
 
     it('bumps user_version to current TARGET_VERSION (21 after Phase 6.5)', () => {
       const row = db.pragma('user_version') as Array<{ user_version: number }>;
-      expect(row[0]?.user_version).toBe(21);
+      expect(row[0]?.user_version).toBe(22);
     });
 
     it('has idx_pcc_project_status index', () => {

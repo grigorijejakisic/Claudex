@@ -12,7 +12,7 @@ import { loadSqliteVec } from './sqlite-vec-loader.js';
 import { applyV17DDL } from './migration/v17-ddl.js';
 import { applyGeneratedDDL, generateViewsAndTriggers } from './migration/v17-triggers.js';
 import { KIND_MAPPING } from './migration/kind-mapping.js';
-import { SHAPE_VOCABULARY_SCHEMA, POINTER_RECALL_SCHEMA, TELEMETRY_SCHEMA, ARTIFACT_TASK_PATTERN_SCHEMA } from './schema.js';
+import { SHAPE_VOCABULARY_SCHEMA, POINTER_RECALL_SCHEMA, TELEMETRY_SCHEMA, ARTIFACT_TASK_PATTERN_SCHEMA, SCHEMA_V22 } from './schema.js';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -1631,4 +1631,29 @@ function telemetryAcceptsCrossProjectEnums(db: Database): boolean {
   if (!row?.sql) return false;
   return row.sql.includes("'cross_project_ambiguous'") &&
          row.sql.includes("'cross_project_query_expansion'");
+}
+
+/**
+ * V21→V22: Phase 8.5 — Recall observability + self-instrumented agent.
+ *
+ * Two additive tables:
+ *   1. retrieval_log: per-session log of MCP retrieval invocations
+ *      (claudex_search / claudex_recall / pointer_surface) with query,
+ *      top_k_results JSON, used_in_output flag, and cl100k_base token cost.
+ *   2. session_flag: per-session key/value flags (e.g., narration_silent)
+ *      so Phase 8.5 toggles avoid the session_signals enum CHECK.
+ *
+ * SCHEMA_V22 is fully `CREATE … IF NOT EXISTS`; this migration is just the
+ * `db.exec(SCHEMA_V22)` + version stamp. Returns true on success.
+ *
+ * Idempotent: existence guards in the DDL plus the user_version stamp.
+ */
+export function migrateV21toV22(db: Database): boolean {
+  // Idempotency: if both tables already exist, skip the exec but still
+  // advance the user_version stamp (caller handles stamping).
+  if (hasTable(db, 'retrieval_log') && hasTable(db, 'session_flag')) {
+    return true;
+  }
+  db.exec(SCHEMA_V22);
+  return true;
 }
