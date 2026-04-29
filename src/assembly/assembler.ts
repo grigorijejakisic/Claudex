@@ -287,19 +287,10 @@ export function assembleFullContext(params: FullAssemblyParams): InjectPayload {
         }
       }
 
-      // Priority 1.5: Experience pattern warnings
-      // Lightweight FTS5 query — fires on every full assembly.
-      // Side effects (trigger counts, flags) are deferred to applyEffects()
-      // and committed ONLY after the budget check passes.
-      const expWarnings = renderExperienceWarnings(
-        params.db, params.searchQuery ?? '', params.project, params.sessionId,
-      );
-      if (expWarnings && expWarnings.tokenCost <= budget) {
-        sections.push(expWarnings.section);
-        budget -= expWarnings.tokenCost;
-        sources.push('experience_warnings');
-        expWarnings.applyEffects(); // Side effects ONLY after budget check passes
-      }
+      // Priority 1.5: Experience pattern warnings auto-surface — REMOVED in
+      // Phase 5 Plan 05 (Tier C). renderExperienceWarnings + applyEffects
+      // remain callable; Plan 08 wires them to UPS explicit-query and
+      // PreToolUse path/command triggers (INJ-07 reactive surface).
 
       // Priority 2: Project context
       const project = formatProjectSection(params.projectDir);
