@@ -282,6 +282,9 @@ async function retrieveContext(
   const results = await hybridSearchAsync(db, query, project, {
     limit: topK,
     globalScope: false, // Stay within this conversation's project scope
+    // Stable benchmark session_id so any reranker-fallback rows during a
+    // LoCoMo run are attributable (Phase 6 P5 — RETR-08).
+    sessionId: `benchmark:locomo:${project}`,
   });
 
   return results.map(r => ({

@@ -18,6 +18,7 @@ import { estimateTokens } from '../shared/text-utils.js';
 import {
   formatIdentitySection,
   formatClaudexReadySection,
+  formatRerankerHealthSection,
   formatProvenPrinciplesSection,
   formatProjectSection,
   formatCheckpointSection,
@@ -285,6 +286,17 @@ export function assembleFullContext(params: FullAssemblyParams): InjectPayload {
           budget -= claudexCost;
           sources.push('claudex_ready');
         }
+      }
+
+      // Priority 1.2: Reranker health (Phase 6 P5 — RETR-08).
+      // Returns null on the happy path (no fallback events in 24h), so this
+      // section is a no-op for cache stability when the cross-encoder is
+      // healthy. When it does fire, the line is descriptive (not imperative)
+      // and bypasses the budget cap — degraded-mode visibility is mandatory.
+      const rerankerHealth = formatRerankerHealthSection(params.db);
+      if (rerankerHealth) {
+        sections.push(rerankerHealth);
+        sources.push('reranker_health');
       }
 
       // Priority 1.5: Experience pattern warnings auto-surface — REMOVED in

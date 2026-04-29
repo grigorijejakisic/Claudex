@@ -21,6 +21,7 @@ V15 schema, 33 tables. Single-store design: SQLite is both source of truth AND v
 <!-- critical: drift-risk=safety, domains=api,mcp -->
 - **MAX subscription**: Never ask about API costs. OAuth auth at `~/.claude/.credentials.json`.
 - **Reranker is a real cross-encoder; bi-encoder is the fallback**: The primary reranker (`services/reranker.py`, BGE-reranker-v2-m3 on port 7439) is a true neural cross-encoder. The bi-encoder path (snowflake-arctic-embed2 cosine via Ollama `/api/embed`) is only used as a fallback when the cross-encoder service is unavailable.
+- **Reranker is load-bearing for production retrieval (RETR-08)**: BGE-v2-m3 on port 7439 must be alive — Angel's `RerankerSupervisor` spawns and monitors it. Bi-encoder fallback is a **degraded mode**, not a transparent default. Every fallback writes one row to `telemetry` with `event_kind='reranker_fallback'` and a `detail.reason` of `unreachable`/`non_2xx`/`timeout`/`empty_response`. Session-start surfaces a `## Reranker Health` line when the 24h count is non-zero. If you see that line across multiple sessions, restart `services/reranker.py`.
 <!-- critical: drift-risk=safety, domains=hooks,cc-hooks -->
 - **Hook deadlock**: Never call CC's CLIProxyAPI from a hook — use Ollama instead.
 - **Fire-and-forget**: Always await in hooks. Only Angel/OpenClaw can fire-and-forget.

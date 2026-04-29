@@ -154,8 +154,28 @@ server.registerTool(
     // Channel 1: Artifacts via hybrid search (FTS5 + Qdrant KNN + recency)
     let artifactResults: SearchResult[] = [];
     try {
+      // Resolve the active session for this project so reranker-fallback
+      // telemetry rows (RETR-08) attribute to a real session_id rather than
+      // 'unknown-session'. Lookup mirrors the action='create-signal' path
+      // below; falls back to mcp:<project> if nothing is active.
+      let activeSessionId = `mcp:${defaultProject}`;
+      try {
+        const active = cachedPrepare(
+          getDb(),
+          `SELECT s.session_id FROM sessions s
+             LEFT JOIN (
+               SELECT session_id, MAX(timestamp_epoch) as last_activity
+                 FROM session_events GROUP BY session_id
+             ) e ON e.session_id = s.session_id
+            WHERE s.project = ? AND s.status = 'active'
+            ORDER BY COALESCE(e.last_activity, s.created_at_epoch) DESC LIMIT 1`,
+        ).get(proj) as { session_id: string } | undefined;
+        if (active?.session_id) activeSessionId = active.session_id;
+      } catch { /* fall back to mcp:<project> */ }
+
       const hybridResults = await hybridSearchAsync(getDb(), query, proj, {
         limit: offset + limit,
+        sessionId: activeSessionId,
       });
       artifactResults = hybridResults.map((a, i) => ({
         id: a.id,

@@ -23,6 +23,8 @@ import type { PressureZone } from '../shared/constants.js';
 import type { ToolCostEstimate } from '../observability/telemetry.js';
 import { estimateTokens, normalizeText } from '../shared/text-utils.js';
 import { listEntries as listCuratedEntries } from '../core/curated-context.js';
+import { readRerankerFallbackCount } from '../core/telemetry-counters.js';
+import type { Database } from 'better-sqlite3';
 import type { CuratedEntry } from '../core/curated-context.js';
 import { GLOBAL_PROJECT_SCOPE } from '../shared/constants.js';
 
@@ -69,6 +71,29 @@ export function formatClaudexReadySection(): string {
 Memory system is live. Use \`claudex_search\`, \`claudex_recall\`, \`claudex_events\` MCP tools to find context — don't explore the filesystem for it. All projects are in \`~/Desktop/Projects/\`.
 
 When searching past context: use \`claudex_search\` (semantic search across all sessions and projects) instead of Grep-based memory file search. Claudex has 26K+ indexed observations with relevance ranking — flat-file grep will miss context that semantic search finds.`;
+}
+
+/**
+ * Reranker health — observational note when the cross-encoder fell back to
+ * the bi-encoder in the last 24h (Phase 6 P5 — RETR-08).
+ *
+ * The cross-encoder (BAAI/bge-reranker-v2-m3 on port 7439, supervised by
+ * Angel's RerankerSupervisor) is load-bearing infrastructure. Bi-encoder
+ * fallback is a degraded mode and should be visible — surfacing one short
+ * descriptive line at session start when the count is non-zero is the
+ * minimum viable visibility surface.
+ *
+ * Returns null when the count is zero (the common case) so this section
+ * does not contribute to either token budget or cache stability noise on
+ * the happy path. Output is descriptive, not imperative — consistent with
+ * the Phase 7 advisory-voice framing direction.
+ */
+export function formatRerankerHealthSection(db: Database): string | null {
+  const n = readRerankerFallbackCount(db, 86400);
+  if (n === 0) return null;
+  const plural = n === 1 ? 'time' : 'times';
+  return `## Reranker Health
+Note: cross-encoder reranker fell back to bi-encoder ${n} ${plural} in the last 24h. The cross-encoder (BGE-v2-m3 on port 7439) is the precision layer; the bi-encoder fallback (snowflake-arctic-embed2 cosine via Ollama) is a degraded mode. If this count is non-zero across multiple sessions, restart \`services/reranker.py\` — Angel's RerankerSupervisor will resume management.`;
 }
 
 /**

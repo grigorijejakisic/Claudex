@@ -42,6 +42,10 @@ import { tokenizeQuery } from '../shared/search-utils.js';
 import { getRetrievalScoreMultiplier } from '../intelligence/retrieval-feedback.js';
 import { graphWalkFromSeeds } from './graph-walk.js';
 import { getPolicy } from '../intelligence/policy-registry.js';
+import {
+  incrementRerankerFallbackCounter,
+  type RerankerFallbackReason,
+} from './telemetry-counters.js';
 import type { ArtifactRow } from './artifacts.js';
 
 // ---------------------------------------------------------------------------
@@ -113,6 +117,15 @@ export interface HybridSearchOptions {
    * (`src/tests/integration/phase-6-multiplier-ablation.test.ts`) sets it.
    */
   multiplierFlags?: Partial<Record<MultiplierName, boolean>>;
+  /**
+   * Session ID for telemetry attribution (Phase 6 Plan 04 — RETR-08).
+   *
+   * Used by `hybridSearchAsync` when recording cross-encoder→bi-encoder
+   * fallback events. If unset (e.g. an old caller), the fallback counter
+   * still records the event but with a placeholder session_id. Production
+   * callers (recall-server, hooks) thread their session_id through.
+   */
+  sessionId?: string;
 }
 
 export interface ScoringWeights {
@@ -939,8 +952,9 @@ export async function hybridSearchAsync(
     // local Python microservice supervised by Angel's RerankerSupervisor.
     // True neural cross-encoder that jointly scores (query, document) pairs —
     // materially more precise than bi-encoder cosine on reranking tasks. Runs
-    // on GPU (CUDA/ROCm). Falls back to bi-encoder (snowflake-arctic-embed2
-    // cosine via Ollama) if the service is unavailable. Non-blocking: 3s
+    // on GPU (CUDA/ROCm). The cross-encoder is **load-bearing infrastructure
+    // (RETR-08)** — bi-encoder fallback below is a degraded mode, recorded
+    // in telemetry as `event_kind='reranker_fallback'`. Non-blocking: 3s
     // timeout per call. Skips if < 2 candidates.
     try {
       const topCandidates = scored.slice(0, Math.min(20, scored.length));
@@ -951,6 +965,9 @@ export async function hybridSearchAsync(
 
         // Try cross-encoder reranker service (port 7439, CUDA)
         let reranked = false;
+        // Capture WHY the cross-encoder failed so the bi-encoder branch can
+        // record an attributed fallback event (Phase 6 P5 — RETR-08).
+        let ceFailureReason: RerankerFallbackReason | null = null;
         try {
           const ceResponse = await fetch('http://127.0.0.1:7439/rerank', {
             method: 'POST',
@@ -958,7 +975,9 @@ export async function hybridSearchAsync(
             body: JSON.stringify({ query: query.substring(0, 500), documents }),
             signal: AbortSignal.timeout(3000),
           });
-          if (ceResponse.ok) {
+          if (!ceResponse.ok) {
+            ceFailureReason = 'non_2xx';
+          } else {
             const ceData = await ceResponse.json() as { scores: number[]; indices: number[] };
             if (ceData.scores && ceData.scores.length > 0) {
               // Map scores back to candidates by index
@@ -976,12 +995,27 @@ export async function hybridSearchAsync(
               topCandidates.sort((a, b) => b.hybrid_score - a.hybrid_score);
               scored.splice(0, topCandidates.length, ...topCandidates);
               reranked = true;
+            } else {
+              ceFailureReason = 'empty_response';
             }
           }
-        } catch { /* Cross-encoder service unavailable — try bi-encoder fallback */ }
+        } catch (e) {
+          // AbortSignal.timeout fires AbortError; fetch network failure throws TypeError.
+          const name = (e as { name?: string } | null)?.name;
+          ceFailureReason = (name === 'TimeoutError' || name === 'AbortError') ? 'timeout' : 'unreachable';
+        }
 
-        // Bi-encoder fallback: snowflake-arctic-embed2 cosine similarity
+        // Bi-encoder fallback: snowflake-arctic-embed2 cosine similarity.
+        // RETR-08: this branch is degraded mode — record one telemetry row
+        // per fallback event with the captured reason. Non-throwing.
         if (!reranked) {
+          if (ceFailureReason !== null) {
+            incrementRerankerFallbackCounter(
+              db,
+              options.sessionId ?? 'unknown-session',
+              ceFailureReason,
+            );
+          }
           try {
             const texts = [
               query.substring(0, 500),

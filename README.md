@@ -185,7 +185,7 @@ node dist/cli/health.cjs
 - **Database:** SQLite via better-sqlite3 (V15 schema, 33 tables + 5 vec0 virtual tables)
 - **Vector Store:** sqlite-vec embedded in the same SQLite file (1024-dim flat KNN, 5 virtual tables mirroring the former Qdrant collections)
 - **Embeddings:** Ollama + Snowflake Arctic Embed 2 (1024d, primary for both retrieval and bi-encoder fallback rerank)
-- **Reranking:** bge-reranker-v2-m3 (568M params, CUDA) — true neural cross-encoder, supervised by Angel's `RerankerSupervisor` with bounded restart and log capture
+- **Reranking:** bge-reranker-v2-m3 (568M params, CUDA) — true neural cross-encoder, supervised by Angel's `RerankerSupervisor` with bounded restart and log capture. **Load-bearing for production retrieval (RETR-08)**: when the cross-encoder is unreachable, the bi-encoder fallback is a degraded mode and every fallback writes one row to `telemetry` with `event_kind='reranker_fallback'`. Session-start surfaces a `## Reranker Health` line when the 24h count is non-zero.
 - **LLM:** Claude Code CLI + Ollama fallback
 - **Tests:** Vitest (108+ files, 2000+ tests)
 - **MCP:** 6 tools (search, recall, store, events, message, session)
