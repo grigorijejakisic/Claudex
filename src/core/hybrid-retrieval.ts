@@ -33,6 +33,29 @@ import type { ArtifactRow } from './artifacts.js';
 // Types
 // ---------------------------------------------------------------------------
 
+/**
+ * Names of the seven scoring multipliers exposed by hybrid retrieval.
+ *
+ * Inner three (consumed by `computeThreeFactorScore`):
+ *   recency, importance, relevance — three-factor base.
+ *
+ * Outer four (applied as multiplicative scaling on `rrfScore * (1 + threeFactor)`):
+ *   retrieval — feedback-driven retrieval_score multiplier.
+ *   novelty   — novelty_score-based boost / demote.
+ *   activation— activation_score gating (RIF surface).
+ *   qvalue    — MemRL learned utility (sync path only today; aligned in Plan 03).
+ *
+ * Used by the Phase 6 ablation harness via `HybridSearchOptions.multiplierFlags`.
+ */
+export type MultiplierName =
+  | 'recency'
+  | 'importance'
+  | 'relevance'
+  | 'retrieval'
+  | 'novelty'
+  | 'activation'
+  | 'qvalue';
+
 export interface HybridSearchOptions {
   /** Maximum results to return. Default: 10 */
   limit?: number;
@@ -59,6 +82,22 @@ export interface HybridSearchOptions {
    * If omitted, returns up to `limit` results regardless of token cost.
    */
   budgetTokens?: number;
+  /**
+   * Per-multiplier ablation flags (Phase 6 P5).
+   *
+   * Undefined or empty = all multipliers enabled (production behavior).
+   * Setting a flag to `false` disables that multiplier:
+   *   - inner factors (recency/importance/relevance) collapse to 0 inside
+   *     `computeThreeFactorScore`,
+   *   - outer multipliers (retrieval/novelty/activation/qvalue) collapse to 1.0.
+   *
+   * With every flag set to `false`, the formula reduces to RRF-only:
+   *   hybrid_score = rrfScore * (1 + 0) * 1 * 1 * 1 * 1 = rrfScore.
+   *
+   * Production callers MUST leave this undefined. Only the ablation harness
+   * (`src/tests/integration/phase-6-multiplier-ablation.test.ts`) sets it.
+   */
+  multiplierFlags?: Partial<Record<MultiplierName, boolean>>;
 }
 
 export interface ScoringWeights {
@@ -130,20 +169,38 @@ export function computeImportanceScore(artifact: ArtifactRow): number {
 }
 
 /**
+ * Per-inner-factor enable flags (Phase 6 ablation harness).
+ *
+ * Undefined fields and the default-`{}` argument mean "all enabled" — production
+ * behavior. Setting a field to `false` zeroes that inner factor for ablation.
+ */
+export interface ThreeFactorFlags {
+  recency?: boolean;
+  importance?: boolean;
+  relevance?: boolean;
+}
+
+/**
  * Compute three-factor score for an artifact.
  * score = α·recency + β·importance + γ·relevance
  *
  * When no relevance score is available (no embedding match), uses
  * the artifact's retrieval_score as a proxy (normalized to [0, 1]).
+ *
+ * Phase 6: optional `flags` argument lets the ablation harness disable
+ * individual inner factors. Production callers omit `flags` (or pass `{}`)
+ * for unchanged behavior.
  */
 export function computeThreeFactorScore(
   artifact: ArtifactRow,
   relevance: number,
   weights: Required<ScoringWeights> = DEFAULT_WEIGHTS,
+  flags: ThreeFactorFlags = {},
 ): number {
-  const recency = computeRecencyScore(artifact);
-  const importance = computeImportanceScore(artifact);
-  return weights.alpha * recency + weights.beta * importance + weights.gamma * relevance;
+  const recency = flags.recency === false ? 0 : computeRecencyScore(artifact);
+  const importance = flags.importance === false ? 0 : computeImportanceScore(artifact);
+  const relevanceTerm = flags.relevance === false ? 0 : relevance;
+  return weights.alpha * recency + weights.beta * importance + weights.gamma * relevanceTerm;
 }
 
 // ---------------------------------------------------------------------------
@@ -470,6 +527,15 @@ export function hybridSearchSync(
 
     if (!query || query.length < 3) return [];
 
+    // Phase 6 per-multiplier ablation flags (default: all enabled).
+    const mFlags = options.multiplierFlags ?? {};
+    const enabled = (n: MultiplierName): boolean => mFlags[n] !== false;
+    const innerFlags: ThreeFactorFlags = {
+      recency: enabled('recency'),
+      importance: enabled('importance'),
+      relevance: enabled('relevance'),
+    };
+
     // Channel 1: FTS5
     const fts5Results = searchFts5Channel(db, project, query, limit * 2, globalScope, excludeSuperseded);
 
@@ -513,23 +579,31 @@ export function hybridSearchSync(
       const fts5Rank = fts5RankMap.get(artifactId);
       const relevance = fts5Rank != null ? 1.0 / fts5Rank : 0.1;
 
-      const threeFactor = computeThreeFactorScore(artifact, Math.min(1, relevance), weights);
+      const threeFactor = computeThreeFactorScore(artifact, Math.min(1, relevance), weights, innerFlags);
 
       // 5.2: Apply retrieval_score as multiplier — artifacts that consistently help
       // get boosted, those that don't get demoted. retrieval_score defaults to 1.0.
-      const retrievalMultiplier = getRetrievalScoreMultiplier(db, artifactId);
+      const retrievalMultiplier = enabled('retrieval')
+        ? getRetrievalScoreMultiplier(db, artifactId)
+        : 1.0;
 
       // Wire novelty_score into scoring — novel artifacts (score > 0.5) get boosted,
       // redundant ones (score < 0.5) get demoted. Default 0.5 = neutral.
-      const noveltyMultiplier = 0.5 + (artifact.novelty_score ?? 0.5);
+      const noveltyMultiplier = enabled('novelty')
+        ? 0.5 + (artifact.novelty_score ?? 0.5)
+        : 1.0;
 
       // Activation factor: artifacts with decayed activation_score get demoted in ranking.
       // This makes RIF suppression (Phase 14) affect ranking directly, not just packing.
-      const activationFactor = Math.max(0.1, artifact.activation_score ?? 1.0);
+      const activationFactor = enabled('activation')
+        ? Math.max(0.1, artifact.activation_score ?? 1.0)
+        : 1.0;
 
       // MemRL Q-value: learned utility from past retrieval outcomes (Phase 2 Amp)
       const qValue = artifact.q_value ?? 0.5;
-      const qMultiplier = 0.5 + qValue; // Range: 0.55 (low Q) to 1.5 (high Q)
+      const qMultiplier = enabled('qvalue')
+        ? 0.5 + qValue // Range: 0.55 (low Q) to 1.5 (high Q)
+        : 1.0;
 
       // Final score: base_score * retrieval_score * novelty * activation * Q-value
       const baseScore = rrfScore * (1 + threeFactor);
@@ -596,6 +670,15 @@ export async function hybridSearchAsync(
     } as Required<ScoringWeights>;
 
     if (!query || query.length < 3) return [];
+
+    // Phase 6 per-multiplier ablation flags (default: all enabled).
+    const mFlags = options.multiplierFlags ?? {};
+    const enabled = (n: MultiplierName): boolean => mFlags[n] !== false;
+    const innerFlags: ThreeFactorFlags = {
+      recency: enabled('recency'),
+      importance: enabled('importance'),
+      relevance: enabled('relevance'),
+    };
 
     // Channel 1: FTS5 (sync)
     const fts5Results = searchFts5Channel(db, project, query, limit * 2, globalScope, excludeSuperseded);
@@ -710,10 +793,22 @@ export async function hybridSearchAsync(
       const fts5Rank = fts5RankMap.get(artifactId);
       const relevance = vectorScore ?? (fts5Rank != null ? 1.0 / fts5Rank : 0.1);
 
-      const threeFactor = computeThreeFactorScore(artifact, Math.min(1, relevance), weights);
-      const retrievalMultiplier = getRetrievalScoreMultiplier(db, artifactId);
-      const noveltyMultiplier = 0.5 + (artifact.novelty_score ?? 0.5);
-      const activationFactor = Math.max(0.1, artifact.activation_score ?? 1.0);
+      const threeFactor = computeThreeFactorScore(artifact, Math.min(1, relevance), weights, innerFlags);
+      const retrievalMultiplier = enabled('retrieval')
+        ? getRetrievalScoreMultiplier(db, artifactId)
+        : 1.0;
+      const noveltyMultiplier = enabled('novelty')
+        ? 0.5 + (artifact.novelty_score ?? 0.5)
+        : 1.0;
+      const activationFactor = enabled('activation')
+        ? Math.max(0.1, artifact.activation_score ?? 1.0)
+        : 1.0;
+      // Note: async path does NOT currently apply qMultiplier — sync↔async
+      // mismatch tracked for Plan 03 alignment. The flag is read here so
+      // the harness can request all-disabled and produce hybrid_score === rrfScore
+      // identically to the sync path semantics.
+      const _qvalueAblated = !enabled('qvalue'); // tracked for Plan 03; void today
+      void _qvalueAblated;
       const baseScore = rrfScore * (1 + threeFactor);
       const hybridScore = baseScore * retrievalMultiplier * noveltyMultiplier * activationFactor;
 
