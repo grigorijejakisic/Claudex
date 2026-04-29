@@ -20,7 +20,6 @@ import {
   formatClaudexReadySection,
   formatProvenPrinciplesSection,
   formatProjectSection,
-  formatCuratedContextSection,
   formatCheckpointSection,
   formatGsdSection,
   formatGaugeSection,
@@ -312,23 +311,6 @@ export function assembleFullContext(params: FullAssemblyParams): InjectPayload {
           sources.push('project');
         }
       }
-
-      // Priority 2.1: Project Curated Context — agent-curated authoritative
-      // slot for theory, workspace map, shipped manifest, constraints, and
-      // preferences. Global entries apply cross-project; project-scoped
-      // entries supersede CLAUDE.md on conflict. See context/specs/
-      // CURATED_CONTEXT.md for the full design.
-      try {
-        const curatedSection = formatCuratedContextSection(params.db, params.project);
-        if (curatedSection) {
-          const cost = estimateTokens(curatedSection);
-          if (cost <= budget) {
-            sections.push(curatedSection);
-            budget -= cost;
-            sources.push('curated_context');
-          }
-        }
-      } catch { /* non-fatal — curated context is best-effort */ }
 
       // Priority 2.5: Session continuity (handoff + latest session log, compressed)
       let handoffPath: string | undefined;
