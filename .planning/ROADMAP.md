@@ -21,7 +21,7 @@ Phase 1 (P0 crystallization, ✅) and Phase 2 (P1 artifact unification, ✅, T3 
 - [~] **Phase 4: P3 — MEMORY.md curation** — Closed 2026-04-26 with visible content regressions; **superseded by Phase 4.1**
 - [x] **Phase 4.1: MEMORY.md content redesign + Lessons section** — COMPLETE 2026-04-29. Drop Entities + Recent Threads; add Lessons (task-pattern indexed); promote User Notes; writer state-machine fix; mixed-precision timestamp normalization. CUR-15 reach partial-defer (precision closed; backfill recommended as follow-up)
 - [x] **Phase 5: P4 — Kill legacy injection** — COMPLETE 2026-04-29. 10 sections deleted across Tiers A/B/C (~320 LOC); codebase_index relocated to UPS; CACH-03 hardening; SC#1-#4 PASS (SC#1 proxy pending Phase 10)
-- [ ] **Phase 5.5: Curation feedback loop** — `pointer_recall_log`; auto-archive dead pointers; auto-promote high-recall pointers
+- [x] **Phase 5.5: Curation feedback loop** — `pointer_recall_log`; auto-archive dead pointers; auto-promote high-recall pointers
 - [ ] **Phase 6: P5 — Retrieval simplification + per-multiplier ablation** — RRF + cross-encoder rerank only; per-multiplier A/B before bulk delete; reranker hard-required
 - [ ] **Phase 6.5: Cross-project task-pattern recall** — Task-pattern fingerprinting; cross-project default-ON; surfaces as observational context
 - [ ] **Phase 7: P6 — Framing rewrite** — Advisory voice across every surviving formatter; manual A/B on real sessions for 1 week
@@ -152,13 +152,18 @@ Plans:
 **Depends on:** Phase 5 (deletion done; recall traffic stabilized)
 **Requirements:** CUR-16..CUR-18 (new)
 **Success Criteria:**
-  1. New table: `pointer_recall_log(pointer_id, session_id, retrieved_at, helpful_yn, query)`. Recorded when retrieval surfaces a Lesson/User-Notes pointer.
-  2. At `/endsession`, Angel shows user pointers retrieved this session in suggestion flow + asks `helpful_yn` (light tap, not friction).
-  3. Auto-archive: pointer with 0 retrievals in 90d AND `helpful_yn = null` → moved out of MEMORY.md index (artifact preserved in DB).
-  4. Auto-promote: pointer with ≥3 retrievals + `helpful_yn = true` → moved to high-salience top of section.
-  5. Vesna probe: lifecycle simulation (high-recall pointer survives 30d simulated; never-touched pointer archives).
+  1. [x] New table: `pointer_recall_log(pointer_id, session_id, retrieved_at, helpful_yn, query)`. Recorded when retrieval surfaces a Lesson/User-Notes pointer.
+  2. [x] At `/endsession`, Angel shows user pointers retrieved this session in suggestion flow + asks `helpful_yn` (light tap, not friction).
+  3. [x] Auto-archive: pointer with 0 retrievals in 90d AND `helpful_yn = null` → moved out of MEMORY.md index (artifact preserved in DB).
+  4. [x] Auto-promote: pointer with ≥3 retrievals + `helpful_yn = true` → moved to high-salience top of section.
+  5. [x] Vesna probe: lifecycle simulation (high-recall pointer survives 30d simulated; never-touched pointer archives).
 
-**Plans:** TBD
+**Plans:** 5 plans in 3 waves — all COMPLETE 2026-04-29:
+- [x] 05.5-01-PLAN.md — V19 schema + pointer-recall helpers + lesson frontmatter updater (W1)
+- [x] 05.5-02-PLAN.md — claudex_recall MCP wiring (extractLessonRef + handler patch) (W2)
+- [x] 05.5-03-PLAN.md — /endsession pointer-feedback CLIs + skill Step 1d (W2)
+- [x] 05.5-04-PLAN.md — heartbeat curation-feedback sweeps (archive + promote) (W3a)
+- [x] 05.5-05-PLAN.md — Vesna lifecycle probe + roadmap close (W3b)
 
 ### Phase 6: P5 — Retrieval simplification + per-multiplier ablation
 **Goal:** Collapse hybrid-retrieval scoring to RRF → cross-encoder rerank → top-k. Justify the deletion with per-multiplier A/B before bulk delete.
@@ -316,7 +321,7 @@ Phase 9 may be scheduled parallel to 6/7 once Phase 5 ships (T6 verified safe). 
 | 4. P3 — MEMORY.md curation | 8/8 | Partial-corrective-pending (4.1 supersedes) | 2026-04-26 |
 | 4.1. MEMORY.md content redesign + Lessons | 9/9 | Complete | 2026-04-29 |
 | 5. P4 — Kill legacy injection | 9/9 | Complete | 2026-04-29 |
-| 5.5. Curation feedback loop | 0/0 | Not started | - |
+| 5.5. Curation feedback loop | 5/5 | Complete | 2026-04-29 |
 | 6. P5 — Retrieval simplification + per-multiplier ablation | 0/0 | Not started | - |
 | 6.5. Cross-project task-pattern recall | 0/0 | Not started | - |
 | 7. P6 — Framing rewrite | 0/0 | Not started | - |

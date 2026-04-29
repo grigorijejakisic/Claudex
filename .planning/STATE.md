@@ -6,26 +6,26 @@ See: .planning/PROJECT.md (updated 2026-04-27)
 
 **Core value:** v4 makes the agent USE Claudex organically as part of how it works in Claude Code. Memory tools (`claudex_search`, `claudex_recall`, `claudex_events`) are reached for the same way `Read` or `Grep` are used — natural extensions of reasoning, not a separate "fetch context" step that has to be remembered.
 
-**Current focus:** Phase 5 COMPLETE 2026-04-29. Phase 5.5 unblocked.
+**Current focus:** Phase 5.5 COMPLETE 2026-04-29. Phase 6 (P5 retrieval simplification) unblocked.
 
 ## Current Position
 
-**Current Phase:** 5 (COMPLETE)
-**Current Phase Name:** P4 — Kill legacy injection
+**Current Phase:** 5.5 (COMPLETE)
+**Current Phase Name:** Curation feedback loop
 **Total Phases:** 16
-**Current Plan:** 9
-**Total Plans in Phase:** 9
-**Status:** **PHASE 5 COMPLETE 2026-04-29.** All 9 plans landed across 8 waves. SC#1-#4 PASS (SC#1 with proxy note pending Phase 10 full Vesna suite; SC#2 strict; SC#3 by construction; SC#4 3/3 fixture projects). 10 sections deleted across Tiers A/B/C (~320 LOC from assembleFullContext). codebase_index relocated to UPS with 200-token cap. Frontmatter-gated default-on initialUserMessage prime with EXACT phase match. INJ-07 reactive trigger helpers + 22 tests; hook integration is routine follow-up. 76 net-new tests; 0 non-llama regressions (20 pre-existing llama-server failures unchanged).
+**Current Plan:** 5
+**Total Plans in Phase:** 5
+**Status:** **PHASE 5.5 COMPLETE 2026-04-29.** All 5 plans landed across 3 waves. CUR-16/-17/-18 closed; SC#1-#5 PASS. V19 schema substrate (lesson_pointer + pointer_recall_log) ships with helper API. claudex_recall MCP handler wires lesson recalls to the log table (fire-and-forget). /endsession Step 1d surfaces pointers via two thin CLIs (list + mark) with skip-by-default UX. Heartbeat Phase 5d block runs auto-archive (24h cadence) + auto-promote (7d cadence) with 24h cooldown + un-archive-on-re-promotion (rehabilitation path). Vesna 6-scenario lifecycle probe PASS. 76 net-new tests across 8 files; 0 non-llama regressions (same 20 pre-existing llama-server failures unchanged).
 **Last Activity:** 2026-04-29
-**Last Activity Description:** Phase 5 shipped. CACH-03 hardening (14 sites: 3 clock + 2 session-ID + 2 host + 4 tiebreaker + CRLF + STATE parser + handoff frontmatter spec). 3-layer cache-stability harness (4 scenarios x 3 layers; gpt-tokenizer cl100k_base ≤500 strict). Tier A/B/C deletion with per-tier gate reports. UPS ≤1KB locked. INJ-06 prime contract (12 unit + 5 integration tests). INJ-07 trigger detection (4 helpers + 22 tests). phase-5-soak script PASS 3/3. Final verdict PASS.
+**Last Activity Description:** Phase 5.5 shipped. V19 (lesson_pointer + pointer_recall_log) + 4-helper API (ensurePointerId/recordPointerRecall/markPointersHelpful/listSessionPointers). updateLessonFrontmatter body-byte-preserving updater. logLessonRecallIfApplicable test seam in recall-server.ts. list-session-pointers + mark-pointers-helpful CLIs registered in build.ts (split outbase fix preserves dist/cli/* layout). Skill Step 1d documented. curation-sweep.ts (archive + promote + time gates + __resetGatesForTests seam) wired into heartbeat as Phase 5d block. Vesna probe PASS 6/6. SUMMARY + VESNA-RESULT + ROADMAP/STATE/REQUIREMENTS updates.
 **Progress:** [██████████] 100%
 
-Phase: 5 of 16 (P4 — Kill legacy injection — COMPLETE)
-Plan: 9 of 9 in current phase
-Status: complete; ready for next phase (5.5 Curation feedback loop)
-Last activity: 2026-04-29 — Phase 5 shipped end-to-end
+Phase: 5.5 of 16 (Curation feedback loop — COMPLETE)
+Plan: 5 of 5 in current phase
+Status: complete; ready for next phase (6 P5 retrieval simplification)
+Last activity: 2026-04-29 — Phase 5.5 shipped end-to-end
 
-Progress: [████████░░░░░░░░] 38%
+Progress: [█████████░░░░░░░] 44%
 
 ## Accumulated Context
 

@@ -68,9 +68,9 @@
 
 #### Phase 5.5 curation feedback loop (NEW 2026-04-27)
 
-- [ ] **CUR-16**: New table `pointer_recall_log(pointer_id, session_id, retrieved_at, helpful_yn, query)` — recorded when retrieval surfaces a Lesson/User-Notes pointer
-- [ ] **CUR-17**: Auto-archive: pointer with 0 retrievals in 90d AND `helpful_yn = null` → moved out of MEMORY.md index (artifact preserved in DB)
-- [ ] **CUR-18**: Auto-promote: pointer with ≥3 retrievals + `helpful_yn = true` → moved to high-salience top of section
+- [x] **CUR-16**: New table `pointer_recall_log(pointer_id, session_id, retrieved_at, helpful_yn, query)` — recorded when retrieval surfaces a Lesson/User-Notes pointer
+- [x] **CUR-17**: Auto-archive: pointer with 0 retrievals in 90d AND `helpful_yn = null` → moved out of MEMORY.md index (artifact preserved in DB)
+- [x] **CUR-18**: Auto-promote: pointer with ≥3 retrievals + `helpful_yn = true` → moved to high-salience top of section
 
 ### Framing (FRAM)
 
@@ -186,7 +186,7 @@
 | CUR-05..CUR-07 | Phase 9 (P7) | Pending |
 | CUR-08 | Phase 4 (P3) | Complete |
 | CUR-09..CUR-15 | Phase 4.1 | Pending |
-| CUR-16..CUR-18 | Phase 5.5 | Pending |
+| CUR-16..CUR-18 | Phase 5.5 | Complete (2026-04-29) |
 | FRAM-01..FRAM-04 | Phase 7 (P6) | Pending |
 | FRAM-05 | Phase 7 (P6) | Pending |
 | LIFE-01..LIFE-04 | Phase 3 merger | Pending |
