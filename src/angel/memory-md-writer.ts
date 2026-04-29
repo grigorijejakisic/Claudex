@@ -463,6 +463,31 @@ export function parseSentinelHash(firstLine: string): string | null {
 }
 
 /**
+ * Find the byte offset where the user tail begins, identified by a
+ * `<!-- USER EDITABLE -->` line that occupies its OWN line (no surrounding
+ * content on the same line).
+ *
+ * NOT `indexOf` — that matches the marker as substring inside body content
+ * that happens to mention it (e.g., a User Notes block describing the marker
+ * for documentation purposes). The substring match caused the duplicate-marker
+ * regression at MEMORY.md line 38 (Phase 4.1 CUR-13 / Plan 03).
+ *
+ * Returns -1 if no line-anchored marker exists. The matcher is strict: trailing
+ * whitespace on the marker line is rejected (lines must equal the marker
+ * exactly, post-CRLF normalization).
+ */
+export function findUserTailStart(content: string): number {
+  const marker = '<!-- USER EDITABLE -->';
+  const normalized = content.replace(/\r\n/g, '\n');
+  let offset = 0;
+  for (const line of normalized.split('\n')) {
+    if (line === marker) return offset;
+    offset += line.length + 1; // +1 for the consumed \n
+  }
+  return -1;
+}
+
+/**
  * Record a refusal event in `session_events` so observers see when and why
  * Angel declined to write. Sessionless — uses a synthetic session_id.
  */
@@ -577,13 +602,21 @@ export function curateMemoryMd(db: Database, project: string): CurationResult {
     const existing = fs.existsSync(memoryMdPath) ? fs.readFileSync(memoryMdPath, 'utf8') : '';
 
     let userTail = USER_TAIL_DEFAULT;
-    const markerIdx = existing.indexOf('<!-- USER EDITABLE -->');
+    // Line-anchored match: the marker must occupy its own line, NOT appear
+    // as substring inside body content. See findUserTailStart docs and CUR-13
+    // in the Phase 4.1 RESEARCH.md.
+    //
+    // `existing` may include a CRLF-mismatched copy from older writes; we
+    // normalize to LF for offset arithmetic and for fast-path comparison
+    // against `fullNew` (which is generated LF-only).
+    const normalizedExisting = existing.replace(/\r\n/g, '\n');
+    const markerIdx = findUserTailStart(normalizedExisting);
     if (markerIdx >= 0) {
-      userTail = existing.slice(markerIdx);
+      userTail = normalizedExisting.slice(markerIdx);
       if (!userTail.endsWith('\n')) userTail += '\n';
 
       // Refuse if there's a user block but no valid sentinel on line 1.
-      const firstLine = existing.split('\n', 1)[0];
+      const firstLine = normalizedExisting.split('\n', 1)[0];
       if (!parseSentinelHash(firstLine)) {
         recordRefusal(db, project, memoryMdPath, 'sentinel_missing');
         return { path: memoryMdPath, written: false, reason: 'sentinel_missing' };
@@ -592,9 +625,11 @@ export function curateMemoryMd(db: Database, project: string): CurationResult {
 
     const fullNew = `${sentinel}\n${body}\n${userTail}`;
 
-    // Idempotency fast-path: bytes already match.
-    if (existing === fullNew) {
-      const firstLine = existing.split('\n', 1)[0];
+    // Idempotency fast-path: bytes already match (LF-normalized for comparison
+    // since fullNew is generated LF-only; user tails may carry CRLF from
+    // Windows editors).
+    if (normalizedExisting === fullNew) {
+      const firstLine = normalizedExisting.split('\n', 1)[0];
       return {
         path: memoryMdPath,
         written: false,
