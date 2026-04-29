@@ -105,7 +105,7 @@ Note: cross-encoder reranker fell back to bi-encoder ${n} ${plural} in the last 
 export function formatProvenPrinciplesSection(patterns: ExperiencePattern[]): string | null {
   if (!patterns || patterns.length === 0) return null;
 
-  let inner = '## Proven Principles\nThese are established learnings from past sessions. Apply them proactively — they are always relevant.\n\n';
+  let inner = '## Proven Principles\nThe following are patterns extracted from prior sessions across this project. Each entry pairs a recurring context with the lesson that emerged.\n\n';
 
   for (const p of patterns) {
     inner += `- **${p.trigger_context}**: ${p.lesson}\n`;
