@@ -376,28 +376,6 @@ export function assembleFullContext(params: FullAssemblyParams): InjectPayload {
       }
     } catch { /* non-fatal */ }
 
-    // Priority 4.05: Entity summaries — pre-computed knowledge about recurring entities.
-    // Angel generates these for entities appearing in 3+ sessions. Surfaces consolidated
-    // understanding so agents don't need to search for "what is X?"
-    try {
-      const entitySummaries = cachedPrepare(params.db,
-        `SELECT title, content FROM artifacts
-         WHERE artifact_type = 'entity_summary' AND project = ? AND state = 'active'
-         ORDER BY importance DESC, created_at_epoch DESC LIMIT 5`
-      ).all(params.project) as Array<{ title: string; content: string }>;
-
-      if (entitySummaries.length > 0) {
-        const lines = entitySummaries.map(e => `- **${e.title}**: ${e.content.slice(0, 200)}`);
-        const section = `## Entity Knowledge\n${lines.join('\n')}`;
-        const cost = estimateTokens(section);
-        if (cost <= budget) {
-          sections.push(section);
-          budget -= cost;
-          sources.push('entity_summaries');
-        }
-      }
-    } catch { /* non-fatal */ }
-
     // Priority 4.5: CLAUDE.md rules reminder — re-injected after compaction to prevent drift.
     // Only included in post-compaction assembly (identity/project already in context from CLAUDE.md).
     if (params.isPostCompaction) {
