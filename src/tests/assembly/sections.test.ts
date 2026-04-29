@@ -665,12 +665,14 @@ describe('formatMaterializationLayer', () => {
     expect(result).toContain('current session');
   });
 
-  it('shows session ID prefix for different session', () => {
+  it('shows "prior session" surrogate for different session (CACH-03)', () => {
     const artifacts = [
       makeArtifactRow('Test', 'observation', 'Content', 'abcdefghijklmnop'),
     ];
     const result = formatMaterializationLayer(artifacts, undefined, 'different-sess');
-    expect(result).toContain('session abcdefgh');
+    expect(result).toContain('prior session');
+    // CACH-03: must NOT leak any portion of the live UUID
+    expect(result).not.toContain('abcdefgh');
   });
 
   it('includes provenance header', () => {

@@ -96,6 +96,9 @@ export interface FullAssemblyParams {
     reason: string;
     artifacts?: ArtifactRow[];
   };
+  /** Pinnable wall-clock for cache-stability tests (CACH-03). If omitted,
+   * defaults to Math.floor(Date.now() / 1000) at each clock-leak site. */
+  nowEpoch?: number;
 }
 
 export interface RegularPromptParams {
@@ -123,6 +126,21 @@ export interface TopicPivotParams {
 }
 
 const EMPTY_PAYLOAD: InjectPayload = { content: '', tokenEstimate: 0, sources: [] };
+
+/**
+ * Cache-stable version of `shortenPath` (CACH-03).
+ *
+ * Normalizes backslashes to forward slashes BEFORE searching. Without this,
+ * Windows-host output emits `src\foo.ts` while POSIX emits `src/foo.ts` —
+ * cache prefix hash flips per-host. Hardcoded `'src/'` (no `path.sep`).
+ *
+ * @internal exported only so cache-stability tests can pin behavior.
+ */
+export function _shortenPathCacheStable(fp: string): string {
+  const norm = fp.replace(/\\/g, '/');
+  const srcIdx = norm.indexOf('src/');
+  return srcIdx >= 0 ? norm.substring(srcIdx) : norm.split('/').slice(-2).join('/');
+}
 
 /**
  * Result of matching experience patterns against a query.
@@ -442,8 +460,13 @@ export function assembleFullContext(params: FullAssemblyParams): InjectPayload {
 
     // Priority 4.25: Cross-project awareness — lightweight project overview.
     // Only at session-start (not post-compaction — projects don't change mid-session).
+    // NOTE: this section is being DELETED in Plan 04 (Tier B). The unixepoch() leak
+    // is patched here for hardening continuity through Plans 02-03 cache-stability
+    // gates; the parameter binding is removed when the section is removed.
     if (!params.isPostCompaction) {
       try {
+        const _nowEpoch = params.nowEpoch ?? Math.floor(Date.now() / 1000);
+        const _cutoff = _nowEpoch - 604800;
         const projectRows = cachedPrepare(params.db,
           `SELECT s.project, MAX(s.created_at_epoch) AS last_active, t.topic,
                   EXISTS(SELECT 1 FROM artifacts a WHERE a.project = s.project AND a.artifact_type = 'handoff' AND a.state != 'consumed') AS has_handoff
@@ -452,11 +475,11 @@ export function assembleFullContext(params: FullAssemblyParams): InjectPayload {
              SELECT s2.session_id FROM sessions s2
              WHERE s2.project = s.project ORDER BY s2.created_at_epoch DESC LIMIT 1
            )
-           WHERE s.created_at_epoch > unixepoch() - 604800
+           WHERE s.created_at_epoch > ?
            GROUP BY s.project
            ORDER BY last_active DESC
            LIMIT 10`
-        ).all() as ProjectOverviewRow[];
+        ).all(_cutoff) as ProjectOverviewRow[];
 
         if (projectRows.length > 0) {
           const overview = formatProjectsOverview(projectRows, params.project);
@@ -569,7 +592,8 @@ export function assembleFullContext(params: FullAssemblyParams): InjectPayload {
 
       // Staleness filter: observation-type artifacts older than 48h have very low
       // value for a new session. Decisions, learnings, patterns etc. persist longer.
-      const STALE_OBS_CUTOFF = Math.floor(Date.now() / 1000) - 48 * 3600;
+      // CACH-03: pin to params.nowEpoch when provided so cache-stability tests can replay.
+      const STALE_OBS_CUTOFF = (params.nowEpoch ?? Math.floor(Date.now() / 1000)) - 48 * 3600;
       materializedArtifacts = materializedArtifacts.filter(a =>
         a.artifact_type !== 'observation' || a.timestamp_epoch >= STALE_OBS_CUTOFF
       );
@@ -642,11 +666,10 @@ export function assembleFullContext(params: FullAssemblyParams): InjectPayload {
         const query = params.searchQuery ?? checkpoint?.thread?.topic ?? null;
         const parts: string[] = [];
 
-        // Helper: shorten file path to project-relative
-        const shortenPath = (fp: string): string => {
-          const srcIdx = fp.indexOf('src' + path.sep);
-          return srcIdx >= 0 ? fp.substring(srcIdx) : fp.split(/[\\/]/).slice(-2).join('/');
-        };
+        // Helper: shorten file path to project-relative.
+        // CACH-03: normalize backslashes to forward slashes so output bytes are
+        // OS-invariant (Windows produces 'src\\' otherwise; cache hash flips per-host).
+        const shortenPath = _shortenPathCacheStable;
 
         // Recent changes since last session on this project
         const lastSession = cachedPrepare(params.db,
@@ -654,7 +677,7 @@ export function assembleFullContext(params: FullAssemblyParams): InjectPayload {
            WHERE project = ? AND status = 'completed' AND ended_at_epoch IS NOT NULL
            ORDER BY ended_at_epoch DESC LIMIT 1`
         ).get(params.project) as { ended_at_epoch: number } | undefined;
-        const lastSessionEpoch = lastSession?.ended_at_epoch ?? (Math.floor(Date.now() / 1000) - 86400);
+        const lastSessionEpoch = lastSession?.ended_at_epoch ?? ((params.nowEpoch ?? Math.floor(Date.now() / 1000)) - 86400);
         const changed = getChangedFiles(params.db, params.project, lastSessionEpoch);
         if (changed.length > 0) {
           parts.push('**Changed since last session:**');

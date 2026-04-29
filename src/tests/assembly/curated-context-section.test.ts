@@ -109,7 +109,7 @@ describe('formatCuratedContextSection', () => {
     expect(out).toContain('[promoted]');
   });
 
-  it('includes session-id provenance when present', () => {
+  it('omits session-id provenance from rendered text (CACH-03)', () => {
     writeEntry(db, {
       project: 'proj-a',
       type: 'mental_model',
@@ -118,7 +118,9 @@ describe('formatCuratedContextSection', () => {
       source_session_id: 'deadbeef12345678',
     });
     const out = formatCuratedContextSection(db, 'proj-a')!;
-    expect(out).toContain('session deadbeef');
+    // CACH-03: session UUID slice is volatile state — must not leak into rendered output.
+    expect(out).not.toContain('deadbeef');
+    expect(out).toContain('with provenance');
   });
 
   it('does not leak entries from other projects', () => {

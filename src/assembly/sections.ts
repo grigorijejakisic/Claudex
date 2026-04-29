@@ -851,14 +851,19 @@ export function formatMaterializationLayer(
 
 /**
  * Determines session attribution label for a materialized artifact.
+ *
+ * CACH-03: must NOT inject any portion of the live session UUID — that
+ * leaks volatile state into the cache prefix. Returns a stable surrogate.
+ *
+ * @internal exported for cache-stability tests.
  */
-function getSessionAttribution(
+export function getSessionAttribution(
   artifactSessionId: string | null,
   currentSessionId?: string
 ): string {
   if (!artifactSessionId) return 'unknown session';
   if (currentSessionId && artifactSessionId === currentSessionId) return 'current session';
-  return `session ${artifactSessionId.slice(0, 8)}`;
+  return 'prior session';
 }
 
 /**
@@ -1002,10 +1007,8 @@ function renderCuratedBlock(entries: readonly CuratedEntry[]): string {
           ? '[promoted] '
           : '';
     const curatorNote = e.curator === 'angel' ? 'angel' : '';
-    const sessionNote = e.source_session_id
-      ? `session ${e.source_session_id.slice(0, 8)}`
-      : '';
-    const provenance = [curatorNote, sessionNote].filter(Boolean).join(', ');
+    // CACH-03: omit session UUID slice (volatile state leak into cache prefix).
+    const provenance = [curatorNote].filter(Boolean).join(', ');
     const provSuffix = provenance ? ` (${provenance})` : '';
     return `- ${marker}${e.content}${provSuffix}`;
   };
