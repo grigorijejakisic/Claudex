@@ -12,7 +12,7 @@ import { loadSqliteVec } from './sqlite-vec-loader.js';
 import { applyV17DDL } from './migration/v17-ddl.js';
 import { applyGeneratedDDL, generateViewsAndTriggers } from './migration/v17-triggers.js';
 import { KIND_MAPPING } from './migration/kind-mapping.js';
-import { SHAPE_VOCABULARY_SCHEMA, POINTER_RECALL_SCHEMA } from './schema.js';
+import { SHAPE_VOCABULARY_SCHEMA, POINTER_RECALL_SCHEMA, TELEMETRY_SCHEMA } from './schema.js';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -1465,4 +1465,72 @@ export function migrateV17toV18(db: Database): void {
  */
 export function migrateV18toV19(db: Database): void {
   db.exec(POINTER_RECALL_SCHEMA);
+}
+
+/**
+ * V19→V20: Phase 6 (P5) — extend telemetry CHECK enum to include
+ * 'reranker_fallback'. SQLite cannot ALTER a CHECK constraint, so the
+ * standard rebuild-and-copy pattern applies. Returns true on success.
+ *
+ * Steps (single transaction):
+ *   1. Rename existing `telemetry` to `telemetry_v19`.
+ *   2. Recreate `telemetry` with the V20 enum from TELEMETRY_SCHEMA.
+ *   3. Copy rows back (existing kinds remain valid under the additive enum).
+ *   4. Drop `telemetry_v19`.
+ *   5. Re-create indexes (already in TELEMETRY_SCHEMA but explicit for clarity).
+ *
+ * Idempotent: if `telemetry_v19` is absent and `telemetry` already accepts
+ * `'reranker_fallback'`, the function is a no-op via existence guards.
+ */
+export function migrateV19toV20(db: Database): boolean {
+  // Stub-DB guard — if no telemetry table exists yet, the V20 enum will be
+  // installed when initializeSchema later execs TELEMETRY_SCHEMA. The
+  // version stamp can still advance.
+  if (!hasTable(db, 'telemetry')) {
+    return true;
+  }
+  // Idempotency guard — if the new enum is already in place, skip.
+  if (telemetryAcceptsRerankerFallback(db)) {
+    return true;
+  }
+
+  const tx = db.transaction(() => {
+    // 1. Rename existing telemetry table out of the way.
+    db.exec(`ALTER TABLE telemetry RENAME TO telemetry_v19;`);
+
+    // Drop the V19 indexes by name (they followed the table rename in some
+    // SQLite versions, but explicit DROP is safer for cross-version behavior).
+    db.exec(`DROP INDEX IF EXISTS idx_telemetry_session;`);
+    db.exec(`DROP INDEX IF EXISTS idx_telemetry_kind;`);
+
+    // 2. Recreate telemetry with the V20 enum (TELEMETRY_SCHEMA also
+    //    creates the indexes, so no extra DDL needed).
+    db.exec(TELEMETRY_SCHEMA);
+
+    // 3. Copy rows back.
+    db.exec(`
+      INSERT INTO telemetry (id, session_id, event_kind, detail, latency_ms, timestamp_epoch, adapter)
+      SELECT id, session_id, event_kind, detail, latency_ms, timestamp_epoch, adapter
+      FROM telemetry_v19;
+    `);
+
+    // 4. Drop the old table.
+    db.exec(`DROP TABLE telemetry_v19;`);
+  });
+
+  tx();
+  return true;
+}
+
+/**
+ * Probe whether the current `telemetry.event_kind` CHECK constraint admits
+ * `'reranker_fallback'`. Used as the V20 idempotency guard.
+ */
+function telemetryAcceptsRerankerFallback(db: Database): boolean {
+  if (!hasTable(db, 'telemetry')) return false;
+  // Inspect the live DDL — sqlite_master.sql has the constraint text.
+  const row = db.prepare(
+    `SELECT sql FROM sqlite_master WHERE type='table' AND name='telemetry'`
+  ).get() as { sql?: string } | undefined;
+  return !!row?.sql && row.sql.includes("'reranker_fallback'");
 }

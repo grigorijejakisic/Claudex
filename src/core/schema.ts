@@ -781,7 +781,8 @@ CREATE TABLE IF NOT EXISTS telemetry (
   session_id TEXT NOT NULL,
   event_kind TEXT NOT NULL CHECK (event_kind IN (
     'hook_invocation', 'injection', 'observation_capture', 'decision_capture',
-    'checkpoint_write', 'enrichment', 'topic_shift', 'dedup', 'decay_prune', 'error'
+    'checkpoint_write', 'enrichment', 'topic_shift', 'dedup', 'decay_prune', 'error',
+    'reranker_fallback'
   )),
   detail TEXT NOT NULL DEFAULT '{}' CHECK (json_valid(detail)),
   latency_ms REAL,

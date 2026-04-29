@@ -38,6 +38,7 @@ import {
   migrateV16toV17,
   migrateV17toV18,
   migrateV18toV19,
+  migrateV19toV20,
   migrateSchemaFixes,
   cleanupOrphanTables,
   upgradeV2SchemaInPlace,
@@ -66,7 +67,8 @@ export { migrateV14toV15 };
  *   10 — Angel System Phase 1: message bus + data fixes
  *   17 — Phase P1 unified artifact kernel
  *   18 — Phase 4.1 shape vocabulary substrate
- *   19 — current (Phase 5.5: curation feedback loop substrate)
+ *   19 — Phase 5.5 curation feedback loop substrate
+ *   20 — current (Phase 6 P5: telemetry event_kind enum +'reranker_fallback')
  *
  * Dual version tracking:
  * Both `PRAGMA user_version` and `schema_versions` table are needed:
@@ -80,7 +82,7 @@ export function runMigrations(db: Database): void {
   const row = db.pragma('user_version') as Array<{ user_version: number }>;
   let version = row[0]?.user_version ?? 0;
 
-  const TARGET_VERSION = 19;
+  const TARGET_VERSION = 20;
 
   if (version >= TARGET_VERSION) {
     // Still load sqlite-vec even if no migration is needed — the extension
@@ -109,6 +111,7 @@ export function runMigrations(db: Database): void {
     [16, () => migrateV16toV17(db)],
     [17, () => migrateV17toV18(db)],
     [18, () => migrateV18toV19(db)],
+    [19, () => { migrateV19toV20(db); }],
   ];
 
   // Handle special cases for version 0 and 1
@@ -288,13 +291,14 @@ export function initializeSchema(db: Database): void {
   } else {
     db.prepare('INSERT OR IGNORE INTO schema_versions (version) VALUES (?)').run(SCHEMA_VERSION);
   }
-  // Do not demote a V19 (or newer) DB back to 19. The live DB's user_version
+  // Do not demote a V20 (or newer) DB back to 20. The live DB's user_version
   // is set by runMigrations; every hook re-open used to silently demote it,
-  // which would confuse any future `>= N` version gate. Phase 5.5 raised the
-  // ceiling 18→19 (V19 curation feedback loop substrate: lesson_pointer +
-  // pointer_recall_log). Fresh DBs that took the early-return in runMigrations
-  // (no `observations` table) are stamped here after SCHEMA_V3 + V19 DDL run.
-  if (currentUv < 19) db.pragma('user_version = 19');
+  // which would confuse any future `>= N` version gate. Phase 6 raises the
+  // ceiling 19→20 (V20 telemetry CHECK enum + 'reranker_fallback'). Fresh DBs
+  // that took the early-return in runMigrations (no `observations` table) are
+  // stamped here after SCHEMA_V3 + V19 + V20 DDL run. TELEMETRY_SCHEMA above
+  // already carries the V20 enum so a fresh stamp at 20 matches the live DDL.
+  if (currentUv < 20) db.pragma('user_version = 20');
 }
 
 // ---------------------------------------------------------------------------
