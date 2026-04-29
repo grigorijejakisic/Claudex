@@ -154,35 +154,18 @@ export function renderExperienceWarnings(patterns: ExperiencePattern[]): string 
     let inner = '## Past Experience — Relevant Patterns\n\n';
 
     for (const p of patterns) {
-      // Escalation-aware prefix (ACE tiers)
-      const escalation = (p as ExperiencePattern & { escalation_level?: string }).escalation_level ?? 'pattern';
-      let prefix: string;
-      switch (escalation) {
-        case 'circuit_breaker':
-          prefix = 'CRITICAL ENFORCEMENT';
-          break;
-        case 'enforcement':
-          prefix = 'ENFORCEMENT';
-          break;
-        case 'warning':
-          prefix = 'WARNING';
-          break;
-        default:
-          prefix = p.severity === 'critical' ? 'Critical' : 'Important';
-      }
-
-      inner += `### ${prefix}: ${escapeXml(p.trigger_context)}\n`;
+      inner += `### Past pattern: ${escapeXml(p.trigger_context)}\n`;
       if (p.anti_pattern) {
-        inner += `**What went wrong:** ${escapeXml(p.anti_pattern)}\n`;
+        inner += `Observed approach: ${escapeXml(p.anti_pattern)}\n`;
       }
-      inner += `**Correct approach:** ${escapeXml(p.lesson)}\n`;
+      inner += `Outcome learned: ${escapeXml(p.lesson)}\n`;
 
       // ACE ratio stats
       const helpful = (p as ExperiencePattern & { helpful_count?: number }).helpful_count ?? p.times_useful;
       const harmful = (p as ExperiencePattern & { harmful_count?: number }).harmful_count ?? 0;
       const total = helpful + harmful;
       const ratioStr = total > 0 ? ` (${Math.round(helpful / total * 100)}% helpful)` : '';
-      inner += `*Helped ${helpful}/${p.times_triggered} times${ratioStr}*\n\n`;
+      inner += `Surfaced ${helpful}/${p.times_triggered} times${ratioStr}.\n\n`;
     }
 
     // Framing BEFORE the opening tag: the preamble is a structural instruction
