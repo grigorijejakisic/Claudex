@@ -183,7 +183,7 @@ Plans:
 ### Phase 6.5: Cross-project task-pattern recall (NEW)
 **Goal:** Make the shadowban example mechanically work — task-similar prior findings surface across projects during framing.
 **Depends on:** Phase 6 (retrieval simplified; cross-encoder load-bearing)
-**Requirements:** RETR-05..RETR-08 (new)
+**Requirements:** RETR-06, RETR-07 (RETR-05 + RETR-08 closed by Phase 6)
 **Success Criteria:**
   1. Task-pattern fingerprint stored on artifacts of `kind ∈ {mental_model, learning, experience_pattern, workspace_fact, lesson}`. Auto-classified at write time by Angel's segmentation. Short tag (`scraping rate-limits`, `auth flow design`, `live-fire vs static-test`, etc.).
   2. `claudex_search` query expansion: when query is task-shaped (verb + domain noun), expand to also search cross-project artifacts where task-pattern fingerprint matches via cosine + rerank.
@@ -191,7 +191,10 @@ Plans:
   4. Surface: cross-project lessons surface as observational context (*"prior similar task in project X found Y"*), never as imperatives.
   5. Vesna probe coverage: at least 3 cross-project lesson-application probes (canonical: shadowban-from-Lacuna applies to investigate-another-backend task in big-mozzy-v2 or oracle).
 
-**Plans:** TBD
+**Plans:** 3 plans in 3 waves (planned 2026-04-29)
+- [ ] 06.5-01-PLAN.md — Pre-flight backup + V21 schema (artifact_task_pattern sidecar) + Angel write-time + heartbeat backfill classifier
+- [ ] 06.5-02-PLAN.md — HYBRID cross-project equivalence (Stage 1 telemetry + Stage 2 cosine ≥0.85) + Experience Tier scorer at assembler P4.06 + tier-utils Architecture B extraction
+- [ ] 06.5-03-PLAN.md — claudex_search task-shape detection + cross-project query expansion (default-ON, CLAUDE.md opt-out) + Vesna SC#1 gate (3 cross-project probes) + STATE/ROADMAP/REQUIREMENTS close
 
 ### Phase 7: P6 — Framing rewrite
 **Goal:** Every surviving formatter speaks in advisory voice — observation, not command
