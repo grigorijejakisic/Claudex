@@ -52,7 +52,7 @@ import { spreadActivation } from '../core/hybrid-retrieval.js';
 import type { ExperiencePattern } from '../intelligence/experience-patterns.js';
 import { cachedPrepare } from '../core/stmt-cache.js';
 import { recordRetrievalEvent } from '../intelligence/retrieval-feedback.js';
-import { findRelevantFiles, getChangedFiles } from '../indexer/codebase-indexer.js';
+import { findRelevantFiles } from '../indexer/codebase-indexer.js';
 import { getCheckpointTracking } from '../core/checkpoint-tracking.js';
 import { readGsdState } from '../gsd/state-reader.js';
 import { assembleCriticalReminders } from '../intelligence/critical-reminders.js';
@@ -365,62 +365,10 @@ export function assembleFullContext(params: FullAssemblyParams): InjectPayload {
       } catch { /* non-fatal */ }
     }
 
-    // === CODEBASE CONTEXT (Amp Phase 3 — structural understanding) ===
-    // Inject relevant symbols and recent changes from the codebase index.
-    // Only at session-start (not post-compaction).
-    if (!params.isPostCompaction) {
-      try {
-        // findRelevantFiles and getChangedFiles imported statically at top
-        const query = params.searchQuery ?? checkpoint?.thread?.topic ?? null;
-        const parts: string[] = [];
-
-        // Helper: shorten file path to project-relative.
-        // CACH-03: normalize backslashes to forward slashes so output bytes are
-        // OS-invariant (Windows produces 'src\\' otherwise; cache hash flips per-host).
-        const shortenPath = _shortenPathCacheStable;
-
-        // Recent changes since last session on this project
-        const lastSession = cachedPrepare(params.db,
-          `SELECT ended_at_epoch FROM sessions
-           WHERE project = ? AND status = 'completed' AND ended_at_epoch IS NOT NULL
-           ORDER BY ended_at_epoch DESC LIMIT 1`
-        ).get(params.project) as { ended_at_epoch: number } | undefined;
-        const lastSessionEpoch = lastSession?.ended_at_epoch ?? ((params.nowEpoch ?? Math.floor(Date.now() / 1000)) - 86400);
-        const changed = getChangedFiles(params.db, params.project, lastSessionEpoch);
-        if (changed.length > 0) {
-          parts.push('**Changed since last session:**');
-          for (const f of changed.slice(0, 5)) {
-            const relPath = shortenPath(f.file_path);
-            const exportedSymbols = f.symbols.filter(s => s.exported).map(s => s.name).slice(0, 5).join(', ');
-            parts.push(`- \`${relPath}\`${exportedSymbols ? ` (${exportedSymbols})` : ''}`);
-          }
-        }
-
-        // Relevant files for current topic
-        if (query) {
-          const relevant = findRelevantFiles(params.db, params.project, query, 3);
-          if (relevant.length > 0) {
-            parts.push(parts.length > 0 ? '\n**Relevant to current task:**' : '**Relevant files:**');
-            for (const f of relevant) {
-              const relPath = shortenPath(f.file_path);
-              const topSymbols = f.symbols.filter(s => s.exported).slice(0, 5).map(s => `${s.kind} ${s.name}`).join(', ');
-              parts.push(`- \`${relPath}\`: ${topSymbols || '(no exports)'}`);
-            }
-          }
-        }
-
-        if (parts.length > 0) {
-          const codeSection = `## Codebase Context\n${parts.join('\n')}`;
-          const cost = estimateTokens(codeSection);
-          if (cost <= budget && cost <= 800) { // Hard cap: 800 tokens for codebase context
-            sections.push(codeSection);
-            budget -= cost;
-            sources.push('codebase_index');
-          }
-        }
-      } catch { /* codebase index unavailable — non-fatal */ }
-    }
-
+    // === CODEBASE CONTEXT relocated to UPS in Phase 5 / Plan 06 ===
+    // The session-start codebase_index block was deleted: codebase relevance is
+    // task-shaped, not session-start static. assembleRegularPrompt below carries
+    // the per-turn query-gated equivalent under the UPS ≤1KB budget.
 
     // === GSD (not redundant with artifacts) ===
     try {
@@ -665,6 +613,38 @@ export function assembleRegularPrompt(params: RegularPromptParams): InjectPayloa
               prevCommit?.();
               reminders.applyEffects();
             };
+          }
+        } catch { /* non-fatal */ }
+      }
+
+      // 4a.7: Codebase Index (Phase 5 Plan 06 — relocated from session-start).
+      // Per-turn, query-gated. Fires only when params.prompt is non-empty AND
+      // `findRelevantFiles` returns matches AND result fits in remaining UPS budget.
+      // Hard cap: 200 cl100k_base tokens (UPS budget is 1KB ≈ 256 tokens total).
+      // The session-spanning "Changed since last session" sub-block does NOT migrate —
+      // per-turn relevance is task-shaped, not session-spanning.
+      if (params.prompt && params.prompt.trim().length > 0) {
+        try {
+          const relevant = findRelevantFiles(params.db, params.project, params.prompt, 3);
+          if (relevant.length > 0) {
+            const codeParts: string[] = ['**Relevant files:**'];
+            for (const f of relevant) {
+              const relPath = _shortenPathCacheStable(f.file_path);
+              const topSymbols = f.symbols
+                .filter(s => s.exported)
+                .slice(0, 5)
+                .map(s => `${s.kind} ${s.name}`)
+                .join(', ');
+              codeParts.push(`- \`${relPath}\`: ${topSymbols || '(no exports)'}`);
+            }
+            const codeSection = `## Codebase Context\n${codeParts.join('\n')}`;
+            const cost = estimateTokens(codeSection);
+            // Hard cap: 200 tokens for UPS codebase index.
+            if (cost <= 200) {
+              parts.push(codeSection);
+              totalTokens += cost;
+              srcs.push('codebase_index');
+            }
           }
         } catch { /* non-fatal */ }
       }
