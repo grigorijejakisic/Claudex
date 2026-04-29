@@ -273,11 +273,16 @@ describe('initializeSchema idempotency — post-V17 re-open', () => {
     }
   });
 
-  it('user_version stays at 17 after openDatabase (does not demote to 16)', () => {
+  it('user_version reaches 18 after openDatabase (V17→V18 promotion via runMigrations)', () => {
+    // Phase 4.1 raised TARGET_VERSION 16→18. A V17 DB now auto-promotes to V18
+    // on open (V17→V18 step adds shape_vocabulary tables; idempotent IF NOT
+    // EXISTS-guarded). The original 04-07 regression — silent demotion to 16
+    // — must still be prevented; we now assert 18 instead of 17 to reflect
+    // the new ceiling.
     const db = openDatabase(dbPath);
     try {
       const uv = (db.pragma('user_version') as Array<{ user_version: number }>)[0].user_version;
-      expect(uv).toBe(17);
+      expect(uv).toBe(18);
     } finally {
       db.close();
     }
