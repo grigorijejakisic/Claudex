@@ -1087,3 +1087,73 @@ function renderCuratedBlock(entries: readonly CuratedEntry[]): string {
   return out.join('\n');
 }
 
+// ---------------------------------------------------------------------------
+// Phase 6.5 — Experience Tier section formatter
+// ---------------------------------------------------------------------------
+
+/** Compact view of a cross-project lesson for Experience Tier rendering. */
+export interface ExperienceTierItem {
+  project: string;
+  summary: string;
+  content: string | null;
+}
+
+const SALIENCE_MAX_CHARS = 240;
+
+/**
+ * Extract the salience line from artifact summary + content.
+ * Falls back to summary alone if content is empty.
+ */
+function extractSalienceLine(summary: string, content: string | null): string {
+  const text = (summary || '').trim();
+  if (text.length > 0) return text.slice(0, SALIENCE_MAX_CHARS);
+  if (content) {
+    const firstLine = content.split('\n').find(l => l.trim().length > 0) ?? '';
+    return firstLine.trim().slice(0, SALIENCE_MAX_CHARS);
+  }
+  return '(no salience text)';
+}
+
+/**
+ * Extract a "Decision: ..." line from content if present, else fallback.
+ */
+function extractDecisionLine(content: string | null): string {
+  if (!content) return '(decision unavailable)';
+  const line = content.split('\n').find(l => /^\s*Decision\s*:/i.test(l));
+  if (line) return line.replace(/^\s*Decision\s*:\s*/i, '').trim();
+  return '(decision unavailable)';
+}
+
+/**
+ * Extract an "Outcome: ..." line from content if present, else fallback.
+ */
+function extractOutcomeLine(content: string | null): string {
+  if (!content) return '(outcome unavailable)';
+  const line = content.split('\n').find(l => /^\s*Outcome\s*:/i.test(l));
+  if (line) return line.replace(/^\s*Outcome\s*:\s*/i, '').trim();
+  return '(outcome unavailable)';
+}
+
+/**
+ * Render the Experience Tier section using the LOCKED template from
+ * Phase 6.5 CONTEXT.md:
+ *
+ *     Prior similar task in project X: salience. Decision was D; outcome was O.
+ *
+ * Advisory voice — no imperatives. Returns the section string ready for
+ * concatenation into the assembled output. Empty list yields the heading
+ * with no bullets, but callers should skip rendering when there are no items.
+ */
+export function formatExperienceTierSection(items: ExperienceTierItem[]): string {
+  const lines: string[] = ['## Experience'];
+  for (const it of items) {
+    const salience = extractSalienceLine(it.summary, it.content);
+    const decision = extractDecisionLine(it.content);
+    const outcome = extractOutcomeLine(it.content);
+    lines.push(
+      `- Prior similar task in project ${it.project}: ${salience}. Decision was ${decision}; outcome was ${outcome}.`
+    );
+  }
+  return lines.join('\n');
+}
+

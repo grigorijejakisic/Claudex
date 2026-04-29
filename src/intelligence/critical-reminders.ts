@@ -18,6 +18,12 @@ import { estimateTokens } from '../shared/text-utils.js';
 import { scaleBudget } from '../shared/constants.js';
 import { getExperienceFlags, setExperienceFlags } from './experience-flags.js';
 import { getWeakDomains, generateDomainAdvisory } from './capability-tracker.js';
+import {
+  shouldInjectArtifact,
+  advanceTTL as advanceTTLValue,
+  resetTTL as resetTTLValue,
+  renderObservationalVariant,
+} from './tier-utils.js';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
@@ -75,37 +81,33 @@ function normalizeForMultiProject(text: string): string {
     .trim();
 }
 
-/** Jitter range per drift_risk tier. */
-const JITTER_RANGES: Record<string, number> = {
-  safety: 2,
-  'working-method': 3,
-  style: 5,
-};
-
 /**
  * Determines whether a rule should be injected based on TTL + deterministic jitter.
- * No Math.random — jitter is seeded from rule.id + turnNumber for reproducibility.
+ *
+ * Phase 6.5: thin wrapper around the shared shouldInjectArtifact (tier-utils.ts)
+ * — same algorithm as before (rule.id * 13 + turnNumber dispersion against
+ * JITTER_RANGES[drift_risk]). Public surface preserved for backward compat.
  */
 export function shouldInjectRule(
   rule: CriticalRule,
   turnNumber: number,
 ): boolean {
-  if (rule.last_injected_turn == null) return true; // never injected
-
-  const elapsed = turnNumber - rule.last_injected_turn;
-  const effectiveTTL = rule.current_ttl ?? rule.base_ttl;
-  const jitterRange = JITTER_RANGES[rule.drift_risk] ?? 3;
-
-  // Deterministic jitter: (rule.id * 13 + turnNumber) % (2 * jitterRange + 1) - jitterRange
-  // Uses 13 as multiplier (coprime to all moduli: 5, 7, 11) for proper dispersion.
-  const jitter = ((rule.id * 13 + turnNumber) % (2 * jitterRange + 1)) - jitterRange;
-
-  return elapsed >= effectiveTTL + jitter;
+  return shouldInjectArtifact(
+    rule.id,
+    rule.last_injected_turn,
+    turnNumber,
+    rule.base_ttl,
+    rule.current_ttl,
+    rule.drift_risk,
+  );
 }
 
 /**
  * Leitner advance: extend TTL on compliance evidence.
  * current_ttl = min(current_ttl * 1.5, base_ttl * 3), compliance_count++
+ *
+ * Phase 6.5: TTL math delegated to tier-utils.advanceTTL; the SQL update
+ * remains here because critical_rules is a CR-specific table.
  */
 export function advanceTTL(db: Database, ruleId: number): void {
   try {
@@ -122,6 +124,8 @@ export function advanceTTL(db: Database, ruleId: number): void {
 /**
  * Leitner reset: reset TTL on violation evidence.
  * current_ttl = base_ttl, violation_count++
+ *
+ * Phase 6.5: TTL math delegated to tier-utils.resetTTL; SQL update remains here.
  */
 export function resetTTL(db: Database, ruleId: number): void {
   try {
@@ -135,6 +139,13 @@ export function resetTTL(db: Database, ruleId: number): void {
   } catch { /* non-fatal */ }
 }
 
+// Suppress unused-import warnings — these are retained for explicit
+// surface symmetry: critical-reminders.ts pulls the same shared helpers as
+// experience-tier.ts (Architecture B "shared infrastructure" principle).
+void advanceTTLValue;
+void resetTTLValue;
+void renderObservationalVariant;
+
 // ---------------------------------------------------------------------------
 // WU6: Phrasing Variation Renderer
 // ---------------------------------------------------------------------------
@@ -142,13 +153,16 @@ export function resetTTL(db: Database, ruleId: number): void {
 /**
  * Selects a phrasing variant for a rule based on injection count.
  * Pure deterministic rotation — no LLM call.
+ *
+ * Phase 6.5: parsing remains here (variants are JSON in the column);
+ * rotation delegated to tier-utils.renderObservationalVariant.
  */
 export function renderRuleVariant(rule: CriticalRule, injectionCount: number): string {
   if (!rule.variants) return rule.rule_text;
   try {
     const variants = JSON.parse(rule.variants) as string[];
-    if (!Array.isArray(variants) || variants.length === 0) return rule.rule_text;
-    return variants[injectionCount % variants.length];
+    if (!Array.isArray(variants)) return rule.rule_text;
+    return renderObservationalVariant(variants, injectionCount, rule.rule_text);
   } catch {
     return rule.rule_text;
   }

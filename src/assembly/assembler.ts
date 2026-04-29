@@ -57,6 +57,8 @@ import { findRelevantFiles } from '../indexer/codebase-indexer.js';
 import { getCheckpointTracking } from '../core/checkpoint-tracking.js';
 import { readGsdState } from '../gsd/state-reader.js';
 import { assembleCriticalReminders } from '../intelligence/critical-reminders.js';
+import { assembleExperienceTier, TIER_BUDGET as EXPERIENCE_TIER_BUDGET } from '../intelligence/experience-tier.js';
+import type { HandleSet } from '../core/cross-project-equivalence.js';
 import { getPressureZone, scaleBudget, GLOBAL_PROJECT_SCOPE } from '../shared/constants.js';
 import { getHandoffsDir, getSessionsDir } from '../shared/paths.js';
 import * as path from 'path';
@@ -464,6 +466,26 @@ function getTurnCount(db: Database, sessionId: string): number {
   } catch { return 0; }
 }
 
+/**
+ * Phase 6.5 — synthesize an incoming HandleSet from the assembler params for
+ * Experience Tier scoring. Pulls framing tokens from the recent prompt (when
+ * present) and conservative defaults elsewhere. Empty handle sets are valid
+ * — Stage 1 will return 0 shared and the tier will gracefully no-op.
+ */
+function synthesizeIncomingHandles(params: { prompt?: string }): HandleSet {
+  const text = params.prompt ?? '';
+  const tokens = text
+    .toLowerCase()
+    .split(/[^a-z0-9_-]+/)
+    .filter(t => t.length > 1);
+  return {
+    tools_used: [],
+    files_touched: [],
+    user_framing_tokens: tokens,
+    errors_encountered: [],
+  };
+}
+
 function buildGaugeTiming(db: Database, sessionId?: string): GaugeTimingContext {
   const timing: GaugeTimingContext = {};
   if (!sessionId) return timing;
@@ -627,6 +649,36 @@ export function assembleRegularPrompt(params: RegularPromptParams): InjectPayloa
             };
           }
         } catch { /* non-fatal */ }
+      }
+
+      // 4a.6: Experience Tier (Phase 6.5 — Architecture B partner of Critical
+      // Reminders). Surfaces top-K cross-project lessons in advisory voice.
+      // Reads artifact_task_pattern (V21 sidecar) and JOINs to artifacts;
+      // scoring is deterministic for cache stability (CACH-02). Budget: 200
+      // tokens (≤ CR's 300 so behavioral rules win on collisions).
+      if (params.sessionId) {
+        try {
+          const turnCount = getTurnCount(params.db, params.sessionId);
+          const incomingHandles: HandleSet = synthesizeIncomingHandles(params);
+          const experience = assembleExperienceTier(
+            params.db,
+            params.sessionId,
+            turnCount,
+            params.project,
+            incomingHandles,
+            params.gauge?.contextWindowTokens,
+          );
+          if (experience && experience.tokenCost <= scaleBudget(EXPERIENCE_TIER_BUDGET, params.gauge?.contextWindowTokens)) {
+            parts.push(experience.section);
+            totalTokens += experience.tokenCost;
+            srcs.push('experience_tier');
+            const prevCommit2 = commitFn;
+            commitFn = () => {
+              prevCommit2?.();
+              experience.applyEffects();
+            };
+          }
+        } catch { /* non-fatal — Experience Tier never breaks session-start */ }
       }
 
       // 4a.7: Codebase Index (Phase 5 Plan 06 — relocated from session-start).
