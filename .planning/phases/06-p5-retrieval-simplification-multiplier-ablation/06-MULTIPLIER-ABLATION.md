@@ -80,3 +80,30 @@ The harness is deterministic — the in-memory DB seeding, the FTS5 ranking, and
 - **Phase 10 Vesna suite (~20 probes)** will re-run this ablation with stronger evidence. Results from this phase are directional, sufficient to gate `hybrid-retrieval.ts` *consolidation* (Plan 03) but **not** aggressive multiplier *deletion*.
 - **Plan 03 consolidation target:** unify the three inner-factor and four outer-multiplier tiers into a single `computeArtifactScore` function with a flat, documented weight vector. No deletion. The deletion debate moves to a post-Phase-10 follow-up plan.
 - **Plan 04 visibility:** unchanged — `reranker_fallback_fired` telemetry write site + assembler section land regardless of these ablation outcomes.
+
+## Post-Plan-03 status
+
+**Plan 03 shipped path A (consolidation, not deletion) on 2026-04-29.** Approved by team-lead on the basis of the evidence-resolution argument above.
+
+What landed:
+- New `computeArtifactScore(artifact, rrfScore, ctx)` in `src/core/hybrid-retrieval.ts` is the single home for the 7-multiplier formula.
+- Both `hybridSearchSync` and `hybridSearchAsync` route every score through it; the sync↔async qMultiplier mismatch (a real bug independent of the ablation question) is closed.
+- Per-multiplier helpers (`computeNoveltyMultiplier`, `computeActivationFactor`, `computeQMultiplier`, alongside the existing `computeRecencyScore` and `computeImportanceScore`) give each weight a single home.
+- `ArtifactScoringContext` interface lets future ablation pass any subset of `multiplierFlags` without touching either retrieval path.
+- Documented weight vector lives in `06-03-CONSOLIDATION-NOTE.md` (table per multiplier with neutral and ablation-disabled values).
+
+Evidence preserved:
+- `runs/06-02-baseline.json` — pre-consolidation baseline.
+- `runs/06-03-post-consolidation-baseline.json` — post-consolidation baseline; matches W2 verbatim. No regression.
+
+## Deletion debate — deferred to a post-Phase-10 follow-up plan
+
+When Phase 10's full Vesna suite (~20 probes with closer-to-threshold targets) ships, the deletion question becomes answerable:
+
+1. **Re-run the existing harness** (`bun run test src/tests/integration/phase-6-multiplier-ablation.test.ts`) using the larger probe set. The harness is deterministic and the per-flag JSONs are auto-emitted — no plumbing changes needed.
+2. **Resolution upgrade.** With ~20 probes the per-flag delta resolution drops from ~9pp to ~5pp; a true-positive 2-3pp drop becomes detectable.
+3. **Drop candidates** are multipliers showing ≥5pp aggregate degradation under the larger suite. Edge-case override (any single category drop >2pp ⇒ KEEP-WITH-TRADE-OFF) still applies.
+4. **Author a post-Phase-10 follow-up plan** named e.g. `phase-10.X-multiplier-deletion.md` that consumes the new evidence and ships the actual `computeArtifactScore` simplification — by removing the helper for any multiplier whose flag is consistently DROP at the new resolution.
+5. **Until then, every multiplier stays.** The flag mechanism makes future ablation cheap; the consolidated function makes future deletion a single-helper edit.
+
+This document is the input to that future plan. The Phase 10 suite landing is the trigger.
