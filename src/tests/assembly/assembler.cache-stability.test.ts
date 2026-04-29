@@ -50,20 +50,8 @@ for (const sc of SCENARIOS) {
       fx = sc.build();
       const out = fx.run();
       const tokens = encode(out.content).length;
-
       // eslint-disable-next-line no-console
       console.log(`[cache-stability:${sc.name}] tokens=${tokens} (budget=${TOKEN_BUDGET})`);
-
-      const strict = process.env.CLAUDEX_P5_TOKEN_GATE_STRICT === '1';
-      if (tokens > TOKEN_BUDGET && !strict) {
-        // Pre-deletion observed-overrun mode. Plan 05 closes Tier C; Plan 09 flips
-        // the default to strict — at that point this branch goes away and the
-        // hard expect below is the only assert.
-        // eslint-disable-next-line no-console
-        console.warn(`[cache-stability:${sc.name}] OVERRUN by ${tokens - TOKEN_BUDGET} (expected pre-deletion)`);
-        expect.soft(tokens).toBeLessThanOrEqual(TOKEN_BUDGET);
-        return;
-      }
       expect(tokens).toBeLessThanOrEqual(TOKEN_BUDGET);
     });
 
