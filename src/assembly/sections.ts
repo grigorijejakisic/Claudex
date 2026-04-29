@@ -513,11 +513,11 @@ export function formatPressureResponse(
 
     switch (zone) {
       case 'advisory':
-        return `${gaugeLine}\n[Advisory: Consider using sub-agents for exploration tasks. Auto-checkpoint triggered.]`;
+        return `${gaugeLine}\n[Zone: advisory. Observed pattern: agents working past this zone often miss the checkpoint window. Auto-checkpoint already fired.]`;
       case 'warning':
-        return `${gaugeLine}\n[WARNING: Context at ${pct}%. Wrap up current task and prepare handoff. Auto-checkpoint triggered. Write key decisions and progress to handoff document.]`;
+        return `${gaugeLine}\n[Zone: warning at ${pct}%. Observed pattern: sessions that ran past this zone without writing handoff state typically lost progress on context flush. Auto-checkpoint fired. ACTIVE.md is the conventional handoff target.]`;
       case 'critical':
-        return `${gaugeLine}\n[CRITICAL: Context at ${pct}%. STOP new work immediately. Write structured handover document NOW. Save all progress to ACTIVE.md. Do NOT start new tasks or explorations.]`;
+        return `${gaugeLine}\n[Zone: critical at ${pct}%. Observed pattern: at this zone, sessions that started new work before writing handoff state lost it on the next message. ACTIVE.md is the conventional handoff target.]`;
       default:
         return null;
     }
