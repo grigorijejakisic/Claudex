@@ -303,7 +303,12 @@ export function findRelevantFiles(
       return { file_path: f.file_path, symbols, relevance };
     }).filter(f => f.relevance > 0);
 
-    return scored.sort((a, b) => b.relevance - a.relevance).slice(0, limit);
+    // CACH-03: deterministic secondary sort key — without it, equal-relevance
+    // ties would resolve in V8-internal stable-but-input-order, leaking the
+    // SQL row order (which can flip on concurrent writers).
+    return scored
+      .sort((a, b) => b.relevance - a.relevance || a.file_path.localeCompare(b.file_path))
+      .slice(0, limit);
   } catch {
     return [];
   }

@@ -189,7 +189,8 @@ export function getPackedArtifacts(
          ELSE 6
        END,
        importance DESC,
-       timestamp_epoch DESC
+       timestamp_epoch DESC,
+       id ASC
      LIMIT ?`
   ).all(project, limit ?? 100) as ArtifactRow[];
 }
@@ -213,14 +214,14 @@ export function getMaterializedArtifacts(
        WHERE state IN ('fresh', 'materialized')
        ORDER BY
          CASE WHEN project = ? THEN 0 ELSE 1 END,
-         importance DESC, timestamp_epoch DESC
+         importance DESC, timestamp_epoch DESC, id ASC
        LIMIT 20`
     ).all(project) as ArtifactRow[];
   }
   return cachedPrepare(db,
     `SELECT * FROM artifacts
      WHERE project = ? AND state IN ('fresh', 'materialized')
-     ORDER BY importance DESC, timestamp_epoch DESC`
+     ORDER BY importance DESC, timestamp_epoch DESC, id ASC`
   ).all(project) as ArtifactRow[];
 }
 

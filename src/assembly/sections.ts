@@ -21,7 +21,7 @@ import { getIdentityDir, getHandoffsDir, getSessionsDir } from '../shared/paths.
 import { getPressureZone } from '../shared/constants.js';
 import type { PressureZone } from '../shared/constants.js';
 import type { ToolCostEstimate } from '../observability/telemetry.js';
-import { estimateTokens } from '../shared/text-utils.js';
+import { estimateTokens, normalizeText } from '../shared/text-utils.js';
 import { listEntries as listCuratedEntries } from '../core/curated-context.js';
 import type { CuratedEntry } from '../core/curated-context.js';
 import { GLOBAL_PROJECT_SCOPE } from '../shared/constants.js';
@@ -98,7 +98,7 @@ export function formatIdentitySection(identityDir?: string): string | null {
     const dir = identityDir ?? getIdentityDir();
     const filePath = path.join(dir, 'USER.md');
     if (!fs.existsSync(filePath)) return null;
-    const content = fs.readFileSync(filePath, 'utf-8');
+    const content = normalizeText(fs.readFileSync(filePath, 'utf-8'));
     if (!content || content.trim().length === 0) return null;
     return `## Identity\n${content}`;
   } catch {
@@ -185,7 +185,7 @@ export function formatProjectSection(projectDir: string): string | null {
     try {
       const primerPath = path.join(projectDir, 'PROJECT_PRIMER.md');
       if (fs.existsSync(primerPath)) {
-        const content = fs.readFileSync(primerPath, 'utf-8');
+        const content = normalizeText(fs.readFileSync(primerPath, 'utf-8'));
         if (content && content.trim().length > 0) {
           return `## Project\n${wrapFileContent(content, 'PROJECT_PRIMER.md')}`;
         }
@@ -256,7 +256,7 @@ export function renderSessionContinuity(handoffPath?: string, sessionsDir?: stri
     if (handoffPath) {
       try {
         if (fs.existsSync(handoffPath)) {
-          handoffContent = fs.readFileSync(handoffPath, 'utf-8');
+          handoffContent = normalizeText(fs.readFileSync(handoffPath, 'utf-8'));
         }
       } catch { /* skip */ }
     }
@@ -270,7 +270,7 @@ export function renderSessionContinuity(handoffPath?: string, sessionsDir?: stri
             .sort();
           if (files.length > 0) {
             const latestFile = files[files.length - 1];
-            sessionContent = fs.readFileSync(path.join(sessionsDir, latestFile), 'utf-8');
+            sessionContent = normalizeText(fs.readFileSync(path.join(sessionsDir, latestFile), 'utf-8'));
           }
         }
       } catch { /* skip */ }
@@ -640,7 +640,7 @@ export function formatRulesReminderSection(projectDir: string): string | null {
     // 1. Global CLAUDE.md rules
     const globalPath = path.join(home, '.claude', 'CLAUDE.md');
     if (fs.existsSync(globalPath)) {
-      const content = fs.readFileSync(globalPath, 'utf-8');
+      const content = normalizeText(fs.readFileSync(globalPath, 'utf-8'));
       const extracted = extractNumberedRules(content);
       if (extracted.length > 0) rules.push('**Global rules:**', ...extracted);
     }
@@ -648,7 +648,7 @@ export function formatRulesReminderSection(projectDir: string): string | null {
     // 2. Project CLAUDE.md rules (may add project-specific rules)
     const projectPath = path.join(projectDir, 'CLAUDE.md');
     if (fs.existsSync(projectPath)) {
-      const content = fs.readFileSync(projectPath, 'utf-8');
+      const content = normalizeText(fs.readFileSync(projectPath, 'utf-8'));
       const extracted = extractNumberedRules(content);
       if (extracted.length > 0) {
         if (rules.length > 0) rules.push('');

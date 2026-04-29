@@ -2,7 +2,7 @@ import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
-import { readGsdState } from '../../gsd/state-reader.js';
+import { readGsdState, parseStateMd } from '../../gsd/state-reader.js';
 
 let tmpDir: string;
 
@@ -156,5 +156,55 @@ describe('parsing helpers', () => {
 
     const state = readGsdState(proj);
     expect(state!.completion).toBe('3/5 requirements met');
+  });
+});
+
+describe('parseStateMd CACH-03 extensions', () => {
+  it('extracts Current Phase Name when present', () => {
+    const md = '**Current Phase:** 5\n**Current Phase Name:** P4 — Kill legacy injection\n**Current Plan:** 1\nStatus: executing\n';
+    const out = parseStateMd(md);
+    expect(out).not.toBeNull();
+    expect(out!.phase).toBe(5);
+    expect(out!.phase_string).toBe('5');
+    expect(out!.phase_name).toBe('P4 — Kill legacy injection');
+  });
+
+  it('returns phase_name: undefined when STATE.md has no Current Phase Name line', () => {
+    const md = 'Phase: 7 of 11\nPlan: 1\nStatus: executing\n';
+    const out = parseStateMd(md);
+    expect(out).not.toBeNull();
+    expect(out!.phase_name).toBeUndefined();
+  });
+
+  it('handles decimal phase number (4.1) and preserves canonical token', () => {
+    const md = '**Current Phase:** 4.1\n**Current Plan:** 9\nStatus: complete\n';
+    const out = parseStateMd(md);
+    expect(out).not.toBeNull();
+    expect(out!.phase).toBeCloseTo(4.1, 5);
+    expect(out!.phase_string).toBe('4.1');
+  });
+
+  it('is a pure function: two calls return deep-equal objects', () => {
+    const md = '**Current Phase:** 5\n**Current Phase Name:** Kill injection\n**Current Plan:** 1\nStatus: x\n';
+    const a = parseStateMd(md);
+    const b = parseStateMd(md);
+    expect(a).toEqual(b);
+  });
+
+  it('legacy "Phase: N of M" format still parses', () => {
+    const md = 'Phase: 7 of 11\nPlan: 2\nStatus: x\n';
+    const out = parseStateMd(md);
+    expect(out!.phase).toBe(7);
+    expect(out!.phase_string).toBe('7');
+  });
+
+  it('readGsdState surfaces phase_name when present', () => {
+    const proj = createProject('test-phase-name');
+    writeFile(proj, '.planning/STATE.md', '**Current Phase:** 5\n**Current Phase Name:** P4 — Kill legacy injection\n**Current Plan:** 1\nStatus: executing\n');
+    writeFile(proj, '.planning/ROADMAP.md', '');
+    const state = readGsdState(proj);
+    expect(state!.phase).toBe(5);
+    expect(state!.phase_string).toBe('5');
+    expect(state!.phase_name).toBe('P4 — Kill legacy injection');
   });
 });

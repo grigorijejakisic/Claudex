@@ -32,6 +32,21 @@ export function normalize(text: string): string {
 }
 
 /**
+ * Strips UTF-8 BOM and normalizes line endings to LF.
+ *
+ * CACH-03: Windows-checkout files arrive with CRLF (and sometimes BOM); cache
+ * prefix bytes flip when the same content reads differently on POSIX vs
+ * Windows. Apply at all section-emitter file-read sites.
+ */
+export function normalizeText(s: string): string {
+  if (!s) return '';
+  // Strip UTF-8 BOM
+  if (s.charCodeAt(0) === 0xFEFF) s = s.slice(1);
+  // Normalize CRLF/CR to LF
+  return s.replace(/\r\n?/g, '\n');
+}
+
+/**
  * Rough token count estimate (chars / 4).
  * Returns 0 on error. Never throws.
  */

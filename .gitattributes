@@ -1,0 +1,14 @@
+# CACH-03: enforce LF for text files repo-wide so Windows checkouts don't
+# rewrite files to CRLF — that would flip cache-prefix bytes per-host.
+* text=auto eol=lf
+
+# Binary types — preserved as-is.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.pdf binary
+*.zip binary
+*.gz binary
+*.db binary

@@ -60,7 +60,7 @@ export function getLearningsByProject(
   return cachedPrepare(db,
       `SELECT * FROM learnings
        WHERE project = ? OR project = '__global__'
-       ORDER BY promotion_count DESC
+       ORDER BY promotion_count DESC, id ASC
        LIMIT ?`
     )
     .all(project, limit) as LearningRow[];
