@@ -44,8 +44,8 @@
 - [x] **RETR-03** (Phase 6, 2026-04-29): RIF suppression and spread activation retained verbatim; behavior locked by `phase-6-rif-spread-retained.test.ts` (8 invariant tests).
 - [x] **RETR-04** (Phase 6, 2026-04-29): MCP surface unchanged for the five canonical tools; verified via static structural lock-down in `phase-6-mcp-surface-unchanged.test.ts` against `mcp-surface-canonical.json`.
 - [x] **RETR-05** (Phase 6, 2026-04-29): Per-multiplier ablation A/B run on 11-probe set; 0pp delta on every flag at N=11 (below ~9pp resolution floor). Results in `06-MULTIPLIER-ABLATION.md` with deletion-debate-deferred-to-post-Phase-10 hook. Default-conservative axiom (KEEP unless evidence drops) applied per CONTEXT.md.
-- [ ] **RETR-06 (NEW 2026-04-27)**: Task-pattern fingerprint matching at search time — when query is task-shaped, expand to also search cross-project artifacts where task-pattern fingerprint matches via cosine + rerank
-- [ ] **RETR-07 (NEW 2026-04-27)**: Cross-project query expansion **default-ON** per Q10. Per-project opt-out via CLAUDE.md flag (no opt-out implemented unless requested)
+- [x] **RETR-06** (Phase 6.5, 2026-04-29): Task-pattern fingerprint matching at search time — `claudex_search` detects task-shaped queries (regex over verb + domain noun + `shape_vocabulary` Jaccard) and expands to cross-project artifacts via HYBRID equivalence (Stage 1 telemetry-handle overlap ≥3, Stage 2 cosine ≥0.85). Stage-2 ambiguous (0.70-0.85) logged with telemetry `event_kind='cross_project_ambiguous'` (V21 enum). Vesna SC#1 gate: 3/3 cross-project probes pass.
+- [x] **RETR-07** (Phase 6.5, 2026-04-29): Cross-project query expansion **default-ON**. Per-project opt-out via CLAUDE.md flag `claudex.cross_project_search: false` parsed by `readCrossProjectSearchFlag()` in `src/shared/claude-md-flags.ts`. Default-on rationale per CONTEXT.md Q10 lock.
 - [x] **RETR-08** (Phase 6, 2026-04-29): Cross-encoder reranker (BGE-v2-m3 on port 7439) is now load-bearing infrastructure. Bi-encoder fallback explicitly degraded; every fallback writes one row to `telemetry` with `event_kind='reranker_fallback'` and a reason from `unreachable/non_2xx/timeout/empty_response`. Session-start surfaces `## Reranker Health` line when 24h count > 0. CLAUDE.md and README.md updated.
 
 ### Curation (CUR)
@@ -180,7 +180,7 @@
 | INJ-01..INJ-07 | Phase 5 (P4) | Pending |
 | RETR-01..RETR-04 | Phase 6 (P5) | Done 2026-04-29 (RETR-02 partially: consolidation, deletion deferred to post-Phase-10) |
 | RETR-05 | Phase 6 (per-multiplier ablation) | Done 2026-04-29 (0pp delta at N=11; deletion-debate-deferred-to-Phase-10) |
-| RETR-06..RETR-07 | Phase 6.5 | Pending |
+| RETR-06..RETR-07 | Phase 6.5 | Done 2026-04-29 |
 | RETR-08 | Phase 6 | Done 2026-04-29 |
 | CUR-01..CUR-04 | Phase 4 (P3) | Complete (superseded by 4.1) |
 | CUR-05..CUR-07 | Phase 9 (P7) | Pending |

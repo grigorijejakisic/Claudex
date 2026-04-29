@@ -23,7 +23,7 @@ Phase 1 (P0 crystallization, ✅) and Phase 2 (P1 artifact unification, ✅, T3 
 - [x] **Phase 5: P4 — Kill legacy injection** — COMPLETE 2026-04-29. 10 sections deleted across Tiers A/B/C (~320 LOC); codebase_index relocated to UPS; CACH-03 hardening; SC#1-#4 PASS (SC#1 proxy pending Phase 10)
 - [x] **Phase 5.5: Curation feedback loop** — `pointer_recall_log`; auto-archive dead pointers; auto-promote high-recall pointers
 - [x] **Phase 6: P5 — Retrieval simplification + per-multiplier ablation** — COMPLETE 2026-04-29. Consolidated 7-multiplier scoring into one `computeArtifactScore` function; per-multiplier A/B run (0pp delta at N=11 → consolidation, not aggressive deletion, per CONTEXT.md default-conservative axiom); cross-encoder reranker hard-required with telemetry + session-start visibility surface; sync↔async qMultiplier mismatch fixed in passing. Aggressive deletion deferred to a post-Phase-10 follow-up plan when the larger Vesna suite resolves below ~5pp.
-- [ ] **Phase 6.5: Cross-project task-pattern recall** — Task-pattern fingerprinting; cross-project default-ON; surfaces as observational context
+- [x] **Phase 6.5: Cross-project task-pattern recall** (2026-04-29) — Task-pattern fingerprinting; cross-project default-ON; surfaces as observational context. RETR-06 + RETR-07 closed; SC#1 Vesna 3/3.
 - [ ] **Phase 7: P6 — Framing rewrite** — Advisory voice across every surviving formatter; manual A/B on real sessions for 1 week
 - [ ] **Phase 7.5: Handoff format redesign** — Hybrid YAML status header + ADR body; replaces 372-line schema with ~15 lines
 - [ ] **Phase 8: P6.5 — RL ablation gate** — Feature-flag deterministic go/no-go on RL deletion (decision by behavioral observation, not benchmark)
@@ -191,10 +191,12 @@ Plans:
   4. Surface: cross-project lessons surface as observational context (*"prior similar task in project X found Y"*), never as imperatives.
   5. Vesna probe coverage: at least 3 cross-project lesson-application probes (canonical: shadowban-from-Lacuna applies to investigate-another-backend task in big-mozzy-v2 or oracle).
 
-**Plans:** 3 plans in 3 waves (planned 2026-04-29)
-- [ ] 06.5-01-PLAN.md — Pre-flight backup + V21 schema (artifact_task_pattern sidecar) + Angel write-time + heartbeat backfill classifier
-- [ ] 06.5-02-PLAN.md — HYBRID cross-project equivalence (Stage 1 telemetry + Stage 2 cosine ≥0.85) + Experience Tier scorer at assembler P4.06 + tier-utils Architecture B extraction
-- [ ] 06.5-03-PLAN.md — claudex_search task-shape detection + cross-project query expansion (default-ON, CLAUDE.md opt-out) + Vesna SC#1 gate (3 cross-project probes) + STATE/ROADMAP/REQUIREMENTS close
+**Plans:** 3 plans in 3 waves (executed 2026-04-29)
+- [x] 06.5-01-PLAN.md (2026-04-29) — Pre-flight backup + V21 schema (artifact_task_pattern sidecar) + Angel write-time + heartbeat backfill classifier
+- [x] 06.5-02-PLAN.md (2026-04-29) — HYBRID cross-project equivalence (Stage 1 telemetry + Stage 2 cosine ≥0.85) + Experience Tier scorer at assembler P4.06 + tier-utils Architecture B extraction
+- [x] 06.5-03-PLAN.md (2026-04-29) — claudex_search task-shape detection + cross-project query expansion (default-ON, CLAUDE.md opt-out) + Vesna SC#1 gate (3/3 cross-project probes) + STATE/ROADMAP/REQUIREMENTS close
+
+**Status:** PHASE 6.5 COMPLETE 2026-04-29.
 
 ### Phase 7: P6 — Framing rewrite
 **Goal:** Every surviving formatter speaks in advisory voice — observation, not command

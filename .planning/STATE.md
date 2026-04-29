@@ -6,26 +6,26 @@ See: .planning/PROJECT.md (updated 2026-04-27)
 
 **Core value:** v4 makes the agent USE Claudex organically as part of how it works in Claude Code. Memory tools (`claudex_search`, `claudex_recall`, `claudex_events`) are reached for the same way `Read` or `Grep` are used — natural extensions of reasoning, not a separate "fetch context" step that has to be remembered.
 
-**Current focus:** Phase 6 COMPLETE 2026-04-29. Phase 6.5 (cross-project task-pattern recall) unblocked.
+**Current focus:** Phase 6.5 COMPLETE 2026-04-29. Phase 7 (framing rewrite — advisory voice) unblocked.
 
 ## Current Position
 
-**Current Phase:** 6 (COMPLETE)
-**Current Phase Name:** P5 retrieval simplification + per-multiplier ablation
+**Current Phase:** 6.5 (COMPLETE)
+**Current Phase Name:** Cross-project task-pattern recall
 **Total Phases:** 16
-**Current Plan:** 6
-**Total Plans in Phase:** 6
-**Status:** **PHASE 6 COMPLETE 2026-04-29.** All 6 plans landed across 5 waves. RETR-01, RETR-02, RETR-03, RETR-04, RETR-05, RETR-08 closed. SC#1 Vesna gate PASS (11/11 = 100% on the 11-probe set across all four categories — lesson 4/4, entity 3/3, constraint 2/2, handoff 2/2). SC#2 token-budget regression check PASS (Phase 5 full-gate test 7/7). V20 schema migration (telemetry +reranker_fallback enum). New `computeArtifactScore` consolidates 3-inner + 4-outer multiplier scoring into one canonical function consumed by both `hybridSearchSync` and `hybridSearchAsync`; closes the latent sync↔async qMultiplier mismatch in passing. Cross-encoder reranker (BGE-v2-m3 on port 7439) declared load-bearing (RETR-08); bi-encoder fallback explicitly degraded with telemetry counter and session-start `## Reranker Health` observational surface. Aggressive multiplier deletion deferred to a post-Phase-10 follow-up plan when the larger Vesna suite resolves below ~5pp. ~52 net-new tests across 6 files; 0 non-llama regressions.
+**Current Plan:** 3
+**Total Plans in Phase:** 3
+**Status:** **PHASE 6.5 COMPLETE 2026-04-29.** All 3 plans landed across 3 waves. RETR-06 + RETR-07 closed. Vesna SC#1 gate: 3/3 cross-project probes pass. HYBRID equivalence (telemetry-handle ≥3 + cosine ≥0.85) is the canonical cross-project content-equivalence function, consumed by both Experience Tier (session-start) and `claudex_search` query expansion. Experience Tier scorer ships at assembler P4.06 with 200-token budget, K=3 top-K. Architecture B enforced via `tier-utils.ts` shared helpers. V21 schema migration (artifact_task_pattern sidecar + telemetry +cross_project_* enums). 94 net-new tests across 6 new test files; 0 non-llama regressions. MCP surface canonical fixture unchanged (RETR-04 lock from Phase 6 holds — cross-project provenance encoded inline as `*from project X:*` italic prefix in `summary` field).
 **Last Activity:** 2026-04-29
-**Last Activity Description:** Phase 6 shipped end-to-end. V20 migration. multiplierFlags ablation harness with 11 probes across lesson/entity/constraint/handoff. Per-flag sweep evidence written to `06-MULTIPLIER-ABLATION.md` (0pp delta on every flag at N=11; default-conservative path-A consolidation per team-lead approval). New `computeArtifactScore` + helpers in `src/core/hybrid-retrieval.ts`. Reranker telemetry counter (`src/core/telemetry-counters.ts`) + observational `formatRerankerHealthSection` in `src/assembly/sections.ts`. RIF/spread + MCP surface lock-down tests (`phase-6-rif-spread-retained.test.ts` + `phase-6-mcp-surface-unchanged.test.ts` with `mcp-surface-canonical.json` fixture). 06-SUMMARY + 06-VESNA-RESULT + ROADMAP/STATE/REQUIREMENTS updates.
+**Last Activity Description:** Phase 6.5 shipped end-to-end. V21 migration. Sidecar `artifact_task_pattern` table (mirrors Phase 4.1 `critical_rules_multi_project` pattern). Regex-first task-pattern classifier with abstain-allowed semantics + heartbeat backfill (45 ticks to 100% coverage on 8686 relevant artifacts; 32% real-fingerprint hit rate). HYBRID equivalence (Stage 1 ≥3 handles + Stage 2 cosine ≥0.85 with 0.70-0.85 ambiguous logging). Experience Tier scorer (Architecture B parallel to critical-reminders) with locked weight matrix and deterministic tiebreak. claudex_search task-shape detection (regex verb+domain+vocab Jaccard) + cross-project query expansion (default-ON with CLAUDE.md opt-out). Vesna SC#1 gate 3/3. tier-utils.ts extraction enforces "shared infrastructure, separate scorers" Architecture B principle.
 **Progress:** [██████████] 100%
 
-Phase: 6 of 16 (P5 retrieval simplification — COMPLETE)
-Plan: 6 of 6 in current phase
-Status: complete; ready for next phase (6.5 cross-project task-pattern recall)
-Last activity: 2026-04-29 — Phase 6 shipped end-to-end
+Phase: 6.5 of 16 (Cross-project task-pattern recall — COMPLETE)
+Plan: 3 of 3 in current phase
+Status: complete; ready for next phase (7 framing rewrite — advisory voice)
+Last activity: 2026-04-29 — Phase 6.5 shipped end-to-end
 
-Progress: [█████████░░░░░░░] 44%
+Progress: [██████████░░░░░░] 47%
 
 ## Accumulated Context
 
@@ -67,8 +67,44 @@ Decisions logged in PROJECT.md Key Decisions table. Summary:
 ## Session Continuity
 
 Last session: 2026-04-29
-Stopped at: Phase 4.1 shipped end-to-end. 9 plans, 9 SUMMARY files, ~71 new tests, behavioral live-fire gate PASS.
-Resume file: None (Phase 4.1 complete; ready for Phase 4.2 or next phase per ROADMAP)
+Stopped at: Phase 6.5 shipped end-to-end. 3 plans, 3 SUMMARY files, 94 net-new tests, Vesna SC#1 gate 3/3 PASS.
+Resume file: None (Phase 6.5 complete; ready for Phase 7 framing rewrite per ROADMAP)
+
+### Phase 6.5 completion notes — 2026-04-29
+
+All 3 plans landed across 3 waves. RETR-06 + RETR-07 closed. Vesna SC#1 gate: 3/3 cross-project lesson-application probes pass (shadowban Lacuna→big-mozzy-v2, auth-token-expiry multi→third, schema-migration multi→Oracle). Each probe enforces a pre-flight `expect(prompt).not.toMatch(forbiddenWords)` lexical-leakage assertion so passes are genuinely perceptual, not FTS5 surface match.
+
+V21 schema migration:
+- New sidecar table `artifact_task_pattern` (PK on artifact_id; columns: task_pattern, classified_at_epoch_ms, classifier_confidence, classifier_source CHECK enum write_time/heartbeat_backfill). Pattern mirrors Phase 4.1's `critical_rules_multi_project` sidecar — works in both pre-V17 (real artifacts table) and post-V17 (view + INSTEAD OF triggers) environments.
+- Telemetry CHECK enum extended with `'cross_project_ambiguous'` (logged for cosine 0.70-0.85 band) and `'cross_project_query_expansion'` (one row per claudex_search expansion call).
+
+Architecture B partner ships:
+- `src/intelligence/tier-utils.ts` — extracted shared TTL/decay/jitter/variant primitives.
+- `src/intelligence/critical-reminders.ts` — refactored to delegate to tier-utils (no behavior change; 50/50 existing tests pass).
+- `src/intelligence/experience-tier.ts` — parallel scorer with 200-token budget (≤ Critical Reminders' 300), K=3 top-K, deterministic tiebreak (score DESC, id ASC) for cache stability.
+- `src/core/cross-project-equivalence.ts` — HYBRID equivalence (Stage 1 telemetry-handle ≥3 + Stage 2 cosine ≥0.85 with 0.70-0.85 ambiguous logging).
+- Assembler P4.06 wire-in in `assembleRegularPrompt` between Critical Reminders (4a.5) and Codebase Index (4a.7).
+
+claudex_search query expansion:
+- `src/core/task-shape-detector.ts` — regex verb+domain detector + Jaccard against shape_vocabulary canonical values.
+- `src/core/cross-project-search.ts` — `expandSearchCrossProject` reuses Phase 6's consolidated `computeArtifactScore` with synthetic rrfScore=1.0; matched cross-project results merge inline into `claudex_search.results[]` with `*from project X:*` italic prefix in the `summary` field.
+- `src/shared/claude-md-flags.ts` — per-project opt-out parser (`claudex.cross_project_search: false` line in CLAUDE.md).
+- MCP surface canonical fixture unchanged (RETR-04 lock from Phase 6 holds).
+
+Heartbeat backfill verified on live DB copy (8942 artifacts, 14394 telemetry rows): 100% coverage of 8686 relevant artifacts in 45 ticks; 32% real-fingerprint hit rate; 5931 abstain sentinels; idempotent post-convergence.
+
+Atomic commits:
+- 3b7df19 — V21 schema substrate (Plan 01 Task 1)
+- d8ca71a — task-pattern classifier + write-time + heartbeat backfill (Plan 01 Tasks 2+3)
+- 66fe3cb — HYBRID equivalence + Experience Tier + tier-utils extraction (Plan 02)
+- (Plan 03 commit pending below)
+
+Test counts:
+- 94 net-new tests across 6 new test files (8 V21 + 20 classifier + 17 equivalence + 14 experience-tier + 4 cache-stability + 17 task-shape + 10 cross-project-expansion + 4 Vesna)
+- 0 non-llama regressions in full suite (2990/3010 pass; 20 baseline llama failures unchanged per STATE.md)
+- All Phase 5/6 lock-down tests still pass: phase-5-full-gate (7/7), phase-6-mcp-surface-unchanged (9/9), phase-6-rif-spread-retained (8/8), phase-6-reranker-fallback-visibility (9/9), phase-4-1-perceptual-similarity-probes (4/4), critical-reminders (50/50)
+
+Phase 7 (advisory voice rewrite) is unblocked but not coupled — the Experience Tier already speaks in advisory voice via the locked CONTEXT.md template ("Prior similar task in project X: salience. Decision was D; outcome was O.").
 
 ### Phase 4.1 completion notes — 2026-04-29
 

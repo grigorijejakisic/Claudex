@@ -24,6 +24,10 @@ import { searchJournalFTS } from '../core/journal.js';
 import { tokenizeQuery } from '../shared/search-utils.js';
 import { searchConversations } from '../embeddings/qdrant-client.js';
 import { extractLessonRef, ensurePointerId, recordPointerRecall } from '../angel/pointer-recall.js';
+import { detectTaskShape } from '../core/task-shape-detector.js';
+import { expandSearchCrossProject } from '../core/cross-project-search.js';
+import { readCrossProjectSearchFlag } from '../shared/claude-md-flags.js';
+import { resolveProjectPath } from '../shared/scope-detector.js';
 
 // ---------------------------------------------------------------------------
 // DB connection
@@ -481,12 +485,56 @@ server.registerTool(
       artifacts: 1.0,    // General content (baseline)
       journal: 0.97,     // Breadcrumbs
       conversation: 0.95, // Raw dialogue
+      cross_project: 0.99, // Cross-project task-pattern matches (slight discount vs project-local)
     };
+
+    // Phase 6.5: cross-project query expansion (RETR-06, RETR-07).
+    // Default-ON with per-project CLAUDE.md opt-out. Only fires when the
+    // query is task-shaped. Results merge inline into the existing
+    // SearchResult[] — NO new top-level response keys (RETR-04 lock).
+    let crossProjectResults: SearchResult[] = [];
+    try {
+      const projectRoot = resolveProjectPath(proj) ?? proj;
+      const enabled = readCrossProjectSearchFlag(projectRoot);
+      if (enabled) {
+        // Resolve session id (mirrors hybrid path lookup above).
+        let cpSessionId = `mcp:${defaultProject}`;
+        try {
+          const active = cachedPrepare(getDb(),
+            `SELECT s.session_id FROM sessions s
+              WHERE s.project = ? AND s.status = 'active'
+              ORDER BY s.created_at_epoch DESC LIMIT 1`,
+          ).get(proj) as { session_id: string } | undefined;
+          if (active?.session_id) cpSessionId = active.session_id;
+        } catch { /* fall back to mcp:<project> */ }
+
+        const taskShape = detectTaskShape(getDb(), query);
+        if (taskShape.isTaskShaped) {
+          const expansion = await expandSearchCrossProject(
+            getDb(), cpSessionId, query, taskShape, proj,
+          );
+          crossProjectResults = expansion.crossProjectArtifacts.map((a, i) => ({
+            id: a.id,
+            type: a.artifact_type,
+            // Provenance encoded inline — Plan 03 RETR-04 lock-down: no new
+            // top-level response keys, so the cross-project signal lands in
+            // summary as a markdown italic prefix.
+            summary: `*from project ${a.project}:* ${a.summary}`,
+            provenance: `cross-project:${a.project}:${a.artifact_ref ?? `artifact #${a.id}`}`,
+            importance: a.importance,
+            project: a.project,
+            source: 'cross_project',
+            score: 1.0 / (RRF_K + i + 1),
+          }));
+        }
+      }
+    } catch { /* non-fatal — never break project-local search */ }
 
     // Merge all channels and sort by weighted RRF score
     const allResults = [
       ...artifactResults, ...journalResults, ...conversationResults,
       ...learningResults, ...decisionResults, ...patternResults,
+      ...crossProjectResults,
     ].map(r => ({
       ...r,
       score: r.score * (SOURCE_WEIGHTS[r.source] ?? 1.0),
