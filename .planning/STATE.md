@@ -6,26 +6,26 @@ See: .planning/PROJECT.md (updated 2026-04-27)
 
 **Core value:** v4 makes the agent USE Claudex organically as part of how it works in Claude Code. Memory tools (`claudex_search`, `claudex_recall`, `claudex_events`) are reached for the same way `Read` or `Grep` are used — natural extensions of reasoning, not a separate "fetch context" step that has to be remembered.
 
-**Current focus:** Phase 6.5 COMPLETE 2026-04-29. Phase 7 (framing rewrite — advisory voice) unblocked.
+**Current focus:** Phase 7 STRUCTURALLY COMPLETE 2026-04-29. End-of-week behavioral A/B verdict due 2026-05-06. Phase 7.5 (handoff format redesign) unblocked.
 
 ## Current Position
 
-**Current Phase:** 6.5 (COMPLETE)
-**Current Phase Name:** Cross-project task-pattern recall
+**Current Phase:** 7 (COMPLETE structural; A/B verdict pending)
+**Current Phase Name:** P6 — Framing rewrite (advisory voice)
 **Total Phases:** 16
 **Current Plan:** 3
 **Total Plans in Phase:** 3
-**Status:** Phase complete — ready for verification
+**Status:** **PHASE 7 STRUCTURALLY COMPLETE 2026-04-29.** All 3 plans landed across 3 waves. Three formatters in `src/assembly/sections.ts` rewritten to advisory voice (`formatProvenPrinciplesSection`, `renderExperienceWarnings`, `formatPressureResponse`). `<experience-data>` wrap + framing preamble retained verbatim per FRAM-03. SC#1 Vesna gate: 8/8 probes pass (FRAM-04 + 6.5 cross-project re-run, no retrieval regression). Behavioral A/B scaffold committed in `07-BEHAVIORAL-AB.md` with pre-merge baseline filled in; end-of-week subjective verdict due 2026-05-06, signed by user. FRAM-01..FRAM-04 closed.
 **Last Activity:** 2026-04-29
-**Last Activity Description:** Phase 6.5 shipped end-to-end. V21 migration. Sidecar `artifact_task_pattern` table (mirrors Phase 4.1 `critical_rules_multi_project` pattern). Regex-first task-pattern classifier with abstain-allowed semantics + heartbeat backfill (45 ticks to 100% coverage on 8686 relevant artifacts; 32% real-fingerprint hit rate). HYBRID equivalence (Stage 1 ≥3 handles + Stage 2 cosine ≥0.85 with 0.70-0.85 ambiguous logging). Experience Tier scorer (Architecture B parallel to critical-reminders) with locked weight matrix and deterministic tiebreak. claudex_search task-shape detection (regex verb+domain+vocab Jaccard) + cross-project query expansion (default-ON with CLAUDE.md opt-out). Vesna SC#1 gate 3/3. tier-utils.ts extraction enforces "shared infrastructure, separate scorers" Architecture B principle.
+**Last Activity Description:** Phase 7 shipped end-to-end across 3 waves. W1: imperative-voice purge in `src/assembly/sections.ts` (3 atomic commits, one per substantive task). W2: production no-imperative regex probe (`phase-7-advisory-voice.test.ts`, 11 cases) + Phase 6.5 cross-project Vesna gate re-run (4/4 PASS, zero retrieval regression) + `07-VESNA-RESULT.md`. W3: 1-week behavioral A/B scaffold (loose interpretation, no env-flag toggle) with pre-merge baseline notes filled in; STATE/ROADMAP/REQUIREMENTS updated; phase-close commit lands. Phase 7.5 (handoff format redesign) now unblocked.
 **Progress:** [██████████] 102%
 
-Phase: 6.5 of 16 (Cross-project task-pattern recall — COMPLETE)
+Phase: 7 of 16 (P6 — Framing rewrite advisory voice — COMPLETE structural; A/B verdict pending end-of-week)
 Plan: 3 of 3 in current phase
-Status: complete; ready for next phase (7 framing rewrite — advisory voice)
-Last activity: 2026-04-29 — Phase 6.5 shipped end-to-end
+Status: complete (structural); end-of-week verdict due 2026-05-06
+Last activity: 2026-04-29 — Phase 7 shipped end-to-end
 
-Progress: [██████████░░░░░░] 47%
+Progress: [██████████░░░░░░] 50%
 
 ## Accumulated Context
 
@@ -67,8 +67,46 @@ Decisions logged in PROJECT.md Key Decisions table. Summary:
 ## Session Continuity
 
 Last session: 2026-04-29
-Stopped at: Phase 6.5 shipped end-to-end. 3 plans, 3 SUMMARY files, 94 net-new tests, Vesna SC#1 gate 3/3 PASS.
-Resume file: None (Phase 6.5 complete; ready for Phase 7 framing rewrite per ROADMAP)
+Stopped at: Phase 7 shipped end-to-end. 3 plans, 3 SUMMARY files, 1 new test file (11/11 cases), 8/8 Vesna SC#1 probes PASS, behavioral A/B scaffold committed with pre-merge baseline filled in. End-of-week verdict due 2026-05-06.
+Resume file: None (Phase 7 structurally complete; A/B verdict pending end-of-week; Phase 7.5 unblocked per ROADMAP)
+
+### Phase 7 completion notes — 2026-04-29
+
+All 3 plans landed across 3 waves (strictly serial per CONTEXT.md — all touch `src/assembly/sections.ts` or its outputs):
+
+- **W1 (Plan 07-01) — Imperative-voice purge + advisory-voice rewrite.** Three formatters in `src/assembly/sections.ts` rewritten in-place with 3 atomic commits (one per substantive task):
+  - `formatProvenPrinciplesSection` (sections.ts:105) — header reframed from `Apply them proactively — they are always relevant` (imperative footer) to `The following are patterns extracted from prior sessions across this project. Each entry pairs a recurring context with the lesson that emerged.` (descriptive provenance). Commit `312e8f5`.
+  - `renderExperienceWarnings` (sections.ts:142) — escalation-prefix cascade (`CRITICAL ENFORCEMENT` / `ENFORCEMENT` / `WARNING` / `Critical` / `Important`) deleted; per-pattern shape rewritten to `### Past pattern: <ctx>` / `Observed approach: <anti>` / `Outcome learned: <lesson>` / `Surfaced X/Y times`. Strength signal carried by validation count, not ALL-CAPS prefix. `<experience-data>` wrap + framing preamble retained verbatim. Commit `7d61ed0`.
+  - `formatPressureResponse` (sections.ts:519) — three zone strings rewritten from command to observation (`STOP NOW` / `Wrap up` / `Do NOT start` gone; `Zone: warning at X%. Observed pattern: …` shape replaces ALL-CAPS prefixes). ACTIVE.md is named as the conventional handoff target. Commit `b4f7bee`.
+
+- **W2 (Plan 07-02) — Vesna purge probe + 6.5 gate re-run.** New test file `src/tests/integration/phase-7-advisory-voice.test.ts` ships 11 cases organized by formatter + cross-formatter regex sweep (FRAM-04 production probe) + `<experience-data>` wrap retention check (FRAM-03 carve-out). Phase 6.5 cross-project Vesna gate (`phase-6-5-cross-project-vesna.test.ts`) re-run: 4/4 PASS — zero retrieval regression, the rewrite isolated to framing as designed. Broader regression sweep: assembly 165/165, intelligence 801/801, phase-5-full-gate 7/7. SC#1 verdict: **8/8 probes PASS** (100% vs ≥80% floor). One Rule-3 deviation absorbed: initial fixture used `severity: 'high'` / `abstraction_level: 'general'` (invalid per `Severity` and `AbstractionLevel` exported unions); fixed inline. `07-VESNA-RESULT.md` committed. Commit `5bdef8a`.
+
+- **W3 (Plan 07-03) — Behavioral A/B scaffold + STATE/ROADMAP/REQUIREMENTS update + phase close.** `07-BEHAVIORAL-AB.md` shipped with:
+  - Section 1 (pre-merge baseline) filled in: imperative-frame surfaces seen frequently, how agent behavior felt under those framings, what the rewrite should subjectively shift.
+  - Section 2 (week-of-use observation log) — empty template for user fill-in.
+  - Section 3 (end-of-week subjective scoring) — table by session shape (debug / feature work / design discussion / endsession+handoff).
+  - Section 4 (verdict + carve-outs) — pass/fail/extend per CONTEXT.md acceptance spec; investigate-don't-revert-on-weak-evidence rule; pre-locked carve-outs from `07-VESNA-RESULT.md`.
+
+  Loose 1-week interpretation locked per CONTEXT.md (no env-flag toggle). End-of-week subjective verdict due 2026-05-06, signed by user; verdict commit closes FRAM-04's subjective dimension and updates ROADMAP Phase 7 row's status note.
+
+REQUIREMENTS.md: FRAM-01..FRAM-04 all `[x]`; traceability row updated to `Complete (07-VESNA gate PASS 8/8 2026-04-29; scaffold pending end-of-week verdict)`.
+
+ROADMAP.md: Phase 7 row updated to `3/3 Complete (structural; verdict pending end-of-week) — 2026-04-29`; Phase 7 detail section lists 3 plans with checkboxes; status note records structural close + verdict-due date.
+
+Test counts:
+- 11 net-new tests in `phase-7-advisory-voice.test.ts` (5 describe blocks: Proven Principles + Experience Warnings + Pressure Response + cross-formatter sweep + wrap retention)
+- 0 non-llama regressions (20 baseline llama-server-supervisor failures unchanged per STATE.md)
+- All Phase 5/6/6.5 lock-down tests still pass
+
+Atomic commits:
+- 312e8f5 — formatProvenPrinciplesSection header reframed (Plan 07-01 Task 1)
+- 7d61ed0 — renderExperienceWarnings advisory shape (Plan 07-01 Task 2)
+- b4f7bee — formatPressureResponse zone strings (Plan 07-01 Task 3)
+- b74a161 — Plan 07-01 SUMMARY + roadmap progress
+- 5bdef8a — Vesna purge probe + 07-VESNA-RESULT.md + Plan 07-02 SUMMARY
+- (Plan 07-03 atomic phase-close commit pending below)
+
+Phase 7.5 (handoff format redesign — replaces 372-line schema with hybrid YAML+ADR ~15 lines) now unblocked per ROADMAP dependency chain. Framing voice is locked structurally; the handoff is one of the surfaces that depends on framing being settled.
 
 ### Phase 6.5 completion notes — 2026-04-29
 

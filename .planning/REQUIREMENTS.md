@@ -74,10 +74,10 @@
 
 ### Framing (FRAM)
 
-- [ ] **FRAM-01**: Rewrite every surviving formatter in `sections.ts` for advisory voice — no `WARNING:`, no `**Correct approach:**`, no `Apply them proactively`, no `supersedes CLAUDE.md on conflict`
-- [ ] **FRAM-02**: Experience-warning surface (when agent explicitly queries) reframes as descriptive observation: *"Similar prior situation (session X): user wanted Y; outcome was Z."*
-- [ ] **FRAM-03**: `<experience-data>` wrap retained for prompt-injection isolation; inner content descriptive, not imperative
-- [ ] **FRAM-04**: Manual inspection confirms no imperative framing across all formatters
+- [x] **FRAM-01**: Rewrite every surviving formatter in `sections.ts` for advisory voice — no `WARNING:`, no `**Correct approach:**`, no `Apply them proactively`, no `supersedes CLAUDE.md on conflict`
+- [x] **FRAM-02**: Experience-warning surface (when agent explicitly queries) reframes as descriptive observation: *"Similar prior situation (session X): user wanted Y; outcome was Z."*
+- [x] **FRAM-03**: `<experience-data>` wrap retained for prompt-injection isolation; inner content descriptive, not imperative
+- [x] **FRAM-04**: Manual inspection confirms no imperative framing across all formatters
 - [ ] **FRAM-05 (NEW 2026-04-27)**: Behavioral A/B for 1 week of real sessions — subjective scoring of agent-thinks-with-experience vs follows-rules. User-led review at week's end. Documented in `.planning/phases/07/07-BEHAVIORAL-AB.md`
 
 ### Lifecycle (LIFE) — owned by Phase 3 merger
@@ -187,7 +187,7 @@
 | CUR-08 | Phase 4 (P3) | Complete |
 | CUR-09..CUR-15 | Phase 4.1 | Pending |
 | CUR-16..CUR-18 | Phase 5.5 | Complete (2026-04-29) |
-| FRAM-01..FRAM-04 | Phase 7 (P6) | Pending |
+| FRAM-01..FRAM-04 | Phase 7 (P6) | Complete (07-VESNA gate PASS 8/8 2026-04-29; scaffold pending end-of-week verdict) |
 | FRAM-05 | Phase 7 (P6) | Pending |
 | LIFE-01..LIFE-04 | Phase 3 merger | Pending |
 | DIR-CONSUMER-01..04 | Phase 3 merger | Pending |

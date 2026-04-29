@@ -24,7 +24,7 @@ Phase 1 (P0 crystallization, ✅) and Phase 2 (P1 artifact unification, ✅, T3 
 - [x] **Phase 5.5: Curation feedback loop** — `pointer_recall_log`; auto-archive dead pointers; auto-promote high-recall pointers
 - [x] **Phase 6: P5 — Retrieval simplification + per-multiplier ablation** — COMPLETE 2026-04-29. Consolidated 7-multiplier scoring into one `computeArtifactScore` function; per-multiplier A/B run (0pp delta at N=11 → consolidation, not aggressive deletion, per CONTEXT.md default-conservative axiom); cross-encoder reranker hard-required with telemetry + session-start visibility surface; sync↔async qMultiplier mismatch fixed in passing. Aggressive deletion deferred to a post-Phase-10 follow-up plan when the larger Vesna suite resolves below ~5pp.
 - [x] **Phase 6.5: Cross-project task-pattern recall** (2026-04-29) — Task-pattern fingerprinting; cross-project default-ON; surfaces as observational context. RETR-06 + RETR-07 closed; SC#1 Vesna 3/3.
-- [ ] **Phase 7: P6 — Framing rewrite** — Advisory voice across every surviving formatter; manual A/B on real sessions for 1 week
+- [x] **Phase 7: P6 — Framing rewrite** — Advisory voice across every surviving formatter; manual A/B on real sessions for 1 week
 - [ ] **Phase 7.5: Handoff format redesign** — Hybrid YAML status header + ADR body; replaces 372-line schema with ~15 lines
 - [ ] **Phase 8: P6.5 — RL ablation gate** — Feature-flag deterministic go/no-go on RL deletion (decision by behavioral observation, not benchmark)
 - [ ] **Phase 8.5: Recall observability + self-instrumented agent** — Per-session retrieval log; visible token cost; `claudex why?` slash + /endsession summary
@@ -210,10 +210,12 @@ Plans:
   5. **Behavioral A/B for 1 week of real sessions:** subjective scoring of whether agent behavior shifts on advisory framing (does the agent feel like it's thinking with prior experience or following rules?). User-led review at week's end. Documented in `.planning/phases/07-p6-framing-rewrite-advisory-voice/07-BEHAVIORAL-AB.md`.
   6. Vesna pass rate maintained (SC#1).
 
-**Plans:** 3 plans in 3 waves (planned 2026-04-30; execution pending)
-- [ ] 07-01-PLAN.md — Imperative-voice purge + advisory-voice rewrite for surviving formatters in `src/assembly/sections.ts` (W1)
-- [ ] 07-02-PLAN.md — Vesna purge probe + Phase 6.5 cross-project gate re-run + 07-VESNA-RESULT.md (W2)
-- [ ] 07-03-PLAN.md — Behavioral A/B scaffold + STATE/ROADMAP/REQUIREMENTS update + phase close (W3)
+**Plans:** 3 plans in 3 waves — all COMPLETE 2026-04-29:
+- [x] 07-01-PLAN.md — Imperative-voice purge + advisory-voice rewrite for surviving formatters in `src/assembly/sections.ts` (W1)
+- [x] 07-02-PLAN.md — Vesna purge probe + Phase 6.5 cross-project gate re-run + 07-VESNA-RESULT.md (W2)
+- [x] 07-03-PLAN.md — Behavioral A/B scaffold + STATE/ROADMAP/REQUIREMENTS update + phase close (W3)
+
+**Status:** PHASE 7 STRUCTURALLY COMPLETE 2026-04-29. SC#1 Vesna gate PASS at 8/8 probes (FRAM-04 + Phase 6.5 cross-project re-run, no retrieval regression). FRAM-01..FRAM-04 closed. End-of-week behavioral A/B verdict due 2026-05-06; signed by user; updates this row's status note when filed. Phase 7.5 unblocked.
 
 ### Phase 7.5: Handoff format redesign (NEW)
 **Goal:** Replace 372-line frontmatter-rigid handoff schema with hybrid YAML status header + ADR body. ~15 lines target.
@@ -332,7 +334,7 @@ Phase 9 may be scheduled parallel to 6/7 once Phase 5 ships (T6 verified safe). 
 | 5.5. Curation feedback loop | 5/5 | Complete | 2026-04-29 |
 | 6. P5 — Retrieval simplification + per-multiplier ablation | 0/0 | Not started | - |
 | 6.5. Cross-project task-pattern recall | 0/0 | Not started | - |
-| 7. P6 — Framing rewrite | 0/3 | Planned (2026-04-30) | - |
+| 7. P6 — Framing rewrite | 3/3 | Complete (structural; verdict pending end-of-week) | 2026-04-29 |
 | 7.5. Handoff format redesign | 0/0 | Not started | - |
 | 8. P6.5 — RL ablation gate | 0/0 | Not started | - |
 | 8.5. Recall observability + self-instrumented agent | 0/0 | Not started | - |
