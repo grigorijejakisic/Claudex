@@ -11,6 +11,7 @@ import { pruneTelemetry, emitTelemetry } from '../../observability/telemetry.js'
 import { emitErrorTelemetry } from '../../observability/error-telemetry.js';
 import { assembleFullContext } from '../../assembly/assembler.js';
 import { getIdentityDir } from '../../shared/paths.js';
+import { normalizeText } from '../../shared/text-utils.js';
 import { ingestFileArtifacts, pruneStaleFileArtifacts } from '../../core/file-ingester.js';
 import { getLastSessionSummary, synthesizeSessionSummary, getSessionEvents, saveSessionSummary, recordEvent } from '../../core/session-events.js';
 import { cachedPrepare } from '../../core/stmt-cache.js';
@@ -40,6 +41,67 @@ import * as fs from 'fs';
 // Plan 04-06-03: `ensureAngelRunning` moved to `./angel-launcher.ts` so
 // user-prompt-submit can import it without also triggering SessionStart's
 // top-level `main()` (that double-fired the hook and broke smoke tests).
+
+/**
+ * INJ-06 prime contract (Phase 5 Plan 07).
+ *
+ * Computes the initialUserMessage emitted to Claude at session-start.
+ * Returns null when ANY of the following are NOT satisfied:
+ *   1. `<cwd>/context/handoffs/ACTIVE.md` exists.
+ *   2. Frontmatter has `status: active` (case-insensitive).
+ *   3. Frontmatter `phase` exactly equals `Current Phase` from STATE.md (string equality).
+ *   4. Either `summary` is present in frontmatter, OR a non-blank, non-H1 body line exists.
+ *
+ * The prime format is fixed: `Resume handoff: ${summary}. Full state at .planning/handoffs/ACTIVE.md.`
+ *
+ * Caller is responsible for the sessionType gate (`startup` or `''`).
+ *
+ * Exported so unit tests can verify the matrix without spinning a CC hook harness.
+ */
+export function computeInitialUserMessage(cwd: string): string | null {
+  try {
+    const handoffPath = path.join(cwd, 'context', 'handoffs', 'ACTIVE.md');
+    if (!fs.existsSync(handoffPath)) return null;
+    const handoffContent = normalizeText(fs.readFileSync(handoffPath, 'utf-8'));
+    const fmMatch = handoffContent.match(/^---\s*\n([\s\S]*?)\n---/);
+    if (!fmMatch) return null;
+    const fmBlock = fmMatch[1];
+
+    const isActive = /^status:\s*active\b/im.test(fmBlock);
+    if (!isActive) return null;
+
+    const handoffPhaseMatch = fmBlock.match(/^phase:\s*["']?([^"'\n]+?)["']?\s*$/im);
+    const handoffPhase = handoffPhaseMatch?.[1]?.trim();
+    if (!handoffPhase) return null;
+
+    const statePath = path.join(cwd, '.planning', 'STATE.md');
+    if (!fs.existsSync(statePath)) return null;
+    const stateContent = normalizeText(fs.readFileSync(statePath, 'utf-8'));
+    // Tolerate `**Current Phase:** 5` markdown bold (matches state-reader extractor).
+    const m = stateContent.match(/Current Phase:\**\s*\*?([0-9]+(?:\.[0-9]+)?)/);
+    const statePhase = m?.[1]?.trim();
+    if (!statePhase) return null;
+
+    // EXACT string equality (per team-lead Q3 verdict 2026-04-29).
+    if (handoffPhase !== statePhase) return null;
+
+    // Extract summary: prefer `summary:` frontmatter; fall back to first
+    // non-blank, non-H1 body line.
+    const summaryMatch = fmBlock.match(/^summary:\s*["']?(.+?)["']?\s*$/im);
+    let summary = summaryMatch?.[1]?.trim();
+    if (!summary) {
+      const body = handoffContent.slice(fmMatch[0].length).trim();
+      summary = body.split('\n')
+        .map(l => l.trim())
+        .find(l => l.length > 0 && !l.startsWith('#'));
+    }
+    if (!summary) return null;
+
+    return `Resume handoff: ${summary}. Full state at .planning/handoffs/ACTIVE.md.`;
+  } catch {
+    return null;
+  }
+}
 
 const main = wrapHook('SessionStart', async (input, ctx) => {
   // Qdrant spawn removed in Phase 5 — vector store is now sqlite-vec (in-process,
@@ -310,56 +372,18 @@ const main = wrapHook('SessionStart', async (input, ctx) => {
     if (fs.existsSync(claudeMdPath)) watchPaths.push(claudeMdPath);
   } catch { /* non-fatal */ }
 
-  // I1: Auto-priming via initialUserMessage — opt-in, startup-only.
-  // When enabled and a handoff exists, injects a short directive as the first user
-  // message so the model auto-responds with handoff priorities without user typing.
+  // INJ-06: initialUserMessage prime — frontmatter-contract-gated, default-on.
+  // Per Phase 5 / 05-HANDOFF-FRONTMATTER-SPEC.md: fires only when handoff
+  // frontmatter status: active AND phase EXACTLY matches STATE.md Current
+  // Phase. No config flag, no mtime gate. EXACT match — handoff phase=4.1
+  // against STATE phase=4 does NOT prime (per team-lead Q3 verdict 2026-04-29).
   let initialMessage: string | undefined;
   try {
     const sessionType = (input.type as string) ?? '';
     if (sessionType === 'startup' || sessionType === '') {
-      // Check opt-in: read auto_prime from config.json (default: false)
-      const configPath = path.join(os.homedir(), '.claudex', 'config.json');
-      let autoPrime = false;
-      if (fs.existsSync(configPath)) {
-        try {
-          const raw = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
-          autoPrime = raw?.auto_prime === true;
-        } catch { /* malformed config — default false */ }
-      }
-
-      if (autoPrime) {
-        const handoffPath = path.join(input.cwd, 'context', 'handoffs', 'ACTIVE.md');
-        if (fs.existsSync(handoffPath)) {
-          const handoffContent = fs.readFileSync(handoffPath, 'utf-8');
-          // Check for active status in frontmatter
-          const frontmatterMatch = handoffContent.match(/^---\s*\n([\s\S]*?)\n---/);
-          const isActive = frontmatterMatch
-            ? /status:\s*active/i.test(frontmatterMatch[1])
-            : true; // No frontmatter — assume active
-
-          if (isActive) {
-            // Extract priorities from ## Priority or ## What I Was Working On
-            const priorityMatch = handoffContent.match(
-              /##\s*(?:Priority|What I Was Working On|Priorities)\s*\n([\s\S]*?)(?=\n##|\n---|\Z)/i,
-            );
-            if (priorityMatch) {
-              const lines = priorityMatch[1].trim().split('\n')
-                .filter(l => l.trim().startsWith('-') || l.trim().startsWith('1'))
-                .slice(0, 3)
-                .map((l, i) => `${i + 1}) ${l.replace(/^[\s-]*\d*[.)]*\s*/, '').trim()}`);
-              if (lines.length > 0) {
-                initialMessage = `A handoff is active. Priorities: ${lines.join(' ')}. Run /starthere for full context.`;
-              }
-            }
-            // Fallback: if no priorities section found, still prime with generic message
-            if (!initialMessage) {
-              initialMessage = 'A handoff is active from the previous session. Run /starthere for full context.';
-            }
-          }
-        }
-      }
+      initialMessage = computeInitialUserMessage(input.cwd) ?? undefined;
     }
-  } catch { /* non-fatal — auto-priming is best-effort */ }
+  } catch { /* non-fatal — auto-prime is best-effort */ }
 
   if (fullContent) {
     return {
