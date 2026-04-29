@@ -773,6 +773,38 @@ CREATE INDEX IF NOT EXISTS idx_crmp_norm_text
 `;
 
 /**
+ * Phase 6.5 (V21) — task-pattern fingerprint sidecar table.
+ *
+ * Stores Phase 6.5's task_pattern fingerprint for artifacts of kind
+ * ∈ {mental_model, learning, experience_pattern, workspace_fact, lesson}.
+ * Sidecar pattern (NOT ALTER on artifact view) — same approach Plan 4.1
+ * used for critical_rules_multi_project; the V17 view-over-artifact path
+ * doesn't compose cleanly with column ALTERs, but a separate keyed-by-id
+ * table works in both pre-V17 (real artifacts table) and post-V17 (view +
+ * INSTEAD OF triggers) environments.
+ *
+ * `classifier_source` distinguishes write-time (Angel segmentation) from
+ * heartbeat backfill so future tuning can A/B per-source confidence floors.
+ *
+ * `task_pattern = '__abstain__'` is a sentinel reserved for backfill rows
+ * where the classifier abstained at confidence < 0.85 — prevents the
+ * heartbeat sweep from re-processing those artifacts on every tick.
+ */
+export const ARTIFACT_TASK_PATTERN_SCHEMA = `
+CREATE TABLE IF NOT EXISTS artifact_task_pattern (
+  artifact_id INTEGER NOT NULL,
+  task_pattern TEXT NOT NULL,
+  classified_at_epoch_ms INTEGER NOT NULL,
+  classifier_confidence REAL NOT NULL DEFAULT 1.0,
+  classifier_source TEXT NOT NULL CHECK (classifier_source IN ('write_time', 'heartbeat_backfill')),
+  PRIMARY KEY (artifact_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_artifact_task_pattern_pattern
+  ON artifact_task_pattern(task_pattern);
+`;
+
+/**
  * Telemetry table DDL — separate constant for clarity.
  */
 export const TELEMETRY_SCHEMA = `
@@ -782,7 +814,8 @@ CREATE TABLE IF NOT EXISTS telemetry (
   event_kind TEXT NOT NULL CHECK (event_kind IN (
     'hook_invocation', 'injection', 'observation_capture', 'decision_capture',
     'checkpoint_write', 'enrichment', 'topic_shift', 'dedup', 'decay_prune', 'error',
-    'reranker_fallback'
+    'reranker_fallback',
+    'cross_project_ambiguous', 'cross_project_query_expansion'
   )),
   detail TEXT NOT NULL DEFAULT '{}' CHECK (json_valid(detail)),
   latency_ms REAL,

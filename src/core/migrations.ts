@@ -16,7 +16,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { SCHEMA_VERSION } from '../shared/constants.js';
 import { getClaudexHome } from '../shared/paths.js';
-import { SCHEMA_V3, TELEMETRY_SCHEMA, TEAM_COORDINATION_SCHEMA, SHAPE_VOCABULARY_SCHEMA, POINTER_RECALL_SCHEMA } from './schema.js';
+import { SCHEMA_V3, TELEMETRY_SCHEMA, TEAM_COORDINATION_SCHEMA, SHAPE_VOCABULARY_SCHEMA, POINTER_RECALL_SCHEMA, ARTIFACT_TASK_PATTERN_SCHEMA } from './schema.js';
 import {
   hasTable,
   rebuildStaleFts5,
@@ -39,6 +39,7 @@ import {
   migrateV17toV18,
   migrateV18toV19,
   migrateV19toV20,
+  migrateV20toV21,
   migrateSchemaFixes,
   cleanupOrphanTables,
   upgradeV2SchemaInPlace,
@@ -68,7 +69,9 @@ export { migrateV14toV15 };
  *   17 — Phase P1 unified artifact kernel
  *   18 — Phase 4.1 shape vocabulary substrate
  *   19 — Phase 5.5 curation feedback loop substrate
- *   20 — current (Phase 6 P5: telemetry event_kind enum +'reranker_fallback')
+ *   20 — Phase 6 P5: telemetry event_kind enum +'reranker_fallback'
+ *   21 — current (Phase 6.5: artifact_task_pattern sidecar + telemetry enum
+ *        +'cross_project_ambiguous' +'cross_project_query_expansion')
  *
  * Dual version tracking:
  * Both `PRAGMA user_version` and `schema_versions` table are needed:
@@ -82,7 +85,7 @@ export function runMigrations(db: Database): void {
   const row = db.pragma('user_version') as Array<{ user_version: number }>;
   let version = row[0]?.user_version ?? 0;
 
-  const TARGET_VERSION = 20;
+  const TARGET_VERSION = 21;
 
   if (version >= TARGET_VERSION) {
     // Still load sqlite-vec even if no migration is needed — the extension
@@ -112,6 +115,7 @@ export function runMigrations(db: Database): void {
     [17, () => migrateV17toV18(db)],
     [18, () => migrateV18toV19(db)],
     [19, () => { migrateV19toV20(db); }],
+    [20, () => { migrateV20toV21(db); }],
   ];
 
   // Handle special cases for version 0 and 1
@@ -203,6 +207,7 @@ export function initializeSchema(db: Database): void {
     db.exec(TEAM_COORDINATION_SCHEMA);
     db.exec(SHAPE_VOCABULARY_SCHEMA);
     db.exec(POINTER_RECALL_SCHEMA);
+    db.exec(ARTIFACT_TASK_PATTERN_SCHEMA);
 
     // Rebuild FTS5 content index from observations table
     if (hasTable(db, 'observations') && hasTable(db, 'observations_fts')) {
@@ -227,6 +232,7 @@ export function initializeSchema(db: Database): void {
     db.exec(TEAM_COORDINATION_SCHEMA);
     db.exec(SHAPE_VOCABULARY_SCHEMA);
     db.exec(POINTER_RECALL_SCHEMA);
+    db.exec(ARTIFACT_TASK_PATTERN_SCHEMA);
 
     // Phase 4.1: V18 raised TARGET_VERSION 16→18, so legacy partial-v2 DBs
     // (e.g., only `observations` exists at open time) now reach user_version=18
@@ -291,14 +297,16 @@ export function initializeSchema(db: Database): void {
   } else {
     db.prepare('INSERT OR IGNORE INTO schema_versions (version) VALUES (?)').run(SCHEMA_VERSION);
   }
-  // Do not demote a V20 (or newer) DB back to 20. The live DB's user_version
+  // Do not demote a V21 (or newer) DB back to 21. The live DB's user_version
   // is set by runMigrations; every hook re-open used to silently demote it,
-  // which would confuse any future `>= N` version gate. Phase 6 raises the
-  // ceiling 19→20 (V20 telemetry CHECK enum + 'reranker_fallback'). Fresh DBs
-  // that took the early-return in runMigrations (no `observations` table) are
-  // stamped here after SCHEMA_V3 + V19 + V20 DDL run. TELEMETRY_SCHEMA above
-  // already carries the V20 enum so a fresh stamp at 20 matches the live DDL.
-  if (currentUv < 20) db.pragma('user_version = 20');
+  // which would confuse any future `>= N` version gate. Phase 6.5 raises the
+  // ceiling 20→21 (artifact_task_pattern sidecar + V21 telemetry CHECK enum
+  // adding 'cross_project_ambiguous' and 'cross_project_query_expansion').
+  // Fresh DBs that took the early-return in runMigrations (no `observations`
+  // table) are stamped here after SCHEMA_V3 + V19 + V20 + V21 DDL run.
+  // TELEMETRY_SCHEMA + ARTIFACT_TASK_PATTERN_SCHEMA above already carry the
+  // V21 shape so a fresh stamp at 21 matches the live DDL.
+  if (currentUv < 21) db.pragma('user_version = 21');
 }
 
 // ---------------------------------------------------------------------------

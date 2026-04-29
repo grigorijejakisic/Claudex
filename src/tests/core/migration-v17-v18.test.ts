@@ -21,11 +21,11 @@ function getUserVersion(db: Database.Database): number {
 }
 
 describe('Phase 4.1 V17→V18 migration', () => {
-  it('fresh DB has shape_vocabulary tables present (user_version is now 20 after Phase 6)', () => {
+  it('fresh DB has shape_vocabulary tables present (user_version is now 21 after Phase 6.5)', () => {
     const db = new Database(':memory:');
     initializeSchema(db);
 
-    expect(getUserVersion(db)).toBe(20);
+    expect(getUserVersion(db)).toBe(21);
 
     const tables = (db.prepare(
       "SELECT name FROM sqlite_master WHERE type='table' ORDER BY name"
@@ -41,7 +41,7 @@ describe('Phase 4.1 V17→V18 migration', () => {
     const db = new Database(':memory:');
     initializeSchema(db);
     expect(() => initializeSchema(db)).not.toThrow();
-    expect(getUserVersion(db)).toBe(20);
+    expect(getUserVersion(db)).toBe(21);
 
     const tables = (db.prepare(
       "SELECT name FROM sqlite_master WHERE type='table' AND name IN ('shape_vocabulary', 'shape_candidates')"
@@ -57,8 +57,8 @@ describe('Phase 4.1 V17→V18 migration', () => {
     // Minimal stub: V17 DDL is idempotent and IF NOT EXISTS-guarded; the V17→V18
     // step itself is also IF NOT EXISTS-guarded so a partial pre-state is fine.
     runMigrations(db);
-    // Phase 6 raised TARGET_VERSION to 20.
-    expect(getUserVersion(db)).toBe(20);
+    // Phase 6.5 raised TARGET_VERSION to 21.
+    expect(getUserVersion(db)).toBe(21);
     db.close();
   });
 

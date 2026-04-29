@@ -164,9 +164,9 @@ describe('fresh DB initialization', () => {
         createArtifact(db, 'test-sess', 'test', 'memory_file', '/test.md', 'test', 'content', 3);
       }).not.toThrow();
 
-      // Verify user_version is current (Phase 6 raised TARGET_VERSION to 20)
+      // Verify user_version is current (Phase 6.5 raised TARGET_VERSION to 21)
       const row = db.pragma('user_version') as Array<{ user_version: number }>;
-      expect(row[0].user_version).toBe(20);
+      expect(row[0].user_version).toBe(21);
     } finally {
       db.close();
     }

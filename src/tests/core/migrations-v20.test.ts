@@ -25,11 +25,13 @@ function getUserVersion(db: Database.Database): number {
 }
 
 describe('Phase 6 V19→V20 migration (telemetry +reranker_fallback)', () => {
-  it('fresh DB reaches user_version=20 with telemetry table present', () => {
+  it('fresh DB reaches user_version=21 (Phase 6.5) with telemetry table present', () => {
     const db = new Database(':memory:');
     initializeSchema(db);
 
-    expect(getUserVersion(db)).toBe(20);
+    // Phase 6.5 raised TARGET_VERSION 20→21; V20 telemetry CHECK enum
+    // remains in effect (additively extended, not replaced).
+    expect(getUserVersion(db)).toBe(21);
 
     const t = db.prepare(
       "SELECT 1 AS one FROM sqlite_master WHERE type='table' AND name='telemetry'"
@@ -125,10 +127,10 @@ describe('Phase 6 V19→V20 migration (telemetry +reranker_fallback)', () => {
     db.pragma('user_version = 19');
 
     // Re-promote — runMigrations should rebuild telemetry with the V20 enum
-    // and copy every row verbatim.
+    // and copy every row verbatim, then advance through V21.
     runMigrations(db);
 
-    expect(getUserVersion(db)).toBe(20);
+    expect(getUserVersion(db)).toBe(21);
 
     const after = db.prepare(
       `SELECT id, session_id, event_kind, detail, latency_ms, adapter
@@ -145,16 +147,16 @@ describe('Phase 6 V19→V20 migration (telemetry +reranker_fallback)', () => {
     db.close();
   });
 
-  it('runMigrations is idempotent on a V20 DB (no churn, no demotion)', () => {
+  it('runMigrations is idempotent on a V21 DB (no churn, no demotion)', () => {
     const db = new Database(':memory:');
     initializeSchema(db);
-    expect(getUserVersion(db)).toBe(20);
+    expect(getUserVersion(db)).toBe(21);
 
     expect(() => runMigrations(db)).not.toThrow();
-    expect(getUserVersion(db)).toBe(20);
+    expect(getUserVersion(db)).toBe(21);
 
     expect(() => initializeSchema(db)).not.toThrow();
-    expect(getUserVersion(db)).toBe(20);
+    expect(getUserVersion(db)).toBe(21);
 
     // No `telemetry_v19` left behind by an idempotent re-run.
     const stale = db.prepare(

@@ -12,7 +12,7 @@ import { loadSqliteVec } from './sqlite-vec-loader.js';
 import { applyV17DDL } from './migration/v17-ddl.js';
 import { applyGeneratedDDL, generateViewsAndTriggers } from './migration/v17-triggers.js';
 import { KIND_MAPPING } from './migration/kind-mapping.js';
-import { SHAPE_VOCABULARY_SCHEMA, POINTER_RECALL_SCHEMA, TELEMETRY_SCHEMA } from './schema.js';
+import { SHAPE_VOCABULARY_SCHEMA, POINTER_RECALL_SCHEMA, TELEMETRY_SCHEMA, ARTIFACT_TASK_PATTERN_SCHEMA } from './schema.js';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -1546,4 +1546,89 @@ function telemetryAcceptsRerankerFallback(db: Database): boolean {
     `SELECT sql FROM sqlite_master WHERE type='table' AND name='telemetry'`
   ).get() as { sql?: string } | undefined;
   return !!row?.sql && row.sql.includes("'reranker_fallback'");
+}
+
+/**
+ * V20→V21: Phase 6.5 — task-pattern fingerprint sidecar + telemetry CHECK
+ * enum extension for the cross-project query expansion path.
+ *
+ * Two additive changes:
+ *   1. CREATE TABLE artifact_task_pattern (sidecar; PK on artifact_id) +
+ *      idx_artifact_task_pattern_pattern.
+ *   2. Extend telemetry.event_kind CHECK enum to include
+ *      'cross_project_ambiguous' and 'cross_project_query_expansion'.
+ *
+ * SQLite cannot ALTER a CHECK constraint, so the standard rebuild-and-copy
+ * pattern is reused (mirrors V19→V20 verbatim). Returns true on success.
+ *
+ * Idempotent: if the sidecar table already exists AND telemetry already
+ * accepts the new enums, the function is a no-op via existence guards.
+ */
+export function migrateV20toV21(db: Database): boolean {
+  // Stub-DB guard — if no telemetry table exists yet, install only the
+  // sidecar (cheap, decoupled). The telemetry CHECK enum will be installed
+  // when initializeSchema later execs TELEMETRY_SCHEMA. The version stamp
+  // can still advance.
+  if (!hasTable(db, 'telemetry')) {
+    db.exec(ARTIFACT_TASK_PATTERN_SCHEMA);
+    return true;
+  }
+  // Pre-V19 shape guard — telemetry rebuild requires the V19+ column shape
+  // (event_kind + json detail + latency_ms + timestamp_epoch + adapter).
+  // When the live table lacks `event_kind`, install only the sidecar.
+  if (!hasColumn(db, 'telemetry', 'event_kind')) {
+    db.exec(ARTIFACT_TASK_PATTERN_SCHEMA);
+    return true;
+  }
+  // Idempotency guard — if the sidecar exists AND the new enums are in
+  // place, skip everything.
+  if (hasTable(db, 'artifact_task_pattern') && telemetryAcceptsCrossProjectEnums(db)) {
+    return true;
+  }
+
+  const tx = db.transaction(() => {
+    // Phase A: install the sidecar table. Cheap and idempotent.
+    db.exec(ARTIFACT_TASK_PATTERN_SCHEMA);
+
+    // Phase B: rebuild telemetry with the V21 enum, only if needed.
+    if (!telemetryAcceptsCrossProjectEnums(db)) {
+      // 1. Rename existing telemetry table out of the way.
+      db.exec(`ALTER TABLE telemetry RENAME TO telemetry_v20;`);
+
+      // Drop the V20 indexes by name (explicit DROP is safer cross-version).
+      db.exec(`DROP INDEX IF EXISTS idx_telemetry_session;`);
+      db.exec(`DROP INDEX IF EXISTS idx_telemetry_kind;`);
+
+      // 2. Recreate telemetry with the V21 enum (TELEMETRY_SCHEMA also
+      //    creates the indexes, so no extra DDL needed).
+      db.exec(TELEMETRY_SCHEMA);
+
+      // 3. Copy rows back.
+      db.exec(`
+        INSERT INTO telemetry (id, session_id, event_kind, detail, latency_ms, timestamp_epoch, adapter)
+        SELECT id, session_id, event_kind, detail, latency_ms, timestamp_epoch, adapter
+        FROM telemetry_v20;
+      `);
+
+      // 4. Drop the old table.
+      db.exec(`DROP TABLE telemetry_v20;`);
+    }
+  });
+
+  tx();
+  return true;
+}
+
+/**
+ * Probe whether the current `telemetry.event_kind` CHECK constraint admits
+ * the V21 cross-project enums. Used as the V21 idempotency guard.
+ */
+function telemetryAcceptsCrossProjectEnums(db: Database): boolean {
+  if (!hasTable(db, 'telemetry')) return false;
+  const row = db.prepare(
+    `SELECT sql FROM sqlite_master WHERE type='table' AND name='telemetry'`
+  ).get() as { sql?: string } | undefined;
+  if (!row?.sql) return false;
+  return row.sql.includes("'cross_project_ambiguous'") &&
+         row.sql.includes("'cross_project_query_expansion'");
 }

@@ -40,9 +40,9 @@ describe('curated-context', () => {
       expect(names.has('created_at_epoch')).toBe(true);
     });
 
-    it('bumps user_version to current TARGET_VERSION (20 after Phase 6)', () => {
+    it('bumps user_version to current TARGET_VERSION (21 after Phase 6.5)', () => {
       const row = db.pragma('user_version') as Array<{ user_version: number }>;
-      expect(row[0]?.user_version).toBe(20);
+      expect(row[0]?.user_version).toBe(21);
     });
 
     it('has idx_pcc_project_status index', () => {

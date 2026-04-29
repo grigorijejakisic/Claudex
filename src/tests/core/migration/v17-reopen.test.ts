@@ -273,14 +273,15 @@ describe('initializeSchema idempotency — post-V17 re-open', () => {
     }
   });
 
-  it('user_version reaches current TARGET_VERSION after openDatabase (V17→V20 promotion via runMigrations)', () => {
+  it('user_version reaches current TARGET_VERSION after openDatabase (V17→V21 promotion via runMigrations)', () => {
     // Phase 4.1 raised TARGET_VERSION 16→18; Phase 5.5 raised it to 19; Phase
-    // 6 raised it to 20 (V20 telemetry CHECK enum +'reranker_fallback'). The
-    // original 04-07 regression — silent demotion — must still be prevented.
+    // 6 raised it to 20; Phase 6.5 raised it to 21 (artifact_task_pattern
+    // sidecar + telemetry +cross_project_*). The original 04-07 regression
+    // — silent demotion — must still be prevented.
     const db = openDatabase(dbPath);
     try {
       const uv = (db.pragma('user_version') as Array<{ user_version: number }>)[0].user_version;
-      expect(uv).toBe(20);
+      expect(uv).toBe(21);
     } finally {
       db.close();
     }

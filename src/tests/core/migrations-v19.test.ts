@@ -29,12 +29,12 @@ function tableExists(db: Database.Database, name: string): boolean {
 }
 
 describe('Phase 5.5 V18→V19 migration', () => {
-  it('fresh DB has V19 tables present (user_version is now 20 after Phase 6)', () => {
+  it('fresh DB has V19 tables present (user_version is now 21 after Phase 6.5)', () => {
     const db = new Database(':memory:');
     initializeSchema(db);
 
-    // Phase 6 raised TARGET_VERSION to 20; V19 tables remain present.
-    expect(getUserVersion(db)).toBe(20);
+    // Phase 6.5 raised TARGET_VERSION to 21; V19 tables remain present.
+    expect(getUserVersion(db)).toBe(21);
     expect(tableExists(db, 'lesson_pointer')).toBe(true);
     expect(tableExists(db, 'pointer_recall_log')).toBe(true);
 
@@ -57,8 +57,8 @@ describe('Phase 5.5 V18→V19 migration', () => {
 
     runMigrations(db);
 
-    // V18→V19 step still runs as part of the upgrade chain; final stamp is V20.
-    expect(getUserVersion(db)).toBe(20);
+    // V18→V19 step still runs as part of the upgrade chain; final stamp is V21.
+    expect(getUserVersion(db)).toBe(21);
     const seed = db.prepare(
       `SELECT field, value, promoted_session_count FROM shape_vocabulary WHERE field = 'task_shape'`
     ).get() as { field: string; value: string; promoted_session_count: number };
@@ -75,12 +75,12 @@ describe('Phase 5.5 V18→V19 migration', () => {
   it('runMigrations is idempotent on a fully-migrated DB (no error, no schema churn)', () => {
     const db = new Database(':memory:');
     initializeSchema(db);
-    expect(getUserVersion(db)).toBe(20);
+    expect(getUserVersion(db)).toBe(21);
 
     expect(() => runMigrations(db)).not.toThrow();
-    expect(getUserVersion(db)).toBe(20);
+    expect(getUserVersion(db)).toBe(21);
     expect(() => initializeSchema(db)).not.toThrow();
-    expect(getUserVersion(db)).toBe(20);
+    expect(getUserVersion(db)).toBe(21);
 
     db.close();
   });

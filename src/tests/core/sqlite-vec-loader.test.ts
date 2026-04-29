@@ -122,10 +122,10 @@ describe('sqlite-vec loader', () => {
       db.close();
     });
 
-    it('sets user_version to current TARGET_VERSION (20 after Phase 6) after initializeSchema', () => {
+    it('sets user_version to current TARGET_VERSION (21 after Phase 6.5) after initializeSchema', () => {
       const db = createTestDb();
       const row = (db.pragma('user_version') as Array<{ user_version: number }>)[0];
-      expect(row.user_version).toBe(20);
+      expect(row.user_version).toBe(21);
       db.close();
     });
 
