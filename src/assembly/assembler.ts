@@ -29,11 +29,9 @@ import {
   formatLearningsSection,
   formatMaterializationLayer,
   formatRulesReminderSection,
-  formatProjectsOverview,
   renderSessionContinuity,
   renderExperienceWarnings as formatExperienceWarningsSection,
 } from './sections.js';
-import type { ProjectOverviewRow } from './sections.js';
 import {
   findMatchingPatterns,
   getProvenPrinciples,
@@ -399,43 +397,6 @@ export function assembleFullContext(params: FullAssemblyParams): InjectPayload {
         }
       }
     } catch { /* non-fatal */ }
-
-    // Priority 4.25: Cross-project awareness — lightweight project overview.
-    // Only at session-start (not post-compaction — projects don't change mid-session).
-    // NOTE: this section is being DELETED in Plan 04 (Tier B). The unixepoch() leak
-    // is patched here for hardening continuity through Plans 02-03 cache-stability
-    // gates; the parameter binding is removed when the section is removed.
-    if (!params.isPostCompaction) {
-      try {
-        const _nowEpoch = params.nowEpoch ?? Math.floor(Date.now() / 1000);
-        const _cutoff = _nowEpoch - 604800;
-        const projectRows = cachedPrepare(params.db,
-          `SELECT s.project, MAX(s.created_at_epoch) AS last_active, t.topic,
-                  EXISTS(SELECT 1 FROM artifacts a WHERE a.project = s.project AND a.artifact_type = 'handoff' AND a.state != 'consumed') AS has_handoff
-           FROM sessions s
-           LEFT JOIN thread_state t ON t.session_id = (
-             SELECT s2.session_id FROM sessions s2
-             WHERE s2.project = s.project ORDER BY s2.created_at_epoch DESC LIMIT 1
-           )
-           WHERE s.created_at_epoch > ?
-           GROUP BY s.project
-           ORDER BY last_active DESC
-           LIMIT 10`
-        ).all(_cutoff) as ProjectOverviewRow[];
-
-        if (projectRows.length > 0) {
-          const overview = formatProjectsOverview(projectRows, params.project);
-          if (overview) {
-            const cost = estimateTokens(overview);
-            if (cost <= budget) {
-              sections.push(overview);
-              budget -= cost;
-              sources.push('project_overview');
-            }
-          }
-        }
-      } catch { /* non-fatal */ }
-    }
 
     // Priority 4.5: CLAUDE.md rules reminder — re-injected after compaction to prevent drift.
     // Only included in post-compaction assembly (identity/project already in context from CLAUDE.md).
