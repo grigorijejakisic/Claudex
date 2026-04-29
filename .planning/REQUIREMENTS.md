@@ -129,9 +129,9 @@
 
 ### RL Ablation (ABL) — NEW 2026-04-27 (replaces deprecated BENCH-08), owned by Phase 8
 
-- [ ] **ABL-01**: Feature flag `CLAUDEX_DISABLE_RL_SCORING=1` bypasses Q-value multipliers in `hybrid-retrieval.ts` and skips `rl-trainer` ticks in heartbeat
-- [ ] **ABL-02**: Run Vesna probe suite with flag set; baseline run without flag. Decision committed to `context/specs/V4_RL_ABLATION.md`. If flagged Vesna ≥ baseline -2pp: Phase 9 clears RL deletion. If flagged Vesna drops >2pp: RL load-bearing — keep stack and adjust scope or redesign with simpler learned signal.
-- [ ] **ABL-03**: Edge case — if delta is exactly at -2pp, default to "keep RL" (conservative). Document, revisit after Phase 9.
+- [x] **ABL-01**: Feature flag `CLAUDEX_DISABLE_RL_SCORING=1` bypasses Q-value multipliers in `hybrid-retrieval.ts` and skips `rl-trainer` ticks in heartbeat (Plan 08-01, commit c2c320d)
+- [x] **ABL-02**: Run Vesna probe suite with flag set; baseline run without flag. Decision committed to `context/specs/V4_RL_ABLATION.md`. **Realized verdict: DELETE_ALLOWED** (delta_pp=0; baseline 100% / flagged 100% across 14 probes × 3 trials each). (Plan 08-02 + 08-03, commit bcc7829)
+- [x] **ABL-03**: Edge case — if delta is exactly at -2pp, default to "keep RL" (conservative). N/A in realized verdict (delta_pp=0, well clear of the -2pp boundary; KEEP_CONSERVATIVE_DEFAULT path NOT triggered). Branch documented in V4_RL_ABLATION.md "NOT REALIZED — preserved for audit trail" for future supersedence. (Plan 08-03)
 
 ### Removed Requirements (2026-04-27 audit-driven)
 
@@ -202,7 +202,7 @@
 | VESN-03 | Phase 11 (gate) | Pending |
 | VESN-04 | Phase 10 (CI integration) | Pending |
 | OBS-01..OBS-04 | Phase 8.5 | Pending |
-| ABL-01..ABL-03 | Phase 8 (P6.5) | Pending |
+| ABL-01..ABL-03 | Phase 8 (P6.5) | Closed 2026-04-29 (V4_RL_ABLATION.md verdict: DELETE_ALLOWED) |
 
 **Coverage:**
 - v1 requirements: 67 total (49 original − 9 BENCH dropped + 27 NEW from rebind)

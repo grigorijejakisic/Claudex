@@ -6,24 +6,24 @@ See: .planning/PROJECT.md (updated 2026-04-27)
 
 **Core value:** v4 makes the agent USE Claudex organically as part of how it works in Claude Code. Memory tools (`claudex_search`, `claudex_recall`, `claudex_events`) are reached for the same way `Read` or `Grep` are used — natural extensions of reasoning, not a separate "fetch context" step that has to be remembered.
 
-**Current focus:** Phase 7.5 COMPLETE 2026-04-29. HAND-01 + HAND-02 closed; HAND-03 deferred to Phase 11. Phase 8 (RL ablation gate) unblocked. End-of-week Phase 7 behavioral A/B verdict still due 2026-05-06.
+**Current focus:** Phase 8 COMPLETE 2026-04-29 — verdict **DELETE_ALLOWED**. ABL-01..ABL-03 closed; sub-phase 9.8 (RL stack deletion) cleared and scheduled. Phase 8.5 (recall observability) is next-unblocked per ROADMAP. End-of-week Phase 7 behavioral A/B verdict still due 2026-05-06.
 
 ## Current Position
 
-**Current Phase:** 8
-**Current Phase Name:** P6.5 — RL ablation gate
+**Current Phase:** 8.5
+**Current Phase Name:** Recall observability + self-instrumented agent
 **Total Phases:** 16
 **Current Plan:** 0 (planning not yet started)
 **Total Plans in Phase:** TBD
-**Status:** **PHASE 7.5 COMPLETE 2026-04-29.** Hybrid YAML+ADR handoff schema shipped (status, phase + optional summary/topic/created_at_epoch_ms). `src/angel/handoff-writer.ts` exports writer/parser/validator/renderer; `src/angel/memory-md-writer.ts:renderHandoff` rewritten to consume parsed YAML and emit one-line summary (never body). `distillHandoffBody` + `MAX_HANDOFF_LINES` deleted (~50 LOC). Live `context/handoffs/ACTIVE.md` migrated; pre-migration verbatim copy archived. 3 Vesna probes (active/paused/archived) PASS. Phase 6.5 + Phase 7 baselines unchanged: 20/20 cross-phase probes still PASS. SC#4 prime contract preserved (`summary:` field present). CACH-01 invariance verified 3× consecutive. HAND-01 + HAND-02 closed; HAND-03 (SC#4 enforcement gate) deferred to Phase 11.
+**Status:** **PHASE 8 COMPLETE 2026-04-29 — verdict DELETE_ALLOWED.** `CLAUDEX_DISABLE_RL_SCORING=1` env-var gate landed across the RL surface (4 source files: `src/core/hybrid-retrieval.ts:computeQMultiplier`, `src/intelligence/memrl-scorer.ts` — all 7 exports, `src/intelligence/retrieval-rl.ts:updateSessionQValues`, `src/angel/heartbeat.ts` — rl-trainer + applyTemporalDecay blocks) plus a new in-memory counter `src/core/rl-scoring-disabled-counter.ts`. A/B harness ran 14 probes × 3 trials × 2 conditions: baseline 100% / flagged 100% / delta 0pp / per-category all 0pp. Verdict honors CONTEXT.md `<decisions>.### Decision criteria` verbatim — at delta_pp = 0 ≥ -2pp: DELETE_ALLOWED. Confound disclosed honestly: 11 of 14 probes were already 0pp under multiplierFlags.qvalue=false in Phase 6 W2; 3 cross-project probes also returned 0pp because their gate paths flow through HYBRID equivalence + handles, not the qMultiplier. Sub-phase 9.8 (RL stack deletion) cleared and scheduled in ROADMAP. ABL-01..ABL-03 marked `[x]` closed. Decision artifact `context/specs/V4_RL_ABLATION.md` is the durable Phase 9.8 reference.
 **Last Activity:** 2026-04-29
-**Last Activity Description:** Phase 7.5 shipped end-to-end across 3 waves (strict serial; all touch handoff surface or consumers). W1 (Plan 01) — `src/angel/handoff-writer.ts` + 29 unit tests (atomic commit f80ee29). W2 (Plan 02) — `scripts/migrate-handoff.ts` + `renderHandoff` rewrite + ACTIVE.md migration + memory-md-writer test refresh + cache-stability gate verification 3× (atomic commit b25cc20). W3 (Plan 03) — 3 Vesna probe JSONs + runtime probe test (`phase-7-5-handoff-pickup.test.ts`, 5 tests) + STATE/ROADMAP/REQUIREMENTS update + 07.5-SUMMARY.md. Phase 8 (RL ablation gate) now unblocked per ROADMAP dependency chain.
-**Progress:** [██████████] 102%
+**Last Activity Description:** Phase 8 shipped end-to-end across 3 waves (strict serial per CONTEXT.md — writers + read path coupling). W1 (Plan 08-01) — env-flag gate across 4 source files + new counter module + 4 counter tests (atomic commit c2c320d, 6 files / 167 insertions / 25 deletions). W2 (Plan 08-02) — A/B harness `phase-8-rl-ablation.test.ts` reusing Phase 6 (11) + Phase 6.5 (3) probe sets, 3 trials each, mean+range+per-category+range-aware delta, gate-fire sanity check; emits 08-rl-ablation-summary.json. Side-effect refactor: PROBES + runProbe exported from phase-6-multiplier-ablation.test.ts; CROSS_PROJECT_PROBES + runCrossProjectProbe extracted from phase-6-5-cross-project-vesna.test.ts (legacy 3 it-blocks call the runner alongside existing assertions). Counter fired 49×/trial in flagged, 0×/trial in baseline. Atomic commit bcc7829, 4 files / 1209 insertions / 58 deletions. W3 (Plan 08-03) — V4_RL_ABLATION.md decision lock (both implication branches preserved with REALIZED / NOT REALIZED markers), STATE/ROADMAP/REQUIREMENTS update, 08-SUMMARY.md, atomic phase close.
+**Progress:** [██████████] 110%
 
-Phase: 8 of 16 (P6.5 — RL ablation gate)
+Phase: 8.5 of 16 (Recall observability + self-instrumented agent)
 Plan: 0 of TBD in current phase
 Status: ready to plan
-Last activity: 2026-04-29 — Phase 7.5 shipped end-to-end
+Last activity: 2026-04-29 — Phase 8 shipped end-to-end (verdict DELETE_ALLOWED)
 
 Progress: [██████████░░░░░░] 50%
 

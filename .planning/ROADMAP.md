@@ -26,7 +26,7 @@ Phase 1 (P0 crystallization, ✅) and Phase 2 (P1 artifact unification, ✅, T3 
 - [x] **Phase 6.5: Cross-project task-pattern recall** (2026-04-29) — Task-pattern fingerprinting; cross-project default-ON; surfaces as observational context. RETR-06 + RETR-07 closed; SC#1 Vesna 3/3.
 - [x] **Phase 7: P6 — Framing rewrite** — Advisory voice across every surviving formatter; manual A/B on real sessions for 1 week
 - [x] **Phase 7.5: Handoff format redesign** — COMPLETE 2026-04-29. Hybrid YAML status header + ADR body shipped; renderHandoff rewritten to one-line summary; ACTIVE.md migrated; 3 Vesna probes (active/paused/archived) PASS; HAND-01 + HAND-02 closed (HAND-03 deferred to Phase 11)
-- [ ] **Phase 8: P6.5 — RL ablation gate** — Feature-flag deterministic go/no-go on RL deletion (decision by behavioral observation, not benchmark)
+- [x] **Phase 8: P6.5 — RL ablation gate** — Feature-flag deterministic go/no-go on RL deletion (decision by behavioral observation, not benchmark) — **CLOSED 2026-04-29 verdict DELETE_ALLOWED**
 - [ ] **Phase 8.5: Recall observability + self-instrumented agent** — Per-session retrieval log; visible token cost; `claudex why?` slash + /endsession summary
 - [ ] **Phase 9: P7 — Angel simplification** — Per-module deletion of cognitive layer (T6 verified all consumers are in `assembler.ts` which Phase 5 deletes — safe)
 - [ ] **Phase 10: Vesna probe suite as central validation** — Mine ~20 probes from real session histories; CI-gated; pass rate ≥80% required
@@ -259,7 +259,13 @@ Plans:
   4. Decision locked before Phase 9 begins
   5. Edge case: if delta is exactly at -2pp, default to "keep RL" (conservative). Document, revisit after Phase 9.
 
-**Plans:** TBD
+**Plans:**
+  - 08-01: Env-flag gate across RL surface (ABL-01) — DONE 2026-04-29
+  - 08-02: A/B Vesna probe harness — flagged vs baseline (ABL-02) — DONE 2026-04-29
+  - 08-03: Decision lock in V4_RL_ABLATION.md + phase close (ABL-03) — DONE 2026-04-29
+
+**Status:** CLOSED 2026-04-29 — verdict: DELETE_ALLOWED
+**Decision artifact:** `context/specs/V4_RL_ABLATION.md`
 
 ### Phase 8.5: Recall observability + self-instrumented agent (NEW)
 **Goal:** Agent + user can see what memory did, what worked, what cost. Visible token cost forces discipline; mid-session debug surface enables ad-hoc inspection.
@@ -275,6 +281,9 @@ Plans:
 **Plans:** TBD
 
 ### Phase 9: P7 — Angel simplification (sub-phased)
+
+> Phase 8 verdict was **DELETE_ALLOWED** (2026-04-29). Sub-phase 9.8 is **scheduled** accordingly. See `context/specs/V4_RL_ABLATION.md` for evidence.
+
 **Goal:** Delete CARA, autonomous-investigator, dream consolidation, skill crystallization, cross-project consolidator, proactive curator, data-quality. T6 audit (2026-04-27) verified all consumers are in `assembler.ts` (Phase 5 deletion target) — these are dead-infrastructure cleanup, not cognitive-capacity cuts.
 **Depends on:** Phase 8 (RL decision locked) AND Phase 5 (consumer deletions live)
 **Requirements:** CUR-05, CUR-06, CUR-07, EXTR-05, RETR-05 (legacy numbering preserved)
