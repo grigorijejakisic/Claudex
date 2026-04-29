@@ -12,6 +12,7 @@ import { loadSqliteVec } from './sqlite-vec-loader.js';
 import { applyV17DDL } from './migration/v17-ddl.js';
 import { applyGeneratedDDL, generateViewsAndTriggers } from './migration/v17-triggers.js';
 import { KIND_MAPPING } from './migration/kind-mapping.js';
+import { SHAPE_VOCABULARY_SCHEMA } from './schema.js';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -1439,4 +1440,19 @@ export function migrateV16toV17(db: Database): void {
   // v17-runner.ts) renames legacy tables to {name}_old first, then calls
   // applyGeneratedDDL to install the views.
   applyV17DDL(db);
+}
+
+/**
+ * V17→V18: Phase 4.1 lesson substrate tables.
+ *
+ * Adds shape_vocabulary + shape_candidates for Angel-curated bounded vocabulary
+ * (task_shape / failure_mode / solution_pattern fields on lesson frontmatter).
+ *
+ * No changes to critical_rules — multi_project_count lives in `data` JSON
+ * under the V17 view-over-artifact pattern (see RESEARCH §Schema migration).
+ *
+ * Idempotent: all CREATE TABLE/INDEX guarded by IF NOT EXISTS.
+ */
+export function migrateV17toV18(db: Database): void {
+  db.exec(SHAPE_VOCABULARY_SCHEMA);
 }

@@ -16,7 +16,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { SCHEMA_VERSION } from '../shared/constants.js';
 import { getClaudexHome } from '../shared/paths.js';
-import { SCHEMA_V3, TELEMETRY_SCHEMA, TEAM_COORDINATION_SCHEMA } from './schema.js';
+import { SCHEMA_V3, TELEMETRY_SCHEMA, TEAM_COORDINATION_SCHEMA, SHAPE_VOCABULARY_SCHEMA } from './schema.js';
 import {
   hasTable,
   rebuildStaleFts5,
@@ -36,6 +36,7 @@ import {
   migrateV14toV15,
   migrateV15toV16,
   migrateV16toV17,
+  migrateV17toV18,
   migrateSchemaFixes,
   cleanupOrphanTables,
   upgradeV2SchemaInPlace,
@@ -75,7 +76,7 @@ export function runMigrations(db: Database): void {
   const row = db.pragma('user_version') as Array<{ user_version: number }>;
   let version = row[0]?.user_version ?? 0;
 
-  const TARGET_VERSION = 16;
+  const TARGET_VERSION = 18;
 
   if (version >= TARGET_VERSION) {
     // Still load sqlite-vec even if no migration is needed — the extension
@@ -101,6 +102,8 @@ export function runMigrations(db: Database): void {
     [13, () => migrateV13toV14(db)],
     [14, () => migrateV14toV15(db)],
     [15, () => migrateV15toV16(db)],
+    [16, () => migrateV16toV17(db)],
+    [17, () => migrateV17toV18(db)],
   ];
 
   // Handle special cases for version 0 and 1
@@ -190,6 +193,7 @@ export function initializeSchema(db: Database): void {
     db.exec(SCHEMA_V3);
     db.exec(TELEMETRY_SCHEMA);
     db.exec(TEAM_COORDINATION_SCHEMA);
+    db.exec(SHAPE_VOCABULARY_SCHEMA);
 
     // Rebuild FTS5 content index from observations table
     if (hasTable(db, 'observations') && hasTable(db, 'observations_fts')) {
@@ -212,10 +216,63 @@ export function initializeSchema(db: Database): void {
     // safe and cheap. Keeps fresh-V17 clones bootstrap-able.
     db.exec(TELEMETRY_SCHEMA);
     db.exec(TEAM_COORDINATION_SCHEMA);
+    db.exec(SHAPE_VOCABULARY_SCHEMA);
+
+    // Phase 4.1: V18 raised TARGET_VERSION 16→18, so legacy partial-v2 DBs
+    // (e.g., only `observations` exists at open time) now reach user_version=18
+    // via runMigrations and land here. Those DBs need SCHEMA_V3 to create
+    // sessions/telemetry/checkpoint_meta/etc. SCHEMA_V3 is `CREATE TABLE IF
+    // NOT EXISTS`-guarded throughout. The V17 view-substitution that would
+    // collide with SCHEMA_V3's table names is created by the v17-runner CLI
+    // (applyGeneratedDDL), NOT by migrateV16toV17 alone — so as long as the
+    // runner has not been invoked, SCHEMA_V3 is safe to re-run here. We gate
+    // the legacy-table-bearing portions behind a `sessions` existence check
+    // to avoid running SCHEMA_V3 on a fully-migrated post-V17 DB where the
+    // views ARE in place.
+    // Detect whether the V17 runner has installed the legacy-table-replacing
+    // views (e.g., learnings, decisions). If yes, SCHEMA_V3 cannot run because
+    // its CREATE INDEX statements would trip "views may not be indexed". If
+    // no (V17 DDL only — kernel tables but no views), SCHEMA_V3 is safe AND
+    // necessary for legacy DBs upgraded in-process to fill in v3 tables.
+    const v17ViewsActive = (db.prepare(
+      "SELECT 1 FROM sqlite_master WHERE type='view' AND name='learnings' LIMIT 1"
+    ).get() as { 1: number } | undefined) != null;
+
+    // Heuristic: a "post-V17 in-process upgrade" DB has not run the V17 view
+    // runner, so the legacy knowledge tables must exist as real tables (or be
+    // missing entirely). If `session_journal` is missing AND views are not
+    // active, this is a legacy v2/partial-v3 DB that needs SCHEMA_V3 to fill
+    // in the v3 tables (learnings, decisions, artifacts, session_journal, etc.).
+    const needsSchemaV3 = !v17ViewsActive && !hasTable(db, 'session_journal');
+
+    if (needsSchemaV3) {
+      // FTS5: detect stale v2 index with wrong column count and rebuild
+      // (must run BEFORE SCHEMA_V3 so SCHEMA_V3's 2-column FTS5 DDL can execute).
+      rebuildStaleFts5(db);
+      db.exec(SCHEMA_V3);
+      // Rebuild FTS5 content index from observations table
+      if (hasTable(db, 'observations') && hasTable(db, 'observations_fts')) {
+        try {
+          db.exec("INSERT INTO observations_fts(observations_fts) VALUES('rebuild')");
+        } catch { /* FTS rebuild failed — non-fatal */ }
+      }
+      // Schema fixes: single-owner artifact_claims, porter stemmer on FTS, etc.
+      migrateSchemaFixes(db);
+    }
   }
 
   // Drop orphan tables from pre-V6 schemas (runs unconditionally, not gated by migrateSchemaFixes guard)
   cleanupOrphanTables(db);
+
+  // Ensure schema_versions exists for the version-record INSERT below.
+  // V17 DDL replaces 6 legacy tables with views but does NOT recreate
+  // schema_versions; SCHEMA_V3 (where it lives) is skipped on the post-V17
+  // path. For legacy DBs upgraded through runMigrations into V17/V18 directly,
+  // we need this guard so the INSERT below has a target table.
+  db.exec(`CREATE TABLE IF NOT EXISTS schema_versions (
+    version INTEGER PRIMARY KEY,
+    applied_at_epoch INTEGER NOT NULL DEFAULT (unixepoch())
+  );`);
 
   // Record schema version
   const svCols = (db.pragma('table_info(schema_versions)') as Array<{ name: string }>).map(c => c.name);
@@ -224,10 +281,11 @@ export function initializeSchema(db: Database): void {
   } else {
     db.prepare('INSERT OR IGNORE INTO schema_versions (version) VALUES (?)').run(SCHEMA_VERSION);
   }
-  // Do not demote a V17 (or newer) DB back to 16. The live DB's user_version
-  // is set by the V17 runner; every hook re-open used to silently demote it,
-  // which would confuse any future `>= 17` version gate.
-  if (currentUv < 16) db.pragma('user_version = 16');
+  // Do not demote a V18 (or newer) DB back to 18. The live DB's user_version
+  // is set by runMigrations; every hook re-open used to silently demote it,
+  // which would confuse any future `>= N` version gate. Phase 4.1 raised the
+  // ceiling 16→18 (V17 view-over-artifact + V18 shape vocabulary substrate).
+  if (currentUv < 18) db.pragma('user_version = 18');
 }
 
 // ---------------------------------------------------------------------------

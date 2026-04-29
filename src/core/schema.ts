@@ -724,6 +724,37 @@ CREATE TABLE IF NOT EXISTS artifact_claims (
 `;
 
 /**
+ * Phase 4.1 (V18) — shape vocabulary substrate for lesson taxonomy.
+ *
+ * Bounded vocabulary (Angel-curated) for lesson `shape:` fields:
+ *   - task_shape, failure_mode, solution_pattern.
+ *
+ * Candidates accumulate per (field, value, session). At density ≥ 3 distinct
+ * sessions, Angel promotes the candidate to canonical vocabulary.
+ */
+export const SHAPE_VOCABULARY_SCHEMA = `
+CREATE TABLE IF NOT EXISTS shape_vocabulary (
+  field TEXT NOT NULL,
+  value TEXT NOT NULL,
+  promoted_at_epoch INTEGER NOT NULL,
+  promoted_session_count INTEGER NOT NULL,
+  PRIMARY KEY (field, value)
+);
+
+CREATE TABLE IF NOT EXISTS shape_candidates (
+  field TEXT NOT NULL,
+  value TEXT NOT NULL,
+  session_id TEXT NOT NULL,
+  project TEXT NOT NULL,
+  proposed_at_epoch INTEGER NOT NULL,
+  PRIMARY KEY (field, value, session_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_shape_candidates_field_value
+  ON shape_candidates(field, value);
+`;
+
+/**
  * Telemetry table DDL — separate constant for clarity.
  */
 export const TELEMETRY_SCHEMA = `
