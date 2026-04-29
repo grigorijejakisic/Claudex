@@ -50,15 +50,12 @@ import { renderCheckpointMarkdown } from '../checkpoint/inject.js';
 import { getTopLearnings, type LearningRow } from '../core/learnings.js';
 import { getHotFiles, type PressureRow } from '../core/pressure.js';
 import {
-  searchArtifactsGlobal,
   getMaterializedArtifacts,
-  consumeInjectedArtifacts,
 } from '../core/artifacts.js';
-import { hybridSearchSync, spreadActivation } from '../core/hybrid-retrieval.js';
+import { spreadActivation } from '../core/hybrid-retrieval.js';
 import type { ExperiencePattern } from '../intelligence/experience-patterns.js';
 import { cachedPrepare } from '../core/stmt-cache.js';
 import { recordRetrievalEvent } from '../intelligence/retrieval-feedback.js';
-import { recordRetrieval } from '../intelligence/memrl-scorer.js';
 import { findRelevantFiles, getChangedFiles } from '../indexer/codebase-indexer.js';
 import { getCheckpointTracking } from '../core/checkpoint-tracking.js';
 import { readGsdState } from '../gsd/state-reader.js';
@@ -506,118 +503,6 @@ export function assembleFullContext(params: FullAssemblyParams): InjectPayload {
         }
       } catch { /* non-fatal */ }
     }
-
-    // === LAYER 3: Materialization (query-driven full content) ===
-    // Uses hybrid search (FTS5 + recency + three-factor scoring) for better
-    // retrieval quality. Falls back to FTS5-only via hybridSearchSync.
-    try {
-      const query = params.searchQuery ?? checkpoint?.thread?.topic ?? null;
-      let materializedArtifacts: ArtifactRow[] = [];
-
-      if (query) {
-        const searchResults = hybridSearchSync(params.db, query, params.project, {
-          limit: 10,
-          globalScope: true,
-          excludeSuperseded: true,
-          budgetTokens: budget > 0 ? budget : undefined,
-        });
-        if (searchResults.length > 0) {
-          materializedArtifacts = searchResults;
-        } else {
-          // Fallback to legacy FTS5-only search if hybrid returns nothing
-          const legacyResults = searchArtifactsGlobal(params.db, params.project, query, 10);
-          if (legacyResults.length > 0) {
-            materializedArtifacts = legacyResults;
-          }
-        }
-      }
-
-      const alreadyMaterialized = getMaterializedArtifacts(params.db, params.project, true);
-      const seen = new Set(materializedArtifacts.map(a => a.id));
-      for (const a of alreadyMaterialized) {
-        if (!seen.has(a.id)) { materializedArtifacts.push(a); seen.add(a.id); }
-      }
-
-      // Dedup: exclude learning-type artifacts from materialization when
-      // learnings were already injected in Priority 4 (prevents cross-contamination)
-      if (sources.includes('learnings')) {
-        materializedArtifacts = materializedArtifacts.filter(a => a.artifact_type !== 'learning');
-      }
-
-      // Dedup: exclude session_log and handoff artifacts when session continuity
-      // already injected — the compressed handoff extract covers what matters.
-      if (sources.includes('session_continuity')) {
-        materializedArtifacts = materializedArtifacts.filter(a =>
-          a.artifact_type !== 'session_log' && a.artifact_type !== 'handoff'
-        );
-      }
-
-      // Staleness filter: observation-type artifacts older than 48h have very low
-      // value for a new session. Decisions, learnings, patterns etc. persist longer.
-      // CACH-03: pin to params.nowEpoch when provided so cache-stability tests can replay.
-      const STALE_OBS_CUTOFF = (params.nowEpoch ?? Math.floor(Date.now() / 1000)) - 48 * 3600;
-      materializedArtifacts = materializedArtifacts.filter(a =>
-        a.artifact_type !== 'observation' || a.timestamp_epoch >= STALE_OBS_CUTOFF
-      );
-
-      // A9 extension (Phase 10): Per-session observation dedup.
-      // Prevents the same observation from being surfaced on multiple turns within
-      // a session. Equivalent to CC's alreadySurfaced set in findRelevantMemories.ts.
-      // Observation IDs are prefixed with "obs:" to distinguish from pattern ULIDs.
-      // A12 note: File race with CC memory prevented by CLAUDE_CODE_DISABLE_AUTO_MEMORY
-      // + detectCcMemoryConflict() in env-file.ts.
-      if (params.sessionId) {
-        try {
-          const flags = getExperienceFlags(params.db, params.sessionId);
-          const seen = new Set(flags.session_injected_ids);
-          materializedArtifacts = materializedArtifacts.filter(a =>
-            a.artifact_type !== 'observation' || !seen.has(`obs:${a.artifact_ref ?? a.id}`)
-          );
-        } catch { /* non-fatal — skip dedup */ }
-      }
-
-      const rationale = query ? `hybrid search on "${query}"` : undefined;
-      const matSection = formatMaterializationLayer(materializedArtifacts, rationale, params.sessionId);
-      if (matSection) {
-        const cost = estimateTokens(matSection);
-        if (cost <= budget) {
-          sections.push(matSection);
-          budget -= cost;
-          sources.push('materialized');
-
-          // 5.1: Record retrieval events for all materialized artifacts
-          // 5.3: Spread activation to linked artifacts
-          // 5.4: MemRL retrieval tracking (Amp Phase 2)
-          if (params.sessionId) {
-            for (const art of materializedArtifacts) {
-              recordRetrievalEvent(params.db, art.id, params.sessionId, query ?? undefined);
-              spreadActivation(params.db, art.id);
-              // Track retrieval for MemRL Q-value learning
-              try { recordRetrieval(params.db, art.id); } catch { /* non-fatal */ }
-            }
-          }
-
-          // A9 extension: accumulate observation IDs into session_injected_ids
-          if (params.sessionId) {
-            const obsIds = materializedArtifacts
-              .filter(a => a.artifact_type === 'observation')
-              .map(a => `obs:${a.artifact_ref ?? a.id}`);
-            if (obsIds.length > 0) {
-              try {
-                const currentFlags = getExperienceFlags(params.db, params.sessionId);
-                const accumulated = [...new Set([...currentFlags.session_injected_ids, ...obsIds])];
-                setExperienceFlags(params.db, params.sessionId, { session_injected_ids: accumulated });
-              } catch { /* non-fatal */ }
-            }
-          }
-
-          // Consume injected artifacts — pack them so the next turn's
-          // assembleRegularPrompt() doesn't re-inject via getMaterializedArtifacts().
-          // PostToolUse can re-materialize specific artifacts mid-session if needed.
-          consumeInjectedArtifacts(params.db, materializedArtifacts.map(a => a.id));
-        }
-      }
-    } catch { /* non-fatal */ }
 
     // === CODEBASE CONTEXT (Amp Phase 3 — structural understanding) ===
     // Inject relevant symbols and recent changes from the codebase index.
