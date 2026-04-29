@@ -1,0 +1,7 @@
+# Source: ~/.claude/projects/C--Users-Grigorije-Desktop-Projects-Oracle/memory/MEMORY.md captured 2026-04-29
+# Sanitization: none (no secrets/PII detected)
+# This file is a TEST FIXTURE — do not edit directly. Re-capture with current content if upstream changed.
+- [Oracle v2 — Fortune Teller Vision](project_oracle_v2_vision.md) — merged Oracle+MiroFish, single TS, Ask+Watch modes, CLI, multi-perspective simulation
+- [Handoff for new projects](feedback_handoff_new_projects.md) — /endsession must store handoff in the new project's context explicitly, especially for spun-off projects
+- [Oracle is autonomous investigation](project_investigation_model.md) — heartbeat drives continuous re-investigation of tracked topics, not manual Q&A
+- [No lazy triage](feedback_no_lazy_triage.md) — fix ALL review findings or give a real technical blocker, never defer with category labels

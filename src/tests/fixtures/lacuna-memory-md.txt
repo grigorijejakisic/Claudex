@@ -1,0 +1,8 @@
+# Source: ~/.claude/projects/C--Users-Grigorije-Desktop-Projects-Lacuna-Betting/memory/MEMORY.md captured 2026-04-29
+# Sanitization: none (no secrets/PII detected; technical content only)
+# This file is a TEST FIXTURE — do not edit directly. Re-capture with current content if upstream changed.
+- [**Forbidden: Desktop/big-mozzart-clean**](feedback_forbidden_big_mozzart_clean.md) — NEVER touch that path. All Mozzart work happens in Lacuna-Betting/big-mozzart/. Overrides stale handoffs/curated entries pointing there.
+- [**Mozzart Cloudflare 429 rate limit**](project_mozzart_cloudflare_429.md) — per-IP rate limit, 15-min auto-heal. Tripped by maxParallel=100 + double fetchMatchDetail. Fix: lower maxParallel, slow discovery, dedupe prescan, mobile hotspot as failover.
+- [**Mozzart silent-drop ROOT CAUSE**](project_mozzart_silent_drop_root_cause.md) — pay-ticket 200=QUEUED not accepted. Real verdict on /user/queue/to_user TICKET_PAYIN_ACK. Race vs Mozzart's feed-lag→BET_STOP, not HTTP speed.
+- [Realtime architecture](feedback_realtime_architecture.md) — WebSocket push, not polling. React in milliseconds. No browser tab babysitting.
+- [System architecture](project_system_architecture.md) — Every book is both fast source + slow target. Detect known outcomes, bet everywhere else instantly. Speed is everything.

@@ -463,6 +463,43 @@ export function parseSentinelHash(firstLine: string): string | null {
 }
 
 /**
+ * Build a user-tail block wrapping legacy user-authored MEMORY.md content.
+ *
+ * Used at first-run migration when a project has hand-curated MEMORY.md
+ * (e.g., Lacuna-Betting / Oracle / Nexus) WITHOUT the Angel sentinel. The
+ * full file body becomes the body of `## User Notes`, prefixed by a fresh
+ * `<!-- USER EDITABLE -->` marker. Subsequent writes go through the normal
+ * sentinel-checked path because the marker is now present.
+ *
+ * Detection rule (caller's responsibility): pass a non-empty `existing`
+ * string that has NEITHER the top sentinel NOR the `<!-- USER EDITABLE -->`
+ * marker on its own line.
+ *
+ * Returns:
+ *   - The wrapped string ready to be used as `userTail` in curateMemoryMd.
+ *   - null if `existing` is whitespace-only (cold-start; caller should fall
+ *     back to USER_TAIL_DEFAULT instead).
+ *
+ * Preservation contract: legacy content is preserved BYTE-FOR-BYTE inside
+ * `## User Notes`. We do NOT rewrite list items, headings, or whitespace.
+ * Idempotent re-runs (after migration) skip this branch entirely because
+ * the marker now exists.
+ */
+export function wrapLegacyUserContent(existing: string): string | null {
+  const normalized = existing.replace(/\r\n/g, '\n');
+  if (normalized.replace(/\s/g, '').length === 0) return null;
+
+  // Don't double-wrap if existing content already starts with (or contains
+  // a top-level) `## User Notes` header — avoid creating nested User Notes.
+  // We use a line-anchored regex (^|\n).
+  const hasUserNotesHeader = /(^|\n)## User Notes\b/.test(normalized);
+  const body = hasUserNotesHeader ? normalized : `## User Notes\n\n${normalized}`;
+  // Ensure the wrapped body ends with a single newline.
+  const normalizedBody = body.replace(/\n+$/, '') + '\n';
+  return `<!-- USER EDITABLE -->\n\n${normalizedBody}`;
+}
+
+/**
  * Find the byte offset where the user tail begins, identified by a
  * `<!-- USER EDITABLE -->` line that occupies its OWN line (no surrounding
  * content on the same line).
@@ -611,7 +648,9 @@ export function curateMemoryMd(db: Database, project: string): CurationResult {
     // against `fullNew` (which is generated LF-only).
     const normalizedExisting = existing.replace(/\r\n/g, '\n');
     const markerIdx = findUserTailStart(normalizedExisting);
+
     if (markerIdx >= 0) {
+      // Existing file already has the marker. Standard sentinel-checked path.
       userTail = normalizedExisting.slice(markerIdx);
       if (!userTail.endsWith('\n')) userTail += '\n';
 
@@ -621,7 +660,23 @@ export function curateMemoryMd(db: Database, project: string): CurationResult {
         recordRefusal(db, project, memoryMdPath, 'sentinel_missing');
         return { path: memoryMdPath, written: false, reason: 'sentinel_missing' };
       }
+    } else if (normalizedExisting.length > 0) {
+      // Existing file has content but NO line-anchored marker — first-run
+      // migration path (Lacuna/Oracle/Nexus pattern). Preserve content
+      // verbatim under ## User Notes per CONTEXT.md migration policy
+      // ("Never overwrite. Append above hash marker.").
+      const firstLine = normalizedExisting.split('\n', 1)[0];
+      if (parseSentinelHash(firstLine)) {
+        // Top sentinel present but no marker — corrupt or partial-write
+        // mid-state. Refuse rather than guess.
+        recordRefusal(db, project, memoryMdPath, 'sentinel_invalid');
+        return { path: memoryMdPath, written: false, reason: 'sentinel_invalid' };
+      }
+      const wrapped = wrapLegacyUserContent(normalizedExisting);
+      if (wrapped) userTail = wrapped;
+      // (else: file was effectively whitespace; fall back to USER_TAIL_DEFAULT.)
     }
+    // Else: file is empty / does not exist; userTail stays at USER_TAIL_DEFAULT.
 
     const fullNew = `${sentinel}\n${body}\n${userTail}`;
 

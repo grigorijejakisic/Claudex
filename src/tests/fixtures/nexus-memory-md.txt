@@ -1,0 +1,10 @@
+# Source: ~/.claude/projects/C--Users-Grigorije-Desktop-Projects-Nexus/memory/MEMORY.md captured 2026-04-29
+# Sanitization: none (no secrets/PII detected)
+# This file is a TEST FIXTURE — do not edit directly. Re-capture with current content if upstream changed.
+# Nexus Project Memory Index
+
+- [feedback_kb_hands_off.md](feedback_kb_hands_off.md) — KB/Claudex is user's domain. Do not implement — only stub interfaces.
+- [project_nexus_architecture_clarity.md](project_nexus_architecture_clarity.md) — Nexus is transport only. No AI routing. Agent bus for agent-to-agent. Claudex is the brain.
+- [project_proactive_assistant_vision.md](project_proactive_assistant_vision.md) — Proactive agent vision: heartbeat-driven self-activation, independent thinking, Claudex memory across sessions.
+- [feedback_systematic_debugging.md](feedback_systematic_debugging.md) — Don't rush multiple fixes. Debug one layer at a time. Ask questions when stuck.
+- [feedback_autonomous_fixes.md](feedback_autonomous_fixes.md) — Don't ask permission to restart/rebuild — just do it when fix is clear.
