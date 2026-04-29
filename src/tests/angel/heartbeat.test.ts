@@ -333,13 +333,15 @@ describe('Angel heartbeat — Phase 5b Session-completion artifact curation', ()
     expect(chunksB.c).toBeGreaterThanOrEqual(1);
 
     // Both MEMORY.md files exist with sentinel + section headers
+    // Phase 4.1 CUR-09: ## Entities and ## Recent Threads dropped; ## Lessons added.
     for (const proj of [PROJECT_1, PROJECT_2]) {
       expect(fs.existsSync(memoryMdPathFor(proj))).toBe(true);
       const body = fs.readFileSync(memoryMdPathFor(proj), 'utf8');
       expect(body.startsWith('<!-- CLAUDEX-MANAGED:')).toBe(true);
-      expect(body).toContain('## Entities');
+      expect(body).not.toContain('## Entities');
+      expect(body).not.toContain('## Recent Threads');
       expect(body).toContain('## Active Projects');
-      expect(body).toContain('## Recent Threads');
+      expect(body).toContain('## Lessons');
       expect(body).toContain('## Handoff');
       expect(body).toContain('## How to Query');
     }
@@ -377,12 +379,17 @@ describe('Angel heartbeat — Phase 5b Session-completion artifact curation', ()
     const p1Before = fs.readFileSync(memoryMdPathFor(PROJECT_1));
     const p2Before = fs.readFileSync(memoryMdPathFor(PROJECT_2));
 
-    // Change p1 entities + enqueue a new pending event using a second seeded
-    // session (so the `memory_curation_done` guard doesn't skip it).
+    // Phase 4.1: Entities are no longer rendered, so changing entity rows
+    // doesn't drive a managed-section diff. Insert an artifact row that the
+    // Active Projects section counts (kind='test_seed', project_id=PROJECT_1)
+    // so the body actually changes between runs.
     const SESSION_A2 = 's-a2';
     seedSession(db, SESSION_A2, PROJECT_1);
     seedTurns(db, SESSION_A2, PROJECT_1, 3);
-    seedEntities(db, PROJECT_1, [{ ref: 'e3-new', summary: 'added', importance: 5 }]);
+    db.prepare(
+      `INSERT INTO artifact (id, kind, title, body, status, created_at_epoch, updated_at_epoch, project_id, data)
+       VALUES (?, 'test_seed', 'tick3', 'body', 'active', ?, ?, ?, '{}')`,
+    ).run(`active-${Date.now()}`, Date.now(), Date.now(), PROJECT_1);
     enqueueCuration(db, SESSION_A2, PROJECT_1);
 
     const tick = await heartbeatTick(mkCtx(db));

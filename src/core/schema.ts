@@ -724,13 +724,20 @@ CREATE TABLE IF NOT EXISTS artifact_claims (
 `;
 
 /**
- * Phase 4.1 (V18) — shape vocabulary substrate for lesson taxonomy.
+ * Phase 4.1 (V18) — shape vocabulary substrate for lesson taxonomy +
+ * critical_rules_multi_project sidecar for cross-project marker.
  *
- * Bounded vocabulary (Angel-curated) for lesson `shape:` fields:
- *   - task_shape, failure_mode, solution_pattern.
- *
+ * shape_vocabulary / shape_candidates: bounded vocabulary (Angel-curated)
+ * for lesson `shape:` fields (task_shape / failure_mode / solution_pattern).
  * Candidates accumulate per (field, value, session). At density ≥ 3 distinct
  * sessions, Angel promotes the candidate to canonical vocabulary.
+ *
+ * critical_rules_multi_project: sidecar table for the Phase 4.1 multi-project
+ * marker (CUR-09 +2 boost). Keyed by (project, normalized_rule_text) — works
+ * in both pre-V17 (real critical_rules table) and post-V17 (view) environments.
+ * Per CONTEXT.md "Claude's Discretion" + pre-authorized sidecar fallback in
+ * Plan 07 Task 2: this avoids the data-column UPDATE complexity of the V17
+ * view-over-artifact path.
  */
 export const SHAPE_VOCABULARY_SCHEMA = `
 CREATE TABLE IF NOT EXISTS shape_vocabulary (
@@ -752,6 +759,17 @@ CREATE TABLE IF NOT EXISTS shape_candidates (
 
 CREATE INDEX IF NOT EXISTS idx_shape_candidates_field_value
   ON shape_candidates(field, value);
+
+CREATE TABLE IF NOT EXISTS critical_rules_multi_project (
+  project TEXT NOT NULL,
+  normalized_rule_text TEXT NOT NULL,
+  multi_project_count INTEGER NOT NULL,
+  updated_at_epoch INTEGER NOT NULL,
+  PRIMARY KEY (project, normalized_rule_text)
+);
+
+CREATE INDEX IF NOT EXISTS idx_crmp_norm_text
+  ON critical_rules_multi_project(normalized_rule_text);
 `;
 
 /**

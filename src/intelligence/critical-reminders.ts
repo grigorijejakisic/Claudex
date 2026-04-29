@@ -40,6 +40,8 @@ export interface CriticalRule {
   injection_count: number;
   violation_count: number;
   compliance_count: number;
+  /** Phase 4.1: count of distinct projects with similar normalized rule_text. Default 1. */
+  multi_project_count: number;
 }
 
 export interface CriticalRemindersResult {
@@ -59,6 +61,19 @@ export interface ParsedCriticalRule {
 // ---------------------------------------------------------------------------
 // WU4: Decay Engine (TTL + Jitter)
 // ---------------------------------------------------------------------------
+
+/**
+ * Phase 4.1 — normalize rule text for multi_project_count sidecar lookup.
+ * Mirrors angel/feedback-promoter.ts:normalizeRuleText. Duplicated here to
+ * avoid circular module graph (intelligence ← angel boundary).
+ */
+function normalizeForMultiProject(text: string): string {
+  return text
+    .toLowerCase()
+    .replace(/[.,!?;:'"\[\]\{\}\(\)]+/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
 
 /** Jitter range per drift_risk tier. */
 const JITTER_RANGES: Record<string, number> = {
@@ -356,9 +371,26 @@ export function assembleCriticalReminders(
   contextWindowTokens?: number,
 ): CriticalRemindersResult | null {
   try {
-    const rules = cachedPrepare(db,
-      'SELECT * FROM critical_rules WHERE project = ?'
-    ).all(project) as CriticalRule[];
+    // Phase 4.1: pull multi_project_count from the critical_rules_multi_project
+    // sidecar table (keyed by project + normalized rule_text). Sidecar fallback
+    // chosen over JSON-in-data per CONTEXT.md "Claude's Discretion" — works
+    // in both pre-V17 and post-V17 environments without requiring V17 view
+    // UPDATE semantics. Default to 1 when sidecar row is missing.
+    const baseRules = cachedPrepare(db,
+      'SELECT * FROM critical_rules WHERE project = ?',
+    ).all(project) as Array<Omit<CriticalRule, 'multi_project_count'>>;
+
+    if (baseRules.length === 0) return null;
+
+    const sidecarStmt = cachedPrepare(db,
+      `SELECT multi_project_count FROM critical_rules_multi_project
+       WHERE project = ? AND normalized_rule_text = ? LIMIT 1`,
+    );
+    const rules: CriticalRule[] = baseRules.map(r => {
+      const norm = normalizeForMultiProject(r.rule_text);
+      const sidecarRow = sidecarStmt.get(r.project, norm) as { multi_project_count: number } | undefined;
+      return { ...r, multi_project_count: sidecarRow?.multi_project_count ?? 1 };
+    });
 
     if (rules.length === 0) return null;
 
@@ -388,6 +420,10 @@ export function assembleCriticalReminders(
           if (tags.some(t => seenDomains.includes(t))) score += 1;
         } catch { /* non-fatal */ }
       }
+
+      // Phase 4.1: multi-project marker boost (flat +2 when ≥2 distinct
+      // projects share normalized rule_text). Source-agnostic per CONTEXT.md.
+      if (rule.multi_project_count >= 2) score += 2;
 
       if (score > 0) scored.push({ rule, score });
     }

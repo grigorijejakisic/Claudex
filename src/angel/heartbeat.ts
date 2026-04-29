@@ -43,6 +43,8 @@ import { consolidateObservationBatch, shouldConsolidate, markConsolidationRan, r
 import { syncUserProfiles } from './user-profile-sync.js';
 import { runRetentionSweep } from './retention-sweep.js';
 import * as path from 'path';
+import * as fs from 'fs';
+import * as os from 'os';
 import { runCrossProjectConsolidation } from './cross-project-consolidator.js';
 import { runDataQualityChecks } from './data-quality.js';
 import { runProactiveCuration } from './proactive-curator.js';
@@ -117,6 +119,10 @@ export interface TickResult {
   memory_md_written?: number;
   memory_curation_no_project_dir?: number;
   memory_curation_errors?: number;
+  // Phase 5c: Phase 4.1 bridge sweeps (Plan 07)
+  feedback_rules_promoted?: number;
+  multi_project_markers_updated?: number;
+  shape_vocab_promoted?: number;
   // Local Intelligence Amplifier
   services_down?: string[];
   codebase_files_indexed?: number;
@@ -532,6 +538,72 @@ export async function heartbeatTick(ctx: HeartbeatContext): Promise<TickResult> 
           }),
         );
       } catch { /* double-failure — DB itself is sick; angel.log still has the stack */ }
+    }
+
+    // Phase 5c: Phase 4.1 bridge sweeps (Plan 07).
+    //
+    // Sequencing rationale:
+    //   - Runs AFTER Phase 5b (so curated lesson files written this tick are
+    //     visible to feedback-promoter on the same tick — no extra latency).
+    //   - Runs BEFORE Phase 6 (artifact linking) so newly-promoted critical_rules
+    //     don't carry stale embeddings.
+    //   - Multi-project sweep is cross-project (no `project` arg). It runs
+    //     every tick — sub-millisecond for typical N < 100 system-promoted rules.
+    //
+    // Per-operation try/catch (Plan 04-06-02 pattern): one failing operation
+    // does not skip the next two.
+    try {
+      // 5c-1: feedback density check per active project.
+      // Iterate over CC projects with recent feedback_*.md files (last 7d).
+      try {
+        const projectsDir = path.join(os.homedir(), '.claude', 'projects');
+        const sevenDaysAgo = Date.now() - 7 * 86_400 * 1000;
+        const activeProjects: string[] = [];
+        if (fs.existsSync(projectsDir)) {
+          for (const entry of fs.readdirSync(projectsDir)) {
+            const memDir = path.join(projectsDir, entry, 'memory');
+            if (!fs.existsSync(memDir)) continue;
+            try {
+              const files = fs.readdirSync(memDir);
+              const hasRecentFeedback = files.some(f => {
+                if (!f.startsWith('feedback_')) return false;
+                try {
+                  const stat = fs.statSync(path.join(memDir, f));
+                  return stat.mtimeMs >= sevenDaysAgo;
+                } catch { return false; }
+              });
+              if (hasRecentFeedback) activeProjects.push(entry);
+            } catch { /* skip */ }
+          }
+        }
+
+        const { promoteFeedbackToCriticalRules } = await import('./feedback-promoter.js');
+        let promoted = 0;
+        for (const p of activeProjects) {
+          try {
+            promoted += promoteFeedbackToCriticalRules(ctx.db, p);
+          } catch (err) {
+            result.memory_curation_errors = (result.memory_curation_errors ?? 0) + 1;
+          }
+        }
+        if (promoted > 0) result.feedback_rules_promoted = promoted;
+      } catch { /* non-fatal */ }
+
+      // 5c-2: multi-project marker update (cross-project sweep).
+      try {
+        const { updateMultiProjectMarkers } = await import('./multi-project-marker.js');
+        const updated = updateMultiProjectMarkers(ctx.db);
+        if (updated > 0) result.multi_project_markers_updated = updated;
+      } catch { /* non-fatal */ }
+
+      // 5c-3: shape vocabulary promotion (candidate → canonical at density ≥3).
+      try {
+        const { promoteShapeVocabulary } = await import('./shape-vocab-promoter.js');
+        const promotedVocab = promoteShapeVocabulary(ctx.db);
+        if (promotedVocab > 0) result.shape_vocab_promoted = promotedVocab;
+      } catch { /* non-fatal */ }
+    } catch {
+      // Outer catch — should be unreachable since each inner has its own try.
     }
 
     // Phase 6: Bulk artifact linking — populate artifact_links via Qdrant similarity
