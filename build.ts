@@ -57,6 +57,7 @@ const optionalEntryPoints = [
   'src/adapters/cc-hooks/teammate-idle.ts',
   'scripts/phase-4-1-soak.ts',
   'scripts/p4-pre-backup.ts',
+  'scripts/phase-5-soak.ts',
 ];
 
 /** Hook entry points to smoke test after build.

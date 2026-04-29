@@ -20,7 +20,7 @@ Phase 1 (P0 crystallization, ✅) and Phase 2 (P1 artifact unification, ✅, T3 
 - [~] **Phase 3: P2 + P8 merge — Directive detector + lifecycle + PreToolUse consumer** — Detector shipped 2026-04-22 (partial-B); merger with original P8 lifecycle scheduled (writer ships with consumer + supersession + decay as one unit)
 - [~] **Phase 4: P3 — MEMORY.md curation** — Closed 2026-04-26 with visible content regressions; **superseded by Phase 4.1**
 - [x] **Phase 4.1: MEMORY.md content redesign + Lessons section** — COMPLETE 2026-04-29. Drop Entities + Recent Threads; add Lessons (task-pattern indexed); promote User Notes; writer state-machine fix; mixed-precision timestamp normalization. CUR-15 reach partial-defer (precision closed; backfill recommended as follow-up)
-- [ ] **Phase 5: P4 — Kill legacy injection** — Delete 9 sections, ≤500 tokens, cache-stable, `initialUserMessage` prime, tier-based deletion (A/B/C)
+- [x] **Phase 5: P4 — Kill legacy injection** — COMPLETE 2026-04-29. 10 sections deleted across Tiers A/B/C (~320 LOC); codebase_index relocated to UPS; CACH-03 hardening; SC#1-#4 PASS (SC#1 proxy pending Phase 10)
 - [ ] **Phase 5.5: Curation feedback loop** — `pointer_recall_log`; auto-archive dead pointers; auto-promote high-recall pointers
 - [ ] **Phase 6: P5 — Retrieval simplification + per-multiplier ablation** — RRF + cross-encoder rerank only; per-multiplier A/B before bulk delete; reranker hard-required
 - [ ] **Phase 6.5: Cross-project task-pattern recall** — Task-pattern fingerprinting; cross-project default-ON; surfaces as observational context
@@ -136,7 +136,16 @@ Plans:
 - L3: dual-inject diagnostic mode via env flag `CLAUDEX_P4_INJECTION_MODE=lean|entity_only|dual` ("Ghost Code" pattern). NOT branch checkout. Run targeted Vesna probes lean vs dual to attribute which section(s) carry recall load. Funeral PR deletes legacy after gate passes.
 - L4: full revert to Phase 4.1 candidate. Pre-condition: MEMORY.md content-quality must show measurable improvement before next attempt (operationalized as SC#3 score delta).
 
-**Plans:** TBD (`/gsd:plan-phase 5`) — only after 4.1 ships.
+**Plans:** 9 plans in 8 waves — all COMPLETE 2026-04-29:
+- [x] 05-01-PLAN.md — Pre-flight backup + CACH-03 hardening (14 sites) + scope-decisions doc + Vesna baseline
+- [x] 05-02-PLAN.md — 3-layer cache-stability test harness (4 scenarios × 3 layers; gpt-tokenizer)
+- [x] 05-03-PLAN.md — Tier A deletion (Flow, Reference Layer, Materialization) + Tier A gate PASS
+- [x] 05-04-PLAN.md — Tier B deletion (Predicted, Opinions, Principles session-start, project_overview) + Tier B gate PASS
+- [x] 05-05-PLAN.md — Tier C deletion (Entity Summaries, Curated, Experience Warnings auto) + Tier C gate PASS
+- [x] 05-06-PLAN.md — Move codebase_index from session-start to UPS; UPS ≤1KB enforced
+- [x] 05-07-PLAN.md — initialUserMessage rewrite (frontmatter contract, default-on, EXACT phase match) + SC#4 integration test
+- [x] 05-08-PLAN.md — Experience-warning reactive trigger helpers (4 functions + 22 tests; hook wire-up deferred)
+- [x] 05-09-PLAN.md — Phase close: full SC#1-#4 gate + soak + final verdict PASS + STATE/ROADMAP update
 
 ### Phase 5.5: Curation feedback loop (NEW)
 **Goal:** Pointers earn their place by use. Self-corrects bias toward generic-noun extraction.
@@ -305,8 +314,8 @@ Phase 9 may be scheduled parallel to 6/7 once Phase 5 ships (T6 verified safe). 
 | 2. P1 — Artifact unification | 7/7 | Complete (T3 verified 2026-04-27) | 2026-04-20 |
 | 3. P2 + P8 merge — Directive detector + lifecycle + PreToolUse | 6/10 | Partial-with-followups (path B); merger pending | 2026-04-22 (partial) |
 | 4. P3 — MEMORY.md curation | 8/8 | Partial-corrective-pending (4.1 supersedes) | 2026-04-26 |
-| 4.1. MEMORY.md content redesign + Lessons | 0/0 | Not started | - |
-| 5. P4 — Kill legacy injection | 0/0 | Not started | - |
+| 4.1. MEMORY.md content redesign + Lessons | 9/9 | Complete | 2026-04-29 |
+| 5. P4 — Kill legacy injection | 9/9 | Complete | 2026-04-29 |
 | 5.5. Curation feedback loop | 0/0 | Not started | - |
 | 6. P5 — Retrieval simplification + per-multiplier ablation | 0/0 | Not started | - |
 | 6.5. Cross-project task-pattern recall | 0/0 | Not started | - |
