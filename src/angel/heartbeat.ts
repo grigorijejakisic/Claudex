@@ -123,6 +123,10 @@ export interface TickResult {
   feedback_rules_promoted?: number;
   multi_project_markers_updated?: number;
   shape_vocab_promoted?: number;
+  // Phase 5d: Phase 5.5 curation feedback sweeps
+  pointers_archived?: number;
+  pointers_promoted?: number;
+  curation_errors?: number;
   // Local Intelligence Amplifier
   services_down?: string[];
   codebase_files_indexed?: number;
@@ -604,6 +608,52 @@ export async function heartbeatTick(ctx: HeartbeatContext): Promise<TickResult> 
       } catch { /* non-fatal */ }
     } catch {
       // Outer catch — should be unreachable since each inner has its own try.
+    }
+
+    // Phase 5d: Curation feedback sweeps (Phase 5.5).
+    //
+    // Sequencing rationale:
+    //   - Runs AFTER Phase 5c so any vocab promotion this tick is committed
+    //     before we re-render lesson frontmatter.
+    //   - Runs BEFORE Phase 6 (artifact linking) — same constraint as 5c.
+    //
+    // Two operations, each with its own try/catch (Plan 04-06-02 pattern):
+    //   5d-1: Auto-archive (24h cadence, internal time gate)
+    //   5d-2: Auto-promote (7d cadence, internal time gate)
+    try {
+      const now = Date.now();
+      const {
+        sweepArchivePointers,
+        sweepPromotePointers,
+        shouldRunArchiveSweep,
+        markArchiveSweepRan,
+        shouldRunPromoteSweep,
+        markPromoteSweepRan,
+      } = await import('./curation-sweep.js');
+
+      // 5d-1: Archive
+      try {
+        if (shouldRunArchiveSweep(now)) {
+          const archived = sweepArchivePointers(ctx.db, now);
+          if (archived > 0) result.pointers_archived = archived;
+          markArchiveSweepRan(now);
+        }
+      } catch {
+        result.curation_errors = (result.curation_errors ?? 0) + 1;
+      }
+
+      // 5d-2: Promote
+      try {
+        if (shouldRunPromoteSweep(now)) {
+          const promoted = sweepPromotePointers(ctx.db, now);
+          if (promoted > 0) result.pointers_promoted = promoted;
+          markPromoteSweepRan(now);
+        }
+      } catch {
+        result.curation_errors = (result.curation_errors ?? 0) + 1;
+      }
+    } catch {
+      // Outer catch — should be unreachable because each inner has its own try.
     }
 
     // Phase 6: Bulk artifact linking — populate artifact_links via Qdrant similarity
