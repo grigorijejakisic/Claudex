@@ -32,7 +32,6 @@ import {
   formatProjectsOverview,
   renderSessionContinuity,
   renderExperienceWarnings as formatExperienceWarningsSection,
-  formatPredictedContextSection,
 } from './sections.js';
 import type { ProjectOverviewRow } from './sections.js';
 import {
@@ -81,14 +80,6 @@ export interface FullAssemblyParams {
   isPostCompaction?: boolean;
   /** Context window size for budget scaling. If omitted, base budget is used. */
   contextWindowTokens?: number;
-  /** Predicted context from intent predictor. Confidence-gated injection. */
-  predictedContext?: {
-    intent: string;
-    topic: string;
-    confidence: number;
-    reason: string;
-    artifacts?: ArtifactRow[];
-  };
   /** Pinnable wall-clock for cache-stability tests (CACH-03). If omitted,
    * defaults to Math.floor(Date.now() / 1000) at each clock-leak site. */
   nowEpoch?: number;
@@ -560,27 +551,6 @@ export function assembleFullContext(params: FullAssemblyParams): InjectPayload {
       } catch { /* codebase index unavailable — non-fatal */ }
     }
 
-    // === PREDICTED CONTEXT (Phase 19 — proactive memory) ===
-    // Only at session-start (not post-compaction), when prediction passed confidence gate.
-    if (!params.isPostCompaction && params.predictedContext) {
-      try {
-        const predSection = formatPredictedContextSection(params.predictedContext);
-        if (predSection) {
-          const cost = estimateTokens(predSection);
-          // Budget cap: max 2000 tokens for predicted context
-          const cappedCost = Math.min(cost, 2000);
-          if (cappedCost <= budget) {
-            // Truncate section if over budget cap to prevent budget leak
-            const injected = cost > 2000
-              ? predSection.slice(0, Math.floor(predSection.length * (2000 / cost)))
-              : predSection;
-            sections.push(injected);
-            budget -= Math.min(estimateTokens(injected), 2000);
-            sources.push('predicted_context');
-          }
-        }
-      } catch { /* non-fatal */ }
-    }
 
     // === GSD (not redundant with artifacts) ===
     try {

@@ -192,24 +192,12 @@ const main = wrapHook('SessionStart', async (input, ctx) => {
     promoteFromCapabilityTracker(ctx.db, ctx.project);
   } catch { /* non-fatal — critical reminders are best-effort */ }
 
-  // Intent prediction — predict what user will need BEFORE their first prompt (Phase 19).
-  // Runs AFTER checkpoint recovery, BEFORE assembly. Non-throwing.
-  let predictedContext: {
-    intent: string;
-    topic: string;
-    confidence: number;
-    reason: string;
-  } | undefined;
+  // Intent prediction — Phase 5 (P4) deletion: assembleFullContext no longer reads
+  // params.predictedContext, so the prediction layer is dead code at session-start.
+  // Telemetry-only run is preserved so accuracy tracking continues to function.
   try {
     const prediction = predictSessionIntent(ctx.db, ctx.project, input.session_id);
     if (prediction && prediction.confidence >= CONFIDENCE_THRESHOLD) {
-      predictedContext = {
-        intent: prediction.intent,
-        topic: prediction.topic,
-        confidence: prediction.confidence,
-        reason: prediction.reason,
-      };
-      // Record prediction as session event for accuracy tracking at session end
       recordEvent(ctx.db, input.session_id, ctx.project,
         'intent_prediction', 'predictor', prediction.intent,
         JSON.stringify({
@@ -278,7 +266,6 @@ const main = wrapHook('SessionStart', async (input, ctx) => {
     identityDir: getIdentityDir(),
     sessionId: input.session_id,
     isPostCompaction: isCompactResume,
-    predictedContext: isCompactResume ? undefined : predictedContext,
     contextWindowTokens,
   });
 
