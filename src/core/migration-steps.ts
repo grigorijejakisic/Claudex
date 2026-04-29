@@ -1489,6 +1489,19 @@ export function migrateV19toV20(db: Database): boolean {
   if (!hasTable(db, 'telemetry')) {
     return true;
   }
+  // Pre-V19 shape guard — partial-v2 fixtures hit the runner with a
+  // telemetry table that pre-dates the `event_kind` column. The V20 rebuild
+  // requires the V19 column shape (event_kind + json detail + latency_ms +
+  // timestamp_epoch + adapter). When the live table lacks `event_kind` we
+  // skip the rebuild — initializeSchema's `db.exec(TELEMETRY_SCHEMA)` is
+  // CREATE-IF-NOT-EXISTS so the v2-era table also stays put. The stamp
+  // still advances because the schema is structurally compatible: only
+  // `event_kind` access matters at runtime, and any hook calling
+  // `INSERT INTO telemetry (event_kind, ...)` will fail loudly on the
+  // pre-V19 shape (already broken before V20).
+  if (!hasColumn(db, 'telemetry', 'event_kind')) {
+    return true;
+  }
   // Idempotency guard — if the new enum is already in place, skip.
   if (telemetryAcceptsRerankerFallback(db)) {
     return true;
