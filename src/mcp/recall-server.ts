@@ -28,6 +28,7 @@ import { detectTaskShape } from '../core/task-shape-detector.js';
 import { expandSearchCrossProject } from '../core/cross-project-search.js';
 import { readCrossProjectSearchFlag } from '../shared/claude-md-flags.js';
 import { resolveProjectPath } from '../shared/scope-detector.js';
+import { buildNarrationDirective, setNarrationSilent } from '../intelligence/narration-directive.js';
 
 // ---------------------------------------------------------------------------
 // DB connection
@@ -102,7 +103,15 @@ Query Claudex before exploring the filesystem for context. Only read code files 
 All projects live in ~/Desktop/Projects/. The project registry is at ~/.claudex/projects.json.
 
 ## Safety
-Never call CC's CLIProxyAPI from a hook (deadlock). \`claudex_search\` ranks with RRF fusion over FTS5 + sqlite-vec channels — it does not invoke a reranker. The cross-encoder reranker (BAAI/bge-reranker-v2-m3 on port 7439) is used by the hybrid-retrieval path feeding session-start and user-prompt-submit hooks; \`hybrid-retrieval.ts\` falls back to the arctic-embed2 bi-encoder when that service is unavailable.`;
+Never call CC's CLIProxyAPI from a hook (deadlock). \`claudex_search\` ranks with RRF fusion over FTS5 + sqlite-vec channels — it does not invoke a reranker. The cross-encoder reranker (BAAI/bge-reranker-v2-m3 on port 7439) is used by the hybrid-retrieval path feeding session-start and user-prompt-submit hooks; \`hybrid-retrieval.ts\` falls back to the arctic-embed2 bi-encoder when that service is unavailable.${buildNarrationDirective(false)}`;
+
+/**
+ * Test seam: expose the static instructions string for assertions in
+ * narration-directive integration tests. The MCP runtime never imports this.
+ */
+export function __getInstructionsForTesting(): string {
+  return CLAUDEX_INSTRUCTIONS;
+}
 
 // ---------------------------------------------------------------------------
 // Server setup
@@ -781,9 +790,9 @@ server.registerTool(
 server.registerTool(
   'claudex_session',
   {
-    description: 'Manage sessions and signals. Actions: "list" (show active sessions), "name" (name this session), "signal" (create wip/failure/danger/claim/discovery signal), "clear_signal" (remove a signal), "pickup" (grab context from another session).',
+    description: 'Manage sessions and signals. Actions: "list" (show active sessions), "name" (name this session), "signal" (create wip/failure/danger/claim/discovery signal), "clear_signal" (remove a signal), "pickup" (grab context from another session), "narration_silent_on"/"narration_silent_off" (toggle the Phase 8.5 retrieval-narration directive for this session).',
     inputSchema: {
-      action: z.enum(['name', 'list', 'signal', 'clear_signal', 'pickup']).describe('Action to perform'),
+      action: z.enum(['name', 'list', 'signal', 'clear_signal', 'pickup', 'narration_silent_on', 'narration_silent_off']).describe('Action to perform'),
       session_id: z.string().optional().describe('Current session ID'),
       name: z.string().optional().describe('Session name (for action=name)'),
       signal_type: z.enum(['wip', 'failure', 'danger', 'claim', 'discovery']).optional().describe('Signal type (for action=signal)'),
@@ -860,6 +869,12 @@ server.registerTool(
       if (!pkg) return { content: [{ type: 'text', text: JSON.stringify({ error: 'Could not package session context' }) }] };
 
       return { content: [{ type: 'text', text: formatTransferPackage(pkg) }] };
+    }
+
+    if (action === 'narration_silent_on' || action === 'narration_silent_off') {
+      const silent = action === 'narration_silent_on';
+      setNarrationSilent(getDb(), sessionId, silent);
+      return { content: [{ type: 'text', text: JSON.stringify({ silent, session_id: sessionId }) }] };
     }
 
     return { content: [{ type: 'text', text: JSON.stringify({ error: `Unknown action: ${action}` }) }] };
