@@ -6,24 +6,24 @@ See: .planning/PROJECT.md (updated 2026-04-27)
 
 **Core value:** v4 makes the agent USE Claudex organically as part of how it works in Claude Code. Memory tools (`claudex_search`, `claudex_recall`, `claudex_events`) are reached for the same way `Read` or `Grep` are used — natural extensions of reasoning, not a separate "fetch context" step that has to be remembered.
 
-**Current focus:** Phase 5.5 COMPLETE 2026-04-29. Phase 6 (P5 retrieval simplification) unblocked.
+**Current focus:** Phase 6 COMPLETE 2026-04-29. Phase 6.5 (cross-project task-pattern recall) unblocked.
 
 ## Current Position
 
-**Current Phase:** 5.5 (COMPLETE)
-**Current Phase Name:** Curation feedback loop
+**Current Phase:** 6 (COMPLETE)
+**Current Phase Name:** P5 retrieval simplification + per-multiplier ablation
 **Total Phases:** 16
-**Current Plan:** 5
-**Total Plans in Phase:** 5
-**Status:** **PHASE 5.5 COMPLETE 2026-04-29.** All 5 plans landed across 3 waves. CUR-16/-17/-18 closed; SC#1-#5 PASS. V19 schema substrate (lesson_pointer + pointer_recall_log) ships with helper API. claudex_recall MCP handler wires lesson recalls to the log table (fire-and-forget). /endsession Step 1d surfaces pointers via two thin CLIs (list + mark) with skip-by-default UX. Heartbeat Phase 5d block runs auto-archive (24h cadence) + auto-promote (7d cadence) with 24h cooldown + un-archive-on-re-promotion (rehabilitation path). Vesna 6-scenario lifecycle probe PASS. 76 net-new tests across 8 files; 0 non-llama regressions (same 20 pre-existing llama-server failures unchanged).
+**Current Plan:** 6
+**Total Plans in Phase:** 6
+**Status:** **PHASE 6 COMPLETE 2026-04-29.** All 6 plans landed across 5 waves. RETR-01, RETR-02, RETR-03, RETR-04, RETR-05, RETR-08 closed. SC#1 Vesna gate PASS (11/11 = 100% on the 11-probe set across all four categories — lesson 4/4, entity 3/3, constraint 2/2, handoff 2/2). SC#2 token-budget regression check PASS (Phase 5 full-gate test 7/7). V20 schema migration (telemetry +reranker_fallback enum). New `computeArtifactScore` consolidates 3-inner + 4-outer multiplier scoring into one canonical function consumed by both `hybridSearchSync` and `hybridSearchAsync`; closes the latent sync↔async qMultiplier mismatch in passing. Cross-encoder reranker (BGE-v2-m3 on port 7439) declared load-bearing (RETR-08); bi-encoder fallback explicitly degraded with telemetry counter and session-start `## Reranker Health` observational surface. Aggressive multiplier deletion deferred to a post-Phase-10 follow-up plan when the larger Vesna suite resolves below ~5pp. ~52 net-new tests across 6 files; 0 non-llama regressions.
 **Last Activity:** 2026-04-29
-**Last Activity Description:** Phase 5.5 shipped. V19 (lesson_pointer + pointer_recall_log) + 4-helper API (ensurePointerId/recordPointerRecall/markPointersHelpful/listSessionPointers). updateLessonFrontmatter body-byte-preserving updater. logLessonRecallIfApplicable test seam in recall-server.ts. list-session-pointers + mark-pointers-helpful CLIs registered in build.ts (split outbase fix preserves dist/cli/* layout). Skill Step 1d documented. curation-sweep.ts (archive + promote + time gates + __resetGatesForTests seam) wired into heartbeat as Phase 5d block. Vesna probe PASS 6/6. SUMMARY + VESNA-RESULT + ROADMAP/STATE/REQUIREMENTS updates.
+**Last Activity Description:** Phase 6 shipped end-to-end. V20 migration. multiplierFlags ablation harness with 11 probes across lesson/entity/constraint/handoff. Per-flag sweep evidence written to `06-MULTIPLIER-ABLATION.md` (0pp delta on every flag at N=11; default-conservative path-A consolidation per team-lead approval). New `computeArtifactScore` + helpers in `src/core/hybrid-retrieval.ts`. Reranker telemetry counter (`src/core/telemetry-counters.ts`) + observational `formatRerankerHealthSection` in `src/assembly/sections.ts`. RIF/spread + MCP surface lock-down tests (`phase-6-rif-spread-retained.test.ts` + `phase-6-mcp-surface-unchanged.test.ts` with `mcp-surface-canonical.json` fixture). 06-SUMMARY + 06-VESNA-RESULT + ROADMAP/STATE/REQUIREMENTS updates.
 **Progress:** [██████████] 100%
 
-Phase: 5.5 of 16 (Curation feedback loop — COMPLETE)
-Plan: 5 of 5 in current phase
-Status: complete; ready for next phase (6 P5 retrieval simplification)
-Last activity: 2026-04-29 — Phase 5.5 shipped end-to-end
+Phase: 6 of 16 (P5 retrieval simplification — COMPLETE)
+Plan: 6 of 6 in current phase
+Status: complete; ready for next phase (6.5 cross-project task-pattern recall)
+Last activity: 2026-04-29 — Phase 6 shipped end-to-end
 
 Progress: [█████████░░░░░░░] 44%
 

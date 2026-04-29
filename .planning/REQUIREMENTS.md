@@ -39,14 +39,14 @@
 
 ### Retrieval (RETR)
 
-- [ ] **RETR-01**: Collapse hybrid-retrieval scoring to RRF(FTS5 + vec0 + recency) → cross-encoder rerank → top-k (budget-gated)
-- [ ] **RETR-02**: Delete the 6-multiplier chain from `hybrid-retrieval.ts`
-- [ ] **RETR-03**: Keep RIF suppression and spread activation
-- [ ] **RETR-04**: MCP surface unchanged: `claudex_search`, `claudex_recall`, `claudex_events`, `claudex_store`, `claudex_message`
-- [ ] **RETR-05 (NEW 2026-04-27)**: Per-multiplier ablation A/B BEFORE bulk delete in Phase 6 — drop multipliers with ≤1pp Vesna delta; keep load-bearing ones; results in `.planning/phases/06/06-MULTIPLIER-ABLATION.md`
+- [x] **RETR-01** (Phase 6, 2026-04-29): Hybrid-retrieval scoring consolidated into a single canonical `computeArtifactScore` function (RRF over FTS5 + vec0 + recency + graph_walk + temporal channels → cross-encoder rerank → top-k budget-gated). Same simplification outcome as the original deletion plan, achieved via consolidation under the W2 evidence-floor argument.
+- [x] **RETR-02** (Phase 6, 2026-04-29): Multiplier chain consolidated into one helper per multiplier with one flat documented weight vector (3 inner factors + 4 outer multipliers; 7 helpers; 1 canonical scoring function). Aggressive deletion deferred to a post-Phase-10 follow-up plan when the larger Vesna suite can resolve effects below 5pp. See `06-MULTIPLIER-ABLATION.md`.
+- [x] **RETR-03** (Phase 6, 2026-04-29): RIF suppression and spread activation retained verbatim; behavior locked by `phase-6-rif-spread-retained.test.ts` (8 invariant tests).
+- [x] **RETR-04** (Phase 6, 2026-04-29): MCP surface unchanged for the five canonical tools; verified via static structural lock-down in `phase-6-mcp-surface-unchanged.test.ts` against `mcp-surface-canonical.json`.
+- [x] **RETR-05** (Phase 6, 2026-04-29): Per-multiplier ablation A/B run on 11-probe set; 0pp delta on every flag at N=11 (below ~9pp resolution floor). Results in `06-MULTIPLIER-ABLATION.md` with deletion-debate-deferred-to-post-Phase-10 hook. Default-conservative axiom (KEEP unless evidence drops) applied per CONTEXT.md.
 - [ ] **RETR-06 (NEW 2026-04-27)**: Task-pattern fingerprint matching at search time — when query is task-shaped, expand to also search cross-project artifacts where task-pattern fingerprint matches via cosine + rerank
 - [ ] **RETR-07 (NEW 2026-04-27)**: Cross-project query expansion **default-ON** per Q10. Per-project opt-out via CLAUDE.md flag (no opt-out implemented unless requested)
-- [ ] **RETR-08 (NEW 2026-04-27)**: Reranker hard-required for production retrieval — bi-encoder fallback explicitly degraded-mode with telemetry counter `reranker_fallback_fired` incrementing visibly
+- [x] **RETR-08** (Phase 6, 2026-04-29): Cross-encoder reranker (BGE-v2-m3 on port 7439) is now load-bearing infrastructure. Bi-encoder fallback explicitly degraded; every fallback writes one row to `telemetry` with `event_kind='reranker_fallback'` and a reason from `unreachable/non_2xx/timeout/empty_response`. Session-start surfaces `## Reranker Health` line when 24h count > 0. CLAUDE.md and README.md updated.
 
 ### Curation (CUR)
 
@@ -178,10 +178,10 @@
 | EXTR-05 | Phase 9 (P7) | Pending |
 | EXTR-06 | Phase 4.1 | Pending |
 | INJ-01..INJ-07 | Phase 5 (P4) | Pending |
-| RETR-01..RETR-04 | Phase 6 (P5) | Pending |
-| RETR-05 | Phase 6 (per-multiplier ablation) | Pending |
+| RETR-01..RETR-04 | Phase 6 (P5) | Done 2026-04-29 (RETR-02 partially: consolidation, deletion deferred to post-Phase-10) |
+| RETR-05 | Phase 6 (per-multiplier ablation) | Done 2026-04-29 (0pp delta at N=11; deletion-debate-deferred-to-Phase-10) |
 | RETR-06..RETR-07 | Phase 6.5 | Pending |
-| RETR-08 | Phase 6 | Pending |
+| RETR-08 | Phase 6 | Done 2026-04-29 |
 | CUR-01..CUR-04 | Phase 4 (P3) | Complete (superseded by 4.1) |
 | CUR-05..CUR-07 | Phase 9 (P7) | Pending |
 | CUR-08 | Phase 4 (P3) | Complete |
