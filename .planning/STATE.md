@@ -6,26 +6,26 @@ See: .planning/PROJECT.md (updated 2026-04-27)
 
 **Core value:** v4 makes the agent USE Claudex organically as part of how it works in Claude Code. Memory tools (`claudex_search`, `claudex_recall`, `claudex_events`) are reached for the same way `Read` or `Grep` are used — natural extensions of reasoning, not a separate "fetch context" step that has to be remembered.
 
-**Current focus:** Phase 4.1 — MEMORY.md content redesign + Lessons section (planning pending). Phase 5 paused indefinitely until 4.1 lands.
+**Current focus:** Phase 4.1 COMPLETE 2026-04-29. Phase 5 unblocked.
 
 ## Current Position
 
-**Current Phase:** 4.1 (NEW, planning pending)
+**Current Phase:** 4.1 (COMPLETE)
 **Current Phase Name:** MEMORY.md content redesign + Lessons section
 **Total Phases:** 16 (was 11; rebalanced 2026-04-27 per audit)
-**Current Plan:** 0
-**Total Plans in Phase:** TBD
-**Status:** **AUDIT CLOSED 2026-04-27.** Trajectory audit (T1-T7) complete; rewrite proposal locked at `.planning/audits/2026-04-27-v4-proposal.md`. ROADMAP rewritten with SC#1-#4 (behavioral/structural/quality/continuity); benchmarks dropped entirely from gates. Next: `/gsd:plan-phase 4.1`.
-**Last Activity:** 2026-04-27
-**Last Activity Description:** v4 trajectory audit closed. Proposal §1-§9 locked by user. ROADMAP, PROJECT, REQUIREMENTS, SCOPE rewritten to reflect rebind: 5 new upgrade phases (4.1, 5.5, 6.5, 7.5, 8.5), Vesna promoted to Phase 10 as central validation, Phase 3+10 merged, Phase 4 marked partial-corrective-pending, benchmarks removed from all gates.
-**Progress:** [█████░░░░░░░░░░░] 4/16 phases banked (Phase 1, 2 complete; Phase 3 partial-with-followups; Phase 4 partial-corrective-pending — 4.1 supersedes its acceptance)
+**Current Plan:** 9
+**Total Plans in Phase:** 9
+**Status:** **PHASE 4.1 COMPLETE 2026-04-29.** All 9 plans landed across 5 waves. Behavioral live-fire gate PASSING (5 invariants); SC#3 mechanical scorer implemented; perceptual-similarity probe set checked in for Phase 6.5; soak script verifies end-to-end. ~71 new tests added; 0 non-llama regressions (20 pre-existing llama-server failures unchanged). CUR-15 reach partially deferred per planner pre-authorization (precision closed; reach backfill is a follow-up plan).
+**Last Activity:** 2026-04-29
+**Last Activity Description:** Phase 4.1 shipped. V18 schema (shape_vocabulary, shape_candidates, critical_rules_multi_project sidecar). Lesson taxonomy (feedback / project / process). MEMORY.md restructure (entities/threads dropped, ## Lessons added). Bridge (feedback density-3 → system-promoted critical_rules + multi-project +2 boost). /endsession lesson proposer with 2-of-5 process_* trigger. Live-fire gate PASS.
+**Progress:** [██████████] 100%
 
-Phase: 4.1 of 16 (MEMORY.md content redesign + Lessons section — planning pending)
-Plan: 0 of TBD in current phase
-Status: rebind locked; ready for plan-phase
-Last activity: 2026-04-27 — audit closed, ROADMAP rewritten
+Phase: 4.1 of 16 (MEMORY.md content redesign + Lessons section — COMPLETE)
+Plan: 9 of 9 in current phase
+Status: complete; ready for next phase
+Last activity: 2026-04-29 — Phase 4.1 shipped end-to-end
 
-Progress: [█████░░░░░░░░░░░] 25%
+Progress: [██████░░░░░░░░░░] 31%
 
 ## Accumulated Context
 
@@ -66,9 +66,30 @@ Decisions logged in PROJECT.md Key Decisions table. Summary:
 
 ## Session Continuity
 
-Last session: 2026-04-27 (4844c48c)
-Stopped at: Audit closed; rewrite proposal locked; planning artifacts (STATE/ROADMAP/PROJECT/REQUIREMENTS/SCOPE) updated to reflect 16-phase rebalance.
-Resume file: `context/handoffs/ACTIVE.md` (will be updated to reflect closed audit + readiness for 4.1 plan-phase).
+Last session: 2026-04-29
+Stopped at: Phase 4.1 shipped end-to-end. 9 plans, 9 SUMMARY files, ~71 new tests, behavioral live-fire gate PASS.
+Resume file: None (Phase 4.1 complete; ready for Phase 4.2 or next phase per ROADMAP)
+
+### Phase 4.1 completion notes — 2026-04-29
+
+All 9 plans landed in 5 waves:
+- W1 (Plans 01/02/03): V18 schema migration + epoch-utils helper; transcript-chunker ms-precision fix + reach investigation; line-anchored marker matcher fixes CUR-13.
+- W2 (Plans 04/06): Lesson types/writer/reader substrate; user-content migration with 3 production fixtures (Lacuna/Oracle/Nexus).
+- W3 (Plans 05/08): MEMORY.md restructure (entities/threads dropped, ## Lessons added); /endsession lesson proposer + 2-of-5 process_* trigger.
+- W4 (Plan 07): Bridge sweeps — feedback→critical_rules + multi_project_count sidecar + shape vocab promotion + +2 CR Tier boost.
+- W5 (Plan 09): Live-fire behavioral gate (5 tests PASS); SC#3 mechanical scorer; perceptual-similarity probe set for Phase 6.5; soak script PASS.
+
+Sidecar fallback used for multi_project_count storage per planner pre-authorization (V17 view UPDATE doesn't compose cleanly for the data column). Sidecar table critical_rules_multi_project keyed by (project, normalized_rule_text) works in both pre-V17 and post-V17 environments.
+
+CUR-15 status: PARTIALLY DEFERRED. Precision side closed (writer fix + read-time normalization). Reach backfill for 107-session enqueue gap recommended as a follow-up plan (Phase 5b reliability concern).
+
+Plan 08 Task 3 (skill wire-up): DEFERRED TO OPERATOR per CONTEXT.md authorization. Library is shipped; /endsession skill UX wiring needs separate design discussion.
+
+Test counts:
+- ~71 new tests across Phase 4.1 (lesson writer/reader + memory-md-writer regressions + bridge sweeps + critical-reminders boost + integration)
+- 0 non-llama regressions (20 pre-existing llama-server-supervisor failures unchanged per STATE.md)
+- Soak script verified PASS
+
 Audit evidence: `.planning/audits/2026-04-27-v4-trajectory-audit.md` (preserved as evidence trail).
 Locked proposal: `.planning/audits/2026-04-27-v4-proposal.md` (basis for the rebind).
 

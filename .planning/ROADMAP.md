@@ -19,7 +19,7 @@ Phase 1 (P0 crystallization, ✅) and Phase 2 (P1 artifact unification, ✅, T3 
 - [x] **Phase 2: P1 — Artifact unification** — V17 migration + legacy views, zero behavior change (completed 2026-04-20; T3 verified clean 2026-04-27)
 - [~] **Phase 3: P2 + P8 merge — Directive detector + lifecycle + PreToolUse consumer** — Detector shipped 2026-04-22 (partial-B); merger with original P8 lifecycle scheduled (writer ships with consumer + supersession + decay as one unit)
 - [~] **Phase 4: P3 — MEMORY.md curation** — Closed 2026-04-26 with visible content regressions; **superseded by Phase 4.1**
-- [ ] **Phase 4.1: MEMORY.md content redesign + Lessons section** — Drop Entities + Recent Threads; add Lessons (task-pattern indexed); promote User Notes; reach=5/5 active projects; writer state-machine fix; mixed-precision timestamp normalization
+- [x] **Phase 4.1: MEMORY.md content redesign + Lessons section** — COMPLETE 2026-04-29. Drop Entities + Recent Threads; add Lessons (task-pattern indexed); promote User Notes; writer state-machine fix; mixed-precision timestamp normalization. CUR-15 reach partial-defer (precision closed; backfill recommended as follow-up)
 - [ ] **Phase 5: P4 — Kill legacy injection** — Delete 9 sections, ≤500 tokens, cache-stable, `initialUserMessage` prime, tier-based deletion (A/B/C)
 - [ ] **Phase 5.5: Curation feedback loop** — `pointer_recall_log`; auto-archive dead pointers; auto-promote high-recall pointers
 - [ ] **Phase 6: P5 — Retrieval simplification + per-multiplier ablation** — RRF + cross-encoder rerank only; per-multiplier A/B before bulk delete; reranker hard-required
@@ -104,7 +104,16 @@ Plans:
   10. **SC#3 — MEMORY.md content-quality ≥80%** on every active project. Mechanical scoring (zero parsing bugs; ≥80% pointers project-specific; topics not session-IDs; pointer density ≥1/10 lines; handoff freshness)
   11. Vesna probes pass for entity recall + handoff pickup against new MEMORY.md schema
 
-**Plans:** TBD (`/gsd:plan-phase 4.1`)
+**Plans:** 9 plans in 5 waves — all COMPLETE 2026-04-29:
+- [x] 04.1-01-PLAN.md — V18 schema migration + read-time epoch normalization (W1)
+- [x] 04.1-02-PLAN.md — transcript-chunker timestamp fix + reach investigation (W1; CUR-15 reach partial-defer)
+- [x] 04.1-03-PLAN.md — memory-md-writer state-machine bug fix (CUR-13) (W1)
+- [x] 04.1-04-PLAN.md — Lesson file writer + frontmatter schema (3 types) (W2)
+- [x] 04.1-05-PLAN.md — MEMORY.md restructure: drop Entities/Threads, add ## Lessons (W3)
+- [x] 04.1-06-PLAN.md — User-authored MEMORY.md migration (Lacuna/Oracle/Nexus preservation) (W2)
+- [x] 04.1-07-PLAN.md — Angel heartbeat sweeps: feedback density → critical_rules + multi_project_count + shape vocab (W4; sidecar fallback used)
+- [x] 04.1-08-PLAN.md — /endsession Angel curation flow: lesson + user-notes proposals (W3; skill wire-up deferred to operator)
+- [x] 04.1-09-PLAN.md — Behavioral live-fire gate: feedback→rule probe + multi-project boost + content-quality scorer (W5)
 
 ### Phase 5: P4 — Kill legacy injection
 **Goal:** Delete 9 legacy injection sections; session-start ≤500 tokens cache-stable; UPS ≤1KB; `initialUserMessage` prime
