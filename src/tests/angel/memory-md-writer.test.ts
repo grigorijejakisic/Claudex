@@ -341,59 +341,58 @@ describe('renderHandoff', () => {
     expect(renderHandoff('CLAUDEXv3')).toBe('## Handoff\n\nNo active handoff.\n');
   });
 
-  it("extracts Commander's Intent + What's Left To Do, caps at 10 lines + See pointer", () => {
-    const body = [
-      "## Commander's Intent",
-      'Line A',
-      'Line B',
-      'Line C',
-      '',
-      '## What\'s Left To Do',
-      '- task 1',
-      '- task 2',
-      '- task 3',
-      '- task 4',
-      '',
-      '## Other Section',
-      'ignored',
-    ].join('\n');
+  it('status=active + phase + topic renders one-line summary + See pointer', () => {
+    const body =
+      '---\nstatus: active\nphase: 5\ntopic: Test\n---\n# 2026-04-29 — Test\n\n**What we found:** highly specific phrase XYZ\n';
     makeProject(body);
     const out = renderHandoff('CLAUDEXv3');
-    expect(out.startsWith('## Handoff\n\n')).toBe(true);
-    expect(out.endsWith('See: context/handoffs/ACTIVE.md\n')).toBe(true);
-    const bodyLines = out.split('\n').slice(2, -2).filter((l) => l.length > 0);
-    expect(bodyLines.length).toBeLessThanOrEqual(10);
-    expect(bodyLines).toContain('Line A');
-    expect(bodyLines).toContain('- task 1');
-    expect(bodyLines).not.toContain('ignored');
+    expect(out).toBe(
+      '## Handoff\n\nActive handoff at phase 5: Test.\nSee: context/handoffs/ACTIVE.md\n',
+    );
   });
 
-  it('oversized todo list is truncated at 10 distilled lines, never mid-line', () => {
-    const todos = Array.from({ length: 20 }, (_, i) => `- task ${i}`);
-    const body = ["## Commander's Intent", 'intent line', '', "## What's Left To Do", ...todos].join('\n');
+  it('status=active with summary but no topic uses summary as the title slot', () => {
+    const body =
+      '---\nstatus: active\nphase: "4.1"\nsummary: Resume foo\n---\n# title\n';
     makeProject(body);
     const out = renderHandoff('CLAUDEXv3');
-    // Count only non-header, non-boilerplate content lines (drops the
-    // `## Handoff`, blank separator, and the `See:` pointer).
-    const contentLines = out
-      .split('\n')
-      .filter((l) => l.length > 0 && !l.startsWith('## ') && !l.startsWith('See: '));
-    expect(contentLines.length).toBeLessThanOrEqual(10);
-
-    // Every surviving task line is complete (ends at a task boundary, never
-    // mid-word truncation like "- task 1" → "- task 1" missing digits).
-    const taskLines = contentLines.filter((l) => l.startsWith('- task '));
-    for (const line of taskLines) {
-      expect(line).toMatch(/^- task \d+$/);
-    }
+    expect(out).toContain('Active handoff at phase 4.1: Resume foo.');
   });
 
-  it('handoff file without trailing newline still produces well-separated section', () => {
-    makeProject("## Commander's Intent\nintent\n\n## What's Left To Do\n- a");
+  it('status=paused renders the paused-at-phase line', () => {
+    const body = '---\nstatus: paused\nphase: 3\n---\n# title\n';
+    makeProject(body);
     const out = renderHandoff('CLAUDEXv3');
-    expect(out).toContain('intent');
-    expect(out).toContain('- a');
-    expect(out.endsWith('See: context/handoffs/ACTIVE.md\n')).toBe(true);
+    expect(out).toBe(
+      '## Handoff\n\nHandoff paused at phase 3.\nSee: context/handoffs/ACTIVE.md\n',
+    );
+  });
+
+  it('status=archived renders the No active handoff line', () => {
+    const body = '---\nstatus: archived\nphase: 1\n---\n# title\n';
+    makeProject(body);
+    expect(renderHandoff('CLAUDEXv3')).toBe('## Handoff\n\nNo active handoff.\n');
+  });
+
+  it('malformed YAML (no closing ---) renders No active handoff', () => {
+    const body = "---\nstatus: active\nphase: 5\n# missing closing\n";
+    makeProject(body);
+    expect(renderHandoff('CLAUDEXv3')).toBe('## Handoff\n\nNo active handoff.\n');
+  });
+
+  it("legacy body shape (## Commander's Intent) without YAML header renders No active handoff", () => {
+    const body = "## Commander's Intent\nintent\n\n## What's Left To Do\n- a\n";
+    makeProject(body);
+    expect(renderHandoff('CLAUDEXv3')).toBe('## Handoff\n\nNo active handoff.\n');
+  });
+
+  it('renders one-line summary, never body content (XYZ leak check)', () => {
+    const body =
+      '---\nstatus: active\nphase: 5\ntopic: Test\n---\n# title\n\n**What we found:** highly specific phrase XYZ\n\n**What we decided:** decided\n\n**What\'s next:** next\n\n**Where to look:** here\n';
+    makeProject(body);
+    const out = renderHandoff('CLAUDEXv3');
+    expect(out).not.toContain('XYZ');
+    expect(out).not.toContain('What we found');
   });
 });
 
