@@ -15,10 +15,10 @@ See: .planning/PROJECT.md (updated 2026-04-27)
 **Total Phases:** 16
 **Current Plan:** 3
 **Total Plans in Phase:** 3
-**Status:** **PHASE 6.5 COMPLETE 2026-04-29.** All 3 plans landed across 3 waves. RETR-06 + RETR-07 closed. Vesna SC#1 gate: 3/3 cross-project probes pass. HYBRID equivalence (telemetry-handle ≥3 + cosine ≥0.85) is the canonical cross-project content-equivalence function, consumed by both Experience Tier (session-start) and `claudex_search` query expansion. Experience Tier scorer ships at assembler P4.06 with 200-token budget, K=3 top-K. Architecture B enforced via `tier-utils.ts` shared helpers. V21 schema migration (artifact_task_pattern sidecar + telemetry +cross_project_* enums). 94 net-new tests across 6 new test files; 0 non-llama regressions. MCP surface canonical fixture unchanged (RETR-04 lock from Phase 6 holds — cross-project provenance encoded inline as `*from project X:*` italic prefix in `summary` field).
+**Status:** Phase complete — ready for verification
 **Last Activity:** 2026-04-29
 **Last Activity Description:** Phase 6.5 shipped end-to-end. V21 migration. Sidecar `artifact_task_pattern` table (mirrors Phase 4.1 `critical_rules_multi_project` pattern). Regex-first task-pattern classifier with abstain-allowed semantics + heartbeat backfill (45 ticks to 100% coverage on 8686 relevant artifacts; 32% real-fingerprint hit rate). HYBRID equivalence (Stage 1 ≥3 handles + Stage 2 cosine ≥0.85 with 0.70-0.85 ambiguous logging). Experience Tier scorer (Architecture B parallel to critical-reminders) with locked weight matrix and deterministic tiebreak. claudex_search task-shape detection (regex verb+domain+vocab Jaccard) + cross-project query expansion (default-ON with CLAUDE.md opt-out). Vesna SC#1 gate 3/3. tier-utils.ts extraction enforces "shared infrastructure, separate scorers" Architecture B principle.
-**Progress:** [██████████] 100%
+**Progress:** [██████████] 102%
 
 Phase: 6.5 of 16 (Cross-project task-pattern recall — COMPLETE)
 Plan: 3 of 3 in current phase

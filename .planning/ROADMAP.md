@@ -207,10 +207,13 @@ Plans:
   2. Experience-warning surface (when agent explicitly queries) reframed as descriptive observation: *"Similar prior situation (session X): user wanted Y; outcome was Z."*
   3. `<experience-data>` wrap retained for injection isolation; inner content descriptive not imperative
   4. Manual inspection confirms no imperative framing across all formatters
-  5. **Behavioral A/B for 1 week of real sessions:** subjective scoring of whether agent behavior shifts on advisory framing (does the agent feel like it's thinking with prior experience or following rules?). User-led review at week's end. Documented in `.planning/phases/07/07-BEHAVIORAL-AB.md`.
+  5. **Behavioral A/B for 1 week of real sessions:** subjective scoring of whether agent behavior shifts on advisory framing (does the agent feel like it's thinking with prior experience or following rules?). User-led review at week's end. Documented in `.planning/phases/07-p6-framing-rewrite-advisory-voice/07-BEHAVIORAL-AB.md`.
   6. Vesna pass rate maintained (SC#1).
 
-**Plans:** TBD
+**Plans:** 3 plans in 3 waves (planned 2026-04-30; execution pending)
+- [ ] 07-01-PLAN.md — Imperative-voice purge + advisory-voice rewrite for surviving formatters in `src/assembly/sections.ts` (W1)
+- [ ] 07-02-PLAN.md — Vesna purge probe + Phase 6.5 cross-project gate re-run + 07-VESNA-RESULT.md (W2)
+- [ ] 07-03-PLAN.md — Behavioral A/B scaffold + STATE/ROADMAP/REQUIREMENTS update + phase close (W3)
 
 ### Phase 7.5: Handoff format redesign (NEW)
 **Goal:** Replace 372-line frontmatter-rigid handoff schema with hybrid YAML status header + ADR body. ~15 lines target.
@@ -329,7 +332,7 @@ Phase 9 may be scheduled parallel to 6/7 once Phase 5 ships (T6 verified safe). 
 | 5.5. Curation feedback loop | 5/5 | Complete | 2026-04-29 |
 | 6. P5 — Retrieval simplification + per-multiplier ablation | 0/0 | Not started | - |
 | 6.5. Cross-project task-pattern recall | 0/0 | Not started | - |
-| 7. P6 — Framing rewrite | 0/0 | Not started | - |
+| 7. P6 — Framing rewrite | 0/3 | Planned (2026-04-30) | - |
 | 7.5. Handoff format redesign | 0/0 | Not started | - |
 | 8. P6.5 — RL ablation gate | 0/0 | Not started | - |
 | 8.5. Recall observability + self-instrumented agent | 0/0 | Not started | - |
