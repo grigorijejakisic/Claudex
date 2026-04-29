@@ -1,5 +1,7 @@
 {
-  "flags": {},
+  "flags": {
+    "relevance": false
+  },
   "perProbe": [
     {
       "probeId": "lesson-shadowban-canonical",
@@ -23,7 +25,7 @@
       "probeId": "lesson-summary-trailing",
       "flavor": "lesson",
       "passed": true,
-      "targetRank": 1
+      "targetRank": 0
     },
     {
       "probeId": "entity-vesna-probe",
@@ -41,7 +43,7 @@
       "probeId": "entity-claudex-db",
       "flavor": "entity",
       "passed": true,
-      "targetRank": 1
+      "targetRank": 0
     },
     {
       "probeId": "constraint-no-mock-db",

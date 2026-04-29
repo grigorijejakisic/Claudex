@@ -1,0 +1,158 @@
+{
+  "captured_at": "2026-04-29T20:23:25.294Z",
+  "probe_count": 11,
+  "baseline": {
+    "passRate": 1,
+    "passCount": 11,
+    "total": 11,
+    "perCategoryPassRate": {
+      "lesson": {
+        "passed": 4,
+        "total": 4,
+        "rate": 1
+      },
+      "entity": {
+        "passed": 3,
+        "total": 3,
+        "rate": 1
+      },
+      "constraint": {
+        "passed": 2,
+        "total": 2,
+        "rate": 1
+      },
+      "handoff": {
+        "passed": 2,
+        "total": 2,
+        "rate": 1
+      }
+    }
+  },
+  "all_disabled": {
+    "passRate": 1,
+    "passCount": 11,
+    "total": 11,
+    "perCategoryPassRate": {
+      "lesson": {
+        "passed": 4,
+        "total": 4,
+        "rate": 1
+      },
+      "entity": {
+        "passed": 3,
+        "total": 3,
+        "rate": 1
+      },
+      "constraint": {
+        "passed": 2,
+        "total": 2,
+        "rate": 1
+      },
+      "handoff": {
+        "passed": 2,
+        "total": 2,
+        "rate": 1
+      }
+    }
+  },
+  "sweep": [
+    {
+      "disabled": "recency",
+      "enabledRate": 1,
+      "disabledRate": 1,
+      "deltaPp": 0,
+      "perCategoryDeltaPp": {
+        "lesson": 0,
+        "entity": 0,
+        "constraint": 0,
+        "handoff": 0
+      },
+      "simpleVerdict": "DROP",
+      "finalVerdict": "DROP"
+    },
+    {
+      "disabled": "importance",
+      "enabledRate": 1,
+      "disabledRate": 1,
+      "deltaPp": 0,
+      "perCategoryDeltaPp": {
+        "lesson": 0,
+        "entity": 0,
+        "constraint": 0,
+        "handoff": 0
+      },
+      "simpleVerdict": "DROP",
+      "finalVerdict": "DROP"
+    },
+    {
+      "disabled": "relevance",
+      "enabledRate": 1,
+      "disabledRate": 1,
+      "deltaPp": 0,
+      "perCategoryDeltaPp": {
+        "lesson": 0,
+        "entity": 0,
+        "constraint": 0,
+        "handoff": 0
+      },
+      "simpleVerdict": "DROP",
+      "finalVerdict": "DROP"
+    },
+    {
+      "disabled": "retrieval",
+      "enabledRate": 1,
+      "disabledRate": 1,
+      "deltaPp": 0,
+      "perCategoryDeltaPp": {
+        "lesson": 0,
+        "entity": 0,
+        "constraint": 0,
+        "handoff": 0
+      },
+      "simpleVerdict": "DROP",
+      "finalVerdict": "DROP"
+    },
+    {
+      "disabled": "novelty",
+      "enabledRate": 1,
+      "disabledRate": 1,
+      "deltaPp": 0,
+      "perCategoryDeltaPp": {
+        "lesson": 0,
+        "entity": 0,
+        "constraint": 0,
+        "handoff": 0
+      },
+      "simpleVerdict": "DROP",
+      "finalVerdict": "DROP"
+    },
+    {
+      "disabled": "activation",
+      "enabledRate": 1,
+      "disabledRate": 1,
+      "deltaPp": 0,
+      "perCategoryDeltaPp": {
+        "lesson": 0,
+        "entity": 0,
+        "constraint": 0,
+        "handoff": 0
+      },
+      "simpleVerdict": "DROP",
+      "finalVerdict": "DROP"
+    },
+    {
+      "disabled": "qvalue",
+      "enabledRate": 1,
+      "disabledRate": 1,
+      "deltaPp": 0,
+      "perCategoryDeltaPp": {
+        "lesson": 0,
+        "entity": 0,
+        "constraint": 0,
+        "handoff": 0
+      },
+      "simpleVerdict": "DROP",
+      "finalVerdict": "DROP"
+    }
+  ]
+}

@@ -1,5 +1,7 @@
 {
-  "flags": {},
+  "flags": {
+    "novelty": false
+  },
   "perProbe": [
     {
       "probeId": "lesson-shadowban-canonical",

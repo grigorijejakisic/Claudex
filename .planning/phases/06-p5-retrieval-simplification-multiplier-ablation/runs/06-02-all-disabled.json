@@ -1,5 +1,13 @@
 {
-  "flags": {},
+  "flags": {
+    "recency": false,
+    "importance": false,
+    "relevance": false,
+    "retrieval": false,
+    "novelty": false,
+    "activation": false,
+    "qvalue": false
+  },
   "perProbe": [
     {
       "probeId": "lesson-shadowban-canonical",
@@ -41,7 +49,7 @@
       "probeId": "entity-claudex-db",
       "flavor": "entity",
       "passed": true,
-      "targetRank": 1
+      "targetRank": 0
     },
     {
       "probeId": "constraint-no-mock-db",

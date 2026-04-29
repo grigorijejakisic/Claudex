@@ -325,6 +325,25 @@ interface RunRecord {
   passRate: number;
   passCount: number;
   total: number;
+  /** Per-recall-flavor breakdown for KEEP-WITH-TRADE-OFF detection. */
+  perCategoryPassRate: Record<Probe['flavor'], { passed: number; total: number; rate: number }>;
+}
+
+function aggregateByCategory(perProbe: ProbeOutcome[]): RunRecord['perCategoryPassRate'] {
+  const out: RunRecord['perCategoryPassRate'] = {
+    lesson:     { passed: 0, total: 0, rate: 0 },
+    entity:     { passed: 0, total: 0, rate: 0 },
+    constraint: { passed: 0, total: 0, rate: 0 },
+    handoff:    { passed: 0, total: 0, rate: 0 },
+  };
+  for (const p of perProbe) {
+    out[p.flavor].total += 1;
+    if (p.passed) out[p.flavor].passed += 1;
+  }
+  for (const k of Object.keys(out) as Probe['flavor'][]) {
+    out[k].rate = out[k].total === 0 ? 0 : out[k].passed / out[k].total;
+  }
+  return out;
 }
 
 function runOnce(flags: Partial<Record<MultiplierName, boolean>>): RunRecord {
@@ -336,6 +355,7 @@ function runOnce(flags: Partial<Record<MultiplierName, boolean>>): RunRecord {
     passRate: passCount / PROBES.length,
     passCount,
     total: PROBES.length,
+    perCategoryPassRate: aggregateByCategory(perProbe),
   };
 }
 
@@ -393,42 +413,134 @@ describe('Phase 6 multiplier ablation harness — W1 baseline', () => {
 });
 
 // ---------------------------------------------------------------------------
-// W2: per-multiplier sweep — wired but skipped in W1.
+// W2: per-multiplier sweep — emits one JSON per ablation plus a summary.
 // ---------------------------------------------------------------------------
 
-describe.skip('Phase 6 multiplier ablation harness — W2 per-multiplier sweep', () => {
-  it('writes per-multiplier sweep results for paste into 06-MULTIPLIER-ABLATION.md', () => {
+describe('Phase 6 multiplier ablation harness — W2 per-multiplier sweep', () => {
+  /**
+   * Runs the baseline + 7 single-multiplier-disabled runs + the all-disabled
+   * sanity run. Writes:
+   *   - 06-02-baseline.json       (all enabled)
+   *   - 06-02-disable-{m}.json    (one per multiplier)
+   *   - 06-02-all-disabled.json   (RRF only)
+   *   - 06-02-sweep-summary.json  (baseline + sweep + deltas + verdicts)
+   */
+  it('emits per-flag JSONs and a sweep summary suitable for paste into 06-MULTIPLIER-ABLATION.md', () => {
     const baseline = runOnce({});
     writeRunJson('06-02-baseline.json', baseline);
 
-    const sweep: Array<{ disabled: MultiplierName; record: RunRecord; deltaPp: number }> = [];
+    interface SweepEntry {
+      disabled: MultiplierName;
+      record: RunRecord;
+      deltaPp: number;
+      perCategoryDeltaPp: Record<Probe['flavor'], number>;
+      simpleVerdict: 'KEEP' | 'DROP';
+      finalVerdict: 'KEEP' | 'DROP' | 'KEEP-WITH-TRADE-OFF';
+    }
+
+    const sweep: SweepEntry[] = [];
     for (const m of MULTIPLIERS_TO_ABLATE) {
       const flags: Partial<Record<MultiplierName, boolean>> = {};
       flags[m] = false;
       const record = runOnce(flags);
       writeRunJson(`06-02-disable-${m}.json`, record);
+
+      const deltaPp = (record.passRate - baseline.passRate) * 100;
+      const perCategoryDeltaPp: Record<Probe['flavor'], number> = {
+        lesson:     (record.perCategoryPassRate.lesson.rate     - baseline.perCategoryPassRate.lesson.rate)     * 100,
+        entity:     (record.perCategoryPassRate.entity.rate     - baseline.perCategoryPassRate.entity.rate)     * 100,
+        constraint: (record.perCategoryPassRate.constraint.rate - baseline.perCategoryPassRate.constraint.rate) * 100,
+        handoff:    (record.perCategoryPassRate.handoff.rate    - baseline.perCategoryPassRate.handoff.rate)    * 100,
+      };
+
+      // Simple delta rule: a >1pp drop in overall pass rate when the
+      // multiplier is disabled means the multiplier is load-bearing → KEEP.
+      // Otherwise → DROP (delta ≤1pp = within harness noise floor at N=11).
+      const simpleVerdict: SweepEntry['simpleVerdict'] = deltaPp < -1 ? 'KEEP' : 'DROP';
+
+      // Edge-case override: if the simple rule says DROP but ANY category
+      // degrades by >2pp, override to KEEP-WITH-TRADE-OFF — the multiplier
+      // helps a specific recall flavor even if the aggregate is flat.
+      const anyCategoryDegrades = Object.values(perCategoryDeltaPp).some(d => d < -2);
+      const finalVerdict: SweepEntry['finalVerdict'] =
+        simpleVerdict === 'DROP' && anyCategoryDegrades
+          ? 'KEEP-WITH-TRADE-OFF'
+          : simpleVerdict;
+
       sweep.push({
         disabled: m,
         record,
-        deltaPp: (record.passRate - baseline.passRate) * 100,
+        deltaPp,
+        perCategoryDeltaPp,
+        simpleVerdict,
+        finalVerdict,
       });
     }
 
+    // All-disabled sanity run (RRF only).
+    const allDisabledFlags: Partial<Record<MultiplierName, boolean>> = {};
+    for (const m of MULTIPLIERS_TO_ABLATE) allDisabledFlags[m] = false;
+    const allDisabled = runOnce(allDisabledFlags);
+    writeRunJson('06-02-all-disabled.json', allDisabled);
+
+    // Sweep summary — single source of truth for 06-MULTIPLIER-ABLATION.md.
     writeRunJson('06-02-sweep-summary.json', {
       flags: {},
       perProbe: [],
       passRate: baseline.passRate,
       passCount: baseline.passCount,
       total: baseline.total,
+      perCategoryPassRate: baseline.perCategoryPassRate,
     });
     fs.writeFileSync(
       path.resolve(
         process.cwd(),
         '.planning/phases/06-p5-retrieval-simplification-multiplier-ablation/runs/06-02-sweep-summary.json',
       ),
-      JSON.stringify({ baseline, sweep }, null, 2),
+      JSON.stringify({
+        captured_at: new Date().toISOString(),
+        probe_count: PROBES.length,
+        baseline: {
+          passRate: baseline.passRate,
+          passCount: baseline.passCount,
+          total: baseline.total,
+          perCategoryPassRate: baseline.perCategoryPassRate,
+        },
+        all_disabled: {
+          passRate: allDisabled.passRate,
+          passCount: allDisabled.passCount,
+          total: allDisabled.total,
+          perCategoryPassRate: allDisabled.perCategoryPassRate,
+        },
+        sweep: sweep.map(s => ({
+          disabled: s.disabled,
+          enabledRate: baseline.passRate,
+          disabledRate: s.record.passRate,
+          deltaPp: s.deltaPp,
+          perCategoryDeltaPp: s.perCategoryDeltaPp,
+          simpleVerdict: s.simpleVerdict,
+          finalVerdict: s.finalVerdict,
+        })),
+      }, null, 2),
     );
 
+    // Sanity check on shape; the planning-doc bar lives in the SUMMARY/ABLATION
+    // doc, not at the test layer (per plan).
     expect(sweep.length).toBe(MULTIPLIERS_TO_ABLATE.length);
+    expect(baseline.passRate).toBeGreaterThanOrEqual(0.8);
+  });
+
+  /**
+   * Sanity check: the 4 lesson-recall paraphrase probes carried over from
+   * Phase 4.1 / 5 must still pass at 100% under the all-enabled baseline.
+   * If they don't, the harness has drifted relative to Phase 5 Vesna baseline
+   * and Wave 3 verdict adoption must block.
+   */
+  it('lesson-recall subset matches Phase 5 Vesna baseline (4/4 = 100%)', () => {
+    const baseline = runOnce({});
+    const lessonProbes = baseline.perProbe.filter(p => p.flavor === 'lesson');
+    const lessonPassRate = lessonProbes.filter(p => p.passed).length / lessonProbes.length;
+    expect(lessonProbes.length).toBe(4);
+    expect(lessonPassRate).toBe(1.0);
   });
 });
