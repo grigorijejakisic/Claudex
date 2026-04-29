@@ -19,6 +19,7 @@ import * as os from 'os';
 import * as path from 'path';
 import { pathToCcSlug } from '../shared/cc-slug.js';
 import { resolveProjectPath } from '../shared/scope-detector.js';
+import { parseLessonFile } from './lesson-reader.js';
 import type { LessonWriteParams, LessonType, LessonFrontmatter } from './lesson-types.js';
 
 const SLUG_RE = /^[a-z0-9][a-z0-9-]{0,59}$/;
@@ -161,4 +162,53 @@ export function writeLesson(params: LessonWriteParams): string {
     fs.renameSync(tmp, filePath);
   }
   return filePath;
+}
+
+/**
+ * Phase 5.5 — Update only the frontmatter of an existing lesson file. Body
+ * is preserved BYTE-FOR-BYTE (we re-emit the exact bytes parseLessonFile
+ * recovers, which retains the post-`---` body verbatim).
+ *
+ * Atomic via tmp + rename, same pattern as writeLesson.
+ *
+ * `partial` is shallow-merged into the parsed frontmatter. Nested objects
+ * (telemetry, shape) require the caller to pass a complete replacement
+ * sub-object — partial nested merge is intentionally out of scope.
+ *
+ * Idempotent: if the merged frontmatter is byte-identical to the existing
+ * frontmatter, no write happens (no mtime churn).
+ *
+ * Throws if the file doesn't exist or fails to parse as a valid lesson.
+ */
+export function updateLessonFrontmatter(
+  filePath: string,
+  partial: Partial<LessonFrontmatter>,
+): void {
+  const parsed = parseLessonFile(filePath);
+  if (!parsed) {
+    throw new Error(`updateLessonFrontmatter: failed to parse lesson at ${filePath}`);
+  }
+  const merged: LessonFrontmatter = { ...parsed.frontmatter, ...partial };
+
+  // renderLessonFrontmatter emits its own `---` delimiters (open and close).
+  // The body parsed by lesson-reader has the leading `\n` stripped (^\n+),
+  // so we restore exactly one separator newline before re-attaching it.
+  const newFrontmatter = renderLessonFrontmatter(merged.type, merged);
+  const newContent = `${newFrontmatter}\n${parsed.body}`;
+
+  // Idempotency: skip write if no-op.
+  let existing: string | null = null;
+  try { existing = fs.readFileSync(filePath, 'utf8'); } catch { /* fall through */ }
+  if (existing === newContent) return;
+
+  // Atomic tmp + rename (mirror writeLesson, including the Windows-lock retry).
+  const tmp = filePath + '.tmp';
+  fs.writeFileSync(tmp, newContent, 'utf8');
+  try {
+    fs.renameSync(tmp, filePath);
+  } catch {
+    const start = Date.now();
+    while (Date.now() - start < 50) { /* busy-wait for Windows AV/editor unlock */ }
+    fs.renameSync(tmp, filePath);
+  }
 }

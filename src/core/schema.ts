@@ -792,3 +792,44 @@ CREATE TABLE IF NOT EXISTS telemetry (
 CREATE INDEX IF NOT EXISTS idx_telemetry_session ON telemetry(session_id, timestamp_epoch DESC);
 CREATE INDEX IF NOT EXISTS idx_telemetry_kind ON telemetry(event_kind, timestamp_epoch DESC);
 `;
+
+/**
+ * V19: Phase 5.5 — Curation feedback loop substrate.
+ *
+ * Two additive tables:
+ *   - lesson_pointer: registry that gives a stable INTEGER id to each
+ *     (project, filename, source) pointer. Lessons are filesystem-keyed,
+ *     so this is the only place a `pointer_id` exists.
+ *   - pointer_recall_log: per-retrieval-event log. helpful_yn is nullable
+ *     (NULL = not marked, 1 = helpful; -1 reserved for a future "no" mark
+ *     not shipped in 5.5). query is nullable for organic surfacing paths
+ *     that have no query string.
+ *
+ * Idempotent: all CREATE TABLE / CREATE INDEX guarded by IF NOT EXISTS.
+ */
+export const POINTER_RECALL_SCHEMA = `
+CREATE TABLE IF NOT EXISTS lesson_pointer (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  project TEXT NOT NULL,
+  filename TEXT NOT NULL,
+  source TEXT NOT NULL CHECK(source IN ('lesson','user_note')),
+  first_seen_epoch_ms INTEGER NOT NULL,
+  UNIQUE(project, filename, source)
+);
+CREATE INDEX IF NOT EXISTS idx_lesson_pointer_project ON lesson_pointer(project);
+
+CREATE TABLE IF NOT EXISTS pointer_recall_log (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  pointer_id INTEGER NOT NULL REFERENCES lesson_pointer(id),
+  session_id TEXT NOT NULL,
+  retrieved_at_epoch_ms INTEGER NOT NULL,
+  helpful_yn INTEGER NULL,
+  query TEXT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_pointer_recall_pointer
+  ON pointer_recall_log(pointer_id, retrieved_at_epoch_ms DESC);
+CREATE INDEX IF NOT EXISTS idx_pointer_recall_session
+  ON pointer_recall_log(session_id);
+CREATE INDEX IF NOT EXISTS idx_pointer_recall_helpful
+  ON pointer_recall_log(pointer_id, helpful_yn) WHERE helpful_yn = 1;
+`;

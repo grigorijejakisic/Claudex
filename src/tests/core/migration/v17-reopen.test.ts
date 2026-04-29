@@ -277,12 +277,12 @@ describe('initializeSchema idempotency — post-V17 re-open', () => {
     // Phase 4.1 raised TARGET_VERSION 16→18. A V17 DB now auto-promotes to V18
     // on open (V17→V18 step adds shape_vocabulary tables; idempotent IF NOT
     // EXISTS-guarded). The original 04-07 regression — silent demotion to 16
-    // — must still be prevented; we now assert 18 instead of 17 to reflect
-    // the new ceiling.
+    // — must still be prevented; we now assert 19 instead of 18 to reflect
+    // the new ceiling (Phase 5.5 V19 curation feedback loop).
     const db = openDatabase(dbPath);
     try {
       const uv = (db.pragma('user_version') as Array<{ user_version: number }>)[0].user_version;
-      expect(uv).toBe(18);
+      expect(uv).toBe(19);
     } finally {
       db.close();
     }

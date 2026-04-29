@@ -172,8 +172,8 @@ describe('migrateV2toV3', () => {
     try {
       runMigrations(db);
       const row = db.pragma('user_version') as Array<{ user_version: number }>;
-      // v2→v3→...→v16 (latest)
-      expect(row[0].user_version).toBe(18);
+      // v2→v3→...→v19 (latest, Phase 5.5)
+      expect(row[0].user_version).toBe(19);
     } finally {
       db.close();
     }
@@ -370,7 +370,7 @@ describe('migrateV7toV8 (Evolved Flow)', () => {
 
       // Verify latest schema version
       const version = (db.pragma('user_version') as Array<{ user_version: number }>)[0].user_version;
-      expect(version).toBe(18);
+      expect(version).toBe(19);
 
       // Verify recall_text column exists
       const cols = db.pragma('table_info(session_journal)') as Array<{ name: string }>;

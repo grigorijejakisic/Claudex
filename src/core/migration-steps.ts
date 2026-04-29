@@ -12,7 +12,7 @@ import { loadSqliteVec } from './sqlite-vec-loader.js';
 import { applyV17DDL } from './migration/v17-ddl.js';
 import { applyGeneratedDDL, generateViewsAndTriggers } from './migration/v17-triggers.js';
 import { KIND_MAPPING } from './migration/kind-mapping.js';
-import { SHAPE_VOCABULARY_SCHEMA } from './schema.js';
+import { SHAPE_VOCABULARY_SCHEMA, POINTER_RECALL_SCHEMA } from './schema.js';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -1455,4 +1455,14 @@ export function migrateV16toV17(db: Database): void {
  */
 export function migrateV17toV18(db: Database): void {
   db.exec(SHAPE_VOCABULARY_SCHEMA);
+}
+
+/**
+ * V18→V19: Phase 5.5 curation feedback loop substrate.
+ *
+ * Adds lesson_pointer registry + pointer_recall_log table. No data migration
+ * needed — both tables are net-new. Idempotent via IF NOT EXISTS in DDL.
+ */
+export function migrateV18toV19(db: Database): void {
+  db.exec(POINTER_RECALL_SCHEMA);
 }

@@ -16,7 +16,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { SCHEMA_VERSION } from '../shared/constants.js';
 import { getClaudexHome } from '../shared/paths.js';
-import { SCHEMA_V3, TELEMETRY_SCHEMA, TEAM_COORDINATION_SCHEMA, SHAPE_VOCABULARY_SCHEMA } from './schema.js';
+import { SCHEMA_V3, TELEMETRY_SCHEMA, TEAM_COORDINATION_SCHEMA, SHAPE_VOCABULARY_SCHEMA, POINTER_RECALL_SCHEMA } from './schema.js';
 import {
   hasTable,
   rebuildStaleFts5,
@@ -37,6 +37,7 @@ import {
   migrateV15toV16,
   migrateV16toV17,
   migrateV17toV18,
+  migrateV18toV19,
   migrateSchemaFixes,
   cleanupOrphanTables,
   upgradeV2SchemaInPlace,
@@ -62,7 +63,10 @@ export { migrateV14toV15 };
  *   3–7 — incremental migrations (v3→v4, v4→v5, ..., v7→v8)
  *   8 — v8 (Evolved Flow)
  *   9 — v9 (Semantic Intelligence)
- *   10 — current (Angel System Phase 1: message bus + data fixes)
+ *   10 — Angel System Phase 1: message bus + data fixes
+ *   17 — Phase P1 unified artifact kernel
+ *   18 — Phase 4.1 shape vocabulary substrate
+ *   19 — current (Phase 5.5: curation feedback loop substrate)
  *
  * Dual version tracking:
  * Both `PRAGMA user_version` and `schema_versions` table are needed:
@@ -76,7 +80,7 @@ export function runMigrations(db: Database): void {
   const row = db.pragma('user_version') as Array<{ user_version: number }>;
   let version = row[0]?.user_version ?? 0;
 
-  const TARGET_VERSION = 18;
+  const TARGET_VERSION = 19;
 
   if (version >= TARGET_VERSION) {
     // Still load sqlite-vec even if no migration is needed — the extension
@@ -104,6 +108,7 @@ export function runMigrations(db: Database): void {
     [15, () => migrateV15toV16(db)],
     [16, () => migrateV16toV17(db)],
     [17, () => migrateV17toV18(db)],
+    [18, () => migrateV18toV19(db)],
   ];
 
   // Handle special cases for version 0 and 1
@@ -194,6 +199,7 @@ export function initializeSchema(db: Database): void {
     db.exec(TELEMETRY_SCHEMA);
     db.exec(TEAM_COORDINATION_SCHEMA);
     db.exec(SHAPE_VOCABULARY_SCHEMA);
+    db.exec(POINTER_RECALL_SCHEMA);
 
     // Rebuild FTS5 content index from observations table
     if (hasTable(db, 'observations') && hasTable(db, 'observations_fts')) {
@@ -217,6 +223,7 @@ export function initializeSchema(db: Database): void {
     db.exec(TELEMETRY_SCHEMA);
     db.exec(TEAM_COORDINATION_SCHEMA);
     db.exec(SHAPE_VOCABULARY_SCHEMA);
+    db.exec(POINTER_RECALL_SCHEMA);
 
     // Phase 4.1: V18 raised TARGET_VERSION 16→18, so legacy partial-v2 DBs
     // (e.g., only `observations` exists at open time) now reach user_version=18
@@ -281,11 +288,13 @@ export function initializeSchema(db: Database): void {
   } else {
     db.prepare('INSERT OR IGNORE INTO schema_versions (version) VALUES (?)').run(SCHEMA_VERSION);
   }
-  // Do not demote a V18 (or newer) DB back to 18. The live DB's user_version
+  // Do not demote a V19 (or newer) DB back to 19. The live DB's user_version
   // is set by runMigrations; every hook re-open used to silently demote it,
-  // which would confuse any future `>= N` version gate. Phase 4.1 raised the
-  // ceiling 16→18 (V17 view-over-artifact + V18 shape vocabulary substrate).
-  if (currentUv < 18) db.pragma('user_version = 18');
+  // which would confuse any future `>= N` version gate. Phase 5.5 raised the
+  // ceiling 18→19 (V19 curation feedback loop substrate: lesson_pointer +
+  // pointer_recall_log). Fresh DBs that took the early-return in runMigrations
+  // (no `observations` table) are stamped here after SCHEMA_V3 + V19 DDL run.
+  if (currentUv < 19) db.pragma('user_version = 19');
 }
 
 // ---------------------------------------------------------------------------
