@@ -143,31 +143,198 @@ const MOCK_EMBEDDER: EmbedderFn = async () => {
   return [[1, 0, 0, 0], [0.95, 0.31, 0, 0]]; // cosine ~0.95
 };
 
-describe('Phase 6.5 cross-project Vesna gate (SC#1)', () => {
-  it('Probe 1 (canonical): shadowban from Lacuna surfaces in big-mozzy-v2 fresh session on advisory prompt', async () => {
-    seedShadowbanLesson(db, 'lacuna-betting');
+// ---------------------------------------------------------------------------
+// Probe extraction (Phase 8 ABL-02 harness reuse)
+// ---------------------------------------------------------------------------
+//
+// The three probes below are exported as data + a shared runner so the Phase 8
+// A/B harness (`phase-8-rl-ablation.test.ts`) can call them under both
+// flagged/baseline conditions. Each `seedFn` mutates the supplied DB; the
+// runner creates a fresh in-memory DB per probe call so trials are independent.
 
-    // The agent must be able to retrieve the lesson WITHOUT the prompt
-    // mentioning rate, limit, mozzart, 429, shadowban, cloudflare, throttle,
-    // proxy, or scraping. The user is asking generally about a different
-    // backend — the kid-stove generalization should fire.
-    const prompt = 'we are starting work on a new bookmaker integration; what should we know';
-    expect(prompt).not.toMatch(/rate|limit|mozzart|429|shadowban|cloudflare|throttle|proxy|scraping/i);
+export interface CrossProjectProbe {
+  id: string;
+  /** Mutates `db` to insert lesson rows + sessions. */
+  seedFn: (db: Database.Database) => void;
+  /** Prompt + forbidden-word regex pre-flight. */
+  prompt: string;
+  forbiddenWords: RegExp;
+  /** Project the fresh session is in (NOT the seeded project). */
+  freshSessionProject: string;
+  /** Session id the runner should use for the fresh-session call. */
+  freshSessionId: string;
+  /** Match the surfaced experience tier text against this regex (Path A). */
+  expectTierMatch: RegExp;
+  /** If true, additionally exercise Path B (claudex_search expansion). */
+  exercisePathB: boolean;
+  /** If exercising Path B, require pathA + pathB sum >= 1 to pass. */
+  requirePathBHit?: boolean;
+  /** Tools / files / errors to synthesize handles from. */
+  handles: {
+    tools: string[];
+    files: string[];
+    errors: string[];
+  };
+}
 
-    const ts = detectTaskShape(db, prompt);
-    // Note: detectTaskShape may or may not return true depending on regex —
-    // for this prompt: verb='starting' (not in TASK_VERBS), but we'll add
-    // 'investigate' framing alongside in handles. Path B may fail; Path A
-    // is the primary surface tested.
+export const CROSS_PROJECT_PROBES: CrossProjectProbe[] = [
+  {
+    id: 'cp-shadowban-lacuna-to-mozzy',
+    seedFn: (db) => seedShadowbanLesson(db, 'lacuna-betting'),
+    prompt: 'we are starting work on a new bookmaker integration; what should we know',
+    forbiddenWords: /rate|limit|mozzart|429|shadowban|cloudflare|throttle|proxy|scraping/i,
+    freshSessionProject: 'big-mozzy-v2',
+    freshSessionId: 'mozzy-fresh',
+    expectTierMatch: /Prior similar task in project lacuna-betting/,
+    exercisePathB: false,
+    handles: {
+      tools: ['Bash', 'Read', 'Grep'],
+      files: ['src/scraper.ts', 'src/api/client.ts'],
+      errors: ['response_429'],
+    },
+  },
+  {
+    id: 'cp-auth-multi-to-third',
+    seedFn: (db) => {
+      seedAuthTokenLesson(db, 'oracle');
+      seedAuthTokenLesson(db, 'lacuna-betting');
+    },
+    prompt: 'users keep getting kicked out repeatedly, can you check the backend',
+    forbiddenWords: /token|expiry|session|auth|login|refresh|jwt|rotation|logout|authentication/i,
+    freshSessionProject: 'big-mozzy-v2',
+    freshSessionId: 'third-fresh',
+    expectTierMatch: /Prior similar task in project (oracle|lacuna-betting)/,
+    exercisePathB: true,
+    requirePathBHit: true,
+    handles: {
+      tools: ['Read', 'Grep'],
+      files: ['src/auth/middleware.ts', 'src/users/cookie.ts'],
+      errors: [],
+    },
+  },
+  {
+    id: 'cp-migration-multi-to-oracle',
+    seedFn: (db) => {
+      seedMigrationLesson(db, 'claudex-v3');
+      seedMigrationLesson(db, 'lacuna-betting');
+    },
+    prompt: 'design a way to add a new field to the database without disrupting users',
+    forbiddenWords: /schema|migration|ALTER|column|backfill|downtime|transaction|dual.?write|idempotent/i,
+    freshSessionProject: 'oracle',
+    freshSessionId: 'oracle-fresh',
+    expectTierMatch: /Prior similar task in project (claudex-v3|lacuna-betting)/,
+    exercisePathB: true,
+    requirePathBHit: true,
+    handles: {
+      tools: ['Read', 'Edit'],
+      files: ['prisma/schema.prisma', 'src/db/users.ts'],
+      errors: [],
+    },
+  },
+];
+
+/**
+ * Run a single cross-project probe end-to-end on a fresh in-memory DB.
+ *
+ * Used by:
+ *   - The 3 it-blocks in this file (it-blocks call their own assertions in
+ *     addition to this — they use the runner's pass/fail signal as the gate
+ *     summary.)
+ *   - Phase 8 A/B harness (`phase-8-rl-ablation.test.ts`).
+ */
+export async function runCrossProjectProbe(
+  probe: CrossProjectProbe,
+): Promise<{ passed: boolean; tierHits: number; expansionHits: number }> {
+  const probeDb = new Database(':memory:');
+  try {
+    initializeSchema(probeDb);
+    seedShapeVocab(probeDb);
+    probe.seedFn(probeDb);
+
+    // Pre-flight: forbidden-words discipline. If the prompt leaks tokens, the
+    // probe is invalid — surface as a hard fail, not a soft skip.
+    if (probe.forbiddenWords.test(probe.prompt)) {
+      return { passed: false, tierHits: 0, expansionHits: 0 };
+    }
+
+    const ts = detectTaskShape(probeDb, probe.prompt);
 
     // Path A — Experience Tier surfacing.
     const handles = synthesizeHandlesFromPrompt(
-      prompt,
-      ['Bash', 'Read', 'Grep'],
-      ['src/scraper.ts', 'src/api/client.ts'],
-      ['response_429'],
+      probe.prompt,
+      probe.handles.tools,
+      probe.handles.files,
+      probe.handles.errors,
     );
-    const tier = assembleExperienceTier(db, 'mozzy-fresh', 1, 'big-mozzy-v2', handles);
+    const tier = assembleExperienceTier(
+      probeDb,
+      probe.freshSessionId,
+      1,
+      probe.freshSessionProject,
+      handles,
+    );
+
+    let tierHits = 0;
+    let pathAOk = false;
+    if (tier !== null) {
+      tierHits = tier.injectedArtifactIds.length;
+      pathAOk = probe.expectTierMatch.test(tier.section);
+    }
+
+    // Path B — claudex_search query expansion (best-effort unless required).
+    let expansionHits = 0;
+    let pathBOk = false;
+    if (probe.exercisePathB && ts.isTaskShaped) {
+      const expansion = await expandSearchCrossProject(
+        probeDb,
+        probe.freshSessionId,
+        probe.prompt,
+        ts,
+        probe.freshSessionProject,
+        MOCK_EMBEDDER,
+      );
+      expansionHits = expansion.matchedCount;
+      pathBOk = expansion.matchedCount > 0;
+    }
+
+    // Pass logic mirrors the original it-blocks:
+    //  - Probe 1 (Path A only): pass = pathAOk
+    //  - Probes 2/3 (require sum>=1): pass = pathAOk OR (pathA tier injected + pathB hit)
+    let passed: boolean;
+    if (probe.requirePathBHit) {
+      passed = pathAOk && (tierHits + expansionHits) >= 1;
+    } else {
+      passed = pathAOk;
+    }
+
+    return { passed, tierHits, expansionHits };
+  } finally {
+    probeDb.close();
+  }
+}
+
+// ---------------------------------------------------------------------------
+// SC#1 it-blocks (preserved — call the shared runner + add legacy assertions)
+// ---------------------------------------------------------------------------
+
+describe('Phase 6.5 cross-project Vesna gate (SC#1)', () => {
+  it('Probe 1 (canonical): shadowban from Lacuna surfaces in big-mozzy-v2 fresh session on advisory prompt', async () => {
+    const probe = CROSS_PROJECT_PROBES[0];
+    expect(probe.prompt).not.toMatch(probe.forbiddenWords);
+
+    seedShadowbanLesson(db, 'lacuna-betting');
+
+    const ts = detectTaskShape(db, probe.prompt);
+    void ts; // verb='starting' may or may not match TASK_VERBS; not a gate
+
+    // Path A — Experience Tier surfacing on the shared `db` (legacy assertions).
+    const handles = synthesizeHandlesFromPrompt(
+      probe.prompt,
+      probe.handles.tools,
+      probe.handles.files,
+      probe.handles.errors,
+    );
+    const tier = assembleExperienceTier(db, probe.freshSessionId, 1, probe.freshSessionProject, handles);
     expect(tier).not.toBeNull();
     expect(tier!.section).toMatch(/Prior similar task in project lacuna-betting/);
     // Advisory voice — no imperative phrasing.
@@ -175,76 +342,73 @@ describe('Phase 6.5 cross-project Vesna gate (SC#1)', () => {
     expect(tier!.section).toMatch(/Decision was/);
     expect(tier!.section).toMatch(/outcome was/);
 
-    // Path B — query expansion (best-effort; primary signal is Path A).
-    if (ts.isTaskShaped) {
-      const expansion = await expandSearchCrossProject(
-        db, 'mozzy-fresh', prompt, ts, 'big-mozzy-v2', MOCK_EMBEDDER,
-      );
-      void expansion; // accepted either way; Path A is the gate
-    }
+    // Shared runner: fresh DB inside, must report passed=true.
+    const runResult = await runCrossProjectProbe(probe);
+    expect(runResult.passed).toBe(true);
   });
 
   it('Probe 2: auth-token-expiry across projects surfaces on advisory prompt', async () => {
+    const probe = CROSS_PROJECT_PROBES[1];
+    expect(probe.prompt).not.toMatch(probe.forbiddenWords);
+
     seedAuthTokenLesson(db, 'oracle');
     seedAuthTokenLesson(db, 'lacuna-betting');
 
-    // Forbidden tokens drawn from the seeded lessons:
-    // token, expiry, session, auth, login, refresh, jwt, rotation,
-    // logout, authentication.
-    const prompt = 'users keep getting kicked out repeatedly, can you check the backend';
-    expect(prompt).not.toMatch(/token|expiry|session|auth|login|refresh|jwt|rotation|logout|authentication/i);
-
-    const ts = detectTaskShape(db, prompt);
+    const ts = detectTaskShape(db, probe.prompt);
     expect(ts.isTaskShaped).toBe(true);
 
-    // Path A — Experience Tier.
+    // Path A — Experience Tier on shared DB.
     const handles = synthesizeHandlesFromPrompt(
-      prompt,
-      ['Read', 'Grep'],
-      ['src/auth/middleware.ts', 'src/users/cookie.ts'],
-      [],
+      probe.prompt,
+      probe.handles.tools,
+      probe.handles.files,
+      probe.handles.errors,
     );
-    const tier = assembleExperienceTier(db, 'third-fresh', 1, 'big-mozzy-v2', handles);
+    const tier = assembleExperienceTier(db, probe.freshSessionId, 1, probe.freshSessionProject, handles);
     expect(tier).not.toBeNull();
     expect(tier!.section).toMatch(/Prior similar task in project (oracle|lacuna-betting)/);
 
     // Path B — claudex_search expansion.
     const expansion = await expandSearchCrossProject(
-      db, 'third-fresh', prompt, ts, 'big-mozzy-v2', MOCK_EMBEDDER,
+      db, probe.freshSessionId, probe.prompt, ts, probe.freshSessionProject, MOCK_EMBEDDER,
     );
-    // Either path should surface at least one cross-project hit.
     expect(tier!.injectedArtifactIds.length + expansion.matchedCount).toBeGreaterThanOrEqual(1);
+
+    // Shared runner: fresh DB inside, must report passed=true.
+    const runResult = await runCrossProjectProbe(probe);
+    expect(runResult.passed).toBe(true);
   });
 
   it('Probe 3: schema-migration patterns across projects surface on advisory prompt', async () => {
+    const probe = CROSS_PROJECT_PROBES[2];
+    expect(probe.prompt).not.toMatch(probe.forbiddenWords);
+
     seedMigrationLesson(db, 'claudex-v3');
     seedMigrationLesson(db, 'lacuna-betting');
 
-    // Forbidden tokens from seeded content:
-    // schema, migration, ALTER, table, column, backfill, downtime,
-    // transaction, dual-write, idempotent.
-    const prompt = 'design a way to add a new field to the database without disrupting users';
-    expect(prompt).not.toMatch(/schema|migration|ALTER|column|backfill|downtime|transaction|dual.?write|idempotent/i);
-
-    const ts = detectTaskShape(db, prompt);
+    const ts = detectTaskShape(db, probe.prompt);
     expect(ts.isTaskShaped).toBe(true);
 
-    // Path A — Experience Tier.
+    // Path A — Experience Tier on shared DB.
     const handles = synthesizeHandlesFromPrompt(
-      prompt,
-      ['Read', 'Edit'],
-      ['prisma/schema.prisma', 'src/db/users.ts'],
-      [],
+      probe.prompt,
+      probe.handles.tools,
+      probe.handles.files,
+      probe.handles.errors,
     );
-    const tier = assembleExperienceTier(db, 'oracle-fresh', 1, 'oracle', handles);
+    const tier = assembleExperienceTier(db, probe.freshSessionId, 1, probe.freshSessionProject, handles);
     expect(tier).not.toBeNull();
     expect(tier!.section).toMatch(/Prior similar task in project (claudex-v3|lacuna-betting)/);
 
     // Path B — claudex_search expansion.
     const expansion = await expandSearchCrossProject(
-      db, 'oracle-fresh', prompt, ts, 'oracle', MOCK_EMBEDDER,
+      db, probe.freshSessionId, probe.prompt, ts, probe.freshSessionProject, MOCK_EMBEDDER,
     );
     expect(tier!.injectedArtifactIds.length + expansion.matchedCount).toBeGreaterThanOrEqual(1);
+
+    // Shared runner: fresh DB inside, must report passed=true.
+    const runResult = await runCrossProjectProbe(probe);
+    expect(runResult.passed).toBe(true);
   });
 
   it('SC#1 gate summary — at least 3/3 probes pass', () => {

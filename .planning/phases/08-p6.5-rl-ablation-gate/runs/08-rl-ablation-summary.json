@@ -1,0 +1,686 @@
+{
+  "captured_at": "2026-04-29T23:13:16.896Z",
+  "probe_count": 14,
+  "trials_per_condition": 3,
+  "decision_threshold_pp": -2,
+  "baseline": {
+    "condition": "baseline",
+    "trials": [
+      {
+        "trial": 1,
+        "passCount": 14,
+        "total": 14,
+        "passRate": 1,
+        "perCategory": {
+          "lesson": {
+            "passed": 4,
+            "total": 4,
+            "rate": 1
+          },
+          "entity": {
+            "passed": 3,
+            "total": 3,
+            "rate": 1
+          },
+          "constraint": {
+            "passed": 2,
+            "total": 2,
+            "rate": 1
+          },
+          "handoff": {
+            "passed": 2,
+            "total": 2,
+            "rate": 1
+          },
+          "cross-project": {
+            "passed": 3,
+            "total": 3,
+            "rate": 1
+          }
+        },
+        "perProbe": [
+          {
+            "probeId": "lesson-shadowban-canonical",
+            "flavor": "lesson",
+            "passed": true
+          },
+          {
+            "probeId": "lesson-shadowban-paraphrase",
+            "flavor": "lesson",
+            "passed": true
+          },
+          {
+            "probeId": "lesson-mock-prod-divergence",
+            "flavor": "lesson",
+            "passed": true
+          },
+          {
+            "probeId": "lesson-summary-trailing",
+            "flavor": "lesson",
+            "passed": true
+          },
+          {
+            "probeId": "entity-vesna-probe",
+            "flavor": "entity",
+            "passed": true
+          },
+          {
+            "probeId": "entity-angel-process",
+            "flavor": "entity",
+            "passed": true
+          },
+          {
+            "probeId": "entity-claudex-db",
+            "flavor": "entity",
+            "passed": true
+          },
+          {
+            "probeId": "constraint-no-mock-db",
+            "flavor": "constraint",
+            "passed": true
+          },
+          {
+            "probeId": "constraint-no-hook-cli-call",
+            "flavor": "constraint",
+            "passed": true
+          },
+          {
+            "probeId": "handoff-phase-4-1",
+            "flavor": "handoff",
+            "passed": true
+          },
+          {
+            "probeId": "handoff-phase-5",
+            "flavor": "handoff",
+            "passed": true
+          },
+          {
+            "probeId": "cp-shadowban-lacuna-to-mozzy",
+            "flavor": "cross-project",
+            "passed": true
+          },
+          {
+            "probeId": "cp-auth-multi-to-third",
+            "flavor": "cross-project",
+            "passed": true
+          },
+          {
+            "probeId": "cp-migration-multi-to-oracle",
+            "flavor": "cross-project",
+            "passed": true
+          }
+        ],
+        "rlGateFireCount": 0
+      },
+      {
+        "trial": 2,
+        "passCount": 14,
+        "total": 14,
+        "passRate": 1,
+        "perCategory": {
+          "lesson": {
+            "passed": 4,
+            "total": 4,
+            "rate": 1
+          },
+          "entity": {
+            "passed": 3,
+            "total": 3,
+            "rate": 1
+          },
+          "constraint": {
+            "passed": 2,
+            "total": 2,
+            "rate": 1
+          },
+          "handoff": {
+            "passed": 2,
+            "total": 2,
+            "rate": 1
+          },
+          "cross-project": {
+            "passed": 3,
+            "total": 3,
+            "rate": 1
+          }
+        },
+        "perProbe": [
+          {
+            "probeId": "lesson-shadowban-canonical",
+            "flavor": "lesson",
+            "passed": true
+          },
+          {
+            "probeId": "lesson-shadowban-paraphrase",
+            "flavor": "lesson",
+            "passed": true
+          },
+          {
+            "probeId": "lesson-mock-prod-divergence",
+            "flavor": "lesson",
+            "passed": true
+          },
+          {
+            "probeId": "lesson-summary-trailing",
+            "flavor": "lesson",
+            "passed": true
+          },
+          {
+            "probeId": "entity-vesna-probe",
+            "flavor": "entity",
+            "passed": true
+          },
+          {
+            "probeId": "entity-angel-process",
+            "flavor": "entity",
+            "passed": true
+          },
+          {
+            "probeId": "entity-claudex-db",
+            "flavor": "entity",
+            "passed": true
+          },
+          {
+            "probeId": "constraint-no-mock-db",
+            "flavor": "constraint",
+            "passed": true
+          },
+          {
+            "probeId": "constraint-no-hook-cli-call",
+            "flavor": "constraint",
+            "passed": true
+          },
+          {
+            "probeId": "handoff-phase-4-1",
+            "flavor": "handoff",
+            "passed": true
+          },
+          {
+            "probeId": "handoff-phase-5",
+            "flavor": "handoff",
+            "passed": true
+          },
+          {
+            "probeId": "cp-shadowban-lacuna-to-mozzy",
+            "flavor": "cross-project",
+            "passed": true
+          },
+          {
+            "probeId": "cp-auth-multi-to-third",
+            "flavor": "cross-project",
+            "passed": true
+          },
+          {
+            "probeId": "cp-migration-multi-to-oracle",
+            "flavor": "cross-project",
+            "passed": true
+          }
+        ],
+        "rlGateFireCount": 0
+      },
+      {
+        "trial": 3,
+        "passCount": 14,
+        "total": 14,
+        "passRate": 1,
+        "perCategory": {
+          "lesson": {
+            "passed": 4,
+            "total": 4,
+            "rate": 1
+          },
+          "entity": {
+            "passed": 3,
+            "total": 3,
+            "rate": 1
+          },
+          "constraint": {
+            "passed": 2,
+            "total": 2,
+            "rate": 1
+          },
+          "handoff": {
+            "passed": 2,
+            "total": 2,
+            "rate": 1
+          },
+          "cross-project": {
+            "passed": 3,
+            "total": 3,
+            "rate": 1
+          }
+        },
+        "perProbe": [
+          {
+            "probeId": "lesson-shadowban-canonical",
+            "flavor": "lesson",
+            "passed": true
+          },
+          {
+            "probeId": "lesson-shadowban-paraphrase",
+            "flavor": "lesson",
+            "passed": true
+          },
+          {
+            "probeId": "lesson-mock-prod-divergence",
+            "flavor": "lesson",
+            "passed": true
+          },
+          {
+            "probeId": "lesson-summary-trailing",
+            "flavor": "lesson",
+            "passed": true
+          },
+          {
+            "probeId": "entity-vesna-probe",
+            "flavor": "entity",
+            "passed": true
+          },
+          {
+            "probeId": "entity-angel-process",
+            "flavor": "entity",
+            "passed": true
+          },
+          {
+            "probeId": "entity-claudex-db",
+            "flavor": "entity",
+            "passed": true
+          },
+          {
+            "probeId": "constraint-no-mock-db",
+            "flavor": "constraint",
+            "passed": true
+          },
+          {
+            "probeId": "constraint-no-hook-cli-call",
+            "flavor": "constraint",
+            "passed": true
+          },
+          {
+            "probeId": "handoff-phase-4-1",
+            "flavor": "handoff",
+            "passed": true
+          },
+          {
+            "probeId": "handoff-phase-5",
+            "flavor": "handoff",
+            "passed": true
+          },
+          {
+            "probeId": "cp-shadowban-lacuna-to-mozzy",
+            "flavor": "cross-project",
+            "passed": true
+          },
+          {
+            "probeId": "cp-auth-multi-to-third",
+            "flavor": "cross-project",
+            "passed": true
+          },
+          {
+            "probeId": "cp-migration-multi-to-oracle",
+            "flavor": "cross-project",
+            "passed": true
+          }
+        ],
+        "rlGateFireCount": 0
+      }
+    ],
+    "meanPassRate": 1,
+    "rangeMin": 1,
+    "rangeMax": 1,
+    "meanPerCategory": {
+      "lesson": 1,
+      "entity": 1,
+      "constraint": 1,
+      "handoff": 1,
+      "cross-project": 1
+    }
+  },
+  "flagged": {
+    "condition": "flagged",
+    "trials": [
+      {
+        "trial": 1,
+        "passCount": 14,
+        "total": 14,
+        "passRate": 1,
+        "perCategory": {
+          "lesson": {
+            "passed": 4,
+            "total": 4,
+            "rate": 1
+          },
+          "entity": {
+            "passed": 3,
+            "total": 3,
+            "rate": 1
+          },
+          "constraint": {
+            "passed": 2,
+            "total": 2,
+            "rate": 1
+          },
+          "handoff": {
+            "passed": 2,
+            "total": 2,
+            "rate": 1
+          },
+          "cross-project": {
+            "passed": 3,
+            "total": 3,
+            "rate": 1
+          }
+        },
+        "perProbe": [
+          {
+            "probeId": "lesson-shadowban-canonical",
+            "flavor": "lesson",
+            "passed": true
+          },
+          {
+            "probeId": "lesson-shadowban-paraphrase",
+            "flavor": "lesson",
+            "passed": true
+          },
+          {
+            "probeId": "lesson-mock-prod-divergence",
+            "flavor": "lesson",
+            "passed": true
+          },
+          {
+            "probeId": "lesson-summary-trailing",
+            "flavor": "lesson",
+            "passed": true
+          },
+          {
+            "probeId": "entity-vesna-probe",
+            "flavor": "entity",
+            "passed": true
+          },
+          {
+            "probeId": "entity-angel-process",
+            "flavor": "entity",
+            "passed": true
+          },
+          {
+            "probeId": "entity-claudex-db",
+            "flavor": "entity",
+            "passed": true
+          },
+          {
+            "probeId": "constraint-no-mock-db",
+            "flavor": "constraint",
+            "passed": true
+          },
+          {
+            "probeId": "constraint-no-hook-cli-call",
+            "flavor": "constraint",
+            "passed": true
+          },
+          {
+            "probeId": "handoff-phase-4-1",
+            "flavor": "handoff",
+            "passed": true
+          },
+          {
+            "probeId": "handoff-phase-5",
+            "flavor": "handoff",
+            "passed": true
+          },
+          {
+            "probeId": "cp-shadowban-lacuna-to-mozzy",
+            "flavor": "cross-project",
+            "passed": true
+          },
+          {
+            "probeId": "cp-auth-multi-to-third",
+            "flavor": "cross-project",
+            "passed": true
+          },
+          {
+            "probeId": "cp-migration-multi-to-oracle",
+            "flavor": "cross-project",
+            "passed": true
+          }
+        ],
+        "rlGateFireCount": 49
+      },
+      {
+        "trial": 2,
+        "passCount": 14,
+        "total": 14,
+        "passRate": 1,
+        "perCategory": {
+          "lesson": {
+            "passed": 4,
+            "total": 4,
+            "rate": 1
+          },
+          "entity": {
+            "passed": 3,
+            "total": 3,
+            "rate": 1
+          },
+          "constraint": {
+            "passed": 2,
+            "total": 2,
+            "rate": 1
+          },
+          "handoff": {
+            "passed": 2,
+            "total": 2,
+            "rate": 1
+          },
+          "cross-project": {
+            "passed": 3,
+            "total": 3,
+            "rate": 1
+          }
+        },
+        "perProbe": [
+          {
+            "probeId": "lesson-shadowban-canonical",
+            "flavor": "lesson",
+            "passed": true
+          },
+          {
+            "probeId": "lesson-shadowban-paraphrase",
+            "flavor": "lesson",
+            "passed": true
+          },
+          {
+            "probeId": "lesson-mock-prod-divergence",
+            "flavor": "lesson",
+            "passed": true
+          },
+          {
+            "probeId": "lesson-summary-trailing",
+            "flavor": "lesson",
+            "passed": true
+          },
+          {
+            "probeId": "entity-vesna-probe",
+            "flavor": "entity",
+            "passed": true
+          },
+          {
+            "probeId": "entity-angel-process",
+            "flavor": "entity",
+            "passed": true
+          },
+          {
+            "probeId": "entity-claudex-db",
+            "flavor": "entity",
+            "passed": true
+          },
+          {
+            "probeId": "constraint-no-mock-db",
+            "flavor": "constraint",
+            "passed": true
+          },
+          {
+            "probeId": "constraint-no-hook-cli-call",
+            "flavor": "constraint",
+            "passed": true
+          },
+          {
+            "probeId": "handoff-phase-4-1",
+            "flavor": "handoff",
+            "passed": true
+          },
+          {
+            "probeId": "handoff-phase-5",
+            "flavor": "handoff",
+            "passed": true
+          },
+          {
+            "probeId": "cp-shadowban-lacuna-to-mozzy",
+            "flavor": "cross-project",
+            "passed": true
+          },
+          {
+            "probeId": "cp-auth-multi-to-third",
+            "flavor": "cross-project",
+            "passed": true
+          },
+          {
+            "probeId": "cp-migration-multi-to-oracle",
+            "flavor": "cross-project",
+            "passed": true
+          }
+        ],
+        "rlGateFireCount": 49
+      },
+      {
+        "trial": 3,
+        "passCount": 14,
+        "total": 14,
+        "passRate": 1,
+        "perCategory": {
+          "lesson": {
+            "passed": 4,
+            "total": 4,
+            "rate": 1
+          },
+          "entity": {
+            "passed": 3,
+            "total": 3,
+            "rate": 1
+          },
+          "constraint": {
+            "passed": 2,
+            "total": 2,
+            "rate": 1
+          },
+          "handoff": {
+            "passed": 2,
+            "total": 2,
+            "rate": 1
+          },
+          "cross-project": {
+            "passed": 3,
+            "total": 3,
+            "rate": 1
+          }
+        },
+        "perProbe": [
+          {
+            "probeId": "lesson-shadowban-canonical",
+            "flavor": "lesson",
+            "passed": true
+          },
+          {
+            "probeId": "lesson-shadowban-paraphrase",
+            "flavor": "lesson",
+            "passed": true
+          },
+          {
+            "probeId": "lesson-mock-prod-divergence",
+            "flavor": "lesson",
+            "passed": true
+          },
+          {
+            "probeId": "lesson-summary-trailing",
+            "flavor": "lesson",
+            "passed": true
+          },
+          {
+            "probeId": "entity-vesna-probe",
+            "flavor": "entity",
+            "passed": true
+          },
+          {
+            "probeId": "entity-angel-process",
+            "flavor": "entity",
+            "passed": true
+          },
+          {
+            "probeId": "entity-claudex-db",
+            "flavor": "entity",
+            "passed": true
+          },
+          {
+            "probeId": "constraint-no-mock-db",
+            "flavor": "constraint",
+            "passed": true
+          },
+          {
+            "probeId": "constraint-no-hook-cli-call",
+            "flavor": "constraint",
+            "passed": true
+          },
+          {
+            "probeId": "handoff-phase-4-1",
+            "flavor": "handoff",
+            "passed": true
+          },
+          {
+            "probeId": "handoff-phase-5",
+            "flavor": "handoff",
+            "passed": true
+          },
+          {
+            "probeId": "cp-shadowban-lacuna-to-mozzy",
+            "flavor": "cross-project",
+            "passed": true
+          },
+          {
+            "probeId": "cp-auth-multi-to-third",
+            "flavor": "cross-project",
+            "passed": true
+          },
+          {
+            "probeId": "cp-migration-multi-to-oracle",
+            "flavor": "cross-project",
+            "passed": true
+          }
+        ],
+        "rlGateFireCount": 49
+      }
+    ],
+    "meanPassRate": 1,
+    "rangeMin": 1,
+    "rangeMax": 1,
+    "meanPerCategory": {
+      "lesson": 1,
+      "entity": 1,
+      "constraint": 1,
+      "handoff": 1,
+      "cross-project": 1
+    }
+  },
+  "delta_pp": 0,
+  "per_category_delta_pp": {
+    "lesson": 0,
+    "entity": 0,
+    "constraint": 0,
+    "handoff": 0,
+    "cross-project": 0
+  },
+  "range_aware_delta_pp": 0,
+  "verdict": "DELETE_ALLOWED",
+  "notes": [
+    "Self-instrumented category not covered: 0 probes available pre-Phase-10",
+    "Phase 6 confound: 11 of the 14 probes were already shown 0pp under multiplierFlags.qvalue=false in Phase 6 W2 — same semantics, different gate path. Incremental signal lives in the 3 Phase 6.5 cross-project probes."
+  ]
+}

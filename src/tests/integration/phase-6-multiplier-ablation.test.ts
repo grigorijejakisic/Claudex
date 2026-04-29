@@ -42,7 +42,7 @@ import {
 // Probe set
 // ---------------------------------------------------------------------------
 
-interface Probe {
+export interface Probe {
   /** Stable identifier used in the per-probe JSON output. */
   id: string;
   /** Recall flavor — used for per-flavor breakdowns in W2. */
@@ -68,7 +68,7 @@ interface Probe {
  * target so the test exercises the multiplier stack rather than trivial
  * keyword matching.
  */
-const PROBES: Probe[] = [
+export const PROBES: Probe[] = [
   // ---- Lesson recall (4) — paraphrase robustness, ported from
   //      phase-4-1-perceptual-similarity-probes.test.ts substrate.
   {
@@ -285,7 +285,7 @@ const MULTIPLIERS_TO_ABLATE: MultiplierName[] = [
   'retrieval', 'novelty', 'activation', 'qvalue',
 ];
 
-interface ProbeOutcome {
+export interface ProbeOutcome {
   probeId: string;
   flavor: Probe['flavor'];
   passed: boolean;
@@ -293,7 +293,7 @@ interface ProbeOutcome {
   targetRank: number;
 }
 
-function runProbe(probe: Probe, flags: Partial<Record<MultiplierName, boolean>>): ProbeOutcome {
+export function runProbe(probe: Probe, flags: Partial<Record<MultiplierName, boolean>>): ProbeOutcome {
   const { db, sessionId, project } = createTestDbWithSession();
 
   const targetSummaries: string[] = [];
