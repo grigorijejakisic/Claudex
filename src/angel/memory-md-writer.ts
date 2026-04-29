@@ -31,6 +31,7 @@ import { pathToCcSlug } from '../shared/cc-slug.js';
 import { cachedPrepare } from '../core/stmt-cache.js';
 import { resolveProjectPath } from '../shared/scope-detector.js';
 import { recordEvent } from '../core/session-events.js';
+import { listLessonsForProject } from './lesson-reader.js';
 
 /** Hard ceiling for Angel-owned content portion of MEMORY.md. */
 export const MAX_BYTES = 25_000;
@@ -47,6 +48,10 @@ const MAX_ENTITIES = 15;
 const MAX_ACTIVE_PROJECTS = 5;
 const MAX_RECENT_THREADS = 5;
 const RECENT_SESSIONS_WINDOW = 10;
+
+/** Phase 4.1 lesson section caps (CUR-09 / CUR-10). */
+const MAX_LESSONS_FOREGROUND = 20;
+const POINTER_LINE_MAX_CHARS = 140;
 
 /** Active-projects activity window: 7 days in seconds. */
 const ACTIVE_WINDOW_SECONDS = 7 * 86_400;
@@ -429,6 +434,89 @@ export function renderHandoff(project: string): string {
 }
 
 /**
+ * Phase 4.1 — Render the `## Lessons` section.
+ *
+ * Sources lesson files via lesson-reader.ts (filesystem-backed). Filters to
+ * foreground-tier lessons (tier === 'foreground' OR tier undefined; default-
+ * foreground for newly-written files without the field).
+ *
+ * Pointer line format (CUR-10):
+ *   - [<salience>](filename) — task-pattern: <task_shape>
+ *
+ * Where:
+ *   - <salience> = first non-blank body line, trimmed, with markdown
+ *     heading/list markers stripped. Truncated to fit ≤ POINTER_LINE_MAX_CHARS
+ *     total line length.
+ *   - <filename> = lesson basename (e.g., feedback_check_deps.md).
+ *   - <task_shape> = frontmatter.shape.task_shape, or 'unclassified' if
+ *     shape was abstained (per CONTEXT.md abstain-allowed rule).
+ *
+ * Sort: foreground entries by `last_fired_at_epoch` DESC nulls last,
+ * then `created_at_epoch` DESC, then filename ASC.
+ *
+ * Cap: top 20 foreground entries (MAX_LESSONS_FOREGROUND). The heartbeat-
+ * driven demotion (Plan 07) handles persistent demotion; this only
+ * constrains the visible window.
+ *
+ * Empty state: header + 'No lessons captured yet.' line.
+ */
+export function renderLessons(project: string): string {
+  const lessons = listLessonsForProject(project);
+  const foreground = lessons.filter(l => (l.frontmatter.tier ?? 'foreground') === 'foreground');
+
+  foreground.sort((a, b) => {
+    const fa = a.frontmatter.last_fired_at_epoch ?? 0;
+    const fb = b.frontmatter.last_fired_at_epoch ?? 0;
+    if (fa !== fb) return fb - fa;
+    const ca = a.frontmatter.created_at_epoch;
+    const cb = b.frontmatter.created_at_epoch;
+    if (ca !== cb) return cb - ca;
+    return a.filename.localeCompare(b.filename);
+  });
+
+  const top = foreground.slice(0, MAX_LESSONS_FOREGROUND);
+
+  const lines = ['## Lessons'];
+  if (top.length === 0) {
+    lines.push('');
+    lines.push('No lessons captured yet.');
+    return lines.join('\n') + '\n';
+  }
+
+  for (const lesson of top) {
+    const taskShape = lesson.frontmatter.shape?.task_shape ?? 'unclassified';
+    const salience = extractLessonSalience(lesson.body);
+    const tail = `](${lesson.filename}) — task-pattern: ${taskShape}`;
+    const head = '- [';
+    const availableSalienceChars = Math.max(10, POINTER_LINE_MAX_CHARS - head.length - tail.length);
+    const truncatedSalience = salience.length > availableSalienceChars
+      ? salience.slice(0, availableSalienceChars - 1) + '…'
+      : salience;
+    lines.push(`${head}${truncatedSalience}${tail}`);
+  }
+
+  return lines.join('\n') + '\n';
+}
+
+/**
+ * Extract a one-line salience headline from a lesson body.
+ *
+ * Rule: first non-blank line, with markdown heading/list markers stripped,
+ * collapsed whitespace. If body starts with a `# Heading` line, prefer it
+ * over a subsequent prose line — headings are typically the salience the
+ * author intended.
+ */
+function extractLessonSalience(body: string): string {
+  for (const line of body.split('\n')) {
+    const trimmed = line.trim();
+    if (trimmed.length === 0) continue;
+    const cleaned = trimmed.replace(/^#+\s+|^[-*]\s+/, '').replace(/\s+/g, ' ').trim();
+    if (cleaned.length > 0) return cleaned;
+  }
+  return '(no salience extracted)';
+}
+
+/**
  * Normalize a body string to make sentinel hashing stable across platforms
  * and editors. Contract:
  *   - CRLF → LF
@@ -542,14 +630,14 @@ function recordRefusal(db: Database, project: string, filePath: string, reason: 
  */
 function enforceSizeCap(
   body: string,
-  sections: { preamble: string; entities: string; projects: string; threads: string; handoff: string; howTo: string },
+  sections: { preamble: string; projects: string; lessons: string; handoff: string; howTo: string },
 ): string {
   const fits = (s: string): boolean =>
     Buffer.byteLength(s, 'utf8') <= MAX_BYTES && s.split('\n').length <= MAX_LINES;
 
   const rebuild = (): string =>
     normalize(
-      [sections.preamble, sections.entities, sections.projects, sections.threads, sections.handoff, sections.howTo]
+      [sections.preamble, sections.projects, sections.lessons, sections.handoff, sections.howTo]
         .filter(Boolean)
         .join('\n'),
     );
@@ -568,37 +656,23 @@ function enforceSizeCap(
     return section; // no `- ` rows left to trim
   };
 
-  // 1. Trim Recent Threads tail until header-only
-  while (!fits(body) && /^- /m.test(sections.threads)) {
-    sections.threads = trimTail(sections.threads);
+  // Trim order (Phase 4.1 CUR-09 / CUR-10): lessons first (they grow most,
+  // and demotion is a stronger signal than active-projects truncation),
+  // then projects, then handoff.
+  while (!fits(body) && /^- /m.test(sections.lessons)) {
+    sections.lessons = trimTail(sections.lessons);
     body = rebuild();
   }
-  // 2. Trim Active Projects tail
   while (!fits(body) && /^- /m.test(sections.projects)) {
     sections.projects = trimTail(sections.projects);
     body = rebuild();
   }
-  // 3. Trim Entities tail
-  while (!fits(body) && /^- /m.test(sections.entities)) {
-    sections.entities = trimTail(sections.entities);
-    body = rebuild();
-  }
-  // 4. Trim Handoff tail
   while (!fits(body) && /^- /m.test(sections.handoff)) {
     sections.handoff = trimTail(sections.handoff);
     body = rebuild();
   }
 
-  if (fits(body)) return body;
-
-  // Last resort — truncate Entities to first 3 rows.
-  const entityLines = sections.entities.split('\n');
-  const headerIdx = entityLines.findIndex((l) => l.startsWith('## '));
-  const keepCount = headerIdx + 1 + 3;
-  if (entityLines.length > keepCount) {
-    sections.entities = entityLines.slice(0, keepCount).join('\n');
-    body = rebuild();
-  }
+  // No "last resort" entities truncation — entities removed in 4.1.
 
   return body;
 }
@@ -616,18 +690,21 @@ export function curateMemoryMd(db: Database, project: string): CurationResult {
       return { path: memoryMdPath, written: false, reason: 'no_project_dir' };
     }
 
-    // Assemble Angel-owned sections.
+    // Assemble Angel-owned sections (Phase 4.1 CUR-09 / CUR-10).
+    // Drop ## Entities (frequency-extraction noise: entity:-, entity:--2--1)
+    // and ## Recent Threads (50% session-IDs masquerading as topics) — these
+    // were in pre-4.1 layout. Add ## Lessons (pointer-line index sourced
+    // from lesson files in the project's memory directory).
     const sections = {
       preamble: renderPreamble(toSlug(project)),
-      entities: renderEntities(db, project),
       projects: renderActiveProjects(db),
-      threads: renderRecentThreads(db, project),
+      lessons: renderLessons(project),
       handoff: renderHandoff(project),
       howTo: HOW_TO_QUERY_STATIC,
     };
 
     let body = normalize(
-      [sections.preamble, sections.entities, sections.projects, sections.threads, sections.handoff, sections.howTo]
+      [sections.preamble, sections.projects, sections.lessons, sections.handoff, sections.howTo]
         .filter(Boolean)
         .join('\n'),
     );

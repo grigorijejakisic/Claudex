@@ -448,9 +448,11 @@ describe('curateMemoryMd — happy path + idempotency', () => {
 
     const fileBytes = fs.readFileSync(memoryMdPathFor(), 'utf8');
     expect(fileBytes.startsWith('<!-- CLAUDEX-MANAGED:')).toBe(true);
-    expect(fileBytes).toContain('## Entities');
+    // Phase 4.1 CUR-09: ## Entities and ## Recent Threads dropped; ## Lessons added.
+    expect(fileBytes).not.toContain('## Entities');
+    expect(fileBytes).not.toContain('## Recent Threads');
     expect(fileBytes).toContain('## Active Projects');
-    expect(fileBytes).toContain('## Recent Threads');
+    expect(fileBytes).toContain('## Lessons');
     expect(fileBytes).toContain('## Handoff');
     expect(fileBytes).toContain('## How to Query');
     expect(fileBytes).toContain('<!-- USER EDITABLE -->');
@@ -466,7 +468,10 @@ describe('curateMemoryMd — happy path + idempotency', () => {
 describe('curateMemoryMd — user tail preservation', () => {
   it('preserves user content below <!-- USER EDITABLE --> byte-for-byte when inputs change', () => {
     ensureMemoryDir();
-    seedEntities(db, PROJECT, [{ ref: 'entity:1', summary: 'first', importance: 5 }]);
+    // Phase 4.1 CUR-09: ## Entities is no longer rendered, so changing entity
+    // seeds doesn't trigger a write. Use Active Projects (still rendered) to
+    // drive a managed-section diff.
+    seedActiveProjects(db, [{ project_id: 'test-proj-A', edits: 5 }]);
     curateMemoryMd(db, PROJECT);
 
     // User appends a note under ## User Notes.
@@ -475,13 +480,14 @@ describe('curateMemoryMd — user tail preservation', () => {
     fs.writeFileSync(memoryMdPathFor(), withUserNote);
 
     // Change an Angel input, re-run.
-    seedEntities(db, PROJECT, [{ ref: 'entity:2', summary: 'second', importance: 4 }]);
+    seedActiveProjects(db, [{ project_id: 'test-proj-B', edits: 7 }]);
     const result = curateMemoryMd(db, PROJECT);
     expect(result.written).toBe(true);
 
     const after = fs.readFileSync(memoryMdPathFor(), 'utf8');
     expect(after).toContain('my note');
-    expect(after).toContain('entity:2');
+    expect(after).toContain('## User Notes');
+    expect(after).toContain('test-proj-B');
   });
 
   it('user edits to the tail do not change the Angel-owned hash', () => {
@@ -568,9 +574,12 @@ describe('curateMemoryMd — size cap', () => {
     expect(Buffer.byteLength(content, 'utf8')).toBeLessThanOrEqual(MAX_BYTES);
     expect(content.split('\n').length).toBeLessThanOrEqual(MAX_LINES);
 
-    for (const header of ['## Entities', '## Active Projects', '## Recent Threads', '## Handoff', '## How to Query']) {
+    // Phase 4.1 CUR-09: ## Entities and ## Recent Threads dropped; ## Lessons added.
+    for (const header of ['## Active Projects', '## Lessons', '## Handoff', '## How to Query']) {
       expect(content).toContain(header);
     }
+    expect(content).not.toContain('## Entities');
+    expect(content).not.toContain('## Recent Threads');
   });
 });
 
