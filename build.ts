@@ -20,6 +20,8 @@ const requiredEntryPoints = [
   'src/cli/projects-touched.ts',
   'src/cli/recall.ts',
   'src/cli/update-recall.ts',
+  'src/cli/list-session-pointers.ts',
+  'src/cli/mark-pointers-helpful.ts',
 ];
 
 /** Optional/scaffolding entry points — warn-and-skip if missing. */
@@ -113,17 +115,42 @@ async function build() {
     }
   }
 
-  await esbuild.build({
-    entryPoints,
+  // Split entries by their source root so esbuild's outbase preserves the
+  // expected layout in `dist/` (e.g., `src/cli/foo.ts` → `dist/cli/foo.cjs`,
+  // `scripts/bar.ts` → `dist/scripts/bar.cjs`). When entries from multiple
+  // roots are mixed in one esbuild call, the implicit outbase becomes the
+  // common ancestor (project root) and artifacts land at `dist/src/cli/...` —
+  // breaking setup.ts, the smoke-test loop, and skill commands that all
+  // assume the historical `dist/{adapters,cli,...}/...` layout.
+  const srcEntries = entryPoints.filter((ep) => ep.startsWith('src/'));
+  const scriptsEntries = entryPoints.filter((ep) => ep.startsWith('scripts/'));
+  const otherEntries = entryPoints.filter(
+    (ep) => !ep.startsWith('src/') && !ep.startsWith('scripts/'),
+  );
+
+  const commonOpts = {
     bundle: true,
-    format: 'cjs',
-    platform: 'node',
+    format: 'cjs' as const,
+    platform: 'node' as const,
     target: 'node20',
     outdir: 'dist',
     outExtension: { '.js': '.cjs' },
     external: ['better-sqlite3', '@modelcontextprotocol/sdk', 'zod'],
-    logLevel: 'info',
-  });
+    logLevel: 'info' as const,
+  };
+
+  const builds: Array<Promise<unknown>> = [];
+  if (srcEntries.length > 0) {
+    builds.push(esbuild.build({ ...commonOpts, entryPoints: srcEntries, outbase: 'src' }));
+  }
+  if (scriptsEntries.length > 0) {
+    builds.push(esbuild.build({ ...commonOpts, entryPoints: scriptsEntries, outbase: 'scripts' }));
+  }
+  if (otherEntries.length > 0) {
+    builds.push(esbuild.build({ ...commonOpts, entryPoints: otherEntries }));
+  }
+
+  await Promise.all(builds);
 }
 
 /**
