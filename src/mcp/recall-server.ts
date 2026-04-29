@@ -29,6 +29,7 @@ import { expandSearchCrossProject } from '../core/cross-project-search.js';
 import { readCrossProjectSearchFlag } from '../shared/claude-md-flags.js';
 import { resolveProjectPath } from '../shared/scope-detector.js';
 import { buildNarrationDirective, setNarrationSilent } from '../intelligence/narration-directive.js';
+import { recordRetrieval } from '../intelligence/retrieval-log.js';
 
 // ---------------------------------------------------------------------------
 // DB connection
@@ -48,6 +49,29 @@ function getDb(): Database.Database {
 }
 
 const defaultProject = getProjectId(process.cwd());
+
+/**
+ * Resolve the most recently active session for `project`, falling back to
+ * `mcp:<project>` when nothing is active. Mirrors the inline lookup
+ * previously duplicated in claudex_search and claudex_session — used by
+ * Phase 8.5 instrumentation so claudex_search and claudex_recall log under
+ * a real session_id when one exists.
+ */
+function _resolveActiveSessionId(database: Database.Database, project: string): string {
+  try {
+    const active = cachedPrepare(database,
+      `SELECT s.session_id FROM sessions s
+         LEFT JOIN (
+           SELECT session_id, MAX(timestamp_epoch) as last_activity
+             FROM session_events GROUP BY session_id
+         ) e ON e.session_id = s.session_id
+        WHERE s.project = ? AND s.status = 'active'
+        ORDER BY COALESCE(e.last_activity, s.created_at_epoch) DESC LIMIT 1`,
+    ).get(project) as { session_id: string } | undefined;
+    if (active?.session_id) return active.session_id;
+  } catch { /* fall through */ }
+  return `mcp:${project}`;
+}
 
 /**
  * Phase 5.5 — log a lesson recall if `ref` resolves to a lesson file under a
@@ -553,15 +577,31 @@ server.registerTool(
     const paginatedResults = allResults.slice(offset, offset + limit);
     const has_more = offset + limit < total;
 
+    const responseText = JSON.stringify({
+      results: paginatedResults,
+      total,
+      has_more,
+    }, null, 2);
+
+    // Phase 8.5 OBS-01 — log the retrieval event. Defense in depth: helper
+    // is non-throwing but wrap anyway so logging can never break recall.
+    try {
+      const logSessionId = _resolveActiveSessionId(getDb(), proj);
+      recordRetrieval(getDb(), {
+        sessionId: logSessionId,
+        surface: 'claudex_search',
+        query,
+        topKResults: paginatedResults.slice(0, 50).map(r => ({
+          id: r.id,
+          source: r.source,
+          score: r.score,
+        })),
+        responseText,
+      });
+    } catch { /* logging must never break retrieval */ }
+
     return {
-      content: [{
-        type: 'text',
-        text: JSON.stringify({
-          results: paginatedResults,
-          total,
-          has_more,
-        }, null, 2),
-      }],
+      content: [{ type: 'text', text: responseText }],
     };
   },
 );
@@ -601,19 +641,32 @@ server.registerTool(
     // to a lesson file under a project's memory directory.
     logLessonRecallIfApplicable(getDb(), row.artifact_ref ?? ref, `mcp:${defaultProject}`);
 
+    const responseText = JSON.stringify({
+      id: row.id,
+      type: row.artifact_type,
+      summary: row.summary,
+      content: row.content,
+      provenance: row.artifact_ref ?? `artifact #${row.id}`,
+      project: row.project,
+      importance: row.importance,
+    }, null, 2);
+
+    // Phase 8.5 OBS-01 — log the retrieval event alongside the existing
+    // pointer log. Skipped on not-found (early-return above).
+    try {
+      const logSessionId = _resolveActiveSessionId(getDb(), defaultProject);
+      const queryStr = ref ?? (validId ? `id:${validId}` : null);
+      recordRetrieval(getDb(), {
+        sessionId: logSessionId,
+        surface: 'claudex_recall',
+        query: queryStr,
+        topKResults: [{ id: row.id, source: 'artifacts', score: 1.0 }],
+        responseText,
+      });
+    } catch { /* logging must never break retrieval */ }
+
     return {
-      content: [{
-        type: 'text',
-        text: JSON.stringify({
-          id: row.id,
-          type: row.artifact_type,
-          summary: row.summary,
-          content: row.content,
-          provenance: row.artifact_ref ?? `artifact #${row.id}`,
-          project: row.project,
-          importance: row.importance,
-        }, null, 2),
-      }],
+      content: [{ type: 'text', text: responseText }],
     };
   },
 );
