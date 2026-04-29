@@ -46,6 +46,7 @@ import {
   incrementRerankerFallbackCounter,
   type RerankerFallbackReason,
 } from './telemetry-counters.js';
+import { incrementRlScoringDisabledCounter } from './rl-scoring-disabled-counter.js';
 import type { ArtifactRow } from './artifacts.js';
 
 // ---------------------------------------------------------------------------
@@ -275,6 +276,10 @@ function computeActivationFactor(artifact: ArtifactRow): number {
  * Range: [0.55, 1.5].
  */
 function computeQMultiplier(artifact: ArtifactRow): number {
+  if (process.env.CLAUDEX_DISABLE_RL_SCORING === '1') {
+    incrementRlScoringDisabledCounter('qmultiplier');
+    return 1.0;
+  }
   return 0.5 + (artifact.q_value ?? 0.5);
 }
 

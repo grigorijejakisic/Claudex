@@ -15,6 +15,7 @@
 
 import type { Database } from 'better-sqlite3';
 import { cachedPrepare } from '../core/stmt-cache.js';
+import { incrementRlScoringDisabledCounter } from '../core/rl-scoring-disabled-counter.js';
 
 const EMA_ALPHA = 0.3; // Learning rate for exponential moving average
 const EXPLORATION_WEIGHT = 0.1; // UCB exploration bonus weight
@@ -146,6 +147,10 @@ export function updateSessionQValues(
   db: Database,
   sessionId: string,
 ): number {
+  if (process.env.CLAUDEX_DISABLE_RL_SCORING === '1') {
+    incrementRlScoringDisabledCounter('retrieval-rl');
+    return 0;
+  }
   try {
     const sessionOutcomes = cachedPrepare(db,
       `SELECT DISTINCT pattern_id FROM solution_outcomes

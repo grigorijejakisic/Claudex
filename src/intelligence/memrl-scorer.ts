@@ -14,6 +14,7 @@
 
 import type { Database } from 'better-sqlite3';
 import { cachedPrepare } from '../core/stmt-cache.js';
+import { incrementRlScoringDisabledCounter } from '../core/rl-scoring-disabled-counter.js';
 
 // ---------------------------------------------------------------------------
 // Config
@@ -41,6 +42,10 @@ const Q_MIN = 0.05;
  * Called when an artifact is materialized into a session's context.
  */
 export function recordRetrieval(db: Database, artifactId: number): void {
+  if (process.env.CLAUDEX_DISABLE_RL_SCORING === '1') {
+    incrementRlScoringDisabledCounter('memrl-scorer');
+    return;
+  }
   try {
     cachedPrepare(db,
       `UPDATE artifacts SET retrieval_count = COALESCE(retrieval_count, 0) + 1 WHERE id = ?`
@@ -53,6 +58,10 @@ export function recordRetrieval(db: Database, artifactId: number): void {
  * Called when a session completes WITHOUT corrections after this artifact was injected.
  */
 export function recordSuccess(db: Database, artifactId: number): void {
+  if (process.env.CLAUDEX_DISABLE_RL_SCORING === '1') {
+    incrementRlScoringDisabledCounter('memrl-scorer');
+    return;
+  }
   try {
     const row = cachedPrepare(db,
       `SELECT q_value FROM artifacts WHERE id = ?`
@@ -72,6 +81,10 @@ export function recordSuccess(db: Database, artifactId: number): void {
  * Called when a correction follows after this artifact was injected.
  */
 export function recordFailure(db: Database, artifactId: number): void {
+  if (process.env.CLAUDEX_DISABLE_RL_SCORING === '1') {
+    incrementRlScoringDisabledCounter('memrl-scorer');
+    return;
+  }
   try {
     const row = cachedPrepare(db,
       `SELECT q_value FROM artifacts WHERE id = ?`
@@ -98,6 +111,10 @@ const PROPAGATION_LINK_TYPES = new Set(['caused_by', 'supports', 'supersedes']);
  * Falls back to direct neighbors if no typed links exist but limits discount.
  */
 export function propagateQValues(db: Database, artifactId: number): void {
+  if (process.env.CLAUDEX_DISABLE_RL_SCORING === '1') {
+    incrementRlScoringDisabledCounter('memrl-scorer');
+    return;
+  }
   try {
     const source = cachedPrepare(db,
       `SELECT q_value FROM artifacts WHERE id = ?`
@@ -149,6 +166,10 @@ export function propagateQValues(db: Database, artifactId: number): void {
  * Called once per Angel heartbeat cycle.
  */
 export function applyTemporalDecay(db: Database, daysSinceLastDecay: number = 1): void {
+  if (process.env.CLAUDEX_DISABLE_RL_SCORING === '1') {
+    incrementRlScoringDisabledCounter('memrl-scorer');
+    return;
+  }
   try {
     const decayFactor = Math.pow(DAILY_DECAY, daysSinceLastDecay);
     // Only decay artifacts that haven't been retrieved recently (7+ days)
@@ -165,6 +186,10 @@ export function applyTemporalDecay(db: Database, daysSinceLastDecay: number = 1)
  * Returns 0.05-1.0 (Q_MIN to Q_MAX).
  */
 export function getQValueMultiplier(db: Database, artifactId: number): number {
+  if (process.env.CLAUDEX_DISABLE_RL_SCORING === '1') {
+    incrementRlScoringDisabledCounter('memrl-scorer');
+    return 1.0;
+  }
   try {
     const row = cachedPrepare(db,
       `SELECT q_value FROM artifacts WHERE id = ?`
@@ -184,6 +209,10 @@ export function processSessionQValues(
   sessionId: string,
   hadCorrections: boolean,
 ): void {
+  if (process.env.CLAUDEX_DISABLE_RL_SCORING === '1') {
+    incrementRlScoringDisabledCounter('memrl-scorer');
+    return;
+  }
   try {
     // Find all artifacts that were retrieved this session
     const retrieved = cachedPrepare(db,
