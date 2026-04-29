@@ -26,7 +26,6 @@ import {
   formatGaugeSection,
   formatPressureResponse,
   formatTopicPivotSection,
-  formatFlowSection,
   formatLearningsSection,
   formatReferenceLayer,
   formatMaterializationLayer,
@@ -63,7 +62,6 @@ import { cachedPrepare } from '../core/stmt-cache.js';
 import { recordRetrievalEvent } from '../intelligence/retrieval-feedback.js';
 import { recordRetrieval } from '../intelligence/memrl-scorer.js';
 import { findRelevantFiles, getChangedFiles } from '../indexer/codebase-indexer.js';
-import { getRecentFlow } from '../core/journal.js';
 import { getCheckpointTracking } from '../core/checkpoint-tracking.js';
 import { readGsdState } from '../gsd/state-reader.js';
 import { assembleCriticalReminders } from '../intelligence/critical-reminders.js';
@@ -510,22 +508,6 @@ export function assembleFullContext(params: FullAssemblyParams): InjectPayload {
         }
       } catch { /* non-fatal */ }
     }
-
-    // === LAYER 1 CONTINUED: Session Flow (from journal) ===
-    try {
-      const flowEntries = getRecentFlow(params.db, params.project, 10);
-      if (flowEntries.length > 0) {
-        const flowSection = formatFlowSection(flowEntries);
-        if (flowSection) {
-          const cost = estimateTokens(flowSection);
-          if (cost <= budget) {
-            sections.push(flowSection);
-            budget -= cost;
-            sources.push('flow');
-          }
-        }
-      }
-    } catch { /* non-fatal */ }
 
     // === LAYER 2: Reference (packed artifact summaries) ===
     // Cap at 10 artifacts: metadata-only awareness surface, the model rarely
