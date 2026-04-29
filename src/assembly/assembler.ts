@@ -400,24 +400,6 @@ export function assembleFullContext(params: FullAssemblyParams): InjectPayload {
       }
     } catch { /* non-fatal */ }
 
-    // Priority 4.1: Proven principles — proactive injection of established patterns.
-    // Unlike experience warnings (keyword-matched per turn), these fire unconditionally
-    // at every session start. They represent accumulated wisdom: always-applicable rules.
-    try {
-      const principles = getProvenPrinciples(params.db, params.project, 5);
-      if (principles.length > 0) {
-        const principlesSection = formatProvenPrinciplesSection(principles);
-        if (principlesSection) {
-          const cost = estimateTokens(principlesSection);
-          if (cost <= budget) {
-            sections.push(principlesSection);
-            budget -= cost;
-            sources.push('proven_principles');
-          }
-        }
-      }
-    } catch { /* non-fatal */ }
-
     // Priority 4.25: Cross-project awareness — lightweight project overview.
     // Only at session-start (not post-compaction — projects don't change mid-session).
     // NOTE: this section is being DELETED in Plan 04 (Tier B). The unixepoch() leak
