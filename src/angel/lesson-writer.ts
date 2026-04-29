@@ -17,9 +17,12 @@
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
+import type { Database } from 'better-sqlite3';
 import { pathToCcSlug } from '../shared/cc-slug.js';
 import { resolveProjectPath } from '../shared/scope-detector.js';
 import { parseLessonFile } from './lesson-reader.js';
+import { ensurePointerId } from './pointer-recall.js';
+import { classifyTaskPattern, writeTaskPattern } from './task-pattern-classifier.js';
 import type { LessonWriteParams, LessonType, LessonFrontmatter } from './lesson-types.js';
 
 const SLUG_RE = /^[a-z0-9][a-z0-9-]{0,59}$/;
@@ -161,6 +164,40 @@ export function writeLesson(params: LessonWriteParams): string {
     while (Date.now() - start < 50) { /* busy-wait for Windows AV/editor unlock */ }
     fs.renameSync(tmp, filePath);
   }
+  return filePath;
+}
+
+/**
+ * Phase 6.5 — write a lesson AND populate its task_pattern fingerprint.
+ *
+ * Lessons are filesystem-keyed (not direct artifact rows), so the
+ * artifact_task_pattern row is keyed by the V19 lesson_pointer.id. Plan 02
+ * candidate queries will JOIN through both artifacts and lesson_pointer.
+ *
+ * Failures in pointer registration or classifier writes are swallowed —
+ * lesson write itself is higher priority than fingerprint coverage.
+ */
+export function writeLessonWithTaskPattern(
+  db: Database,
+  params: LessonWriteParams,
+): string {
+  const filePath = writeLesson(params);
+
+  // Phase 6.5: classify and persist task_pattern fingerprint.
+  try {
+    const filename = path.basename(filePath);
+    const pointerId = ensurePointerId(db, params.project, filename, 'lesson');
+    const result = classifyTaskPattern(
+      db,
+      params.frontmatter.telemetry,
+      params.frontmatter.shape,
+      'write_time',
+    );
+    if (result.task_pattern) {
+      writeTaskPattern(db, pointerId, result);
+    }
+  } catch { /* non-fatal — lesson is the source of truth, fingerprint is metadata */ }
+
   return filePath;
 }
 

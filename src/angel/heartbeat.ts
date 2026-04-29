@@ -42,6 +42,7 @@ import { monitorMemoryFiles } from './memory-monitor.js';
 import { consolidateObservationBatch, shouldConsolidate, markConsolidationRan, runDreamConsolidation } from './consolidator.js';
 import { syncUserProfiles } from './user-profile-sync.js';
 import { runRetentionSweep } from './retention-sweep.js';
+import { backfillTaskPatternsBatch } from './task-pattern-classifier.js';
 import * as path from 'path';
 import * as fs from 'fs';
 import * as os from 'os';
@@ -952,6 +953,17 @@ export async function heartbeatTick(ctx: HeartbeatContext): Promise<TickResult> 
       }
     } catch {
       // Non-critical — retention failure doesn't break the heartbeat
+    }
+
+    // Phase 4b.5: task-pattern fingerprint backfill (Phase 6.5).
+    // Regex-only classification (~1-2 ms per artifact); 200/tick. Idempotent —
+    // rows are filtered out via LEFT JOIN on artifact_task_pattern, so a tick
+    // after full-coverage convergence is a no-op. Abstained rows write the
+    // `__abstain__` sentinel so they're not retried.
+    try {
+      backfillTaskPatternsBatch(ctx.db, 200);
+    } catch {
+      // Non-critical — backfill failure doesn't break the heartbeat
     }
 
     // Phase 4c: Cross-project knowledge consolidation — fingerprint-based dedup.
