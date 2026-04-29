@@ -1376,3 +1376,119 @@ export function decayPatternConfidence(db: Database, triggeredPatternIds: string
     // Non-throwing
   }
 }
+
+// ---------------------------------------------------------------------------
+// Phase 5 Plan 08 — INJ-07 reactive trigger detection (pure functions)
+// ---------------------------------------------------------------------------
+
+/**
+ * Canonical explicit-memory-query keyword list (UPS reactive trigger).
+ * Used by isExplicitMemoryQuery to gate experience-warning emission when the
+ * user prompt explicitly invokes memory.
+ */
+export const EXPLICIT_QUERY_KEYWORDS: readonly string[] = [
+  'do you remember',
+  'have we',
+  'last time',
+  'last session',
+  "didn't we",
+  'remember when',
+];
+
+/**
+ * Returns true when the prompt contains a canonical explicit-memory-query phrase.
+ * Case-insensitive.
+ */
+export function isExplicitMemoryQuery(prompt: string): boolean {
+  if (!prompt) return false;
+  const lower = prompt.toLowerCase();
+  return EXPLICIT_QUERY_KEYWORDS.some(kw => lower.includes(kw));
+}
+
+/**
+ * Lightweight glob-to-regex transform. Supports `*` (any chars within a
+ * segment) and `**` (any chars including separators). Other regex metacharacters
+ * are escaped. Anchored at both ends (`^…$`).
+ *
+ * @internal
+ */
+export function _globToRegex(glob: string): RegExp {
+  // Escape regex specials except *
+  const escaped = glob
+    .replace(/[.+?^${}()|[\]\\]/g, '\\$&')
+    // Use placeholder for `**` first, then `*`
+    .replace(/\*\*/g, ' DOUBLESTAR ')
+    .replace(/\*/g, '[^/]*')
+    .replace(/ DOUBLESTAR /g, '.*');
+  return new RegExp(`^${escaped}$`);
+}
+
+/**
+ * Returns experience patterns whose `trigger_glob` field matches the given file path.
+ * Path normalized to forward slashes before matching (CACH-03 host-env continuity).
+ *
+ * Project scope: current project + GLOBAL_PROJECT_SCOPE.
+ * Non-throwing — returns [] on error.
+ */
+export function findPatternsByPathGlob(
+  db: Database,
+  project: string,
+  filePath: string,
+  limit: number = 5,
+): ExperiencePattern[] {
+  if (!filePath) return [];
+  try {
+    const norm = filePath.replace(/\\/g, '/');
+    const rows = cachedPrepare(db,
+      `SELECT * FROM experience_patterns
+       WHERE (source_project = ? OR source_project = ?)
+         AND trigger_glob IS NOT NULL AND trigger_glob != ''
+         AND score > 0`
+    ).all(project, GLOBAL_PROJECT_SCOPE) as (ExperiencePattern & { trigger_glob: string | null })[];
+    const matches: ExperiencePattern[] = [];
+    for (const row of rows) {
+      if (!row.trigger_glob) continue;
+      try {
+        const re = _globToRegex(row.trigger_glob);
+        if (re.test(norm)) matches.push(row);
+      } catch { /* malformed glob — skip */ }
+      if (matches.length >= limit) break;
+    }
+    return matches;
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Returns experience patterns whose `trigger_command` field is a substring of
+ * the given Bash command.
+ *
+ * Project scope: current project + GLOBAL_PROJECT_SCOPE.
+ * Non-throwing — returns [] on error.
+ */
+export function findPatternsByCommandSubstring(
+  db: Database,
+  project: string,
+  command: string,
+  limit: number = 5,
+): ExperiencePattern[] {
+  if (!command) return [];
+  try {
+    const rows = cachedPrepare(db,
+      `SELECT * FROM experience_patterns
+       WHERE (source_project = ? OR source_project = ?)
+         AND trigger_command IS NOT NULL AND trigger_command != ''
+         AND score > 0`
+    ).all(project, GLOBAL_PROJECT_SCOPE) as (ExperiencePattern & { trigger_command: string | null })[];
+    const matches: ExperiencePattern[] = [];
+    for (const row of rows) {
+      if (!row.trigger_command) continue;
+      if (command.includes(row.trigger_command)) matches.push(row);
+      if (matches.length >= limit) break;
+    }
+    return matches;
+  } catch {
+    return [];
+  }
+}
