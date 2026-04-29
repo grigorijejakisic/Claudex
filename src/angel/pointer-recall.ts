@@ -100,6 +100,36 @@ export interface SessionPointerRow {
   helpful_yn: number | null;
 }
 
+/**
+ * Detect whether `artifactRef` resolves to a lesson file under a project's
+ * memory directory. The canonical pattern (from Phase 4.1) is:
+ *
+ *   ~/.claude/projects/<encoded-project>/memory/(feedback|project|process)_<slug>.md
+ *
+ * On Windows the same prefix appears with backslashes. We path-normalize
+ * (collapse backslashes to forward slashes) then match a strict regex.
+ *
+ * Returns the project segment + filename on match, or null otherwise.
+ *
+ * NOTE: the `project` segment returned is the ENCODED form found on disk
+ * (e.g., 'C--Users-Grigorije-Desktop-Projects-CLAUDEXv3'). Callers that
+ * need the human-readable name must look it up via projects.json — but
+ * for `lesson_pointer.project` the encoded form is exactly what
+ * lesson-writer already uses, so this is consistent.
+ */
+const LESSON_REF_RE =
+  /(?:^|\/)projects\/([^/]+)\/memory\/((?:feedback|project|process)_[A-Za-z0-9_-]+\.md)$/;
+
+export function extractLessonRef(
+  artifactRef: string | null | undefined,
+): { project: string; filename: string } | null {
+  if (!artifactRef) return null;
+  const normalized = artifactRef.replace(/\\/g, '/');
+  const m = LESSON_REF_RE.exec(normalized);
+  if (!m) return null;
+  return { project: m[1], filename: m[2] };
+}
+
 export function listSessionPointers(db: Database, sessionId: string): SessionPointerRow[] {
   return cachedPrepare(db,
     `SELECT lp.id AS pointer_id,

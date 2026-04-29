@@ -23,6 +23,7 @@ import { initializeSchema, runMigrations } from '../core/migrations.js';
 import { searchJournalFTS } from '../core/journal.js';
 import { tokenizeQuery } from '../shared/search-utils.js';
 import { searchConversations } from '../embeddings/qdrant-client.js';
+import { extractLessonRef, ensurePointerId, recordPointerRecall } from '../angel/pointer-recall.js';
 
 // ---------------------------------------------------------------------------
 // DB connection
@@ -42,6 +43,31 @@ function getDb(): Database.Database {
 }
 
 const defaultProject = getProjectId(process.cwd());
+
+/**
+ * Phase 5.5 — log a lesson recall if `ref` resolves to a lesson file under a
+ * project's memory directory. Fire-and-forget: any failure swallows so that
+ * the caller's recall response is never broken by the log path.
+ *
+ * Exported as a test seam: `recall-server-pointer-log.test.ts` invokes this
+ * directly against an in-memory DB to verify the integration without booting
+ * the MCP server.
+ */
+export function logLessonRecallIfApplicable(
+  db: Database.Database,
+  ref: string | null | undefined,
+  sessionId: string,
+): void {
+  try {
+    const lessonRef = extractLessonRef(ref);
+    if (lessonRef) {
+      const pid = ensurePointerId(db, lessonRef.project, lessonRef.filename, 'lesson');
+      recordPointerRecall(db, pid, sessionId, null);
+    }
+  } catch {
+    // Pointer log failures must not propagate.
+  }
+}
 
 // ---------------------------------------------------------------------------
 // MCP Instructions — stable identity/navigation content injected into CC's
@@ -493,6 +519,10 @@ server.registerTool(
     if (!row) {
       return { content: [{ type: 'text', text: JSON.stringify({ error: 'not found' }) }] };
     }
+
+    // Phase 5.5 — log a pointer recall when the resolved artifact_ref points
+    // to a lesson file under a project's memory directory.
+    logLessonRecallIfApplicable(getDb(), row.artifact_ref ?? ref, `mcp:${defaultProject}`);
 
     return {
       content: [{
