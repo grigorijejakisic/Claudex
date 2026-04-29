@@ -27,7 +27,6 @@ import {
   formatPressureResponse,
   formatTopicPivotSection,
   formatLearningsSection,
-  formatReferenceLayer,
   formatMaterializationLayer,
   formatRulesReminderSection,
   formatProjectsOverview,
@@ -51,7 +50,6 @@ import { renderCheckpointMarkdown } from '../checkpoint/inject.js';
 import { getTopLearnings, type LearningRow } from '../core/learnings.js';
 import { getHotFiles, type PressureRow } from '../core/pressure.js';
 import {
-  getPackedArtifacts,
   searchArtifactsGlobal,
   getMaterializedArtifacts,
   consumeInjectedArtifacts,
@@ -508,24 +506,6 @@ export function assembleFullContext(params: FullAssemblyParams): InjectPayload {
         }
       } catch { /* non-fatal */ }
     }
-
-    // === LAYER 2: Reference (packed artifact summaries) ===
-    // Cap at 10 artifacts: metadata-only awareness surface, the model rarely
-    // acts on entries beyond the top 10 by importance. Artifacts that drop off
-    // this list are still reachable via the materialization layer's hybrid
-    // search on explicit query. Saves ~300-400 tokens per session-start.
-    try {
-      const packedArtifacts = getPackedArtifacts(params.db, params.project, 10);
-      const refSection = formatReferenceLayer(packedArtifacts);
-      if (refSection) {
-        const cost = estimateTokens(refSection);
-        if (cost <= budget) {
-          sections.push(refSection);
-          budget -= cost;
-          sources.push('reference_layer');
-        }
-      }
-    } catch { /* non-fatal */ }
 
     // === LAYER 3: Materialization (query-driven full content) ===
     // Uses hybrid search (FTS5 + recency + three-factor scoring) for better
