@@ -26,11 +26,11 @@
 
 ### Cross-Platform (PLAT)
 
-- [ ] **PLAT-01**: All path handling uses `path.join` / `path.resolve` (no hardcoded `\\` separators); audit `src/` exhaustively
-- [ ] **PLAT-02**: Hook scripts run on Mac/Linux without modification (no PowerShell-only constructs, correct shebangs, file permissions handled)
-- [ ] **PLAT-03**: File-lock handling works on Mac/Linux (current Windows uses `taskkill`; Unix uses signal-based termination)
-- [ ] **PLAT-04**: Subprocess spawning works cross-platform (no `cmd /c` chains; uses Node `spawn` or Bun `$` portably)
-- [ ] **PLAT-05**: Line endings normalized via `.gitattributes` (LF for source, CRLF for batch scripts)
+- [x] **PLAT-01**: All path handling uses `path.join` / `path.resolve` (no hardcoded `\\` separators); audit `src/` exhaustively — closed in Phase 13 (13-01 audit confirmed src/ already clean: 39 hits all keep-with-reason)
+- [x] **PLAT-02**: Hook scripts run on Mac/Linux without modification (no PowerShell-only constructs, correct shebangs, file permissions handled) — closed in Phase 13 (13-02 audit found 0 PowerShell constructs in src/adapters/cc-hooks/)
+- [x] **PLAT-03**: File-lock handling works on Mac/Linux (current Windows uses `taskkill`; Unix uses signal-based termination) — closed in Phase 13 (13-03 introduced src/shared/process-control.ts with terminateProcess + 8 unit tests; 0 callsites needed migration)
+- [x] **PLAT-04**: Subprocess spawning works cross-platform (no `cmd /c` chains; uses Node `spawn` or Bun `$` portably) — closed in Phase 13 (13-02 audit + 13-04 fix: heartbeat.ts:202 git auto-commit refactored from shell-string execSync to no-shell execFileSync array args)
+- [x] **PLAT-05**: Line endings normalized via `.gitattributes` (LF for source, CRLF for batch scripts) — closed in Phase 13 (13-05 extended .gitattributes with explicit per-extension rules; renormalize converted experience-patterns.ts CRLF→LF)
 - [ ] **PLAT-06**: Install verified end-to-end on macOS (latest stable) on a fresh VM; friction captured as test fixtures
 - [ ] **PLAT-07**: Install verified end-to-end on Linux (Ubuntu 24.04 LTS) on a fresh VM; friction captured as test fixtures
 - [ ] **PLAT-08**: Install verified end-to-end on Windows 11 on a fresh VM; regression check (current development platform)
@@ -124,11 +124,11 @@ Updated 2026-04-30 during v4.1 roadmap creation.
 | DOC-04 | Phase 16 | Pending |
 | DOC-05 | Phase 12 | Done |
 | DOC-06 | Phase 12 | Done |
-| PLAT-01 | Phase 13 | Pending |
-| PLAT-02 | Phase 13 | Pending |
-| PLAT-03 | Phase 13 | Pending |
-| PLAT-04 | Phase 13 | Pending |
-| PLAT-05 | Phase 13 | Pending |
+| PLAT-01 | Phase 13 | Done |
+| PLAT-02 | Phase 13 | Done |
+| PLAT-03 | Phase 13 | Done |
+| PLAT-04 | Phase 13 | Done |
+| PLAT-05 | Phase 13 | Done |
 | PLAT-06 | Phase 16 | Pending (HITL — fresh macOS VM) |
 | PLAT-07 | Phase 16 | Pending (HITL — fresh Ubuntu 24.04 VM) |
 | PLAT-08 | Phase 16 | Pending (HITL — fresh Windows 11 VM) |

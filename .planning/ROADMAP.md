@@ -58,7 +58,7 @@ Phase 12 (Metadata + License + README foundation) ships the small, no-dependency
 ## Phases (v4.1)
 
 - [x] **Phase 12: Metadata + License + README foundation** — LICENSE (MIT) + package.json polish + README v1 (what/why/who) + CHANGELOG + CONTRIBUTING (completed 2026-04-30)
-- [ ] **Phase 13: Cross-platform code audit** — paths / hooks / file locks / subprocess / line endings made portable across Windows + Mac + Linux
+- [x] **Phase 13: Cross-platform code audit** — paths / hooks / file locks / subprocess / line endings made portable across Windows + Mac + Linux (completed 2026-04-30)
 - [ ] **Phase 14: Bootstrap install + configurable paths** — one-command `bun run setup`, Ollama + arctic-embed2 + BGE reranker boot, `CLAUDEX_PROJECTS_DIR` replaces hardcoded `~/Desktop/Projects/`
 - [ ] **Phase 15: `claudex doctor` diagnostics** — self-diagnosis: Bun version, Ollama state, port 7439, DB schema, hook registration, Angel heartbeat
 - [ ] **Phase 16: Onboarding verification + README polish** — HITL fresh-VM installs on macOS / Ubuntu 24.04 / Windows 11; <30-min target measured; Quick Start + Troubleshooting finalized
@@ -416,7 +416,14 @@ Plans:
   5. Line endings normalized via `.gitattributes` — LF for source files, CRLF for `.bat` scripts; existing CRLF/BOM normalizer from Phase 5's CACH-03 hardening preserved (PLAT-05)
   6. Full Vitest suite (`bun run test`) passes on Windows after the audit; cross-platform behavior verified by code review and existing tests — actual fresh-VM runs on Mac/Linux deferred to Phase 16 (HITL)
 
-**Plans:** TBD
+**Plans:** 5/5 plans complete
+- [x] 13-01: PLAT-01 path-handling audit (read-only) — 0 fix-needed across 39 keep-with-reason hits
+- [x] 13-02: PLAT-02 + PLAT-04 hook + subprocess audit (read-only) — 0 PowerShell constructs in hooks; single fix-needed (heartbeat.ts:202)
+- [x] 13-03: PLAT-03 process-control abstraction — src/shared/process-control.ts + 8 unit tests; 0 taskkill callsites needed migration (forward-looking parity)
+- [x] 13-04: PLAT-01 + PLAT-02 + PLAT-04 fix execution — single fix applied (heartbeat.ts:202 shell-string execSync → 3-step execFileSync array args); final audit report
+- [x] 13-05: PLAT-05 .gitattributes extension + phase close — extended baseline with per-extension rules; experience-patterns.ts renormalized CRLF→LF; STATE/ROADMAP/REQUIREMENTS marked
+
+**Status:** PHASE 13 COMPLETE 2026-04-30. SC#1 Vesna PASS at 17/17 (100%). bun run test 3123 + 20 baseline llama-server-supervisor failures unchanged from v4.0.0. PLAT-01..05 closed. Phase 14 unblocked.
 
 ### Phase 14: Bootstrap install + configurable paths
 **Goal:** A stranger runs one command from a clean clone and ends up with Ollama running, the embedding model pulled, the BGE reranker alive on port 7439, hooks registered, and Claude Code producing working assembly within their first user turn.
@@ -503,7 +510,7 @@ Phase 9 may be scheduled parallel to 6/7 once Phase 5 ships (T6 verified safe). 
 | 10. Vesna probe suite (central validation) | 5/5 | Complete | 2026-04-30 |
 | 11. P9 — Final validation against SC#1-#4 | 0/0 | Not started | - |
 | 12. Metadata + License + README foundation | 5/5 | Complete   | 2026-04-30 |
-| 13. Cross-platform code audit | 0/0 | Not started | - |
+| 13. Cross-platform code audit | 5/5 | Complete | 2026-04-30 |
 | 14. Bootstrap install + configurable paths | 0/0 | Not started | - |
 | 15. `claudex doctor` diagnostics | 0/0 | Not started | - |
 | 16. Onboarding verification + README polish | 0/0 | Not started | - |

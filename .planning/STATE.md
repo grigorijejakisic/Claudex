@@ -6,15 +6,15 @@ See: .planning/PROJECT.md (updated 2026-04-30)
 
 **Core value:** v4 makes the agent USE Claudex organically as part of how it works in Claude Code. v4.0.0 SHIPPED 2026-04-30. Current milestone v4.1 = Distribution (make Claudex installable by strangers + ship to `grigorijejakisic/claudex` public).
 
-**Current focus:** **Phase 12 SHIPPED 2026-04-30.** Repo is now MIT-licensed and externally legible (LICENSE + package.json metadata + CHANGELOG + CONTRIBUTING + rewritten README). LIC-01..03 + DOC-01/02/05/06 closed (7/44 v4.1 reqs). Next: Phase 13 (cross-platform code audit, PLAT-01..05).
+**Current focus:** **Phase 13 SHIPPED 2026-04-30.** PLAT-01..05 closed; src/ is portable (paths/hooks/locks/subprocess/line-endings). Audits found src/ already substantially clean: 0 PowerShell-only constructs, 0 cmd /c, 0 taskkill callsites, 0 path-construction-by-concatenation. Single source change applied: heartbeat.ts:202 git auto-commit refactored from shell-string `execSync('git add -A && ... || git commit -m "..."')` to three sequential no-shell `execFileSync('git', [...], opts)` calls. PLAT-03 added forward-looking `src/shared/process-control.ts` + 8 unit tests. PLAT-05 extended `.gitattributes` with explicit per-extension rules; renormalize converted experience-patterns.ts CRLF→LF. 12/44 v4.1 reqs done. Next: Phase 14 (Bootstrap install + configurable paths, INST-01..07).
 
 ## Current Position
 
 **Current Milestone:** v4.1 — Distribution
-**Phase:** 13 (Cross-platform code audit) — next
+**Phase:** 14 (Bootstrap install + configurable paths) — next
 **Plan:** —
-**Status:** Phase 12 SHIPPED 2026-04-30 (5 plans / 5 commits / 5 SUMMARY.md). Awaiting plan-phase on Phase 13.
-**Last activity:** 2026-04-30 — Phase 12 closed (LIC-01..03 + DOC-01/02/05/06 [x])
+**Status:** Phase 13 SHIPPED 2026-04-30 (5 plans / 8 commits / 5 SUMMARY.md / 1 final audit report). Awaiting plan-phase on Phase 14.
+**Last activity:** 2026-04-30 — Phase 13 closed (PLAT-01..05 [x])
 
 ### v4.1 Phase Structure
 
@@ -33,14 +33,14 @@ See: .planning/PROJECT.md (updated 2026-04-30)
 
 **Prior status (v4.0 SHIPPED 2026-04-30 at v4.0.0):** All SC#1-#4 PASS with evidence: SC#1 Vesna 17/17=100% per category; SC#2 12/12 cache-stable (191/500 budget headroom); SC#3 mechanical scorer aggregate 90 across 6 projects each ≥80; SC#4 synthetic Vesna 3/3 PASS + 3 live HITL-pending. STOR-04 closed (V24 dropped 6 legacy *_old tables, 1052 rows, after zero-caller audit; DB backup at ~/.claudex/backups/pre-v4-phase-11-drop-old-20260430-181007.db). Benchmark vibe-check: LongMemEval Oracle 89.6% archival (within drift vs 90.6% baseline); LoCoMo 55.5% archival (no Phase 9-10 pressure). Non-gating per CONTEXT axiom. v4.1 Distribution stub at .planning/v4.1-distribution/STUB.md was the basis for this milestone's REQUIREMENTS.md.
 **Last Activity:** 2026-04-30
-**Last Activity Description:** Phase 12 SHIPPED. 5 plans / 5 atomic commits (3071fa3 → fbb1acd). LICENSE (MIT) at repo root. package.json: removed private, added license/version 4.1.0/repository/bugs/homepage/keywords/author. CHANGELOG.md (Keep-a-Changelog format, [4.0.0] — 2026-04-30 with SC#1-#4 evidence + 11-phase Added section + Phase 5/8/9/STOR-04 Removed section). CONTRIBUTING.md (dev setup + bun run test warning + Conventional Commits + hook safety + .claude/rules pointer). README.md fully rewritten (134w What + 193w Why = 327w combined under 500w cap; verbatim shadowban example preserved). bun run build green. bun run test: 3115 passed, 20 pre-existing llama-server-supervisor failures unchanged from v4.0.0 baseline (no regression). Phase 13 (PLAT-01..05 cross-platform audit) is next.
+**Last Activity Description:** Phase 13 SHIPPED. 5 plans / 8 atomic commits (d1a0218 → close commit). PLAT-01 audit (13-01-AUDIT-PATHS.md): 39 raw hits in src/ all classified keep-with-reason — JSON-string parsers, SQL `ESCAPE '\\'` clauses, cross-platform separator checks (path.includes('/') || path.includes('\\')), POSIX bash quote-escape idiom in cli/setup.ts, defensive path.normalize(path.join(...)) canonicalization across paths.ts and vesna/setup.ts. PLAT-02 audit (in 13-02-AUDIT-HOOKS-SUBPROCESS.md): 0 PowerShell constructs, 0 .ps1/.bat/.cmd files, 0 chmod calls in src/adapters/cc-hooks/. PLAT-04 audit: 0 taskkill in src/ (forward-looking abstraction shipped anyway), 0 cmd /c, single fix-needed at heartbeat.ts:202 (shell-string execSync git auto-commit → 3-step execFileSync array args, removes embedded-quote fragility cmd.exe vs /bin/sh). PLAT-03 (13-03): src/shared/process-control.ts (terminateProcess(pid, options) wrapping taskkill on Windows / process.kill on Unix) + src/shared/process-control.test.ts (8 tests, all pass). PLAT-05 (13-05): .gitattributes extended preserving CACH-03 baseline (`* text=auto eol=lf`) + explicit per-extension LF rules (.ts .js .cjs .mjs .json .md .yml .yaml .toml .py .sh) + Windows-script CRLF rules (.bat .cmd .ps1, forward-looking — none exist) + binary list with .sqlite added. git add --renormalize converted src/intelligence/experience-patterns.ts CRLF→LF (committed separately). Note: the renormalize commit also captured 4 pre-existing dirty files from session start (06-02 ablation JSONs + checkpoint/vite cache); documented in 13-05-SUMMARY.md as a scope-leak per global rule 5, transparent rather than history-rewriting. bun run build green throughout. bun run test: 3123 passed (3115 baseline + 8 new from process-control.test.ts), 20 baseline llama-server-supervisor failures unchanged from v4.0.0 (no regression). bun run vesna: 17/17 PASS at 100%. DB schema unchanged. Hook semantics unchanged. Phase 14 (Bootstrap install + configurable paths, INST-01..07) is next.
 **Progress:** [█████████░] 91%
 
-Phase: 12 of 17 — Phase 12 SHIPPED (5/5 plans), Phase 13 next
-Plan: — (awaiting plan-phase on Phase 13)
-Status: Phase 12 closed (7/44 v4.1 reqs done — LIC-01..03 + DOC-01/02/05/06)
+Phase: 13 of 17 — Phase 13 SHIPPED (5/5 plans), Phase 14 next
+Plan: — (awaiting plan-phase on Phase 14)
+Status: Phase 13 closed (12/44 v4.1 reqs done — LIC-01..03 + DOC-01/02/05/06 + PLAT-01..05)
 
-Progress: [████░░░░░░░░░░░░░░░░░░] ~17% (v4.1 — 1 of 6 phases complete)
+Progress: [████████░░░░░░░░░░░░░░] ~33% (v4.1 — 2 of 6 phases complete)
 
 ## Accumulated Context
 
@@ -74,12 +74,12 @@ Decisions logged in PROJECT.md Key Decisions table. Summary:
 
 ### Pending Todos
 
-- Plan-phase on Phase 13 (Cross-platform code audit, PLAT-01..05) — next concrete unit of work.
-- Operator (user) to schedule three fresh-VM testing windows for Phase 16 (macOS, Ubuntu 24.04 LTS, Windows 11). These can be planned in parallel with Phase 13-15 work but the actual runs gate Phase 16 close.
+- Plan-phase on Phase 14 (Bootstrap install + configurable paths, INST-01..07) — next concrete unit of work.
+- Operator (user) to schedule three fresh-VM testing windows for Phase 16 (macOS, Ubuntu 24.04 LTS, Windows 11). These can be planned in parallel with Phase 14-15 work but the actual runs gate Phase 16 close.
 
 ### Blockers/Concerns
 
-(No active blockers for v4.1 Phase 12. v4.0 carry-forward concerns parked in `.planning/v4.1-distribution/STUB.md` — those are v4.2+ and do not gate Distribution work.)
+(No active blockers for v4.1 Phase 13. v4.0 carry-forward concerns parked in `.planning/v4.1-distribution/STUB.md` — those are v4.2+ and do not gate Distribution work.)
 
 **v4.0 carry-forward items still open at v4 ship** (tracked in REQUIREMENTS.md `## v4.2+ Requirements (Deferred)`, NOT v4.1 scope):
 - STOR-09 task-pattern fingerprint column on artifact kinds (write-time auto-classification)
@@ -108,8 +108,8 @@ These are NOT Distribution work — they're internal cleanup. Re-roadmapping the
 ## Session Continuity
 
 Last session: 2026-04-30
-Stopped at: Phase 12 SHIPPED (5 plans / 5 commits / 5 SUMMARY.md). LIC-01..03 + DOC-01/02/05/06 [x]. Phase 13 (cross-platform code audit, PLAT-01..05) is the next concrete unit.
-Resume file: .planning/phases/13-* (run /gsd:discuss-phase 13 next)
+Stopped at: Phase 13 SHIPPED (5 plans / 8 commits / 5 SUMMARY.md / 1 final audit report). PLAT-01..05 [x]. Phase 14 (bootstrap install + configurable paths, INST-01..07) is the next concrete unit.
+Resume file: .planning/phases/14-* (run /gsd:discuss-phase 14 next)
 
 ### v4.1 roadmap notes — 2026-04-30
 
