@@ -1,0 +1,37 @@
+{
+  "id": "cross-project-002",
+  "category": "cross-project",
+  "source_session_id": "lacuna-betting:percentile-latency-measurement",
+  "source_project": "lacuna-betting",
+  "scenario": "Lesson lives in lacuna-betting: 'Use percentiles (p50, p90, p99) instead of median for a more accurate latency picture.' Target session in claudex-v3 asks about reporting latency for retrieval. Probe tests cross-project lesson surfacing — the percentile-vs-median guidance should fire on a generic latency-measurement question.",
+  "user_prompt": "How should I report latency numbers for the retrieval pipeline?",
+  "expected_recall": {
+    "artifact_id_or_pattern": "decision:percentile-latency|project:lacuna-betting",
+    "must_surface_within_turns": 2,
+    "must_contain_phrase_pattern": [
+      "p50|p90|p99|percentile"
+    ]
+  },
+  "lexical_exclusions": ["percentile", "p50", "p90", "p99", "median"],
+  "evaluation": "auto",
+  "setup_steps": [
+    {
+      "kind": "artifact",
+      "payload": {
+        "kind": "learning",
+        "summary": "Use percentiles (p50, p90, p99) instead of median for an accurate latency picture — median hides tail behavior",
+        "project": "lacuna-betting",
+        "tags": ["performance", "measurement"]
+      }
+    },
+    {
+      "kind": "artifact",
+      "payload": {
+        "kind": "observation",
+        "summary": "Active project marker: working in claudex-v3 on retrieval reporting",
+        "project": "claudex-v3",
+        "tags": ["active-project-marker"]
+      }
+    }
+  ]
+}

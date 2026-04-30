@@ -1,0 +1,37 @@
+{
+  "id": "cross-project-003",
+  "category": "cross-project",
+  "source_session_id": "claudex-v3:oauth-alongside-api-key",
+  "source_project": "claudex-v3",
+  "scenario": "Lesson lives in claudex-v3: 'For production authentication systems, always include OAuth support alongside API keys, not just API key authentication alone.' Target session in oracle (different project) is designing an auth surface for a new endpoint. Probe tests cross-project lesson surfacing on a generic 'auth design' question.",
+  "user_prompt": "I'm wiring auth on this new endpoint — is a single key enough?",
+  "expected_recall": {
+    "artifact_id_or_pattern": "decision:oauth-alongside-api-key|project:claudex-v3",
+    "must_surface_within_turns": 2,
+    "must_contain_phrase_pattern": [
+      "OAuth|oauth|alongside"
+    ]
+  },
+  "lexical_exclusions": ["OAuth", "alongside", "production"],
+  "evaluation": "auto",
+  "setup_steps": [
+    {
+      "kind": "artifact",
+      "payload": {
+        "kind": "decision",
+        "summary": "For production auth systems, always include OAuth support alongside API keys — never API-key-only",
+        "project": "claudex-v3",
+        "tags": ["auth", "design"]
+      }
+    },
+    {
+      "kind": "artifact",
+      "payload": {
+        "kind": "observation",
+        "summary": "Active project marker: working in oracle on a new endpoint auth surface",
+        "project": "oracle",
+        "tags": ["active-project-marker"]
+      }
+    }
+  ]
+}

@@ -1,0 +1,28 @@
+{
+  "id": "lesson-application-001",
+  "category": "lesson-application",
+  "source_session_id": "claudex-v3:sqlite-vec-migration-session-47",
+  "source_project": "claudex-v3",
+  "scenario": "Past decision: 'Qdrant was removed in session 47 for sqlite-vec — single-store design, vec0 virtual tables embedded in claudex.db.' (See context/specs/SQLITE_VEC_MIGRATION.md.) New session asks whether to introduce a separate vector DB for a new feature. Agent should cite the prior decision and apply its direction (stay single-store).",
+  "user_prompt": "We need vector search for the new ABC feature — should I spin up Pinecone or Qdrant alongside?",
+  "expected_recall": {
+    "artifact_id_or_pattern": "context/specs/SQLITE_VEC_MIGRATION.md|decision:single-store",
+    "must_surface_within_turns": 2,
+    "must_contain_phrase_pattern": [
+      "sqlite-vec|single.?store|vec0|claudex\\.db"
+    ]
+  },
+  "lexical_exclusions": ["sqlite-vec", "vec0", "single-store", "session 47", "MIGRATION.md"],
+  "evaluation": "auto",
+  "setup_steps": [
+    {
+      "kind": "artifact",
+      "payload": {
+        "kind": "decision",
+        "summary": "Qdrant removed in session 47; switched to sqlite-vec / vec0 virtual tables embedded in claudex.db. Single-store design — never add a separate vector DB.",
+        "project": "claudex-v3",
+        "tags": ["architecture", "vector-store", "single-store"]
+      }
+    }
+  ]
+}

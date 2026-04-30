@@ -1,0 +1,28 @@
+{
+  "id": "lesson-application-003",
+  "category": "lesson-application",
+  "source_session_id": "claudex-v3:no-quick-fixes-engineering-rule",
+  "source_project": "claudex-v3",
+  "scenario": "Past directional decision: 'No quick fixes — only proper fixes addressing root cause, not symptoms.' New session is debugging and tempted to add a try/catch that swallows the error. Agent should cite the prior lesson and apply its direction (find root cause, not silence symptom).",
+  "user_prompt": "This error keeps surfacing — should I just wrap the call in try/catch and move on?",
+  "expected_recall": {
+    "artifact_id_or_pattern": "decision:no-quick-fixes",
+    "must_surface_within_turns": 2,
+    "must_contain_phrase_pattern": [
+      "root cause|proper fix|symptom"
+    ]
+  },
+  "lexical_exclusions": ["no quick fix", "root cause", "addressing root", "swallow"],
+  "evaluation": "auto",
+  "setup_steps": [
+    {
+      "kind": "artifact",
+      "payload": {
+        "kind": "decision",
+        "summary": "No quick fixes — only proper fixes addressing root cause, not symptoms. Don't swallow errors with try/catch.",
+        "project": "claudex-v3",
+        "tags": ["engineering-discipline", "debugging"]
+      }
+    }
+  ]
+}

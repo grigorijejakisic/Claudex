@@ -1,0 +1,28 @@
+{
+  "id": "lesson-application-002",
+  "category": "lesson-application",
+  "source_session_id": "claudex-v3:hook-deadlock-cliproxy",
+  "source_project": "claudex-v3",
+  "scenario": "Past decision (CLAUDE.md): 'Never call CC's CLIProxyAPI from a hook — causes deadlock. Use Ollama for any LLM calls needed inside hooks.' New session is about to add an LLM call inside a hook. Agent should cite the deadlock lesson and apply its direction (use Ollama, not CC).",
+  "user_prompt": "I'd like the post-tool hook to summarize each result with a short LLM call — what's the right way to wire it?",
+  "expected_recall": {
+    "artifact_id_or_pattern": "decision:no-cliproxy-from-hook",
+    "must_surface_within_turns": 2,
+    "must_contain_phrase_pattern": [
+      "Ollama|deadlock|CLIProxy"
+    ]
+  },
+  "lexical_exclusions": ["CLIProxy", "deadlock", "Ollama", "fire-and-forget"],
+  "evaluation": "auto",
+  "setup_steps": [
+    {
+      "kind": "artifact",
+      "payload": {
+        "kind": "decision",
+        "summary": "Hook deadlock: never call CC's CLIProxyAPI from a hook — causes deadlock. Use Ollama for any LLM calls inside hooks.",
+        "project": "claudex-v3",
+        "tags": ["hook-safety", "ollama"]
+      }
+    }
+  ]
+}

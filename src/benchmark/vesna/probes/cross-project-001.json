@@ -1,0 +1,37 @@
+{
+  "id": "cross-project-001",
+  "category": "cross-project",
+  "source_session_id": "lacuna-betting:mozzart-shadowban-decision",
+  "source_project": "lacuna-betting",
+  "scenario": "Lesson lives in lacuna-betting: 'Mozzart 429 = per-IP, 15-min auto-heal — back off, rotate exit, retry after window.' Target session in big-mozzy-v2 (different project) hits a similar rate-limit shape on a different bookmaker. Probe tests cross-project HYBRID equivalence: shape vocabulary should fire and surface the Lacuna lesson advisorily.",
+  "user_prompt": "Our bookmaker source started returning 429s — what's the right way to back off?",
+  "expected_recall": {
+    "artifact_id_or_pattern": "decision:mozzart-shadowban|project:lacuna-betting",
+    "must_surface_within_turns": 2,
+    "must_contain_phrase_pattern": [
+      "lacuna|mozzart|per-IP|auto-heal|rotate"
+    ]
+  },
+  "lexical_exclusions": ["lacuna", "Mozzart", "per-IP", "auto-heal", "15-min", "shadowban", "rotate exit"],
+  "evaluation": "auto",
+  "setup_steps": [
+    {
+      "kind": "artifact",
+      "payload": {
+        "kind": "decision",
+        "summary": "rate-limit shadowban detected — Mozzart returns 429 per-IP, 15-min auto-heal. Back off, rotate exit IP, retry after window.",
+        "project": "lacuna-betting",
+        "tags": ["rate-limit", "shadowban", "bookmaker"]
+      }
+    },
+    {
+      "kind": "artifact",
+      "payload": {
+        "kind": "observation",
+        "summary": "Active project marker: working in big-mozzy-v2 on bookmaker pipeline",
+        "project": "big-mozzy-v2",
+        "tags": ["active-project-marker"]
+      }
+    }
+  ]
+}
