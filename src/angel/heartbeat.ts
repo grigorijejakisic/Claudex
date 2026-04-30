@@ -1094,18 +1094,6 @@ export async function heartbeatTick(ctx: HeartbeatContext): Promise<TickResult> 
       }
     } catch { /* non-critical */ }
 
-    // Phase 4e3c: CARA reasoning — derive opinions from proven patterns.
-    // Angel forms opinions about tools, approaches, and patterns based on evidence.
-    try {
-      const { deriveOpinionsFromPatterns } = await import('./cara-reasoning.js');
-      const projects = cachedPrepare(ctx.db,
-        `SELECT DISTINCT project FROM sessions WHERE status = 'active' LIMIT 5`
-      ).all() as Array<{ project: string }>;
-      for (const p of projects) {
-        if (p.project) deriveOpinionsFromPatterns(ctx.db, p.project);
-      }
-    } catch { /* non-critical */ }
-
     // Phase 4e4: Dream consolidation — holistic memory quality pass.
     // Contradiction detection (topic_key duplicates) + staleness pruning (dead file paths).
     // Triple-gated: only runs when enough new sessions exist.

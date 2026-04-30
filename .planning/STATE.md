@@ -69,6 +69,7 @@ Decisions logged in PROJECT.md Key Decisions table. Summary:
 (In-flight — Phase 9 sub-phased per-module deletion across 8+1 sub-phases.)
 
 - 9.2 (autonomous-investigator) — shipped 2026-04-30, Vesna 8/8
+- 9.1 (cara-reasoning) — shipped 2026-04-30, Vesna 8/8
 
 ## Session Continuity
 
