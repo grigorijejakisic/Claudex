@@ -11,7 +11,7 @@
 - [x] **STOR-01**: `artifact(kind, ...)` unified table via V17 migration with free-form `kind` column + `kind_registry`
 - [x] **STOR-02**: Migrate rows from `learnings`, `decisions`, `experience_patterns`, `angel_opinions`, `critical_rules`, `project_curated_context`, `entity_summary` into unified table
 - [x] **STOR-03**: Legacy SQL views preserve names/shapes; existing v3 callers keep working
-- [x] **STOR-04**: Migration transaction-wrapped; legacy tables retained until Phase 11 zero-caller gate
+- [x] **STOR-04**: Migration transaction-wrapped; legacy `*_old` tables dropped in V24 (Phase 11, zero-caller gate cleared 2026-04-30)
 - [x] **STOR-05**: Stale `project_curated_context` rows flagged `status='stale'` during migration (9 mental_model rows flagged)
 - [ ] **STOR-06**: `artifact(kind='transcript_chunk')` rows carry `session_id`, `turn_range`, `topic_label`, embedding — owned by Phase 4.1 (reach fix)
 - [x] **STOR-07**: Path-scoped artifacts (`scope='project'` + `paths:` glob) surface via `.claude/rules/` lazy-load

@@ -42,6 +42,7 @@ import {
   migrateV20toV21,
   migrateV21toV22,
   migrateV22toV23,
+  migrateV23toV24,
   migrateSchemaFixes,
   cleanupOrphanTables,
   upgradeV2SchemaInPlace,
@@ -72,8 +73,11 @@ export { migrateV14toV15 };
  *   18 — Phase 4.1 shape vocabulary substrate
  *   19 — Phase 5.5 curation feedback loop substrate
  *   20 — Phase 6 P5: telemetry event_kind enum +'reranker_fallback'
- *   21 — current (Phase 6.5: artifact_task_pattern sidecar + telemetry enum
- *        +'cross_project_ambiguous' +'cross_project_query_expansion')
+ *   21 — Phase 6.5: artifact_task_pattern sidecar + telemetry enum
+ *        +'cross_project_ambiguous' +'cross_project_query_expansion'
+ *   22 — Phase 8.5: retrieval_log + session_flag tables (recall observability)
+ *   23 — Phase 9.8: drop policy_weights + artifacts.q_value (RL stack delete)
+ *   24 — current (Phase 11 STOR-04: drop legacy `*_old` tables from V17)
  *
  * Dual version tracking:
  * Both `PRAGMA user_version` and `schema_versions` table are needed:
@@ -87,7 +91,7 @@ export function runMigrations(db: Database): void {
   const row = db.pragma('user_version') as Array<{ user_version: number }>;
   let version = row[0]?.user_version ?? 0;
 
-  const TARGET_VERSION = 23;
+  const TARGET_VERSION = 24;
 
   if (version >= TARGET_VERSION) {
     // Still load sqlite-vec even if no migration is needed — the extension
@@ -120,6 +124,7 @@ export function runMigrations(db: Database): void {
     [20, () => { migrateV20toV21(db); }],
     [21, () => { migrateV21toV22(db); }],
     [22, () => { migrateV22toV23(db); }],
+    [23, () => { migrateV23toV24(db); }],
   ];
 
   // Handle special cases for version 0 and 1
@@ -312,6 +317,12 @@ export function initializeSchema(db: Database): void {
   if (currentUv < 23) {
     migrateV22toV23(db);
     db.pragma('user_version = 23');
+  }
+  // Phase 11 STOR-04: drop legacy `*_old` tables. Idempotent — fresh DBs that
+  // never had _old tables get a no-op DROP IF EXISTS sweep. Sets user_version 24.
+  if (currentUv < 24) {
+    migrateV23toV24(db);
+    db.pragma('user_version = 24');
   }
 }
 

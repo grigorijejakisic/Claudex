@@ -1695,3 +1695,30 @@ export function migrateV22toV23(db: Database): boolean {
 
   return true;
 }
+
+/**
+ * V24 — Drop the 6 legacy `*_old` tables left behind by V17 (Phase 11 STOR-04).
+ *
+ * Phase 11 zero-caller audit confirmed no live code reads from these tables:
+ *   learnings_old / decisions_old / experience_patterns_old /
+ *   angel_opinions_old / critical_rules_old / project_curated_context_old.
+ *
+ * Compat views (same names without `_old`) route to the artifact kernel via
+ * INSTEAD OF triggers and are unaffected. Migration is idempotent — `IF EXISTS`
+ * guard means re-running on an already-migrated DB is a no-op. Audit lives at
+ * `.planning/phases/11-p9-final-validation/11-05-OLD-TABLES-AUDIT.md`.
+ */
+export function migrateV23toV24(db: Database): boolean {
+  const legacyOldTables = [
+    'learnings_old',
+    'decisions_old',
+    'experience_patterns_old',
+    'angel_opinions_old',
+    'critical_rules_old',
+    'project_curated_context_old',
+  ];
+  for (const tbl of legacyOldTables) {
+    db.exec(`DROP TABLE IF EXISTS ${tbl}`);
+  }
+  return true;
+}
