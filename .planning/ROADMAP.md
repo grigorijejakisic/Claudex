@@ -36,6 +36,34 @@ Phase 1 (P0 crystallization, ✅) and Phase 2 (P1 artifact unification, ✅, T3 
 
 v4.0 is internal infrastructure. v4.1 = Distribution will make it installable by strangers. Validation roll-up: `.planning/phases/11-p9-final-validation/11-V4-VALIDATION.md`. Next milestone planning: `.planning/v4.1-distribution/STUB.md`.
 
+---
+
+# Roadmap: Claudex v4.1 — Distribution
+
+## Overview (v4.1)
+
+Six phases continuing from Phase 11. v4.1's goal: **a stranger clones Claudex, follows the README, and has a working session in <30 minutes with no insider knowledge.** Then ship to `github.com/grigorijejakisic/claudex` public.
+
+Phase 12 (Metadata + License + README foundation) ships the small, no-dependency artifacts that establish the repo as MIT-licensed and externally legible — LICENSE, package.json polish, README "what is this / why / who for", CHANGELOG, CONTRIBUTING. Phase 13 (Cross-platform code audit) sweeps the source tree for path/hook/lock/subprocess/line-ending portability — code-only work, no human VM testing yet. Phase 14 (Bootstrap install + configurable paths) builds the one-command setup, replaces the hardcoded `~/Desktop/Projects/` reference with `CLAUDEX_PROJECTS_DIR`, and proves first-session UX works end-to-end. Phase 15 (`claudex doctor` diagnostics) ships the self-diagnosis surface — Bun version, Ollama state, port 7439, DB schema, hook registration, Angel heartbeat. Phase 16 (Onboarding verification + README polish) is the **HITL-pending phase** — actual fresh-VM installs on macOS, Ubuntu 24.04, Windows 11, with each friction point resolved as code fix / doctor check / README troubleshooting entry. Quick Start and Troubleshooting docs finalize here because INST + DIAG must already be alive. Phase 17 (Public ship) creates the public remote, pushes history + tags, cuts the v4.1.0 GitHub release, and applies repo metadata + branch protection.
+
+**Locked decisions (2026-04-30 milestone kickoff):**
+- License MIT
+- Platforms Windows + Mac + Linux full audit
+- Harness Claude Code only
+- Self-host only
+- Public ship target `github.com/grigorijejakisic/claudex`
+
+**HITL constraint flag:** Phase 16 success criteria (PLAT-06/07/08 fresh-VM installs + VER-01..05 onboarding fixtures + <30-min target measurement) require **operator-driven VM testing on Mac/Linux/Windows**. The roadmap structures these as HITL-pending tasks with operator-runnable harnesses, parallel to how Phase 11 SC#4 was structured (synthetic probes + live trials operator-runnable). Plan-phase will produce explicit operator runbooks; the phase closes once operator returns each platform's fixture filled in.
+
+## Phases (v4.1)
+
+- [ ] **Phase 12: Metadata + License + README foundation** — LICENSE (MIT) + package.json polish + README v1 (what/why/who) + CHANGELOG + CONTRIBUTING
+- [ ] **Phase 13: Cross-platform code audit** — paths / hooks / file locks / subprocess / line endings made portable across Windows + Mac + Linux
+- [ ] **Phase 14: Bootstrap install + configurable paths** — one-command `bun run setup`, Ollama + arctic-embed2 + BGE reranker boot, `CLAUDEX_PROJECTS_DIR` replaces hardcoded `~/Desktop/Projects/`
+- [ ] **Phase 15: `claudex doctor` diagnostics** — self-diagnosis: Bun version, Ollama state, port 7439, DB schema, hook registration, Angel heartbeat
+- [ ] **Phase 16: Onboarding verification + README polish** — HITL fresh-VM installs on macOS / Ubuntu 24.04 / Windows 11; <30-min target measured; Quick Start + Troubleshooting finalized
+- [ ] **Phase 17: Public ship to grigorijejakisic/claudex** — remote + history + tags + GitHub release + topics + badges + branch protection
+
 ## Phase Details
 
 ### Phase 1: P0 — Crystallization
@@ -359,13 +387,102 @@ Plans:
 
 **Plans:** TBD
 
+---
+
+## Phase Details (v4.1)
+
+### Phase 12: Metadata + License + README foundation
+**Goal:** Establish Claudex as an MIT-licensed, externally legible repository — strangers landing on the GitHub page understand what it is, who it's for, and how to read its history before they ever try to install.
+**Depends on:** v4.0 SHIPPED (Phase 11 complete)
+**Requirements:** LIC-01, LIC-02, LIC-03, DOC-01, DOC-02, DOC-05, DOC-06
+**Success Criteria:**
+  1. `LICENSE` file exists at repo root containing MIT license text with copyright `2026 Grigorije Jakisic`; `package.json` declares `"license": "MIT"` (LIC-01, LIC-02 component)
+  2. `package.json` advertises the project as a public package: `"private": true` removed, `"version": "4.1.0"` set, `"repository"`, `"bugs"`, `"homepage"`, `"keywords"`, and `"engines": { "bun": ">=1.3" }` populated and consistent with the public ship target (LIC-02, LIC-03)
+  3. `README.md` at repo root introduces Claudex in plain English in <500 words, includes a "Why Claudex" section that conveys the v4 thesis (organic memory tool use) with one concrete example, and is the entry point for human readers — CLAUDE.md remains for the agent (DOC-01, DOC-02)
+  4. `CHANGELOG.md` at repo root documents v4.0.0 (16-phase summary + SC#1-#4 evidence) sourced from `.planning/phases/11-p9-final-validation/11-V4-VALIDATION.md` (DOC-05)
+  5. Contributing surface exists — either `CONTRIBUTING.md` at repo root or a README section — covering development setup, `bun run test` (NOT `bun test`), commit conventions, and where to find architectural docs (DOC-06)
+
+**Plans:** TBD
+
+### Phase 13: Cross-platform code audit
+**Goal:** A reader on macOS or Linux can clone the repo, run the test suite, and have hooks/locks/subprocess/path handling work without modification — the codebase stops assuming Windows-only conventions.
+**Depends on:** Phase 12 (repo is now externally legible; portability work happens against a known-public surface)
+**Requirements:** PLAT-01, PLAT-02, PLAT-03, PLAT-04, PLAT-05
+**Success Criteria:**
+  1. Path handling across `src/` uses `path.join` / `path.resolve` exclusively — exhaustive audit closed with zero hardcoded `\\` separators or platform-specific separators in source (PLAT-01)
+  2. Hook scripts in `src/adapters/cc-hooks/` execute on Mac and Linux without modification — correct shebangs, no PowerShell-only constructs, file-permission handling cross-platform (PLAT-02)
+  3. File-lock teardown works on Mac/Linux — Windows `taskkill` paths complemented by signal-based termination on Unix; hook-deadlock prevention preserved (PLAT-03)
+  4. Subprocess spawning works cross-platform — no `cmd /c` chains; uses Node `spawn` or Bun `$` portably across Windows + Mac + Linux (PLAT-04)
+  5. Line endings normalized via `.gitattributes` — LF for source files, CRLF for `.bat` scripts; existing CRLF/BOM normalizer from Phase 5's CACH-03 hardening preserved (PLAT-05)
+  6. Full Vitest suite (`bun run test`) passes on Windows after the audit; cross-platform behavior verified by code review and existing tests — actual fresh-VM runs on Mac/Linux deferred to Phase 16 (HITL)
+
+**Plans:** TBD
+
+### Phase 14: Bootstrap install + configurable paths
+**Goal:** A stranger runs one command from a clean clone and ends up with Ollama running, the embedding model pulled, the BGE reranker alive on port 7439, hooks registered, and Claude Code producing working assembly within their first user turn.
+**Depends on:** Phase 13 (cross-platform code audit complete; bootstrap can target all three OSes)
+**Requirements:** INST-01, INST-02, INST-03, INST-04, INST-05, INST-06, INST-07
+**Success Criteria:**
+  1. `bun run setup` (and/or `./install.sh`) runs end-to-end from a clean clone, returns exit 0 on success, and is idempotent — re-running it doesn't break a working install (INST-01)
+  2. Ollama prerequisite is detected; if missing, bootstrap prints platform-specific install instruction (Homebrew / apt / Windows installer) and exits 1 with actionable guidance (INST-02)
+  3. `snowflake-arctic-embed2` model is pulled via Ollama (idempotent — skipped if already pulled); pull completion verified before bootstrap returns success (INST-03)
+  4. BGE reranker service starts on port 7439 (Python venv + dependencies + boot supervised by Angel's `RerankerSupervisor`); if any step fails, bootstrap prints actionable failure message naming the failing step (INST-04)
+  5. Hardcoded `~/Desktop/Projects/` reference replaced with `CLAUDEX_PROJECTS_DIR` environment variable (default: `~/Projects/` cross-platform); MCP server registration uses the configurable directory; existing `~/.claudex/projects.json` migrates to new path conventions without losing entries (INST-05, INST-06)
+  6. First-session UX verified: after `bun run setup`, opening Claude Code in any registered project produces a working session-start assembly within 1 user turn — no manual steps, no missing context (INST-07)
+
+**Plans:** TBD
+
+### Phase 15: `claudex doctor` diagnostics
+**Goal:** When a stranger's install breaks, they run one command and learn exactly what's wrong and how to fix it — no GitHub issue required, no prior knowledge of which process owns which port.
+**Depends on:** Phase 14 (bootstrap exists; doctor checks the prereqs that bootstrap installs)
+**Requirements:** DIAG-01, DIAG-02, DIAG-03, DIAG-04, DIAG-05, DIAG-06, DIAG-07, DIAG-08
+**Success Criteria:**
+  1. `bun run doctor` command exists, is documented in README, and returns exit 0 if every check passes / exit 1 with actionable per-check error if any fails (DIAG-01, DIAG-08)
+  2. Doctor reports Bun version with pass/fail against `>=1.3` floor; missing Bun produces install-instruction output (DIAG-02)
+  3. Doctor reports Ollama state — process running + `snowflake-arctic-embed2` model pulled — and emits actionable remediation when either condition fails (DIAG-03)
+  4. Doctor probes BGE reranker on port 7439 via HTTP and reports reachability with response status (DIAG-04)
+  5. Doctor inspects `~/.claudex/db/claudex.db` — file exists + schema version matches build's expected migration version — and surfaces backup/restore guidance when mismatched (DIAG-05)
+  6. Doctor reads Claude Code settings, confirms Claudex hooks are registered, and reports any missing hook by name (DIAG-06)
+  7. Doctor checks Angel process liveness via PID file + heartbeat freshness from `telemetry`; stale heartbeat surfaces as a fail with restart guidance (DIAG-07)
+
+**Plans:** TBD
+
+### Phase 16: Onboarding verification + README polish
+**Goal:** Three actual humans (operator-driven) install Claudex from a clean clone on macOS, Ubuntu 24.04, and Windows 11 fresh VMs, every friction point gets resolved, and the README's Quick Start + Troubleshooting sections reflect what the install actually feels like.
+**Depends on:** Phase 15 (doctor exists; friction points can be triaged into "fix code / add doctor check / document in README")
+**Requirements:** PLAT-06, PLAT-07, PLAT-08, VER-01, VER-02, VER-03, VER-04, VER-05, DOC-03, DOC-04
+**HITL constraint:** PLAT-06/07/08 + VER-01..05 require **operator-driven fresh-VM runs** on macOS, Ubuntu 24.04 LTS, and Windows 11. Plan-phase will produce per-platform operator runbooks; the phase closes once all three fixtures are filled in. Structure mirrors Phase 11 SC#4 (synthetic Vesna 3/3 + 3 cold-start trials operator-runnable).
+**Success Criteria:**
+  1. Three onboarding fixtures land at `docs/onboarding/macos.md`, `docs/onboarding/linux.md`, `docs/onboarding/windows.md` — each records every friction encountered installing on its respective fresh VM, including the total elapsed time (VER-01, VER-02, VER-03, VER-05)
+  2. End-to-end install verified on macOS (latest stable), Ubuntu 24.04 LTS, and Windows 11 fresh VMs; the Windows run is the regression check against the development platform (PLAT-06, PLAT-07, PLAT-08)
+  3. Every friction point in the three fixtures is closed as one of: a code fix, a new doctor check, or a README troubleshooting entry — none left "open" or "wontfix" without explicit operator sign-off (VER-04)
+  4. The <30-minute install target is measured on each platform and met; if a platform exceeds 30 minutes, the regression is documented and either resolved (preferred) or flagged on the fixture as an explicit residual (VER-05)
+  5. README Quick Start section walks the reader from clone → `bun run setup` → open Claude Code → working session in <30 minutes, with the actual commands and expected output the operator saw on each platform (DOC-03)
+  6. README Troubleshooting section covers the canonical install failures: Ollama not running, port 7439 dead, Bun version mismatch, hook registration failure — each with the doctor command that detects it and the operator action that fixes it (DOC-04)
+
+**Plans:** TBD
+
+### Phase 17: Public ship to grigorijejakisic/claudex
+**Goal:** Tag v4.1.0, push the complete history to `github.com/grigorijejakisic/claudex` public, cut the GitHub release, and apply repo metadata + branch protection — the milestone closes the moment a stranger can find the repo via search and clone it.
+**Depends on:** Phase 16 (onboarding verified across all three platforms; <30-min target met)
+**Requirements:** REL-01, REL-02, REL-03, REL-04, REL-05, REL-06, REL-07
+**Success Criteria:**
+  1. Public GitHub remote is configured pointing at `github.com/grigorijejakisic/claudex` and the initial push includes complete master history plus all tags (v4.0.0 + v4.1.0); `git ls-remote` confirms parity with local (REL-01, REL-02)
+  2. `v4.1.0` annotated git tag is created, signed if signing is enabled, and pushed to the public remote (REL-03)
+  3. GitHub release for v4.1.0 is published with notes derived from `CHANGELOG.md` — release page is reachable, displays the v4.1 narrative, and links to the v4.0.0 archive (REL-04)
+  4. Repository topics applied via GitHub UI/API for discoverability (final list confirmed at ship time from candidates: `claude-code`, `mcp`, `agent-memory`, `llm-tools`, `typescript`, `bun`); topics visible on the public repo page (REL-05)
+  5. README badges (license, version, build status) render correctly on the public GitHub page — the Vesna CI workflow from Phase 10 reports green; license + version badges link to canonical sources (REL-06)
+  6. Branch protection rule for the Vesna CI gate is applied via GitHub UI on the public repo (carries forward the manual step deferred from Phase 10 close) — main is protected, Vesna check is required (REL-07)
+
+**Plans:** TBD
+
 ## Progress
 
 **Execution Order:**
 Phases execute in numeric order with decimal phases interleaved per their numeric position:
-1 → 2 → 3 (merge) → 4 (closed, superseded) → 4.1 → 5 → 5.5 → 6 → 6.5 → 7 → 7.5 → 8 → 8.5 → 9 → 10 → 11
+1 → 2 → 3 (merge) → 4 (closed, superseded) → 4.1 → 5 → 5.5 → 6 → 6.5 → 7 → 7.5 → 8 → 8.5 → 9 → 10 → 11 → 12 → 13 → 14 → 15 → 16 → 17
 
-Phase 9 may be scheduled parallel to 6/7 once Phase 5 ships (T6 verified safe). Phase 10 may be scheduled parallel to 5.5/6 once 4.1 + 5 are live.
+Phase 9 may be scheduled parallel to 6/7 once Phase 5 ships (T6 verified safe). Phase 10 may be scheduled parallel to 5.5/6 once 4.1 + 5 are live. v4.1 phases 12-17 execute strictly serial — each depends on its predecessor's output to be installable / auditable.
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
@@ -385,3 +502,9 @@ Phase 9 may be scheduled parallel to 6/7 once Phase 5 ships (T6 verified safe). 
 | 9. P7 — Angel simplification | 9/9 | Complete | 2026-04-30 |
 | 10. Vesna probe suite (central validation) | 5/5 | Complete | 2026-04-30 |
 | 11. P9 — Final validation against SC#1-#4 | 0/0 | Not started | - |
+| 12. Metadata + License + README foundation | 0/0 | Not started | - |
+| 13. Cross-platform code audit | 0/0 | Not started | - |
+| 14. Bootstrap install + configurable paths | 0/0 | Not started | - |
+| 15. `claudex doctor` diagnostics | 0/0 | Not started | - |
+| 16. Onboarding verification + README polish | 0/0 | Not started | - |
+| 17. Public ship to grigorijejakisic/claudex | 0/0 | Not started | - |

@@ -111,23 +111,68 @@ Explicit exclusions for v4.1.
 
 ## Traceability
 
-Updated during roadmap creation.
+Updated 2026-04-30 during v4.1 roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| LIC-01..03 | TBD | Pending |
-| DOC-01..06 | TBD | Pending |
-| PLAT-01..08 | TBD | Pending |
-| INST-01..07 | TBD | Pending |
-| DIAG-01..08 | TBD | Pending |
-| VER-01..05 | TBD | Pending |
-| REL-01..07 | TBD | Pending |
+| LIC-01 | Phase 12 | Pending |
+| LIC-02 | Phase 12 | Pending |
+| LIC-03 | Phase 12 | Pending |
+| DOC-01 | Phase 12 | Pending |
+| DOC-02 | Phase 12 | Pending |
+| DOC-03 | Phase 16 | Pending |
+| DOC-04 | Phase 16 | Pending |
+| DOC-05 | Phase 12 | Pending |
+| DOC-06 | Phase 12 | Pending |
+| PLAT-01 | Phase 13 | Pending |
+| PLAT-02 | Phase 13 | Pending |
+| PLAT-03 | Phase 13 | Pending |
+| PLAT-04 | Phase 13 | Pending |
+| PLAT-05 | Phase 13 | Pending |
+| PLAT-06 | Phase 16 | Pending (HITL — fresh macOS VM) |
+| PLAT-07 | Phase 16 | Pending (HITL — fresh Ubuntu 24.04 VM) |
+| PLAT-08 | Phase 16 | Pending (HITL — fresh Windows 11 VM) |
+| INST-01 | Phase 14 | Pending |
+| INST-02 | Phase 14 | Pending |
+| INST-03 | Phase 14 | Pending |
+| INST-04 | Phase 14 | Pending |
+| INST-05 | Phase 14 | Pending |
+| INST-06 | Phase 14 | Pending |
+| INST-07 | Phase 14 | Pending |
+| DIAG-01 | Phase 15 | Pending |
+| DIAG-02 | Phase 15 | Pending |
+| DIAG-03 | Phase 15 | Pending |
+| DIAG-04 | Phase 15 | Pending |
+| DIAG-05 | Phase 15 | Pending |
+| DIAG-06 | Phase 15 | Pending |
+| DIAG-07 | Phase 15 | Pending |
+| DIAG-08 | Phase 15 | Pending |
+| VER-01 | Phase 16 | Pending (HITL fixture — macOS) |
+| VER-02 | Phase 16 | Pending (HITL fixture — Ubuntu 24.04) |
+| VER-03 | Phase 16 | Pending (HITL fixture — Windows 11) |
+| VER-04 | Phase 16 | Pending |
+| VER-05 | Phase 16 | Pending (HITL — measured per platform) |
+| REL-01 | Phase 17 | Pending |
+| REL-02 | Phase 17 | Pending |
+| REL-03 | Phase 17 | Pending |
+| REL-04 | Phase 17 | Pending |
+| REL-05 | Phase 17 | Pending |
+| REL-06 | Phase 17 | Pending |
+| REL-07 | Phase 17 | Pending (manual GitHub UI step from Phase 10 carry-forward) |
 
 **Coverage:**
 - v4.1 requirements: 44 total
-- Mapped to phases: 0 (roadmap pending)
-- Unmapped: 44 ⚠️
+- Mapped to phases: 44 ✓
+- Unmapped: 0 ✓
+- Phase distribution:
+  - Phase 12: 7 reqs (LIC-01..03, DOC-01, DOC-02, DOC-05, DOC-06)
+  - Phase 13: 5 reqs (PLAT-01..05)
+  - Phase 14: 7 reqs (INST-01..07)
+  - Phase 15: 8 reqs (DIAG-01..08)
+  - Phase 16: 10 reqs (PLAT-06..08, VER-01..05, DOC-03, DOC-04)
+  - Phase 17: 7 reqs (REL-01..07)
 
 ---
 *Requirements defined: 2026-04-30 (v4.1 milestone kickoff)*
+*Traceability mapped: 2026-04-30 (v4.1 roadmap creation)*
 *Last updated: 2026-04-30*
