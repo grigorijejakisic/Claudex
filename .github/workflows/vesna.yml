@@ -1,0 +1,109 @@
+name: Vesna Probe Suite
+
+# Vesna is the central behavioral validation gate (Phase 10).
+# Every PR runs the full probe suite; merge requires aggregate >=80% AND
+# every non-empty category >=80%. Flaky probes are tagged but not gated
+# (CONTEXT.md line 134) unless --strict is set.
+#
+# Reranker note: BGE-reranker-v2-m3 (port 7439) is unavailable in CI.
+# The harness composes agent_text from the synchronous retrieval surface
+# (FTS5 + recency channels via hybridSearchSync) which does not require
+# the cross-encoder. Lexical-exclusion rigor + bi-encoder cosine cover
+# perceptual recall for the v4 corpus. If a future probe specifically
+# tests cross-encoder behavior, gate it locally rather than CI.
+
+on:
+  pull_request:
+    branches: [master]
+  push:
+    branches: [master]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: vesna-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  probe-suite:
+    name: Vesna probe suite (>=80% gate)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Initialize Claudex test DB directory
+        run: mkdir -p ~/.claudex/db
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Build
+        run: bun run build.ts
+
+      - name: Run Vesna suite (--json)
+        id: vesna
+        run: |
+          set +e
+          node dist/benchmark/vesna/cli.cjs --json > vesna-report.json
+          echo "vesna_exit=$?" >> "$GITHUB_OUTPUT"
+          set -e
+
+      - name: Emit step summary
+        if: always()
+        run: |
+          if [ ! -f vesna-report.json ]; then
+            echo "Vesna report not produced — harness crashed before report write." >> "$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi
+
+          AGG=$(jq -r '.aggregate_pass_rate' vesna-report.json)
+          GATED=$(jq -r '.gated' vesna-report.json)
+          FLAKY=$(jq -r '.flaky_probes | length' vesna-report.json)
+          FAILED=$(jq -r '.failed_probes | length' vesna-report.json)
+
+          echo "## Vesna probe suite" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          AGG_PCT=$(awk "BEGIN { printf \"%.0f\", $AGG * 100 }")
+          echo "**Aggregate pass rate:** ${AGG_PCT}%" >> "$GITHUB_STEP_SUMMARY"
+          if [ "$GATED" = "true" ]; then
+            echo "**Gate:** PASS" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "**Gate:** FAIL" >> "$GITHUB_STEP_SUMMARY"
+          fi
+          echo "**Flaky probes:** ${FLAKY}" >> "$GITHUB_STEP_SUMMARY"
+          echo "**Failed probes:** ${FAILED}" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+
+          echo "### Per-category" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Category | Passed | Total | Flaky | Pass rate |" >> "$GITHUB_STEP_SUMMARY"
+          echo "|---|---|---|---|---|" >> "$GITHUB_STEP_SUMMARY"
+          jq -r '.per_category | to_entries | map(select(.value.total > 0)) | .[] | "| \(.key) | \(.value.passed) | \(.value.total) | \(.value.flaky) | \((.value.pass_rate * 100 | floor))% |"' vesna-report.json >> "$GITHUB_STEP_SUMMARY"
+
+          if [ "$FAILED" -gt 0 ]; then
+            echo "" >> "$GITHUB_STEP_SUMMARY"
+            echo "### Failed probes" >> "$GITHUB_STEP_SUMMARY"
+            jq -r '.failed_probes[] | "- **\(.id)** (\(.category)) — \(.diagnostics | join("; "))"' vesna-report.json >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Upload Vesna report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: vesna-report
+          path: vesna-report.json
+          retention-days: 30
+
+      - name: Enforce gate
+        run: |
+          if [ "${{ steps.vesna.outputs.vesna_exit }}" != "0" ]; then
+            echo "Vesna gate failed — see summary table for details." >&2
+            exit 1
+          fi

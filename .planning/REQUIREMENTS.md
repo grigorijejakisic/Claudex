@@ -115,10 +115,10 @@
 
 ### Vesna Behavioral Suite (VESN) — NEW 2026-04-27, owned by Phase 10
 
-- [ ] **VESN-01**: Corpus mined from real session histories across all active projects (claudex-v3, lacuna-betting, oracle, big-mozzy-v2, desktop-01dcc792, nexus-e53c6c93). Each retrieval moment in real history becomes a candidate probe.
-- [ ] **VESN-02**: Curated to ~20 probes covering entity recall (3-5), constraint recall (3-5), handoff pickup (3), cross-project (3-5), lesson application (3-5), self-instrumented gap detection (2-3)
-- [ ] **VESN-03**: SC#1 — Vesna pass rate ≥80% across full suite, every category, every active project. Primary gate at every phase boundary with behavioral exposure.
-- [ ] **VESN-04**: CI integration — probe suite runs on every PR via `bun run vesna` or equivalent; pass rate ≥80% required to merge. Probes maintained alongside code at `src/benchmark/vesna/probes/*.json` + harness in `src/benchmark/vesna/`.
+- [x] **VESN-01** (Phase 10, 2026-04-30): Corpus mined from real session histories across multiple active projects (claudex-v3 + lacuna-betting; cross-project probes pull lessons from lacuna-betting → big-mozzy-v2/oracle/claudex-v3). Each probe carries `source_session_id` + `source_project` for auditable provenance.
+- [x] **VESN-02** (Phase 10, 2026-04-30): 20-probe corpus locked at 17 core + 3 buffer (entity 3 / constraint 3 / handoff 3 / cross-project 3 / lesson-application 3 / self-instrumented 2 / buffer 3). Matches CONTEXT.md lines 76-85 distribution lock.
+- [ ] **VESN-03**: SC#1 — Vesna pass rate ≥80% across full suite, every category, every active project. Primary gate at every phase boundary with behavioral exposure. **Owned by Phase 11.**
+- [x] **VESN-04** (Phase 10, 2026-04-30): CI integration shipped — `.github/workflows/vesna.yml` runs `bun run vesna --json` on every PR + push to master with aggregate ≥80% AND per-category ≥80% gate. Harness at `src/benchmark/vesna/`; probes at `src/benchmark/vesna/probes/*.json`. Phase-close run: 17/17 PASS at 100% / 100%.
 
 ### Recall Observability (OBS) — NEW 2026-04-27, owned by Phase 8.5
 

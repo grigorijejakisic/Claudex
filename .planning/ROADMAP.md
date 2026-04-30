@@ -328,7 +328,14 @@ Plans:
   4. Probes maintained alongside code: `src/benchmark/vesna/probes/*.json` + harness in `src/benchmark/vesna/`.
   5. Documented probe authoring guide in `src/benchmark/vesna/README.md`.
 
-**Plans:** TBD
+**Plans:** 5 plans in 3 waves — all COMPLETE 2026-04-30:
+- [x] 10-01-PLAN.md — Harness core: schema, loader, setup-step DSL, evaluator, three-trial runner, CLI, `bun run vesna` script (W1)
+- [x] 10-02-PLAN.md — Migrate 5 existing probes to canonical schema + 3 buffer placeholders (W2)
+- [x] 10-03-PLAN.md — Author 6 new probes (3 entity-recall + 3 constraint-recall) mined from real sessions (W2)
+- [x] 10-04-PLAN.md — Author 6 new probes (3 cross-project + 3 lesson-application) mined from real sessions (W2)
+- [x] 10-05-PLAN.md — GitHub Actions workflow + authoring guide README + phase close (W3)
+
+**Status:** PHASE 10 COMPLETE 2026-04-30. SC#1 surface shipped (Phase 11 runs the gate). 20-probe corpus locked at canonical distribution (entity 3 + constraint 3 + handoff 3 + cross-project 3 + lesson-application 3 + self-instrumented 2 + buffer 3). Phase-close run: 17/17 PASS at 100%/100%. CI gate live in `.github/workflows/vesna.yml`. Phase 11 unblocked. See `.planning/phases/10-vesna-probe-suite-central-validation/10-CLOSE-SUMMARY.md`.
 
 ### Phase 11: P9 — Final validation against SC#1-#4
 **Goal:** Ship v4. Tag against the four success criteria.
@@ -372,5 +379,5 @@ Phase 9 may be scheduled parallel to 6/7 once Phase 5 ships (T6 verified safe). 
 | 8. P6.5 — RL ablation gate | 0/0 | Not started | - |
 | 8.5. Recall observability + self-instrumented agent | 6/6 | Complete | 2026-04-30 |
 | 9. P7 — Angel simplification | 9/9 | Complete | 2026-04-30 |
-| 10. Vesna probe suite (central validation) | 0/0 | Not started | - |
+| 10. Vesna probe suite (central validation) | 5/5 | Complete | 2026-04-30 |
 | 11. P9 — Final validation against SC#1-#4 | 0/0 | Not started | - |
