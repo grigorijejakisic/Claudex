@@ -2,6 +2,25 @@
 # rewrite files to CRLF — that would flip cache-prefix bytes per-host.
 * text=auto eol=lf
 
+# PLAT-05: explicit per-extension rules for cross-platform line endings.
+# Source code — always LF, regardless of platform
+*.ts text eol=lf
+*.js text eol=lf
+*.cjs text eol=lf
+*.mjs text eol=lf
+*.json text eol=lf
+*.md text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf
+*.toml text eol=lf
+*.py text eol=lf
+*.sh text eol=lf
+
+# Windows-specific scripts — preserve CRLF (cmd / batch / PowerShell expect it)
+*.bat text eol=crlf
+*.cmd text eol=crlf
+*.ps1 text eol=crlf
+
 # Binary types — preserved as-is.
 *.png binary
 *.jpg binary
@@ -12,3 +31,4 @@
 *.zip binary
 *.gz binary
 *.db binary
+*.sqlite binary
