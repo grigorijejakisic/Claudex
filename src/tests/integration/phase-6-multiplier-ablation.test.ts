@@ -279,10 +279,10 @@ export const PROBES: Probe[] = [
 // Harness
 // ---------------------------------------------------------------------------
 
-/** Names of the seven multipliers under per-flag ablation. */
+/** Names of the six multipliers under per-flag ablation. */
 const MULTIPLIERS_TO_ABLATE: MultiplierName[] = [
   'recency', 'importance', 'relevance',
-  'retrieval', 'novelty', 'activation', 'qvalue',
+  'retrieval', 'novelty', 'activation',
 ];
 
 export interface ProbeOutcome {

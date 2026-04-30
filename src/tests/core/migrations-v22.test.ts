@@ -31,7 +31,7 @@ describe('Phase 8.5 V21→V22 migration (retrieval_log + session_flag)', () => {
   it('fresh DB reaches user_version=22', () => {
     const db = new Database(':memory:');
     initializeSchema(db);
-    expect(getUserVersion(db)).toBe(22);
+    expect(getUserVersion(db)).toBe(23);
     db.close();
   });
 
@@ -134,7 +134,7 @@ describe('Phase 8.5 V21→V22 migration (retrieval_log + session_flag)', () => {
     expect(() => migrateV21toV22(db)).not.toThrow();
     expect(() => migrateV21toV22(db)).not.toThrow();
     expect(() => runMigrations(db)).not.toThrow();
-    expect(getUserVersion(db)).toBe(22);
+    expect(getUserVersion(db)).toBe(23);
 
     db.close();
   });

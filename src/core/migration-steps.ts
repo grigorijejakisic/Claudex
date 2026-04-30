@@ -1160,11 +1160,11 @@ export function migrateV11toV12(db: Database): void {
     db.exec("INSERT OR IGNORE INTO decisions_fts(rowid, content) SELECT id, content FROM decisions");
   } catch { /* non-fatal — FTS5 may already exist */ }
 
-  // 8. MemRL Q-value columns on artifacts (Phase 2: Local Intelligence Amplifier)
+  // 8. retrieval_count / success_count columns on artifacts (Phase 2: Local
+  // Intelligence Amplifier — surviving retrieval-feedback path).
+  // q_value was dropped in V23 (Phase 9.8 — RL stack delete).
   try {
     if (hasTable(db, 'artifacts')) {
-      if (!hasColumn(db, 'artifacts', 'q_value'))
-        db.exec("ALTER TABLE artifacts ADD COLUMN q_value REAL DEFAULT 0.5");
       if (!hasColumn(db, 'artifacts', 'retrieval_count'))
         db.exec("ALTER TABLE artifacts ADD COLUMN retrieval_count INTEGER DEFAULT 0");
       if (!hasColumn(db, 'artifacts', 'success_count'))
@@ -1655,5 +1655,43 @@ export function migrateV21toV22(db: Database): boolean {
     return true;
   }
   db.exec(SCHEMA_V22);
+  return true;
+}
+
+/**
+ * V22→V23: Phase 9.8 — RL stack deletion.
+ *
+ * Drops:
+ *   1. `policy_weights` table (V11 — RL model weights for memory policy training)
+ *   2. `artifacts.q_value` column (added in migrateSchemaFixes for MemRL)
+ *
+ * Rationale: Phase 8 verdict DELETE_ALLOWED (V4_RL_ABLATION.md, 2026-04-29,
+ * Δ=0pp). The RL stack (retrieval-rl, memrl-scorer, rl-trainer, rl-policy,
+ * rl-model, rl-reward, plus the rl-scoring-disabled-counter) is gone in
+ * commit corpus, so these schema objects are orphan storage.
+ *
+ * Idempotent: guarded by hasTable / hasColumn checks. Returns true.
+ *
+ * Surrounding columns `retrieval_count` and `success_count` (added alongside
+ * q_value in migrateSchemaFixes step 8) are NOT dropped — they're written by
+ * the surviving retrieval-feedback path (Phase 6 P5) and consumed by
+ * `getRetrievalScoreMultiplier`.
+ */
+export function migrateV22toV23(db: Database): boolean {
+  // Drop policy_weights (table-level — straightforward).
+  if (hasTable(db, 'policy_weights')) {
+    db.exec('DROP TABLE IF EXISTS policy_weights');
+  }
+
+  // Drop q_value column from artifacts.
+  // SQLite 3.35+ supports `ALTER TABLE DROP COLUMN`. better-sqlite3 ships a
+  // recent SQLite that meets this requirement. Guard for environments where
+  // the column doesn't exist (fresh-DB path or already-applied migration).
+  if (hasTable(db, 'artifacts') && hasColumn(db, 'artifacts', 'q_value')) {
+    try {
+      db.exec('ALTER TABLE artifacts DROP COLUMN q_value');
+    } catch { /* non-fatal — leave column in place if drop fails */ }
+  }
+
   return true;
 }

@@ -75,6 +75,7 @@ Decisions logged in PROJECT.md Key Decisions table. Summary:
 - 9.5 (cross-project-consolidator) — shipped 2026-04-30, Vesna 8/8 (cross-project canary 4/4 PASS)
 - 9.6 (proactive-curator) — shipped 2026-04-30, Vesna 8/8 (also dropped guardian.test.ts Proactive Curator section to keep file collectable)
 - 9.7 (data-quality) — shipped 2026-04-30, Vesna 8/8 (also dropped guardian.test.ts Data Quality section)
+- 9.8 (RL stack + V23 migration) — shipped 2026-04-30, Vesna 8/8; 7 RL files + 3 RL tests + obsolete phase-8 ablation test deleted; qMultiplier stripped from hybrid-retrieval; heartbeat Phase 8/4d3 RL blocks removed; V23 drops policy_weights table + artifacts.q_value column; 11 migration tests bumped to user_version 23; policy-registry.ts kept (T6 audit error — non-RL singleton with 8+ live consumers); LOC delta ~−2700
 
 ## Session Continuity
 

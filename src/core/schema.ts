@@ -663,18 +663,6 @@ CREATE TABLE IF NOT EXISTS action_transitions (
   PRIMARY KEY (project, from_action, to_action)
 );
 
--- V11: policy_weights — persisted RL model weights for memory policy training
-CREATE TABLE IF NOT EXISTS policy_weights (
-  id INTEGER PRIMARY KEY,
-  project TEXT NOT NULL,
-  model_name TEXT NOT NULL DEFAULT 'default',
-  weights BLOB NOT NULL,
-  training_episodes INTEGER NOT NULL DEFAULT 0,
-  avg_reward REAL,
-  created_at_epoch INTEGER NOT NULL DEFAULT (unixepoch()),
-  UNIQUE(project, model_name)
-);
-
 -- V13: critical_rules — behavioral rules that need periodic re-injection to prevent drift
 CREATE TABLE IF NOT EXISTS critical_rules (
   id INTEGER PRIMARY KEY,

@@ -48,7 +48,6 @@ import * as fs from 'fs';
 import * as os from 'os';
 import { getSessionEvents, synthesizeSessionSummary, saveSessionSummary } from '../core/session-events.js';
 import { captureRecallFlowEntry } from '../adapters/shared/lifecycle.js';
-import { incrementRlScoringDisabledCounter } from '../core/rl-scoring-disabled-counter.js';
 import type { RerankerSupervisor } from './reranker-supervisor.js';
 import type { LlamaServerSupervisor } from './llama-server-supervisor.js';
 import {
@@ -86,8 +85,6 @@ export interface TickResult {
   observations_consolidated?: number;
   consolidation_clusters?: number;
   sessions_auto_closed?: number;
-  rl_training_episodes?: number;
-  rl_avg_reward?: number;
   user_profiles_synced?: number;
   user_profile_conflicts?: number;
   // Guardian of All Memory
@@ -697,34 +694,6 @@ export async function heartbeatTick(ctx: HeartbeatContext): Promise<TickResult> 
       // Non-critical — consolidation failure doesn't break the heartbeat
     }
 
-    // Phase 8 (P6.5): RL policy training — gated by CLAUDEX_DISABLE_RL_SCORING.
-    // Skipping the trainer when the flag is set is part of ABL-01.
-    // Lowest priority: only runs when no other heavy work happened this tick.
-    // Rate-limited internally by trainPolicyBatch (needs 100+ reward signals).
-    if (process.env.CLAUDEX_DISABLE_RL_SCORING === '1') {
-      incrementRlScoringDisabledCounter('rl-trainer-heartbeat');
-    } else {
-      try {
-        const heavyWorkRan = result.sessions_processed > 0
-          || (result.observations_consolidated ?? 0) > 0
-          || (result.artifacts_linked ?? 0) > 0;
-        if (!heavyWorkRan) {
-          const { trainPolicyBatch } = await import('../intelligence/rl-trainer.js');
-          const project = cachedPrepare(ctx.db,
-            `SELECT project FROM sessions WHERE status = 'active' ORDER BY created_at_epoch DESC LIMIT 1`
-          ).get() as { project: string } | undefined;
-          if (project?.project) {
-            const trainResult = await trainPolicyBatch(ctx.db, project.project);
-            if (trainResult.episodes > 0) {
-              result.rl_training_episodes = trainResult.episodes;
-              result.rl_avg_reward = trainResult.avgReward;
-            }
-          }
-        }
-      } catch {
-        // Non-critical — training failure doesn't break the heartbeat
-      }
-    }
     // Phase 9: User profile sync — cross-project identity reconciliation.
     // Scans CC auto-memory dirs for type: user files, resolves conflicts by mtime,
     // upserts canonical versions as __global__ artifacts. Rate-limited internally.
@@ -987,24 +956,6 @@ export async function heartbeatTick(ctx: HeartbeatContext): Promise<TickResult> 
       }
     } catch { /* non-critical */ }
 
-    // Phase 4d3: MemRL temporal decay (Amp Phase 2).
-    // Rate-limited to once per 24h — decay is designed as 1%/day.
-    // Phase 8 (P6.5): gated by CLAUDEX_DISABLE_RL_SCORING (ABL-01). Inner
-    // applyTemporalDecay also gates, but skipping the dynamic import here
-    // saves I/O when the flag is set.
-    if (process.env.CLAUDEX_DISABLE_RL_SCORING === '1') {
-      incrementRlScoringDisabledCounter('memrl-scorer');
-    } else {
-      try {
-        const nowMs = Date.now();
-        if (nowMs - _lastDecayEpoch >= 86_400_000) { // 24 hours
-          _lastDecayEpoch = nowMs;
-          const { applyTemporalDecay } = await import('../intelligence/memrl-scorer.js');
-          applyTemporalDecay(ctx.db, 1); // exactly 1 day of decay
-        }
-      } catch { /* non-critical */ }
-    }
-
     // Phase 4e2: Entity summary generation (Hindsight-inspired observation layer).
     // Generates consolidated summaries for recurring entities with trend computation.
     // Triple-gated + time-gated: only runs when enough new sessions AND time has passed.
@@ -1212,7 +1163,6 @@ function recordCurationFailure(
 
 /** Rate limit: run pattern consolidation at most once per 30 minutes. */
 let _lastConsolidationEpoch = 0;
-let _lastDecayEpoch = 0;
 const CONSOLIDATION_INTERVAL_MS = 30 * 60 * 1000;
 
 /**

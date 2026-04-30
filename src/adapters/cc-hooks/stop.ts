@@ -398,26 +398,6 @@ const main = wrapHook('Stop', async (input, ctx) => {
     }
   }, ctx.db, input.session_id);
 
-  // MemRL Q-value update: propagate session outcomes to artifact Q-values.
-  // Runs once per session (guarded by session_events), not per turn.
-  runHookStep('memrl_q_update', () => {
-    try {
-      // Get flags in THIS scope (not from parent callback)
-      const memrlFlags = getExperienceFlags(ctx.db, input.session_id);
-
-      // Idempotency guard: only run once per session
-      const guard = cachedPrepare(ctx.db,
-        `SELECT id FROM session_events WHERE session_id = ? AND event_type = 'memrl_q_update' LIMIT 1`
-      ).get(input.session_id) as { id: number } | undefined;
-      if (guard) return;
-
-      const { processSessionQValues } = require('../../intelligence/memrl-scorer.js');
-      processSessionQValues(ctx.db, input.session_id, memrlFlags.correction_flagged);
-
-      recordEvent(ctx.db, input.session_id, routedProject, 'memrl_q_update', 'system', 'applied', '');
-    } catch { /* non-fatal — MemRL is supplementary */ }
-  }, ctx.db, input.session_id);
-
   // B4: Duplicate compaction agent detection — log-only telemetry.
   // Duplicate compaction agents can consume up to 65% of session quota.
   // Heuristic: cache_creation_input_tokens > 200K in a single stop event is anomalous.

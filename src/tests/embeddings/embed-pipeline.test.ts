@@ -241,7 +241,7 @@ describe('V10 schema on fresh install', () => {
     const db = createTestDb();
     try {
       const row = db.pragma('user_version') as Array<{ user_version: number }>;
-      expect(row[0].user_version).toBe(22);
+      expect(row[0].user_version).toBe(23);
     } finally {
       db.close();
     }

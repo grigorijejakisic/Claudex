@@ -41,6 +41,7 @@ import {
   migrateV19toV20,
   migrateV20toV21,
   migrateV21toV22,
+  migrateV22toV23,
   migrateSchemaFixes,
   cleanupOrphanTables,
   upgradeV2SchemaInPlace,
@@ -86,7 +87,7 @@ export function runMigrations(db: Database): void {
   const row = db.pragma('user_version') as Array<{ user_version: number }>;
   let version = row[0]?.user_version ?? 0;
 
-  const TARGET_VERSION = 22;
+  const TARGET_VERSION = 23;
 
   if (version >= TARGET_VERSION) {
     // Still load sqlite-vec even if no migration is needed — the extension
@@ -118,6 +119,7 @@ export function runMigrations(db: Database): void {
     [19, () => { migrateV19toV20(db); }],
     [20, () => { migrateV20toV21(db); }],
     [21, () => { migrateV21toV22(db); }],
+    [22, () => { migrateV22toV23(db); }],
   ];
 
   // Handle special cases for version 0 and 1
@@ -301,11 +303,16 @@ export function initializeSchema(db: Database): void {
   } else {
     db.prepare('INSERT OR IGNORE INTO schema_versions (version) VALUES (?)').run(SCHEMA_VERSION);
   }
-  // Do not demote a V22 (or newer) DB. Phase 8.5 raises the ceiling 21→22
-  // (retrieval_log + session_flag tables; SCHEMA_V22 is fully idempotent).
+  // Do not demote a V23 (or newer) DB. Phase 9.8 raises the ceiling 22→23
+  // (drops policy_weights table + artifacts.q_value column — RL stack delete).
   // Fresh DBs that took the early-return in runMigrations (no `observations`
   // table) are stamped here after SCHEMA_V3 + V19 + V20 + V21 + V22 DDL run.
-  if (currentUv < 22) db.pragma('user_version = 22');
+  // The V22→V23 migration is destructive (DROP), so a fresh-DB path must also
+  // run it to ensure policy_weights / q_value are absent on new installs.
+  if (currentUv < 23) {
+    migrateV22toV23(db);
+    db.pragma('user_version = 23');
+  }
 }
 
 // ---------------------------------------------------------------------------

@@ -166,7 +166,7 @@ describe('fresh DB initialization', () => {
 
       // Verify user_version is current (Phase 6.5 raised TARGET_VERSION to 21)
       const row = db.pragma('user_version') as Array<{ user_version: number }>;
-      expect(row[0].user_version).toBe(22);
+      expect(row[0].user_version).toBe(23);
     } finally {
       db.close();
     }

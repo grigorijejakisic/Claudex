@@ -21,9 +21,8 @@
  *                * retrievalMultiplier
  *                * noveltyMultiplier
  *                * activationFactor
- *                * qMultiplier
  *
- * Each of the seven multipliers has a single home (helper function) and
+ * Each of the six multipliers has a single home (helper function) and
  * one ablation flag (multiplierFlags[name]). See `computeArtifactScore`
  * and `06-03-CONSOLIDATION-NOTE.md` for the documented weight vector.
  *
@@ -46,7 +45,6 @@ import {
   incrementRerankerFallbackCounter,
   type RerankerFallbackReason,
 } from './telemetry-counters.js';
-import { incrementRlScoringDisabledCounter } from './rl-scoring-disabled-counter.js';
 import type { ArtifactRow } from './artifacts.js';
 
 // ---------------------------------------------------------------------------
@@ -59,11 +57,10 @@ import type { ArtifactRow } from './artifacts.js';
  * Inner three (consumed by `computeThreeFactorScore`):
  *   recency, importance, relevance — three-factor base.
  *
- * Outer four (applied as multiplicative scaling on `rrfScore * (1 + threeFactor)`):
+ * Outer three (applied as multiplicative scaling on `rrfScore * (1 + threeFactor)`):
  *   retrieval — feedback-driven retrieval_score multiplier.
  *   novelty   — novelty_score-based boost / demote.
  *   activation— activation_score gating (RIF surface).
- *   qvalue    — MemRL learned utility (sync path only today; aligned in Plan 03).
  *
  * Used by the Phase 6 ablation harness via `HybridSearchOptions.multiplierFlags`.
  */
@@ -73,8 +70,7 @@ export type MultiplierName =
   | 'relevance'
   | 'retrieval'
   | 'novelty'
-  | 'activation'
-  | 'qvalue';
+  | 'activation';
 
 export interface HybridSearchOptions {
   /** Maximum results to return. Default: 10 */
@@ -109,10 +105,10 @@ export interface HybridSearchOptions {
    * Setting a flag to `false` disables that multiplier:
    *   - inner factors (recency/importance/relevance) collapse to 0 inside
    *     `computeThreeFactorScore`,
-   *   - outer multipliers (retrieval/novelty/activation/qvalue) collapse to 1.0.
+   *   - outer multipliers (retrieval/novelty/activation) collapse to 1.0.
    *
    * With every flag set to `false`, the formula reduces to RRF-only:
-   *   hybrid_score = rrfScore * (1 + 0) * 1 * 1 * 1 * 1 = rrfScore.
+   *   hybrid_score = rrfScore * (1 + 0) * 1 * 1 * 1 = rrfScore.
    *
    * Production callers MUST leave this undefined. Only the ablation harness
    * (`src/tests/integration/phase-6-multiplier-ablation.test.ts`) sets it.
@@ -269,21 +265,6 @@ function computeActivationFactor(artifact: ArtifactRow): number {
 }
 
 /**
- * Per-multiplier helper: qvalue (MemRL).
- *
- * Returns 0.5 + (q_value ?? 0.5). A neutral artifact (q_value = 0.5) yields
- * 1.0; high-Q artifacts (1.0) yield 1.5; low-Q artifacts (0.05) yield 0.55.
- * Range: [0.55, 1.5].
- */
-function computeQMultiplier(artifact: ArtifactRow): number {
-  if (process.env.CLAUDEX_DISABLE_RL_SCORING === '1') {
-    incrementRlScoringDisabledCounter('qmultiplier');
-    return 1.0;
-  }
-  return 0.5 + (artifact.q_value ?? 0.5);
-}
-
-/**
  * Context passed to `computeArtifactScore` from each retrieval pipeline.
  *
  * Carries everything needed to compute the score without leaking pipeline
@@ -311,7 +292,6 @@ export interface ArtifactScoringContext {
  *                * retrievalMultiplier
  *                * noveltyMultiplier
  *                * activationFactor
- *                * qMultiplier
  *
  * Each multiplier honors its ablation flag — disabled inner factors zero,
  * disabled outer multipliers collapse to 1.0. With every flag set to false
@@ -346,12 +326,9 @@ export function computeArtifactScore(
   const activationFactor = enabled('activation')
     ? computeActivationFactor(artifact)
     : 1.0;
-  const qMultiplier = enabled('qvalue')
-    ? computeQMultiplier(artifact)
-    : 1.0;
 
   const baseScore = rrfScore * (1 + threeFactor);
-  return baseScore * retrievalMultiplier * noveltyMultiplier * activationFactor * qMultiplier;
+  return baseScore * retrievalMultiplier * noveltyMultiplier * activationFactor;
 }
 
 // ---------------------------------------------------------------------------

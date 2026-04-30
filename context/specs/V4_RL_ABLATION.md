@@ -108,3 +108,38 @@ That is a real limit of the evidence on this verdict — but per CONTEXT.md `<sp
 - Phase 6 ablation evidence: `.planning/phases/06-p5-retrieval-simplification-multiplier-ablation/runs/06-02-disable-qvalue.json`
 - Phase 8 source artifact: `.planning/phases/08-p6.5-rl-ablation-gate/runs/08-rl-ablation-summary.json`
 - Phase 9 sub-phase 9.8 (conditional RL deletion): `.planning/ROADMAP.md` Phase 9 success criterion 3
+
+---
+
+## Phase 9.8 execution
+
+**Date executed:** 2026-04-30
+**Verdict honored:** DELETE_ALLOWED → 9.8 shipped per CONTEXT.md `<decisions>.### 9.8 conditional logic`
+
+**Deletions landed:**
+- 7 RL source files: `retrieval-rl.ts`, `memrl-scorer.ts`, `rl-trainer.ts`, `rl-policy.ts`, `rl-model.ts`, `rl-reward.ts`, `rl-scoring-disabled-counter.ts`
+- 3 RL test files: `retrieval-rl.test.ts`, `rl-model.test.ts`, `rl-scoring-disabled-counter.test.ts`
+- 1 obsolete integration test: `phase-8-rl-ablation.test.ts` (test surface for the env-var gate that the deletion consummates)
+- `qMultiplier` branch in `computeArtifactScore` (hybrid-retrieval.ts) + `'qvalue'` from `MultiplierName` union
+- Heartbeat Phase 8 RL-trainer block (~28 lines) + Phase 4d3 temporal-decay block (~17 lines) + `result.rl_*` fields + `_lastDecayEpoch` rate-limit
+- Adapter coupling: `cc-hooks/session-end.ts` (updateSessionQValues call), `cc-hooks/stop.ts` (memrl_q_update step)
+- Q-value RL reranking inside `experience-patterns.ts` (boost loop + getQValueBoosts import)
+
+**V23 migration shipped:**
+- `migrateV22toV23` drops `policy_weights` table + `artifacts.q_value` column (idempotent guards)
+- `TARGET_VERSION` raised 22→23 in `runMigrations`
+- Fresh-DB stamping in `initializeSchema` runs V23 unconditionally (ensures policy_weights / q_value absent on new installs)
+- `policy_weights` CREATE TABLE removed from `schema.ts`
+- `q_value` ALTER ADD removed from `migrateSchemaFixes` step 8 (retrieval_count + success_count survive — they're consumed by retrieval-feedback)
+- 11 existing migration test files updated 22→23 (mechanical version-assertion bump)
+
+**Plan deviation (audit error correction):**
+- Plan 09-08 listed `src/intelligence/policy-registry.ts` as one of "the seven RL stack modules". Verification (live consumer audit + git history) showed it's a non-RL singleton holder around `DefaultMemoryPolicy` (8+ live consumers in intent-predictor, retrieval-feedback, observations, hybrid-retrieval, decay-engine, consolidator, stop, memory-policy.test). T6 audit conflated `policy-registry` (DefaultMemoryPolicy holder) with `rl-policy` (RL MemoryPolicy implementer). Per Plan 09-08 risk+rollback guidance ("if T6 was wrong on any module, bisect catches it; restore + investigate"), the file was restored after deletion. 9.8 ships with 7 RL files deleted instead of 8.
+
+**LOC delta:** ~−2700 lines (target was −700 to −1100 per the Phase 8 prediction; the prediction undercounted because the corresponding test files plus the qMultiplier branch + heartbeat blocks + adapter calls add up)
+
+**Vesna spot-check:** 8/8 (4 multiplier-ablation probes + 4 cross-project probes), Phase 6 11-probe and Phase 6.5 3-probe surfaces both clean.
+
+**DB backup:** `~/.claudex/backups/pre-v4-P9.8-20260430-131848.db` (376MB)
+
+**Status:** REALIZED. The Phase 8 prediction held — Vesna pass rate did not regress under the deletion.

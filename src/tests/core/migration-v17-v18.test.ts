@@ -25,7 +25,7 @@ describe('Phase 4.1 V17→V18 migration', () => {
     const db = new Database(':memory:');
     initializeSchema(db);
 
-    expect(getUserVersion(db)).toBe(22);
+    expect(getUserVersion(db)).toBe(23);
 
     const tables = (db.prepare(
       "SELECT name FROM sqlite_master WHERE type='table' ORDER BY name"
@@ -41,7 +41,7 @@ describe('Phase 4.1 V17→V18 migration', () => {
     const db = new Database(':memory:');
     initializeSchema(db);
     expect(() => initializeSchema(db)).not.toThrow();
-    expect(getUserVersion(db)).toBe(22);
+    expect(getUserVersion(db)).toBe(23);
 
     const tables = (db.prepare(
       "SELECT name FROM sqlite_master WHERE type='table' AND name IN ('shape_vocabulary', 'shape_candidates')"
@@ -58,7 +58,7 @@ describe('Phase 4.1 V17→V18 migration', () => {
     // step itself is also IF NOT EXISTS-guarded so a partial pre-state is fine.
     runMigrations(db);
     // Phase 6.5 raised TARGET_VERSION to 21.
-    expect(getUserVersion(db)).toBe(22);
+    expect(getUserVersion(db)).toBe(23);
     db.close();
   });
 
