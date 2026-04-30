@@ -193,17 +193,30 @@ export async function heartbeatTick(ctx: HeartbeatContext): Promise<TickResult> 
             JSON.stringify({ project: session.project, session_id: session.session_id }),
           );
 
-          // 5. Git commit — every session end produces a commit
+          // 5. Git commit — every session end produces a commit.
+          // Direct execFileSync (no shell) so the embedded commit message
+          // doesn't depend on cmd.exe vs /bin/sh quoting rules.
           try {
-            const { execSync } = require('child_process');
+            const { execFileSync } = require('child_process');
             const { resolveProjectPath } = require('../shared/scope-detector.js');
             const projectPath = resolveProjectPath(session.project);
             if (projectPath) {
-              execSync('git add -A && git diff --cached --quiet || git commit -m "session(auto-close): Angel auto-closed idle session"', {
-                cwd: projectPath,
-                stdio: 'ignore',
-                timeout: 10000,
-              });
+              const gitOpts = { cwd: projectPath, stdio: 'ignore' as const, timeout: 10000 };
+              execFileSync('git', ['add', '-A'], gitOpts);
+              // git diff --cached --quiet exits 0 if no staged changes, 1 if staged
+              let hasStaged = false;
+              try {
+                execFileSync('git', ['diff', '--cached', '--quiet'], gitOpts);
+              } catch {
+                hasStaged = true;
+              }
+              if (hasStaged) {
+                execFileSync(
+                  'git',
+                  ['commit', '-m', 'session(auto-close): Angel auto-closed idle session'],
+                  gitOpts,
+                );
+              }
             }
           } catch { /* git commit failure is non-fatal */ }
 
