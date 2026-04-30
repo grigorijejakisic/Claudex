@@ -1,5 +1,5 @@
 {
-  "captured_at": "2026-04-29T23:51:44.382Z",
+  "captured_at": "2026-04-30T20:59:55.475Z",
   "probe_count": 11,
   "baseline": {
     "passRate": 1,
@@ -128,20 +128,6 @@
     },
     {
       "disabled": "activation",
-      "enabledRate": 1,
-      "disabledRate": 1,
-      "deltaPp": 0,
-      "perCategoryDeltaPp": {
-        "lesson": 0,
-        "entity": 0,
-        "constraint": 0,
-        "handoff": 0
-      },
-      "simpleVerdict": "DROP",
-      "finalVerdict": "DROP"
-    },
-    {
-      "disabled": "qvalue",
       "enabledRate": 1,
       "disabledRate": 1,
       "deltaPp": 0,

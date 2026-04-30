@@ -5,8 +5,7 @@
     "relevance": false,
     "retrieval": false,
     "novelty": false,
-    "activation": false,
-    "qvalue": false
+    "activation": false
   },
   "perProbe": [
     {
