@@ -1,8 +1,10 @@
-# Claudex v4
+# Claudex
 
 ## What This Is
 
-Claudex v4 is a behavioral reframe of the Claudex v3 persistent memory system. Originally scoped (2026-04-19) as a behavioral push-to-pull shift; rebounded (2026-04-27) after a trajectory audit found phase gates that didn't measure phase changes and a flagship deliverable (MEMORY.md) shipping with visible content regressions. The audit closed with a 16-phase rebalance: 5 deletion/cleanup phases stay (the v4 thesis is correct), 5 new upgrade phases added (4.1, 5.5, 6.5, 7.5, 8.5), Vesna promoted to Phase 10 as central validation, Phase 3+10 merged so directive detector ships with consumer surface and lifecycle. Built on the existing v3 runtime (SQLite + sqlite-vec + Ollama embeddings + BGE-reranker-v2-m3) — no rewrite, consolidation + framing + targeted upgrades.
+Claudex is a persistent memory system for LLM coding agents. **v4.0.0 SHIPPED 2026-04-30** — the behavioral reframe of v3 closed with a 16-phase rebalance, all four success criteria passing (Vesna 100%, cache-stable 12/12, MEMORY.md content quality 90 across 6 projects, handoff pickup 3/3). v4 is internal infrastructure; the agent USES Claudex organically as a working-thought tool in Claude Code. Built on SQLite + sqlite-vec + Ollama embeddings + BGE-reranker-v2-m3.
+
+**Current milestone: v4.1 — Distribution.** Make Claudex installable by strangers and ship to public GitHub.
 
 ## Core Value
 
@@ -10,92 +12,69 @@ Claudex v4 is a behavioral reframe of the Claudex v3 persistent memory system. O
 
 **Canonical example (user-articulated 2026-04-27):** if last session we discovered *"60 HTTP polls to backend X = 15-min IP shadowban"*, and this session user says *"investigate another backend for intel gathering,"* the agent should automatically (1) recognize this is rate-limit-research-shaped work, (2) recall the shadowban finding, (3) apply it to scoping — all without being told to query memory.
 
+## Current Milestone: v4.1 — Distribution
+
+**Goal:** Make Claudex installable by strangers in <30 minutes from a clean clone, with no insider knowledge required, and ship to `grigorijejakisic/claudex` public GitHub.
+
+**Locked decisions (2026-04-30 milestone kickoff):**
+- **License:** MIT
+- **Platforms:** Windows + Mac + Linux (full cross-platform audit)
+- **Harness:** Claude Code only (Cursor/Zed/etc deferred to future milestone)
+- **Distribution:** Self-host only (no hosted/SaaS variant)
+- **Public ship target:** `github.com/grigorijejakisic/claudex`
+
+**Target features (subject to refinement when REQUIREMENTS.md is generated):**
+- LICENSE file (MIT) at repo root
+- `package.json` polish (remove `private: true`; add license, repo, version, keywords, engines)
+- README rewrite — entry point for humans, not the agent (CLAUDE.md stays for the agent)
+- Cross-platform audit — paths, hooks, file locks, subprocess spawning, line endings on Mac/Linux
+- Bootstrap script — one-command setup (Ollama install + arctic-embed2 pull + BGE reranker on 7439)
+- Hardcoded path discovery — `~/Desktop/Projects/` reference in MCP instructions made configurable
+- `claudex doctor` self-diagnosis — reports prereq status (Bun version, Ollama running, port 7439 alive, DB schema version, hooks registered)
+- Onboarding fixture — install on a fresh VM (Mac + Linux + Windows), document every friction point as test cases
+- CHANGELOG + release notes for v4
+- Public push to `grigorijejakisic/claudex` (final ship action)
+
+**Out of scope for v4.1:**
+- Multi-harness support (Cursor/Zed adapters) — separate future milestone
+- Hosted/SaaS variant — separate future milestone
+- v5 episodic memory architecture — separate future milestone (research at `.planning/research/2026-04-30-v5-episodic-memory.md`)
+- Internal v4 deferrals from REQUIREMENTS.md (STOR-09 task-pattern fingerprint, EXTR-04/06 partials, LIFE-01..04, DIR-CONSUMER-01..02, FRAM-05 A/B verdict) — triaged into v4.2 or remain on the v4.1 carry-forward list per `.planning/v4.1-distribution/STUB.md`
+
 ## Requirements
 
 ### Validated
 
-*(none yet — Phase 11 final validation not run)*
+**v4.0 (SHIPPED 2026-04-30, tag v4.0.0, commit f8f617c)** — All categories below shipped and gated through SC#1-#4. See `.planning/phases/11-p9-final-validation/11-V4-VALIDATION.md` for evidence rollup.
+
+- ✓ STOR-01..STOR-08 (artifact unification, V17 migration, T3 verified) — Phase 2
+- ✓ EXTR-01..EXTR-03 (directive detector core + Angel wiring) — Phase 3
+- ✓ EXTR-05 (semantic ingester via Angel) — Phase 9 (deletion path)
+- ✓ INJ-01..INJ-07 (session-start ≤500 tokens, cache-stable) — Phase 5
+- ✓ RETR-01..RETR-08 (RRF + cross-encoder rerank, ablation, cross-project, hard-required) — Phases 6 + 6.5
+- ✓ CUR-09..CUR-15 (MEMORY.md schema redesign, Lessons section, writer reach + state-machine fix, mixed-precision normalization) — Phase 4.1
+- ✓ CUR-16..CUR-18 (pointer_recall_log, auto-archive, auto-promote) — Phase 5.5
+- ✓ FRAM-01..FRAM-04 (advisory voice across formatters) — Phase 7
+- ✓ HAND-01..HAND-02 (hybrid YAML status header + ADR body, MEMORY.md handoff consumer) — Phase 7.5
+- ✓ ABL-01..ABL-03 (RL ablation gate, verdict DELETE_ALLOWED) — Phase 8
+- ✓ OBS-01..OBS-04 (retrieval log, narration directive, /endsession cost block, /claudex-why) — Phase 8.5
+- ✓ VESN-01..VESN-04 (probe corpus, ~20 probes, CI-gated ≥80%) — Phase 10
+- ✓ TOK-01, CACH-01..CACH-03 (token budget + cache-stability hardening) — Phase 5 + Phase 8.5 re-gate
+- ✓ CONT-01..CONT-03 (mechanical content-quality scoring, SC#3 gate, CI integration) — Phase 4.1 + Phase 11
+- ✓ STOR-04 (legacy *_old tables dropped via V24 after zero-caller audit) — Phase 11
+
+**v4 deferrals (carry-forward — see `.planning/v4.1-distribution/STUB.md`):**
+- [~] EXTR-04 — detector precision held-out recall measurement, `negation_dont` family tune
+- [~] EXTR-06 — transcript chunking via LLM topic-segmentation (Phase 4.1 partial)
+- [~] STOR-09 — task-pattern fingerprint column on artifact kinds (write-time auto-classification)
+- [~] LIFE-01..LIFE-04 — directive lifecycle (scope detection, supersession, decay, accumulation)
+- [~] DIR-CONSUMER-01..DIR-CONSUMER-02 — PreToolUse hook surface for directives
+- [~] FRAM-05 — week-of-use behavioral A/B subjective verdict (due 2026-05-06)
+- [~] HAND-03 — handoff pickup probe (SC#4 live trials operator-runnable; synthetic 3/3 already shipped)
 
 ### Active
 
-**Storage (STOR):**
-- [ ] STOR-01..STOR-08: artifact unification (V17 migration) — *complete via Phase 2 (T3 verified)*
-- [ ] STOR-09 (NEW): task-pattern fingerprint column on artifacts of `kind ∈ {mental_model, learning, experience_pattern, workspace_fact, lesson}` — auto-classified at write time
-
-**Extraction (EXTR):**
-- [x] EXTR-01..EXTR-03: directive detector core + Angel wiring — complete
-- [~] EXTR-04: detector precision — partial-B at joint=0.50; held-out recall measurement + `negation_dont` tune owned by Phase 3 merger
-- [ ] EXTR-05: replace 6 v3 extractors with single Angel semantic ingester — owned by Phase 9
-- [ ] EXTR-06: transcript chunking via LLM topic-segmentation — owned by Phase 4.1 (reach fix)
-
-**Injection (INJ):**
-- [ ] INJ-01..INJ-07: session-start ≤500 tokens, delete 9 sections, `initialUserMessage` prime, UPS ≤1KB, cache-stable — owned by Phase 5
-
-**Retrieval (RETR):**
-- [ ] RETR-01..RETR-04: collapse hybrid-retrieval to RRF + cross-encoder rerank — owned by Phase 6
-- [ ] RETR-05 (NEW): per-multiplier ablation A/B before bulk delete — owned by Phase 6
-- [ ] RETR-06 (NEW): task-pattern fingerprint matching at search time — owned by Phase 6.5
-- [ ] RETR-07 (NEW): cross-project query expansion default-ON — owned by Phase 6.5
-- [ ] RETR-08 (NEW): reranker hard-required; bi-encoder fallback explicitly degraded-mode with telemetry — owned by Phase 6
-
-**Curation (CUR):**
-- [~] CUR-01..CUR-08: Phase 4 deliverables — partial-corrective-pending (Phase 4.1 supersedes)
-- [ ] CUR-09 (NEW): MEMORY.md schema redesign — drop `## Entities` + `## Recent Threads`; add `## Lessons` + promote `## User Notes`
-- [ ] CUR-10 (NEW): Lessons format — task-pattern indexed pointers
-- [ ] CUR-11 (NEW): /endsession curation flow — Angel proposes 1-3 candidate Lessons/User Notes pointers; user accepts/edits/rejects
-- [ ] CUR-12 (NEW): writer reach = 5/5 active projects via Angel heartbeat sweep; migration NEVER stomps existing user content
-- [ ] CUR-13 (NEW): writer state-machine bug fix (duplicate USER EDITABLE markers eliminated; idempotent re-run produces byte-identical output)
-- [ ] CUR-14 (NEW): mixed-precision `created_at_epoch` normalized to milliseconds across all artifact kinds
-- [ ] CUR-15 (NEW): transcript_chunk reach verified — chunker runs for all sessions; live-fire confirms ≥1 chunk per session
-- [ ] CUR-16 (NEW): `pointer_recall_log` table — owned by Phase 5.5
-- [ ] CUR-17 (NEW): auto-archive dead pointers (90d zero retrievals + null helpful) — owned by Phase 5.5
-- [ ] CUR-18 (NEW): auto-promote high-recall pointers (≥3 retrievals + helpful=true) — owned by Phase 5.5
-
-**Framing (FRAM):**
-- [ ] FRAM-01..FRAM-04: advisory voice in every surviving formatter — owned by Phase 7
-- [ ] FRAM-05 (NEW): behavioral A/B for 1 week of real sessions; subjective scoring of agent-thinks-with-experience vs follows-rules — owned by Phase 7
-
-**Lifecycle (LIFE):**
-- [ ] LIFE-01..LIFE-04: scope detection, supersession edges, confidence decay — owned by Phase 3 merger
-
-**Directive consumer surface (DIR-CONSUMER, NEW):**
-- [ ] DIR-CONSUMER-01: PreToolUse hook surface — surfaces relevant directive as system-role observation BEFORE matching tool runs
-- [ ] DIR-CONSUMER-02: `applies_to_paths` (glob) + `applies_to_commands` (regex) fields per directive
-- [ ] DIR-CONSUMER-03: relevance threshold `helped/total ≥ 0.7` AND `total ≥ 10`; max 1 surface per tool call (highest-relevance wins)
-- [ ] DIR-CONSUMER-04: production consumer count > 0 verifiable in DB telemetry
-
-**Handoff (HAND, NEW):**
-- [ ] HAND-01: hybrid YAML status header (`status:`, `phase:`) + ADR-style body
-- [ ] HAND-02: writer outputs new shape; Phase 4.1's MEMORY.md `## Handoff` consumes header for programmatic queryability
-- [ ] HAND-03: handoff pickup probe (SC#4) — soft-allow handoff-referenced reads; block exploratory glob/grep/Bash before first user-facing action
-
-**Cache + Token (CACH/TOK, NEW):**
-- [ ] TOK-01: session-start ≤500 tokens (tokenizer assertion on actual output)
-- [ ] CACH-01: golden snapshot byte-identical across runs
-- [ ] CACH-02: invariance under volatile-state mutation (clock change, session-ID change, host-env change must not change output bytes)
-- [ ] CACH-03: pre-work hardening — clock leaks, session-ID strips, host-env normalization, stable tiebreakers, CRLF/BOM normalizer + `.gitattributes`
-
-**Content-Quality (CONT, NEW):**
-- [ ] CONT-01: mechanical scoring rubric — zero parsing-bug rows; ≥80% pointers project-specific; topics not session-IDs; pointer density ≥1/10 lines; handoff freshness
-- [ ] CONT-02: SC#3 — score ≥80% on every active project's MEMORY.md
-- [ ] CONT-03: scoring runs as CI on every PR for every active project
-
-**Vesna behavioral suite (VESN, NEW):**
-- [ ] VESN-01: corpus mined from real session histories across all active projects
-- [ ] VESN-02: ~20 probes curated covering entity recall (3-5), constraint recall (3-5), handoff pickup (3), cross-project (3-5), lesson application (3-5), self-instrumented gap detection (2-3)
-- [ ] VESN-03: SC#1 — Vesna pass rate ≥80%
-- [ ] VESN-04: CI integration; runs on every PR; pass rate ≥80% required to merge
-
-**Recall Observability (OBS, NEW):**
-- [ ] OBS-01: per-session retrieval log (every search/recall captured with query, top-k, used-in-output, token cost)
-- [ ] OBS-02: agent system prompt addition — narrate retrieval gaps + surfaced gold; visible by default, silent on demand
-- [ ] OBS-03: visible token cost at /endsession (*"session-start spent N; recall added M; total X tokens"*)
-- [ ] OBS-04: `/claudex-why` slash command + retrieval log for current session
-
-**RL Ablation (ABL, NEW — replaces deprecated BENCH-08):**
-- [ ] ABL-01: feature flag `CLAUDEX_DISABLE_RL_SCORING=1` bypasses Q-value multipliers in `hybrid-retrieval.ts` and skips `rl-trainer` ticks
-- [ ] ABL-02: Vesna probe suite run with flag set; baseline run without flag; decision committed to `context/specs/V4_RL_ABLATION.md`
-- [ ] ABL-03: edge case — if delta is exactly at -2pp, default to "keep RL" (conservative)
+**v4.1 — Distribution requirements** to be defined in `REQUIREMENTS.md`. Categories tracked there.
 
 ### Removed Requirements (2026-04-27 audit-driven)
 
@@ -112,7 +91,6 @@ Claudex v4 is a behavioral reframe of the Claudex v3 persistent memory system. O
 - Angel-as-subagent migration — discussed and parked until v4 stabilizes
 - Agent Teams integration (`CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS`) — experimental API
 - `conversation_turns` schema — raw turn storage is correct; new chunking pipeline layers on top
-- **Public-release polish (LICENSE, install ergonomics, cross-platform audit, README rewrite, self-diagnosis tooling)** — v4.1 = Distribution as a dedicated follow-up milestone. v4 is "make it work better"; v4.1 is "make it installable by strangers."
 
 ## Context
 
@@ -157,25 +135,6 @@ Claudex v4 is a behavioral reframe of the Claudex v3 persistent memory system. O
 | Q11 (audit, 2026-04-27) Handoff format = hybrid YAML status header + ADR body | Current 372-line schema is dense and rigid. Hybrid: 2-line YAML for programmatic queryability (Phase 4.1's writer reads `status:` + `phase:`); ADR body for human readability. ~15 lines target. | Locked. Owns Phase 7.5. |
 | Q12 (audit, 2026-04-27) Phase ordering = 4.1 first, then 5 | 4.1 first: agent has good MEMORY.md but injections still happening — content-quality scoring validates 4.1 mechanically. 5 first: injections gone but MEMORY.md still broken — agent has nothing to fall back on, higher risk. | Locked. 4.1 → 3 merged → 5 → 10 → 5.5 → 6+6.5 → 7+7.5 → 8 → 8.5 → 9 → 11. |
 
-## Next Milestones
-
-### v4.1 — Distribution (planned, follows v4.0 tag)
-
-**Intent:** Make Claudex installable by strangers without diluting v4's behavioral focus. Triggered immediately after `v4.0.0` tag lands.
-
-**Sketch (subject to refinement at v4.1 = Distribution `/gsd:new-milestone`):**
-- LICENSE file (decision: MIT vs Apache 2.0 vs AGPL — copyleft consideration)
-- `package.json` metadata — remove `private: true`, version, repo, keywords, engines
-- Cross-platform audit — Mac/Linux path handling, hook scripts, file locks (currently Windows-first)
-- Bootstrap script — one-command setup (Ollama, snowflake-arctic-embed2 pull, BGE reranker on 7439)
-- Hardcoded path discovery — `~/Desktop/Projects/` is in MCP instructions; needs to be configurable
-- README rewrite for outsiders — what Claudex does, why (the v4 thesis is the actual selling point), install, basic usage, troubleshooting
-- `claudex doctor` self-diagnosis tool
-- Onboarding fixture — install on a fresh VM, document every friction
-- CHANGELOG + release notes for v4
-
-**Why scoped separately:** Distribution work is cross-platform debugging + product polish, fundamentally different from v4's behavioral reframe. Combined scope would push v4 ship by weeks AND contaminate the focused work.
-
 ---
 
-*Last updated: 2026-04-27 after audit-driven 16-phase rebind. Original spec at `context/specs/CLAUDEX_V4_SCOPE.md` preserved with 2026-04-27 corrigendum.*
+*Last updated: 2026-04-30 after v4.0.0 ship + v4.1 milestone kickoff. v4 requirements moved to Validated; v4.1 Distribution scope captured in `## Current Milestone` section. Original spec at `context/specs/CLAUDEX_V4_SCOPE.md` preserved with 2026-04-27 corrigendum.*
