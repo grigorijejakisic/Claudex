@@ -1,0 +1,50 @@
+{
+  "aggregate_pass_rate": 1,
+  "per_category": {
+    "entity-recall": {
+      "pass_rate": 1,
+      "total": 3,
+      "passed": 3,
+      "flaky": 0
+    },
+    "constraint-recall": {
+      "pass_rate": 1,
+      "total": 3,
+      "passed": 3,
+      "flaky": 0
+    },
+    "handoff-pickup": {
+      "pass_rate": 1,
+      "total": 3,
+      "passed": 3,
+      "flaky": 0
+    },
+    "cross-project": {
+      "pass_rate": 1,
+      "total": 3,
+      "passed": 3,
+      "flaky": 0
+    },
+    "lesson-application": {
+      "pass_rate": 1,
+      "total": 3,
+      "passed": 3,
+      "flaky": 0
+    },
+    "self-instrumented": {
+      "pass_rate": 1,
+      "total": 2,
+      "passed": 2,
+      "flaky": 0
+    },
+    "buffer": {
+      "pass_rate": 0,
+      "total": 0,
+      "passed": 0,
+      "flaky": 0
+    }
+  },
+  "flaky_probes": [],
+  "failed_probes": [],
+  "gated": true
+}
