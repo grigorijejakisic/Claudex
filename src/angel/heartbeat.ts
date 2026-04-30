@@ -47,7 +47,6 @@ import * as path from 'path';
 import * as fs from 'fs';
 import * as os from 'os';
 import { runDataQualityChecks } from './data-quality.js';
-import { runProactiveCuration } from './proactive-curator.js';
 import { getSessionEvents, synthesizeSessionSummary, saveSessionSummary } from '../core/session-events.js';
 import { captureRecallFlowEntry } from '../adapters/shared/lifecycle.js';
 import { incrementRlScoringDisabledCounter } from '../core/rl-scoring-disabled-counter.js';
@@ -95,9 +94,6 @@ export interface TickResult {
   // Guardian of All Memory
   retention_rows_deleted?: number;
   quality_issues_fixed?: number;
-  artifacts_promoted?: number;
-  artifacts_decayed?: number;
-  health_report_sent?: boolean;
   patterns_promoted_to_always?: number;
   patterns_merged?: number;
   entities_summarized?: number;
@@ -1026,25 +1022,6 @@ export async function heartbeatTick(ctx: HeartbeatContext): Promise<TickResult> 
       } catch { /* non-critical */ }
     }
 
-    // Phase 4e: Proactive memory curation.
-    // Promotes valuable artifacts, decays unused ones, detects contradictions,
-    // manages project lifecycles, sends health reports, prepares away-digests.
-    // Triple-gated: only runs when enough new sessions exist.
-    if (heavyConsolidationGatePassed) try {
-      const curationResult = runProactiveCuration(ctx.db, ctx.config.retention);
-      if (curationResult.artifacts_promoted > 0) {
-        result.artifacts_promoted = curationResult.artifacts_promoted;
-      }
-      if (curationResult.artifacts_decayed > 0) {
-        result.artifacts_decayed = curationResult.artifacts_decayed;
-      }
-      if (curationResult.health_report_sent) {
-        result.health_report_sent = true;
-      }
-    } catch {
-      // Non-critical — curation failure doesn't break the heartbeat
-    }
-
     // Phase 4e2: Entity summary generation (Hindsight-inspired observation layer).
     // Generates consolidated summaries for recurring entities with trend computation.
     // Triple-gated + time-gated: only runs when enough new sessions AND time has passed.
@@ -1498,9 +1475,7 @@ export function computeNextInterval(
       || (result.observations_consolidated ?? 0) > 0
       || (result.artifacts_linked ?? 0) > 0
       || (result.embeddings_backfilled ?? 0) > 0
-      || (result.user_profiles_synced ?? 0) > 0
-      || (result.artifacts_promoted ?? 0) > 0
-      || (result.artifacts_decayed ?? 0) > 0;
+      || (result.user_profiles_synced ?? 0) > 0;
 
     if (workDone) {
       return { intervalMs: WIND_DOWN_INTERVAL_MS, idle: false };

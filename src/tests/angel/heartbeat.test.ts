@@ -76,13 +76,6 @@ vi.mock('../../angel/data-quality.js', () => ({
   }),
 }));
 
-vi.mock('../../angel/proactive-curator.js', () => ({
-  runProactiveCuration: vi.fn().mockReturnValue({
-    artifacts_promoted: 0, artifacts_decayed: 0, contradictions_detected: 0,
-    hot_files_cooled: 0, projects_archived: 0, health_report_sent: false, digests_prepared: 0,
-  }),
-}));
-
 vi.mock('../../angel/session-monitor.js', () => ({
   getIdleSessions: vi.fn().mockReturnValue([]),
   hasIdleWarning: vi.fn().mockReturnValue(false),
