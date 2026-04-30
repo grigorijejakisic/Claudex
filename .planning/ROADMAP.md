@@ -29,8 +29,12 @@ Phase 1 (P0 crystallization, ✅) and Phase 2 (P1 artifact unification, ✅, T3 
 - [x] **Phase 8: P6.5 — RL ablation gate** — Feature-flag deterministic go/no-go on RL deletion (decision by behavioral observation, not benchmark) — **CLOSED 2026-04-29 verdict DELETE_ALLOWED**
 - [x] **Phase 8.5: Recall observability + self-instrumented agent** — COMPLETE 2026-04-30. retrieval_log + cl100k counter + narration directive (advisory voice) + /silent toggle + /endsession cost block + /claudex-why slash; 2 Vesna probes pass; SC#2 cache-stability re-passes (12/12, budget 191/500).
 - [x] **Phase 9: P7 — Angel simplification** — COMPLETE 2026-04-30. Per-module deletion across 8 sub-phase atomic commits + 1 close commit. Aggregate LOC −6021. Vesna SC#1 PASS at 32/32 (100%). Heartbeat tick comments 38→28. Phase 8 verdict DELETE_ALLOWED honored in 9.8 (RL stack + V23 migration). CUR-05/06/07, EXTR-05, RETR-05 closed.
-- [ ] **Phase 10: Vesna probe suite as central validation** — Mine ~20 probes from real session histories; CI-gated; pass rate ≥80% required
-- [ ] **Phase 11: P9 — Final validation against SC#1-#4** — Behavioral suite + content-quality + cache stability + handoff pickup; tag v4
+- [x] **Phase 10: Vesna probe suite as central validation** — COMPLETE 2026-04-30. 17 probes across 6 categories at 100% pass rate; CI-gated via `.github/workflows/vesna.yml`; harness at `src/benchmark/vesna/`.
+- [x] **Phase 11: P9 — Final validation against SC#1-#4** — COMPLETE 2026-04-30. All four SCs PASS with explicit evidence; STOR-04 closed (V24 dropped 6 legacy `*_old` tables after zero-caller audit); benchmark vibe-check archival cite within drift; **v4.0.0 tagged**; v4.1 Distribution stub committed.
+
+## v4.0.0 SHIPPED
+
+v4.0 is internal infrastructure. v4.1 = Distribution will make it installable by strangers. Validation roll-up: `.planning/phases/11-p9-final-validation/11-V4-VALIDATION.md`. Next milestone planning: `.planning/v4.1-distribution/STUB.md`.
 
 ## Phase Details
 

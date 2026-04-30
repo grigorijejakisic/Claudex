@@ -1,23 +1,18 @@
 # Claudex
 
+> **v4.0 is internal infrastructure. v4.1 = Distribution will make it installable by strangers.**
+
 **Persistent memory that makes LLM agents actually remember.**
 
-**LongMemEval Oracle 90.6%** — competitive with top published systems at 1–2 percentage points, using a local 16B model instead of GPT-4o.
+Claudex is a behavior-first persistent memory system for LLM coding agents. It runs locally on top of [Claude Code](https://docs.anthropic.com/en/docs/claude-code) — one SQLite database, one in-process vector store, one Python reranker service — and silently captures observations, decisions, artifacts, and conversation history, then surfaces exactly the right context at the right time.
 
-```
-Benchmark             Claudex   Competitors
-────────────────────────────────────────────────────────────────
-LongMemEval Oracle     90.6%   Hindsight 89.0–91.4%, Memori 82.0%,
-                               MemMachine 84.9%, Zep 71.2%,
-                               Mem0 —, OpenAI Memory 52.9%
-LoCoMo (full)          55.5%   Work in progress. See benchmarks/
-                               for honest harness + methodology.
-```
+The v4.0.0 ship is gated by **behavior**, not benchmarks: full validation record at `.planning/phases/11-p9-final-validation/11-V4-VALIDATION.md`. To run the local ship gate yourself:
 
-**Honesty notes:**
-- **LongMemEval mode is oracle**: only the 1–3 evidence sessions per question are ingested, not the full 500-session haystack. This is the standard published-baseline mode used by Hindsight and others. Full-haystack mode has not yet been benchmarked at scale.
-- **LoCoMo is a work in progress.** An earlier harness produced higher numbers; our current honest harness (commit `893270d feat: benchmark analysis tooling + first honest LoCoMo results`) scores 55.5% against the real hybrid-retrieval pipeline. The gap is being investigated. Results are committed at `LOCOMO_RESULTS.json` so anyone can verify.
-- **Answer model:** `deepseek-coder-v2:16b` locally for LongMemEval. Published competitors use GPT-4o or Gemini. The scores reflect the retrieval + assembly architecture, not raw LLM intelligence. A stronger answer model would likely push scores higher.
+```bash
+bun run test           # full vitest suite
+bun run vesna          # SC#1 — Vesna behavioral probe suite
+bun run sc3            # SC#3 — MEMORY.md content-quality mechanical scorer
+```
 
 No cloud dependency. No external memory service. One SQLite database, one vector store, running entirely on your machine.
 
