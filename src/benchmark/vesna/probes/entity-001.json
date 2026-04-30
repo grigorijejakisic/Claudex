@@ -1,0 +1,28 @@
+{
+  "id": "entity-001",
+  "category": "entity-recall",
+  "source_session_id": "decision:bge-cross-encoder-port-7439",
+  "source_project": "claudex-v3",
+  "scenario": "Prior session decided BGE-reranker-v2-m3 on port 7439 is the cross-encoder for hybrid retrieval; bi-encoder is fallback. New session asks about 'the local cross-encoder service' without naming BGE/7439. Agent should name the actual service from memory.",
+  "user_prompt": "What's our local cross-encoder service for retrieval?",
+  "expected_recall": {
+    "artifact_id_or_pattern": "decision:bge-reranker-port-7439",
+    "must_surface_within_turns": 2,
+    "must_contain_phrase_pattern": [
+      "BGE|bge-reranker|7439"
+    ]
+  },
+  "lexical_exclusions": ["BGE", "7439", "bge-reranker", "v2-m3"],
+  "evaluation": "auto",
+  "setup_steps": [
+    {
+      "kind": "artifact",
+      "payload": {
+        "kind": "decision",
+        "summary": "Use BGE-reranker-v2-m3 on port 7439 as cross-encoder; bi-encoder snowflake-arctic-embed2 is fallback only",
+        "project": "claudex-v3",
+        "tags": ["retrieval", "reranker", "RETR-08"]
+      }
+    }
+  ]
+}

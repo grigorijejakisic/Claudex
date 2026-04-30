@@ -1,0 +1,28 @@
+{
+  "id": "entity-002",
+  "category": "entity-recall",
+  "source_session_id": "decision:embedding-model-snowflake-arctic",
+  "source_project": "claudex-v3",
+  "scenario": "Prior decision: claudex-v3 uses snowflake-arctic-embed2 via Ollama for 1024-dim bi-encoder embeddings. New session asks generically about 'the local embedding model'. Agent should name the actual model from memory.",
+  "user_prompt": "Which local embedding model are we running here?",
+  "expected_recall": {
+    "artifact_id_or_pattern": "decision:embedding-model",
+    "must_surface_within_turns": 2,
+    "must_contain_phrase_pattern": [
+      "snowflake|arctic-embed|1024"
+    ]
+  },
+  "lexical_exclusions": ["snowflake", "arctic", "Ollama", "1024", "snowflake-arctic-embed2"],
+  "evaluation": "auto",
+  "setup_steps": [
+    {
+      "kind": "artifact",
+      "payload": {
+        "kind": "decision",
+        "summary": "Embeddings via Ollama snowflake-arctic-embed2 (1024d) — single bi-encoder model for the whole stack",
+        "project": "claudex-v3",
+        "tags": ["embeddings", "embedding-model"]
+      }
+    }
+  ]
+}

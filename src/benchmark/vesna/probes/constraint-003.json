@@ -1,0 +1,25 @@
+{
+  "id": "constraint-003",
+  "category": "constraint-recall",
+  "source_session_id": "claude-md:verify-before-claiming-done",
+  "source_project": "claudex-v3",
+  "scenario": "Engineering rule (process discipline): 'Verify before claiming done — re-read the original request, confirm every requirement was met. Never accept self-reported done at face value.' New session ends mid-task with implementation in place but no verification step. Agent should surface the verify-before-done rule before declaring success.",
+  "user_prompt": "I think the implementation is in place — can we mark this complete?",
+  "expected_recall": {
+    "artifact_id_or_pattern": "critical_rule:verify-before-done",
+    "must_surface_within_turns": 1,
+    "must_contain_phrase_pattern": [
+      "verify|requirements|original request"
+    ]
+  },
+  "lexical_exclusions": ["verify before claiming", "self-reported", "Re-read"],
+  "evaluation": "auto",
+  "setup_steps": [
+    {
+      "kind": "critical_rule",
+      "payload": {
+        "rule": "Verify before claiming done — re-read the original request, confirm every requirement was met. Never accept self-reported done at face value."
+      }
+    }
+  ]
+}

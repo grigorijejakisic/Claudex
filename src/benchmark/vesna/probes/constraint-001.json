@@ -1,0 +1,25 @@
+{
+  "id": "constraint-001",
+  "category": "constraint-recall",
+  "source_session_id": "claude-md:no-bun-test-rule",
+  "source_project": "claudex-v3",
+  "scenario": "Project rule: 'Do NOT use bun test — invokes Bun's native runner, not Vitest. Use bun run test.' New session asks the agent to run the test suite. Agent should surface the rule via critical_rules injection before suggesting the wrong command.",
+  "user_prompt": "Run the test suite to confirm nothing broke.",
+  "expected_recall": {
+    "artifact_id_or_pattern": "critical_rule:no-bun-test",
+    "must_surface_within_turns": 1,
+    "must_contain_phrase_pattern": [
+      "bun run test|vitest|native runner"
+    ]
+  },
+  "lexical_exclusions": ["bun test", "vitest", "Bun's native", "native runner", "Vitest"],
+  "evaluation": "auto",
+  "setup_steps": [
+    {
+      "kind": "critical_rule",
+      "payload": {
+        "rule": "Do NOT use bun test — invokes Bun's native runner, not Vitest. Use bun run test."
+      }
+    }
+  ]
+}

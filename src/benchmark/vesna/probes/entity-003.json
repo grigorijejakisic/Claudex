@@ -1,0 +1,28 @@
+{
+  "id": "entity-003",
+  "category": "entity-recall",
+  "source_session_id": "lacuna-betting:bookmaker-monitoring-scope",
+  "source_project": "lacuna-betting",
+  "scenario": "Lacuna-betting prior decision: monitor ALL sports across ALL settlement moments (set endings, goals, half-times, etc.), not just tennis match endings. New session asks generically about 'which sports the system covers'. Agent should surface the all-sports-all-settlements decision.",
+  "user_prompt": "Which sports does the betting monitor cover?",
+  "expected_recall": {
+    "artifact_id_or_pattern": "decision:lacuna-all-sports-all-settlements",
+    "must_surface_within_turns": 2,
+    "must_contain_phrase_pattern": [
+      "all sports|tennis|basketball|settlement"
+    ]
+  },
+  "lexical_exclusions": ["tennis", "basketball", "all sports", "settlement", "match endings"],
+  "evaluation": "auto",
+  "setup_steps": [
+    {
+      "kind": "artifact",
+      "payload": {
+        "kind": "decision",
+        "summary": "Monitor all sports (tennis, basketball, football, etc.) and all settlement moments (set endings, goals, half-times) — not tennis-only",
+        "project": "lacuna-betting",
+        "tags": ["scope", "monitoring"]
+      }
+    }
+  ]
+}
