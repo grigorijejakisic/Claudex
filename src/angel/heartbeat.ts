@@ -46,7 +46,6 @@ import { backfillTaskPatternsBatch } from './task-pattern-classifier.js';
 import * as path from 'path';
 import * as fs from 'fs';
 import * as os from 'os';
-import { runCrossProjectConsolidation } from './cross-project-consolidator.js';
 import { runDataQualityChecks } from './data-quality.js';
 import { runProactiveCuration } from './proactive-curator.js';
 import { getSessionEvents, synthesizeSessionSummary, saveSessionSummary } from '../core/session-events.js';
@@ -95,7 +94,6 @@ export interface TickResult {
   user_profile_conflicts?: number;
   // Guardian of All Memory
   retention_rows_deleted?: number;
-  cross_project_deduped?: number;
   quality_issues_fixed?: number;
   artifacts_promoted?: number;
   artifacts_decayed?: number;
@@ -969,22 +967,6 @@ export async function heartbeatTick(ctx: HeartbeatContext): Promise<TickResult> 
       // Non-critical — backfill failure doesn't break the heartbeat
     }
 
-    // Phase 4c: Cross-project knowledge consolidation — fingerprint-based dedup.
-    // Merges identical learnings/decisions/patterns into __global__ scope.
-    // Triple-gated: only runs when enough new sessions exist.
-    if (heavyConsolidationGatePassed) try {
-      const consolidation = runCrossProjectConsolidation(ctx.db, ctx.config.retention);
-      const totalDeduped = consolidation.learnings_deduped
-        + consolidation.decisions_deduped
-        + consolidation.patterns_deduped
-        + consolidation.learnings_propagated;
-      if (totalDeduped > 0) {
-        result.cross_project_deduped = totalDeduped;
-      }
-    } catch {
-      // Non-critical — consolidation failure doesn't break the heartbeat
-    }
-
     // Phase 4d: Data quality & integrity checks.
     // Fixes 0-observation sessions, cleans orphans, detects stale embeddings.
     // Triple-gated: only runs when enough new sessions exist.
@@ -1512,7 +1494,6 @@ export function computeNextInterval(
     const workDone = (result.sessions_processed ?? 0) > 0
       || (result.patterns_extracted ?? 0) > 0
       || (result.retention_rows_deleted ?? 0) > 0
-      || (result.cross_project_deduped ?? 0) > 0
       || (result.quality_issues_fixed ?? 0) > 0
       || (result.observations_consolidated ?? 0) > 0
       || (result.artifacts_linked ?? 0) > 0

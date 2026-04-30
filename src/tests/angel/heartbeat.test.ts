@@ -70,12 +70,6 @@ vi.mock('../../angel/retention-sweep.js', () => ({
   }),
 }));
 
-vi.mock('../../angel/cross-project-consolidator.js', () => ({
-  runCrossProjectConsolidation: vi.fn().mockReturnValue({
-    learnings_deduped: 0, decisions_deduped: 0, patterns_deduped: 0, learnings_propagated: 0,
-  }),
-}));
-
 vi.mock('../../angel/data-quality.js', () => ({
   runDataQualityChecks: vi.fn().mockReturnValue({
     zero_obs_sessions_queued: 0, orphaned_records_deleted: 0, stale_embeddings_nulled: 0, fts_discrepancies: 0,

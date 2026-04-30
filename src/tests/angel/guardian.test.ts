@@ -2,8 +2,7 @@
  * Guardian of All Memory — comprehensive tests for the four Guardian modules:
  *   1. retention-sweep.ts
  *   2. data-quality.ts
- *   3. cross-project-consolidator.ts
- *   4. proactive-curator.ts
+ *   3. proactive-curator.ts
  */
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
@@ -28,14 +27,6 @@ import {
   runDataQualityChecks,
   resetQualityCheckRateLimit,
 } from '../../angel/data-quality.js';
-
-// Cross-project consolidator
-import {
-  deduplicateLearnings,
-  deduplicateDecisions,
-  propagateLearnings,
-  resetConsolidationRateLimit,
-} from '../../angel/cross-project-consolidator.js';
 
 // Proactive curator
 import {
@@ -710,168 +701,7 @@ describe('Data Quality', () => {
 });
 
 // ---------------------------------------------------------------------------
-// 3. Cross-Project Consolidator Tests
-// ---------------------------------------------------------------------------
-
-describe('Cross-Project Consolidator', () => {
-  let db: Database.Database;
-
-  beforeEach(() => {
-    db = createDb();
-    resetConsolidationRateLimit();
-  });
-
-  afterEach(() => {
-    try { db.close(); } catch { /* */ }
-  });
-
-  // ---- deduplicateLearnings ----
-
-  describe('deduplicateLearnings', () => {
-    it('merges identical-fingerprint learnings from 2 projects into __global__', () => {
-      const fp = 'shared-fp-abc123';
-
-      insertLearning(db, { project: 'project-a', fingerprint: fp, promotion_count: 2 });
-      insertLearning(db, { project: 'project-b', fingerprint: fp, promotion_count: 3 });
-
-      const consolidated = deduplicateLearnings(db);
-
-      expect(consolidated).toBe(1);
-
-      // __global__ record must exist
-      const global = db.prepare(
-        `SELECT promotion_count FROM learnings WHERE project = '__global__' AND fingerprint = ?`,
-      ).get(fp) as { promotion_count: number } | undefined;
-      expect(global).toBeDefined();
-      // promotion_count should be summed (2 + 3 = 5)
-      expect(global!.promotion_count).toBe(5);
-    });
-
-    it('deletes per-project copies after merging into __global__', () => {
-      const fp = 'dedup-fp-xyz';
-
-      insertLearning(db, { project: 'project-a', fingerprint: fp });
-      insertLearning(db, { project: 'project-b', fingerprint: fp });
-
-      deduplicateLearnings(db);
-
-      const perProject = db.prepare(
-        `SELECT COUNT(*) AS c FROM learnings WHERE fingerprint = ? AND project != '__global__'`,
-      ).get(fp) as { c: number };
-      expect(perProject.c).toBe(0);
-    });
-
-    it('does not create a duplicate __global__ entry if one already exists', () => {
-      const fp = 'already-global-fp';
-
-      // Pre-existing __global__ entry
-      insertLearning(db, { project: '__global__', fingerprint: fp, promotion_count: 10 });
-      // Two per-project copies
-      insertLearning(db, { project: 'project-a', fingerprint: fp, promotion_count: 1 });
-      insertLearning(db, { project: 'project-b', fingerprint: fp, promotion_count: 2 });
-
-      deduplicateLearnings(db);
-
-      const count = (
-        db.prepare(
-          `SELECT COUNT(*) AS c FROM learnings WHERE project = '__global__' AND fingerprint = ?`,
-        ).get(fp) as { c: number }
-      ).c;
-      expect(count).toBe(1); // Still only one __global__ row
-    });
-  });
-
-  // ---- deduplicateDecisions ----
-
-  describe('deduplicateDecisions', () => {
-    it('keeps only the newest decision when fingerprint appears multiple times', () => {
-      const fp = 'decision-fp-dup';
-
-      const olderTime = daysAgo(10);
-      const newerTime = daysAgo(2);
-
-      const oldId = insertDecision(db, {
-        project: 'project-a',
-        fingerprint: fp,
-        timestamp_epoch: olderTime,
-      });
-      const newId = insertDecision(db, {
-        project: 'project-a',
-        fingerprint: fp,
-        timestamp_epoch: newerTime,
-      });
-
-      const removed = deduplicateDecisions(db);
-
-      expect(removed).toBe(1);
-
-      // Older one should be gone
-      const oldRow = db.prepare(`SELECT id FROM decisions WHERE id = ?`).get(oldId);
-      expect(oldRow).toBeUndefined();
-
-      // Newer one must survive
-      const newRow = db.prepare(`SELECT id FROM decisions WHERE id = ?`).get(newId);
-      expect(newRow).toBeDefined();
-    });
-
-    it('returns 0 when no duplicates exist', () => {
-      insertDecision(db, { fingerprint: 'unique-fp-1' });
-      insertDecision(db, { fingerprint: 'unique-fp-2' });
-
-      const removed = deduplicateDecisions(db);
-      expect(removed).toBe(0);
-    });
-  });
-
-  // ---- propagateLearnings ----
-
-  describe('propagateLearnings', () => {
-    it('copies learnings with promotion_count >= 5 to __global__', () => {
-      const fp = 'high-promo-fp';
-
-      insertLearning(db, { project: 'project-a', fingerprint: fp, promotion_count: 5 });
-
-      const promoted = propagateLearnings(db);
-
-      expect(promoted).toBe(1);
-
-      const global = db.prepare(
-        `SELECT id FROM learnings WHERE project = '__global__' AND fingerprint = ?`,
-      ).get(fp);
-      expect(global).toBeDefined();
-    });
-
-    it('does not duplicate if __global__ version already exists', () => {
-      const fp = 'already-in-global';
-
-      // Already in __global__
-      insertLearning(db, { project: '__global__', fingerprint: fp, promotion_count: 8 });
-      // High-promo per-project copy
-      insertLearning(db, { project: 'project-a', fingerprint: fp, promotion_count: 6 });
-
-      const promoted = propagateLearnings(db);
-
-      expect(promoted).toBe(0); // Should not re-insert
-
-      const count = (
-        db.prepare(
-          `SELECT COUNT(*) AS c FROM learnings WHERE project = '__global__' AND fingerprint = ?`,
-        ).get(fp) as { c: number }
-      ).c;
-      expect(count).toBe(1); // Still just one
-    });
-
-    it('ignores learnings with promotion_count < 5', () => {
-      insertLearning(db, { project: 'project-a', fingerprint: 'low-promo', promotion_count: 4 });
-
-      const promoted = propagateLearnings(db);
-      expect(promoted).toBe(0);
-    });
-  });
-});
-
-// ---------------------------------------------------------------------------
-// 4. Proactive Curator Tests
+// 3. Proactive Curator Tests
 // ---------------------------------------------------------------------------
 
 describe('Proactive Curator', () => {
