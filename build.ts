@@ -36,6 +36,8 @@ const optionalEntryPoints = [
   'src/benchmark/longmemeval-harness.ts',
   'src/benchmark/debug-locomo.ts',
   'src/benchmark/analyze-results.ts',
+  'src/benchmark/memory-quality/cli.ts',
+  'src/benchmark/vesna/cli.ts',
   'src/benchmarks/directive-detector/build-candidates.ts',
   'src/benchmarks/directive-detector/label-candidates.ts',
   'src/benchmarks/directive-detector/run-precision.ts',
@@ -62,6 +64,7 @@ const optionalEntryPoints = [
   'scripts/phase-4-1-soak.ts',
   'scripts/p4-pre-backup.ts',
   'scripts/phase-5-soak.ts',
+  'scripts/phase-11-curate-memory-md.ts',
 ];
 
 /** Hook entry points to smoke test after build.

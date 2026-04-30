@@ -12,7 +12,9 @@
     "recall": "node dist/cli/recall.cjs",
     "bench:longmemeval": "node dist/benchmark/longmemeval-harness.cjs",
     "bench:locomo": "node dist/benchmark/locomo-harness.cjs",
-    "bench:analyze": "node dist/benchmark/analyze-results.cjs"
+    "bench:analyze": "node dist/benchmark/analyze-results.cjs",
+    "vesna": "node dist/benchmark/vesna/cli.cjs",
+    "sc3": "node dist/benchmark/memory-quality/cli.cjs"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.27.1",
