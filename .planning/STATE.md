@@ -6,26 +6,26 @@ See: .planning/PROJECT.md (updated 2026-04-27)
 
 **Core value:** v4 makes the agent USE Claudex organically as part of how it works in Claude Code. Memory tools (`claudex_search`, `claudex_recall`, `claudex_events`) are reached for the same way `Read` or `Grep` are used — natural extensions of reasoning, not a separate "fetch context" step that has to be remembered.
 
-**Current focus:** Phase 8 COMPLETE 2026-04-29 — verdict **DELETE_ALLOWED**. ABL-01..ABL-03 closed; sub-phase 9.8 (RL stack deletion) cleared and scheduled. Phase 8.5 (recall observability) is next-unblocked per ROADMAP. End-of-week Phase 7 behavioral A/B verdict still due 2026-05-06.
+**Current focus:** Phase 8.5 COMPLETE 2026-04-30 — recall observability + self-instrumented agent shipped end-to-end across 6 plans. retrieval_log + cl100k_base counter + advisory-voice narration directive + /silent toggle + /endsession cost block + /claudex-why slash; OBS-01..OBS-04 closed; SC#2 cache-stability re-passes (12/12, budget 191/500); 2 Vesna probes (gap-detection + empty-surface) ship into the corpus. Phase 9 (Angel simplification) is next-unblocked per ROADMAP. End-of-week Phase 7 behavioral A/B verdict still due 2026-05-06.
 
 ## Current Position
 
-**Current Phase:** 8.5
-**Current Phase Name:** Recall observability + self-instrumented agent
+**Current Phase:** 9
+**Current Phase Name:** P7 — Angel simplification (sub-phased)
 **Total Phases:** 16
 **Current Plan:** 0 (planning not yet started)
 **Total Plans in Phase:** TBD
-**Status:** **PHASE 8 COMPLETE 2026-04-29 — verdict DELETE_ALLOWED.** `CLAUDEX_DISABLE_RL_SCORING=1` env-var gate landed across the RL surface (4 source files: `src/core/hybrid-retrieval.ts:computeQMultiplier`, `src/intelligence/memrl-scorer.ts` — all 7 exports, `src/intelligence/retrieval-rl.ts:updateSessionQValues`, `src/angel/heartbeat.ts` — rl-trainer + applyTemporalDecay blocks) plus a new in-memory counter `src/core/rl-scoring-disabled-counter.ts`. A/B harness ran 14 probes × 3 trials × 2 conditions: baseline 100% / flagged 100% / delta 0pp / per-category all 0pp. Verdict honors CONTEXT.md `<decisions>.### Decision criteria` verbatim — at delta_pp = 0 ≥ -2pp: DELETE_ALLOWED. Confound disclosed honestly: 11 of 14 probes were already 0pp under multiplierFlags.qvalue=false in Phase 6 W2; 3 cross-project probes also returned 0pp because their gate paths flow through HYBRID equivalence + handles, not the qMultiplier. Sub-phase 9.8 (RL stack deletion) cleared and scheduled in ROADMAP. ABL-01..ABL-03 marked `[x]` closed. Decision artifact `context/specs/V4_RL_ABLATION.md` is the durable Phase 9.8 reference.
-**Last Activity:** 2026-04-29
-**Last Activity Description:** Phase 8 shipped end-to-end across 3 waves (strict serial per CONTEXT.md — writers + read path coupling). W1 (Plan 08-01) — env-flag gate across 4 source files + new counter module + 4 counter tests (atomic commit c2c320d, 6 files / 167 insertions / 25 deletions). W2 (Plan 08-02) — A/B harness `phase-8-rl-ablation.test.ts` reusing Phase 6 (11) + Phase 6.5 (3) probe sets, 3 trials each, mean+range+per-category+range-aware delta, gate-fire sanity check; emits 08-rl-ablation-summary.json. Side-effect refactor: PROBES + runProbe exported from phase-6-multiplier-ablation.test.ts; CROSS_PROJECT_PROBES + runCrossProjectProbe extracted from phase-6-5-cross-project-vesna.test.ts (legacy 3 it-blocks call the runner alongside existing assertions). Counter fired 49×/trial in flagged, 0×/trial in baseline. Atomic commit bcc7829, 4 files / 1209 insertions / 58 deletions. W3 (Plan 08-03) — V4_RL_ABLATION.md decision lock (both implication branches preserved with REALIZED / NOT REALIZED markers), STATE/ROADMAP/REQUIREMENTS update, 08-SUMMARY.md, atomic phase close.
+**Status:** **PHASE 8.5 COMPLETE 2026-04-30.** Recall observability + self-instrumented agent shipped end-to-end across 6 plans / 6 atomic commits. (1) V22 `retrieval_log` + `session_flag` schema + helper module + `countTokensCl100k` (gpt-tokenizer); (2) advisory-voice narration directive (3 locked templates: empty / gold / ambiguous) + `/silent` toggle backed by V22 `session_flag`; (3) MCP server instrumentation: `claudex_search` + `claudex_recall` log every retrieval to `retrieval_log` with cl100k_base token cost; (4) `/endsession` token-cost CLI (`session-token-cost`) reads `retrieval_log` + existing telemetry(injection) rows, prints CONTEXT.md format block; (5) `/claudex-why` slash + CLI (`why`) renders chronological retrieval lines + aggregate footer; (6) 2 Vesna probes (gap-detection + empty-surface), SC#2 cache-stability gate re-PASSES 12/12 (budget 191/500), STATE/ROADMAP/REQUIREMENTS closed. OBS-01..OBS-04 marked `[x]`. Honest gaps: (a) Plan 04 falls back to `(unavailable)` when telemetry data is incomplete (acknowledged graceful-degrade per plan); (b) `/silent` v1 is agent-honoring-directive, not enforced — per-turn reminder is a follow-up if behavior shows the toggle is ineffective.
+**Last Activity:** 2026-04-30
+**Last Activity Description:** Phase 8.5 shipped end-to-end across 4 waves. W1: Plan 01 (V22 schema + retrieval-log module + cl100k counter; 18 files / 929 insertions / 38 deletions; 34 new tests, all migration tests updated 21→22) — commit 3ce3b08. W1: Plan 02 (narration-directive module + recall-server append + claudex_session toggle actions; 4 files; 15 tests) — commit e2f150e. W2: Plan 03 (recall-server search + recall instrumentation + _resolveActiveSessionId helper; 2 files; 11 tests) — commit 1ed271c. W3: Plan 04 (session-token-cost CLI + endsession skill update; 3 files; 11 tests) — commit 52d6956. W3: Plan 05 (why CLI + claudex-why skill; 2 files; 23 tests) — commit 44816c0. W4: Plan 06 (2 Vesna probes + integration test + STATE/ROADMAP/REQUIREMENTS + SUMMARY).
 **Progress:** [██████████] 110%
 
-Phase: 8.5 of 16 (Recall observability + self-instrumented agent)
+Phase: 9 of 16 (P7 — Angel simplification, sub-phased)
 Plan: 0 of TBD in current phase
 Status: ready to plan
-Last activity: 2026-04-29 — Phase 8 shipped end-to-end (verdict DELETE_ALLOWED)
+Last activity: 2026-04-30 — Phase 8.5 shipped end-to-end (OBS-01..OBS-04 closed)
 
-Progress: [██████████░░░░░░] 50%
+Progress: [██████████░░░░░░] 56%
 
 ## Accumulated Context
 

@@ -27,7 +27,7 @@ Phase 1 (P0 crystallization, ✅) and Phase 2 (P1 artifact unification, ✅, T3 
 - [x] **Phase 7: P6 — Framing rewrite** — Advisory voice across every surviving formatter; manual A/B on real sessions for 1 week
 - [x] **Phase 7.5: Handoff format redesign** — COMPLETE 2026-04-29. Hybrid YAML status header + ADR body shipped; renderHandoff rewritten to one-line summary; ACTIVE.md migrated; 3 Vesna probes (active/paused/archived) PASS; HAND-01 + HAND-02 closed (HAND-03 deferred to Phase 11)
 - [x] **Phase 8: P6.5 — RL ablation gate** — Feature-flag deterministic go/no-go on RL deletion (decision by behavioral observation, not benchmark) — **CLOSED 2026-04-29 verdict DELETE_ALLOWED**
-- [ ] **Phase 8.5: Recall observability + self-instrumented agent** — Per-session retrieval log; visible token cost; `claudex why?` slash + /endsession summary
+- [x] **Phase 8.5: Recall observability + self-instrumented agent** — COMPLETE 2026-04-30. retrieval_log + cl100k counter + narration directive (advisory voice) + /silent toggle + /endsession cost block + /claudex-why slash; 2 Vesna probes pass; SC#2 cache-stability re-passes (12/12, budget 191/500).
 - [ ] **Phase 9: P7 — Angel simplification** — Per-module deletion of cognitive layer (T6 verified all consumers are in `assembler.ts` which Phase 5 deletes — safe)
 - [ ] **Phase 10: Vesna probe suite as central validation** — Mine ~20 probes from real session histories; CI-gated; pass rate ≥80% required
 - [ ] **Phase 11: P9 — Final validation against SC#1-#4** — Behavioral suite + content-quality + cache stability + handoff pickup; tag v4
@@ -278,7 +278,15 @@ Plans:
   4. Slash command `/claudex-why` (or equivalent) shows retrieval log for current session.
   5. Vesna probes verify self-instrumentation (*"when agent had relevant prior experience, did it surface during framing?"*).
 
-**Plans:** TBD
+**Plans:** 6 plans in 4 waves — all COMPLETE 2026-04-30:
+- [x] 08.5-01-PLAN.md — V22 retrieval_log + helper module + countTokensCl100k (W1)
+- [x] 08.5-02-PLAN.md — narration directive + /silent toggle (W1)
+- [x] 08.5-03-PLAN.md — claudex_search + claudex_recall instrumentation (W2)
+- [x] 08.5-04-PLAN.md — /endsession token-cost CLI (W3)
+- [x] 08.5-05-PLAN.md — /claudex-why slash + CLI (W3)
+- [x] 08.5-06-PLAN.md — Vesna probes + cache-stability re-gate + phase close (W4)
+
+**Status:** PHASE 8.5 COMPLETE 2026-04-30. SC#2 cache-stability gate PASS at 12/12 (budget 191/500). OBS-01..OBS-04 closed. Phase 9 unblocked.
 
 ### Phase 9: P7 — Angel simplification (sub-phased)
 
@@ -351,7 +359,7 @@ Phase 9 may be scheduled parallel to 6/7 once Phase 5 ships (T6 verified safe). 
 | 7. P6 — Framing rewrite | 3/3 | Complete (structural; verdict pending end-of-week) | 2026-04-29 |
 | 7.5. Handoff format redesign | 0/0 | Not started | - |
 | 8. P6.5 — RL ablation gate | 0/0 | Not started | - |
-| 8.5. Recall observability + self-instrumented agent | 0/0 | Not started | - |
+| 8.5. Recall observability + self-instrumented agent | 6/6 | Complete | 2026-04-30 |
 | 9. P7 — Angel simplification | 0/0 | Not started | - |
 | 10. Vesna probe suite (central validation) | 0/0 | Not started | - |
 | 11. P9 — Final validation against SC#1-#4 | 0/0 | Not started | - |

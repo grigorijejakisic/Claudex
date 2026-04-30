@@ -122,10 +122,10 @@
 
 ### Recall Observability (OBS) — NEW 2026-04-27, owned by Phase 8.5
 
-- [ ] **OBS-01**: Per-session retrieval log — every `claudex_search` / `claudex_recall` invocation captured with query, top-k results, which were used in subsequent agent output, token cost
-- [ ] **OBS-02**: Agent system prompt addition (advisory voice) — when retrieval returns nothing useful, narrate (*"no prior experience on this — going in cold"*); when retrieval returns gold, narrate (*"checking shadowban research from Lacuna … found, applying"*). Visible by default, silent on demand.
-- [ ] **OBS-03**: Visible token cost at `/endsession` — *"session-start spent N tokens; recall added M tokens; total memory cost X tokens (Y% of context)."*
-- [ ] **OBS-04**: Slash command `/claudex-why` (or equivalent) shows retrieval log for current session
+- [x] **OBS-01**: Per-session retrieval log — every `claudex_search` / `claudex_recall` invocation captured with query, top-k results, which were used in subsequent agent output, token cost (Plan 08.5-01 + 08.5-03; commits 3ce3b08, 1ed271c)
+- [x] **OBS-02**: Agent system prompt addition (advisory voice) — when retrieval returns nothing useful, narrate (*"no prior experience on this — going in cold"*); when retrieval returns gold, narrate (*"checking shadowban research from Lacuna … found, applying"*). Visible by default, silent on demand. (Plan 08.5-02; commit e2f150e)
+- [x] **OBS-03**: Visible token cost at `/endsession` — *"session-start spent N tokens; recall added M tokens; total memory cost X tokens (Y% of context)."* (Plan 08.5-04; commit 52d6956)
+- [x] **OBS-04**: Slash command `/claudex-why` (or equivalent) shows retrieval log for current session (Plan 08.5-05; commit 44816c0)
 
 ### RL Ablation (ABL) — NEW 2026-04-27 (replaces deprecated BENCH-08), owned by Phase 8
 
@@ -201,7 +201,7 @@
 | VESN-01..VESN-02 | Phase 10 | Pending |
 | VESN-03 | Phase 11 (gate) | Pending |
 | VESN-04 | Phase 10 (CI integration) | Pending |
-| OBS-01..OBS-04 | Phase 8.5 | Pending |
+| OBS-01..OBS-04 | Phase 8.5 | Closed 2026-04-30 |
 | ABL-01..ABL-03 | Phase 8 (P6.5) | Closed 2026-04-29 (V4_RL_ABLATION.md verdict: DELETE_ALLOWED) |
 
 **Coverage:**
