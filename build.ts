@@ -22,6 +22,8 @@ const requiredEntryPoints = [
   'src/cli/update-recall.ts',
   'src/cli/list-session-pointers.ts',
   'src/cli/mark-pointers-helpful.ts',
+  'src/cli/session-token-cost.ts',
+  'src/cli/why.ts',
 ];
 
 /** Optional/scaffolding entry points — warn-and-skip if missing. */
