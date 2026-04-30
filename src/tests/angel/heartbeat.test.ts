@@ -56,7 +56,6 @@ vi.mock('../../angel/consolidator.js', () => ({
   consolidateObservationBatch: vi.fn().mockResolvedValue({ consolidated: 0, clusters: 0 }),
   shouldConsolidate: vi.fn().mockReturnValue(false),
   markConsolidationRan: vi.fn(),
-  runDreamConsolidation: vi.fn().mockReturnValue({ contradictions_resolved: 0, stale_learnings_flagged: 0, stale_decisions_flagged: 0 }),
 }));
 
 vi.mock('../../angel/user-profile-sync.js', () => ({
