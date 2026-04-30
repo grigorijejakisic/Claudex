@@ -57,7 +57,7 @@ Phase 12 (Metadata + License + README foundation) ships the small, no-dependency
 
 ## Phases (v4.1)
 
-- [ ] **Phase 12: Metadata + License + README foundation** — LICENSE (MIT) + package.json polish + README v1 (what/why/who) + CHANGELOG + CONTRIBUTING
+- [x] **Phase 12: Metadata + License + README foundation** — LICENSE (MIT) + package.json polish + README v1 (what/why/who) + CHANGELOG + CONTRIBUTING (completed 2026-04-30)
 - [ ] **Phase 13: Cross-platform code audit** — paths / hooks / file locks / subprocess / line endings made portable across Windows + Mac + Linux
 - [ ] **Phase 14: Bootstrap install + configurable paths** — one-command `bun run setup`, Ollama + arctic-embed2 + BGE reranker boot, `CLAUDEX_PROJECTS_DIR` replaces hardcoded `~/Desktop/Projects/`
 - [ ] **Phase 15: `claudex doctor` diagnostics** — self-diagnosis: Bun version, Ollama state, port 7439, DB schema, hook registration, Angel heartbeat
@@ -402,7 +402,7 @@ Plans:
   4. `CHANGELOG.md` at repo root documents v4.0.0 (16-phase summary + SC#1-#4 evidence) sourced from `.planning/phases/11-p9-final-validation/11-V4-VALIDATION.md` (DOC-05)
   5. Contributing surface exists — either `CONTRIBUTING.md` at repo root or a README section — covering development setup, `bun run test` (NOT `bun test`), commit conventions, and where to find architectural docs (DOC-06)
 
-**Plans:** TBD
+**Plans:** 5/5 plans complete
 
 ### Phase 13: Cross-platform code audit
 **Goal:** A reader on macOS or Linux can clone the repo, run the test suite, and have hooks/locks/subprocess/path handling work without modification — the codebase stops assuming Windows-only conventions.
@@ -502,7 +502,7 @@ Phase 9 may be scheduled parallel to 6/7 once Phase 5 ships (T6 verified safe). 
 | 9. P7 — Angel simplification | 9/9 | Complete | 2026-04-30 |
 | 10. Vesna probe suite (central validation) | 5/5 | Complete | 2026-04-30 |
 | 11. P9 — Final validation against SC#1-#4 | 0/0 | Not started | - |
-| 12. Metadata + License + README foundation | 0/0 | Not started | - |
+| 12. Metadata + License + README foundation | 5/5 | Complete   | 2026-04-30 |
 | 13. Cross-platform code audit | 0/0 | Not started | - |
 | 14. Bootstrap install + configurable paths | 0/0 | Not started | - |
 | 15. `claudex doctor` diagnostics | 0/0 | Not started | - |

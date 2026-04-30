@@ -11,18 +11,18 @@
 
 ### Licensing & Metadata (LIC)
 
-- [ ] **LIC-01**: Repo root contains `LICENSE` file with MIT license text, current year (2026), "Grigorije Jakisic" as copyright holder
-- [ ] **LIC-02**: `package.json` removes `"private": true` and adds `"license": "MIT"`
-- [ ] **LIC-03**: `package.json` adds `"version": "4.1.0"`, `"repository"`, `"bugs"`, `"homepage"`, `"keywords"`, `"engines"` (Bun >=1.3)
+- [x] **LIC-01**: Repo root contains `LICENSE` file with MIT license text, current year (2026), "Grigorije Jakisic" as copyright holder
+- [x] **LIC-02**: `package.json` removes `"private": true` and adds `"license": "MIT"`
+- [x] **LIC-03**: `package.json` adds `"version": "4.1.0"`, `"repository"`, `"bugs"`, `"homepage"`, `"keywords"`, `"engines"` (Bun >=1.3)
 
 ### Documentation (DOC)
 
-- [ ] **DOC-01**: `README.md` at repo root explains what Claudex is and who it's for in <500 words, in plain English (not insider jargon)
-- [ ] **DOC-02**: README has a "Why Claudex" section that conveys the v4 thesis (organic memory tool use) with one concrete example
+- [x] **DOC-01**: `README.md` at repo root explains what Claudex is and who it's for in <500 words, in plain English (not insider jargon)
+- [x] **DOC-02**: README has a "Why Claudex" section that conveys the v4 thesis (organic memory tool use) with one concrete example
 - [ ] **DOC-03**: README has a Quick Start section: clone → `bun run setup` → open Claude Code → working session, all in <30 minutes
 - [ ] **DOC-04**: README has a Troubleshooting section covering Ollama not running, port 7439 dead, Bun version mismatch, hook registration failure
-- [ ] **DOC-05**: `CHANGELOG.md` at repo root with v4.0.0 release notes (16-phase summary + SC#1-#4 evidence)
-- [ ] **DOC-06**: `CONTRIBUTING.md` (or README section) covers development setup, running tests (`bun run test` not `bun test`), commit conventions
+- [x] **DOC-05**: `CHANGELOG.md` at repo root with v4.0.0 release notes (16-phase summary + SC#1-#4 evidence)
+- [x] **DOC-06**: `CONTRIBUTING.md` (or README section) covers development setup, running tests (`bun run test` not `bun test`), commit conventions
 
 ### Cross-Platform (PLAT)
 
@@ -115,15 +115,15 @@ Updated 2026-04-30 during v4.1 roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| LIC-01 | Phase 12 | Pending |
-| LIC-02 | Phase 12 | Pending |
-| LIC-03 | Phase 12 | Pending |
-| DOC-01 | Phase 12 | Pending |
-| DOC-02 | Phase 12 | Pending |
+| LIC-01 | Phase 12 | Done |
+| LIC-02 | Phase 12 | Done |
+| LIC-03 | Phase 12 | Done |
+| DOC-01 | Phase 12 | Done |
+| DOC-02 | Phase 12 | Done |
 | DOC-03 | Phase 16 | Pending |
 | DOC-04 | Phase 16 | Pending |
-| DOC-05 | Phase 12 | Pending |
-| DOC-06 | Phase 12 | Pending |
+| DOC-05 | Phase 12 | Done |
+| DOC-06 | Phase 12 | Done |
 | PLAT-01 | Phase 13 | Pending |
 | PLAT-02 | Phase 13 | Pending |
 | PLAT-03 | Phase 13 | Pending |

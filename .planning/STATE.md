@@ -6,15 +6,15 @@ See: .planning/PROJECT.md (updated 2026-04-30)
 
 **Core value:** v4 makes the agent USE Claudex organically as part of how it works in Claude Code. v4.0.0 SHIPPED 2026-04-30. Current milestone v4.1 = Distribution (make Claudex installable by strangers + ship to `grigorijejakisic/claudex` public).
 
-**Current focus:** **v4.1 Distribution roadmap drafted (2026-04-30).** 6-phase structure (Phases 12-17) covers all 44 v4.1 requirements with 100% coverage. Locked decisions: license MIT, platforms Windows + Mac + Linux, harness Claude Code only, self-host only, public ship target `github.com/grigorijejakisic/claudex`. v4.0 history preserved below in Accumulated Context.
+**Current focus:** **Phase 12 SHIPPED 2026-04-30.** Repo is now MIT-licensed and externally legible (LICENSE + package.json metadata + CHANGELOG + CONTRIBUTING + rewritten README). LIC-01..03 + DOC-01/02/05/06 closed (7/44 v4.1 reqs). Next: Phase 13 (cross-platform code audit, PLAT-01..05).
 
 ## Current Position
 
 **Current Milestone:** v4.1 — Distribution
-**Phase:** Not started — Phase 12 (Metadata + License + README foundation) is next
+**Phase:** 13 (Cross-platform code audit) — next
 **Plan:** —
-**Status:** Roadmap drafted; awaiting plan-phase on Phase 12
-**Last activity:** 2026-04-30 — v4.1 roadmap created (Phases 12-17, 44 reqs mapped, 100% coverage)
+**Status:** Phase 12 SHIPPED 2026-04-30 (5 plans / 5 commits / 5 SUMMARY.md). Awaiting plan-phase on Phase 13.
+**Last activity:** 2026-04-30 — Phase 12 closed (LIC-01..03 + DOC-01/02/05/06 [x])
 
 ### v4.1 Phase Structure
 
@@ -33,14 +33,14 @@ See: .planning/PROJECT.md (updated 2026-04-30)
 
 **Prior status (v4.0 SHIPPED 2026-04-30 at v4.0.0):** All SC#1-#4 PASS with evidence: SC#1 Vesna 17/17=100% per category; SC#2 12/12 cache-stable (191/500 budget headroom); SC#3 mechanical scorer aggregate 90 across 6 projects each ≥80; SC#4 synthetic Vesna 3/3 PASS + 3 live HITL-pending. STOR-04 closed (V24 dropped 6 legacy *_old tables, 1052 rows, after zero-caller audit; DB backup at ~/.claudex/backups/pre-v4-phase-11-drop-old-20260430-181007.db). Benchmark vibe-check: LongMemEval Oracle 89.6% archival (within drift vs 90.6% baseline); LoCoMo 55.5% archival (no Phase 9-10 pressure). Non-gating per CONTEXT axiom. v4.1 Distribution stub at .planning/v4.1-distribution/STUB.md was the basis for this milestone's REQUIREMENTS.md.
 **Last Activity:** 2026-04-30
-**Last Activity Description:** v4.1 Distribution roadmap drafted. 6 phases (12-17) appended to ROADMAP.md after the v4.0.0 SHIPPED divider. 44/44 reqs mapped, 100% coverage, no orphans. Phase 16 flagged as HITL-pending (operator-driven fresh-VM installs on macOS/Ubuntu 24.04/Windows 11). Roadmap structure derived from REQUIREMENTS.md categories (LIC + DOC = Phase 12, PLAT-01..05 = Phase 13, INST = Phase 14, DIAG = Phase 15, PLAT-06..08 + VER + DOC-03/04 = Phase 16, REL = Phase 17). Phase 12 is next.
-**Progress:** [░░░░░░░░░░] 0% (v4.1 milestone — 0 of 6 phases started)
+**Last Activity Description:** Phase 12 SHIPPED. 5 plans / 5 atomic commits (3071fa3 → fbb1acd). LICENSE (MIT) at repo root. package.json: removed private, added license/version 4.1.0/repository/bugs/homepage/keywords/author. CHANGELOG.md (Keep-a-Changelog format, [4.0.0] — 2026-04-30 with SC#1-#4 evidence + 11-phase Added section + Phase 5/8/9/STOR-04 Removed section). CONTRIBUTING.md (dev setup + bun run test warning + Conventional Commits + hook safety + .claude/rules pointer). README.md fully rewritten (134w What + 193w Why = 327w combined under 500w cap; verbatim shadowban example preserved). bun run build green. bun run test: 3115 passed, 20 pre-existing llama-server-supervisor failures unchanged from v4.0.0 baseline (no regression). Phase 13 (PLAT-01..05 cross-platform audit) is next.
+**Progress:** [█████████░] 91%
 
-Phase: 12 of 17 — Phase 12 not started (Phase 11 closed, v4.0.0 SHIPPED)
-Plan: — (awaiting plan-phase on Phase 12)
-Status: v4.0 SHIPPED — v4.1 Distribution roadmap drafted, ready for plan-phase
+Phase: 12 of 17 — Phase 12 SHIPPED (5/5 plans), Phase 13 next
+Plan: — (awaiting plan-phase on Phase 13)
+Status: Phase 12 closed (7/44 v4.1 reqs done — LIC-01..03 + DOC-01/02/05/06)
 
-Progress: [░░░░░░░░░░░░░░░░░░░░░░] 0% (v4.1)
+Progress: [████░░░░░░░░░░░░░░░░░░] ~17% (v4.1 — 1 of 6 phases complete)
 
 ## Accumulated Context
 
@@ -74,8 +74,8 @@ Decisions logged in PROJECT.md Key Decisions table. Summary:
 
 ### Pending Todos
 
-- Plan-phase on Phase 12 (Metadata + License + README foundation) — next concrete unit of work.
-- Operator (user) to schedule three fresh-VM testing windows for Phase 16 (macOS, Ubuntu 24.04 LTS, Windows 11). These can be planned in parallel with Phase 12-15 work but the actual runs gate Phase 16 close.
+- Plan-phase on Phase 13 (Cross-platform code audit, PLAT-01..05) — next concrete unit of work.
+- Operator (user) to schedule three fresh-VM testing windows for Phase 16 (macOS, Ubuntu 24.04 LTS, Windows 11). These can be planned in parallel with Phase 13-15 work but the actual runs gate Phase 16 close.
 
 ### Blockers/Concerns
 
@@ -108,8 +108,8 @@ These are NOT Distribution work — they're internal cleanup. Re-roadmapping the
 ## Session Continuity
 
 Last session: 2026-04-30
-Stopped at: v4.0.0 SHIPPED → v4.1 milestone kickoff → REQUIREMENTS.md authored (44 reqs across 7 categories) → ROADMAP.md drafted (6 phases, 12-17, 100% coverage). Phase 12 is the next concrete unit.
-Resume file: .planning/ROADMAP.md (v4.1 section) + .planning/REQUIREMENTS.md (Traceability table)
+Stopped at: Phase 12 SHIPPED (5 plans / 5 commits / 5 SUMMARY.md). LIC-01..03 + DOC-01/02/05/06 [x]. Phase 13 (cross-platform code audit, PLAT-01..05) is the next concrete unit.
+Resume file: .planning/phases/13-* (run /gsd:discuss-phase 13 next)
 
 ### v4.1 roadmap notes — 2026-04-30
 
