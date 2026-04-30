@@ -1,26 +1,20 @@
 {
-  "name": "recall-observability-empty-surface",
+  "id": "self-instrumented-002",
   "category": "self-instrumented",
-  "description": "Narration directive surfaces 'going in cold' template when no prior experience exists.",
-  "tags": ["recall-observability", "phase-8.5", "OBS-02"],
-  "setup": {
-    "MCP_INSTRUCTIONS_INCLUDES": "## When You Recall — Narrate (advisory)",
-    "narration_silent_flag": false,
-    "fixture_artifact": null
+  "source_session_id": "phase-8.5-design",
+  "source_project": "claudex-v3",
+  "scenario": "Topic has NO prior experience. Per OBS-02 narration directive, agent should narrate 'no prior experience on this — going in cold' rather than fabricating recall. lexical_exclusions empty by design — testing narration of absence, not perceptual recall (no memory text exists to lexically diverge from).",
+  "user_prompt": "What do you know about XZRT-77 protocol decoding?",
+  "expected_recall": {
+    "artifact_id_or_pattern": "no-prior-experience",
+    "must_surface_within_turns": 1,
+    "must_contain_phrase_pattern": [
+      "no prior experience|going in cold"
+    ]
   },
-  "user_prompt": "Help me set up a fresh Postgres replica from scratch.",
-  "assert": {
-    "instructions_payload_contains": [
-      "## When You Recall — Narrate (advisory)",
-      "no prior experience",
-      "going in cold"
-    ],
-    "narration_template_present": "empty_surface"
-  },
-  "fail_signals": [
-    "narration directive missing from instructions payload when silent_flag=false",
-    "empty-surface template not present in directive body",
-    "advisory voice violation — imperative phrasing detected"
-  ],
-  "runtime": "src/tests/integration/phase-8-5-self-instrumentation.test.ts"
+  "lexical_exclusions": [],
+  "evaluation": "auto",
+  "setup_steps": [
+    { "kind": "narration_directive", "payload": { "silent": false } }
+  ]
 }

@@ -1,30 +1,29 @@
 {
-  "name": "recall-observability-gap-detection",
+  "id": "self-instrumented-001",
   "category": "self-instrumented",
-  "description": "Narration directive surfaces gold-result template when prior experience exists for the topic.",
-  "tags": ["recall-observability", "phase-8.5", "OBS-02"],
-  "setup": {
-    "MCP_INSTRUCTIONS_INCLUDES": "## When You Recall — Narrate (advisory)",
-    "narration_silent_flag": false,
-    "fixture_artifact": {
-      "kind": "decision",
-      "summary": "rate-limit shadowban detected — Mozzart returns 429 per-IP, 15-min auto-heal",
-      "project": "lacuna-betting"
-    }
-  },
+  "source_session_id": "phase-8.5-design",
+  "source_project": "claudex-v3",
+  "scenario": "Topic has rich prior experience in memory (Mozzart 429 / shadowban). User asks about that topic. Per OBS-02 narration directive, agent should narrate 'checking ... applying' on retrieval gold.",
   "user_prompt": "How should I handle the bookmaker rate-limit issue we hit last week?",
-  "assert": {
-    "instructions_payload_contains": [
-      "## When You Recall — Narrate (advisory)",
+  "expected_recall": {
+    "artifact_id_or_pattern": "decision:mozzart-shadowban",
+    "must_surface_within_turns": 1,
+    "must_contain_phrase_pattern": [
       "checking",
       "applying"
-    ],
-    "narration_template_present": "checking_gold"
+    ]
   },
-  "fail_signals": [
-    "narration directive missing from instructions payload when silent_flag=false",
-    "gold-result template not present in directive body",
-    "advisory voice violation — imperative phrasing detected"
-  ],
-  "runtime": "src/tests/integration/phase-8-5-self-instrumentation.test.ts"
+  "lexical_exclusions": ["mozzart", "shadowban", "429", "auto-heal", "per-IP"],
+  "evaluation": "auto",
+  "setup_steps": [
+    { "kind": "narration_directive", "payload": { "silent": false } },
+    {
+      "kind": "artifact",
+      "payload": {
+        "kind": "decision",
+        "summary": "rate-limit shadowban detected — Mozzart returns 429 per-IP, 15-min auto-heal",
+        "project": "lacuna-betting"
+      }
+    }
+  ]
 }

@@ -1,28 +1,30 @@
 {
-  "name": "handoff-pickup-active",
+  "id": "handoff-001",
   "category": "handoff-pickup",
-  "description": "Fresh session picks up active handoff's next-action without exploratory tool use.",
-  "tags": ["handoff", "SC4", "phase-7.5"],
-  "setup": {
-    "STATE.md_phase": "5",
-    "ACTIVE.md": {
-      "status": "active",
-      "phase": "5",
-      "summary": "Continue tier-deletion plan 03 wave 4",
-      "topic": "phase-5-tier-deletion",
-      "body_what_next": "Run plan 03 wave 4 — Tier A deletion of `Flow + Reference Layer + Materialization` sections."
+  "source_session_id": "phase-7.5-design",
+  "source_project": "claudex-v3",
+  "scenario": "Cold-start session with active handoff (status=active, phase=5, topic=phase-5-tier-deletion). User asks an open pickup question; agent should surface the handoff topic on first response without exploring.",
+  "user_prompt": "Pick up where things were.",
+  "expected_recall": {
+    "artifact_id_or_pattern": "context/handoffs/ACTIVE.md",
+    "must_surface_within_turns": 1,
+    "must_contain_phrase_pattern": [
+      "active handoff at phase 5",
+      "phase-5-tier-deletion"
+    ]
+  },
+  "lexical_exclusions": ["handoff", "active", "phase 5", "tier-deletion", "phase-5", "ACTIVE.md"],
+  "evaluation": "auto",
+  "setup_steps": [
+    {
+      "kind": "handoff",
+      "payload": {
+        "status": "active",
+        "phase": "5",
+        "summary": "Continue tier-deletion plan 03 wave 4",
+        "topic": "phase-5-tier-deletion",
+        "body_what_next": "Run plan 03 wave 4 — Tier A deletion of `Flow + Reference Layer + Materialization` sections."
+      }
     }
-  },
-  "user_prompt": "Pick up where the handoff says.",
-  "assert": {
-    "memory_md_handoff_section": "Active handoff at phase 5: phase-5-tier-deletion.\nSee: context/handoffs/ACTIVE.md",
-    "render_handoff_first_line_starts_with": "Active handoff at phase 5",
-    "must_not_leak_body": ["body_what_next", "Tier A deletion"]
-  },
-  "fail_signals": [
-    "renderHandoff returns body content (leak)",
-    "renderHandoff returns 'No active handoff.' for status=active",
-    "session_start does not surface ACTIVE.md path"
-  ],
-  "runtime": "src/tests/integration/phase-7-5-handoff-pickup.test.ts"
+  ]
 }

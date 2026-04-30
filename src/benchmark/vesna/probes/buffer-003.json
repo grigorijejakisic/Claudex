@@ -1,0 +1,16 @@
+{
+  "id": "buffer-003",
+  "category": "buffer",
+  "source_session_id": "phase-10-design",
+  "source_project": "claudex-v3",
+  "scenario": "Unallocated buffer slot. A downstream phase claims this slot when authoring its own probes. To claim: replace this file's contents with a real probe of any category, set buffer_placeholder: false (or remove the field), update id to <category>-NNN convention.",
+  "user_prompt": "[unallocated]",
+  "expected_recall": {
+    "artifact_id_or_pattern": "[unallocated]",
+    "must_surface_within_turns": 1,
+    "must_contain_phrase_pattern": []
+  },
+  "lexical_exclusions": [],
+  "evaluation": "auto",
+  "buffer_placeholder": true
+}

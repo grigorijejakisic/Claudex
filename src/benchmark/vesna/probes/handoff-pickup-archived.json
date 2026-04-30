@@ -1,26 +1,28 @@
 {
-  "name": "handoff-pickup-archived",
+  "id": "handoff-003",
   "category": "handoff-pickup",
-  "description": "Archived/missing handoff produces 'No active handoff'; agent does not invent one.",
-  "tags": ["handoff", "SC4", "phase-7.5"],
-  "setup": {
-    "STATE.md_phase": "5",
-    "ACTIVE.md": {
-      "status": "archived",
-      "phase": "0",
-      "summary": "(no active handoff)"
+  "source_session_id": "phase-7.5-design",
+  "source_project": "claudex-v3",
+  "scenario": "Archived/missing handoff. User asks an open question. Agent should NOT surface body content; should treat as 'no active handoff' rather than inventing one.",
+  "user_prompt": "Anything I should pick up on?",
+  "expected_recall": {
+    "artifact_id_or_pattern": "context/handoffs/ACTIVE.md",
+    "must_surface_within_turns": 1,
+    "must_contain_phrase_pattern": [
+      "no active handoff"
+    ]
+  },
+  "lexical_exclusions": ["handoff", "archived", "phase 3", "ACTIVE.md"],
+  "evaluation": "auto",
+  "setup_steps": [
+    {
+      "kind": "handoff",
+      "payload": {
+        "status": "archived",
+        "phase": "3",
+        "summary": "(no active handoff)",
+        "topic": "phase-3-old-investigation"
+      }
     }
-  },
-  "user_prompt": "What's the current handoff status?",
-  "assert": {
-    "memory_md_handoff_section": "No active handoff.",
-    "render_handoff_equals": "## Handoff\n\nNo active handoff.\n",
-    "must_not_invent": true
-  },
-  "fail_signals": [
-    "renderHandoff returns active-style line for archived status",
-    "renderHandoff invents handoff content from elsewhere",
-    "agent starts exploratory grep/glob looking for handoff files"
-  ],
-  "runtime": "src/tests/integration/phase-7-5-handoff-pickup.test.ts"
+  ]
 }

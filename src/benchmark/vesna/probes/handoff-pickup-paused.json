@@ -1,28 +1,28 @@
 {
-  "name": "handoff-pickup-paused",
+  "id": "handoff-002",
   "category": "handoff-pickup",
-  "description": "Paused-status handoff renders the paused-at-phase line; agent does not auto-resume.",
-  "tags": ["handoff", "SC4", "phase-7.5"],
-  "setup": {
-    "STATE.md_phase": "3",
-    "ACTIVE.md": {
-      "status": "paused",
-      "phase": "3",
-      "summary": "Paused mid-debug of v17 migration idempotency",
-      "topic": "phase-3-idempotency-pause"
+  "source_session_id": "phase-7.5-design",
+  "source_project": "claudex-v3",
+  "scenario": "Paused-status handoff (status=paused, phase=4, topic=phase-4-context-loop). User asks 'where did things stop?'. Agent should surface the paused-at-phase status without auto-resuming.",
+  "user_prompt": "Where did things stop?",
+  "expected_recall": {
+    "artifact_id_or_pattern": "context/handoffs/ACTIVE.md",
+    "must_surface_within_turns": 1,
+    "must_contain_phrase_pattern": [
+      "handoff paused at phase 4"
+    ]
+  },
+  "lexical_exclusions": ["handoff", "paused", "phase 4", "context-loop", "ACTIVE.md"],
+  "evaluation": "auto",
+  "setup_steps": [
+    {
+      "kind": "handoff",
+      "payload": {
+        "status": "paused",
+        "phase": "4",
+        "summary": "Paused mid-investigation on context loop",
+        "topic": "phase-4-context-loop"
+      }
     }
-  },
-  "user_prompt": "What's the current handoff status?",
-  "assert": {
-    "memory_md_handoff_section": "Handoff paused at phase 3.\nSee: context/handoffs/ACTIVE.md",
-    "render_handoff_includes": "paused",
-    "render_handoff_includes_phase": "3",
-    "must_not_auto_resume": true
-  },
-  "fail_signals": [
-    "renderHandoff treats paused as active",
-    "renderHandoff returns 'No active handoff.' for status=paused",
-    "session attempts to start work without acknowledging paused state"
-  ],
-  "runtime": "src/tests/integration/phase-7-5-handoff-pickup.test.ts"
+  ]
 }
