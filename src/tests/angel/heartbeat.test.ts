@@ -70,12 +70,6 @@ vi.mock('../../angel/retention-sweep.js', () => ({
   }),
 }));
 
-vi.mock('../../angel/data-quality.js', () => ({
-  runDataQualityChecks: vi.fn().mockReturnValue({
-    zero_obs_sessions_queued: 0, orphaned_records_deleted: 0, stale_embeddings_nulled: 0, fts_discrepancies: 0,
-  }),
-}));
-
 vi.mock('../../angel/session-monitor.js', () => ({
   getIdleSessions: vi.fn().mockReturnValue([]),
   hasIdleWarning: vi.fn().mockReturnValue(false),

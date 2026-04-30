@@ -46,7 +46,6 @@ import { backfillTaskPatternsBatch } from './task-pattern-classifier.js';
 import * as path from 'path';
 import * as fs from 'fs';
 import * as os from 'os';
-import { runDataQualityChecks } from './data-quality.js';
 import { getSessionEvents, synthesizeSessionSummary, saveSessionSummary } from '../core/session-events.js';
 import { captureRecallFlowEntry } from '../adapters/shared/lifecycle.js';
 import { incrementRlScoringDisabledCounter } from '../core/rl-scoring-disabled-counter.js';
@@ -93,7 +92,6 @@ export interface TickResult {
   user_profile_conflicts?: number;
   // Guardian of All Memory
   retention_rows_deleted?: number;
-  quality_issues_fixed?: number;
   patterns_promoted_to_always?: number;
   patterns_merged?: number;
   entities_summarized?: number;
@@ -963,21 +961,6 @@ export async function heartbeatTick(ctx: HeartbeatContext): Promise<TickResult> 
       // Non-critical — backfill failure doesn't break the heartbeat
     }
 
-    // Phase 4d: Data quality & integrity checks.
-    // Fixes 0-observation sessions, cleans orphans, detects stale embeddings.
-    // Triple-gated: only runs when enough new sessions exist.
-    if (heavyConsolidationGatePassed) try {
-      const qualityResult = runDataQualityChecks(ctx.db, ctx.config.retention);
-      const totalFixed = qualityResult.zero_obs_sessions_queued
-        + qualityResult.orphaned_records_deleted
-        + qualityResult.stale_embeddings_nulled;
-      if (totalFixed > 0) {
-        result.quality_issues_fixed = totalFixed;
-      }
-    } catch {
-      // Non-critical — quality check failure doesn't break the heartbeat
-    }
-
     // Phase 4d2: Codebase index refresh (Amp Phase 3).
     // Re-indexes active projects' source files. Incremental — only changed files.
     // Rate-limited: once per heartbeat cycle (runs fast due to MD5 hash skip).
@@ -1471,7 +1454,6 @@ export function computeNextInterval(
     const workDone = (result.sessions_processed ?? 0) > 0
       || (result.patterns_extracted ?? 0) > 0
       || (result.retention_rows_deleted ?? 0) > 0
-      || (result.quality_issues_fixed ?? 0) > 0
       || (result.observations_consolidated ?? 0) > 0
       || (result.artifacts_linked ?? 0) > 0
       || (result.embeddings_backfilled ?? 0) > 0

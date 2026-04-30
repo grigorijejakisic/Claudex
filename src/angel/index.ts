@@ -175,7 +175,6 @@ function logTickResult(result: TickResult): void {
   if (result.sessions_auto_closed) parts.push(`auto_closed=${result.sessions_auto_closed}`);
   if (result.user_profiles_synced) parts.push(`profiles_synced=${result.user_profiles_synced}`);
   if (result.retention_rows_deleted) parts.push(`retention=${result.retention_rows_deleted}`);
-  if (result.quality_issues_fixed) parts.push(`quality_fixed=${result.quality_issues_fixed}`);
 
   if (parts.length > 0) {
     log('info', `tick: ${parts.join(', ')} (${result.duration_ms}ms)`);
