@@ -64,6 +64,12 @@ Decisions logged in PROJECT.md Key Decisions table. Summary:
 - **transcript_chunk reach** — only 20 chunks in entire DB despite multi-day operation. Chunker may have low reach (similar pattern to MEMORY.md writer's 2/5-projects reach pre-bugfix-04-08). 4.1 must verify and fix.
 - **Phase 3 still has 2 directive_rule rows** — writer ships, no consumer until Phase 3-merged ships PreToolUse hook. Status remains `[~]` until merge phase lands.
 
+## Phase 9 sub-phases shipped
+
+(In-flight — Phase 9 sub-phased per-module deletion across 8+1 sub-phases.)
+
+- 9.2 (autonomous-investigator) — shipped 2026-04-30, Vesna 8/8
+
 ## Session Continuity
 
 Last session: 2026-04-29
