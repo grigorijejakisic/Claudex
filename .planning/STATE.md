@@ -6,26 +6,28 @@ See: .planning/PROJECT.md (updated 2026-04-27)
 
 **Core value:** v4 makes the agent USE Claudex organically as part of how it works in Claude Code. Memory tools (`claudex_search`, `claudex_recall`, `claudex_events`) are reached for the same way `Read` or `Grep` are used — natural extensions of reasoning, not a separate "fetch context" step that has to be remembered.
 
-**Current focus:** Phase 8.5 COMPLETE 2026-04-30 — recall observability + self-instrumented agent shipped end-to-end across 6 plans. retrieval_log + cl100k_base counter + advisory-voice narration directive + /silent toggle + /endsession cost block + /claudex-why slash; OBS-01..OBS-04 closed; SC#2 cache-stability re-passes (12/12, budget 191/500); 2 Vesna probes (gap-detection + empty-surface) ship into the corpus. Phase 9 (Angel simplification) is next-unblocked per ROADMAP. End-of-week Phase 7 behavioral A/B verdict still due 2026-05-06.
+**Current focus:** **PHASE 9 COMPLETE 2026-04-30** — Angel simplification shipped end-to-end across 8 sub-phase atomic commits + 1 close commit. Net LOC delta −6021. Vesna SC#1 PASS at 32/32 integration probes (100%). Per-sub-phase 8-probe spot-check held 8/8 throughout. Phase 8 verdict DELETE_ALLOWED honored — RL stack deleted in 9.8 along with V23 migration (drop policy_weights + artifacts.q_value). Three plan deviations documented (skill-writer.ts kept, guardian.test.ts pruning, policy-registry.ts kept post-T6-audit-error). Phase 10 (Vesna probe suite as central validation) is next-unblocked per ROADMAP. End-of-week Phase 7 behavioral A/B verdict still due 2026-05-06.
 
 ## Current Position
 
-**Current Phase:** 9
-**Current Phase Name:** P7 — Angel simplification (sub-phased)
+**Current Phase:** 10
+**Current Phase Name:** Vesna probe suite as central validation
 **Total Phases:** 16
 **Current Plan:** 0 (planning not yet started)
 **Total Plans in Phase:** TBD
-**Status:** **PHASE 8.5 COMPLETE 2026-04-30.** Recall observability + self-instrumented agent shipped end-to-end across 6 plans / 6 atomic commits. (1) V22 `retrieval_log` + `session_flag` schema + helper module + `countTokensCl100k` (gpt-tokenizer); (2) advisory-voice narration directive (3 locked templates: empty / gold / ambiguous) + `/silent` toggle backed by V22 `session_flag`; (3) MCP server instrumentation: `claudex_search` + `claudex_recall` log every retrieval to `retrieval_log` with cl100k_base token cost; (4) `/endsession` token-cost CLI (`session-token-cost`) reads `retrieval_log` + existing telemetry(injection) rows, prints CONTEXT.md format block; (5) `/claudex-why` slash + CLI (`why`) renders chronological retrieval lines + aggregate footer; (6) 2 Vesna probes (gap-detection + empty-surface), SC#2 cache-stability gate re-PASSES 12/12 (budget 191/500), STATE/ROADMAP/REQUIREMENTS closed. OBS-01..OBS-04 marked `[x]`. Honest gaps: (a) Plan 04 falls back to `(unavailable)` when telemetry data is incomplete (acknowledged graceful-degrade per plan); (b) `/silent` v1 is agent-honoring-directive, not enforced — per-turn reminder is a follow-up if behavior shows the toggle is ineffective.
+**Status:** **PHASE 9 COMPLETE 2026-04-30.** Per-module deletion of legacy Angel cognitive infrastructure across 8 atomic commits + 1 close commit. Sub-phases shipped serially Wave 1→8: 9.2 autonomous-investigator (3409608), 9.1 cara-reasoning (c751f73), 9.3 consolidator dream (3be2357), 9.4 crystallizePatternToSkill (5a21d82), 9.5 cross-project-consolidator (748228a), 9.6 proactive-curator (00eaa65), 9.7 data-quality (0c63307), 9.8 RL stack + V23 migration (7315433). Aggregate LOC −6021. Vesna SC#1 PASS 32/32 (100%). Phase 8 verdict DELETE_ALLOWED honored in 9.8. CUR-05/06/07, EXTR-05, RETR-05 all closed. Three plan deviations: skill-writer.ts kept (live consumer in bridgeCorrectionToSkill), guardian.test.ts unified-test pruning per sub-phase, policy-registry.ts kept (T6 audit error — non-RL singleton). Phase 10 unblocked. **PHASE 8.5 was the prior phase — closed 2026-04-30.** Recall observability + self-instrumented agent shipped end-to-end across 6 plans / 6 atomic commits. (1) V22 `retrieval_log` + `session_flag` schema + helper module + `countTokensCl100k` (gpt-tokenizer); (2) advisory-voice narration directive (3 locked templates: empty / gold / ambiguous) + `/silent` toggle backed by V22 `session_flag`; (3) MCP server instrumentation: `claudex_search` + `claudex_recall` log every retrieval to `retrieval_log` with cl100k_base token cost; (4) `/endsession` token-cost CLI (`session-token-cost`) reads `retrieval_log` + existing telemetry(injection) rows, prints CONTEXT.md format block; (5) `/claudex-why` slash + CLI (`why`) renders chronological retrieval lines + aggregate footer; (6) 2 Vesna probes (gap-detection + empty-surface), SC#2 cache-stability gate re-PASSES 12/12 (budget 191/500), STATE/ROADMAP/REQUIREMENTS closed. OBS-01..OBS-04 marked `[x]`. Honest gaps: (a) Plan 04 falls back to `(unavailable)` when telemetry data is incomplete (acknowledged graceful-degrade per plan); (b) `/silent` v1 is agent-honoring-directive, not enforced — per-turn reminder is a follow-up if behavior shows the toggle is ineffective.
 **Last Activity:** 2026-04-30
-**Last Activity Description:** Phase 8.5 shipped end-to-end across 4 waves. W1: Plan 01 (V22 schema + retrieval-log module + cl100k counter; 18 files / 929 insertions / 38 deletions; 34 new tests, all migration tests updated 21→22) — commit 3ce3b08. W1: Plan 02 (narration-directive module + recall-server append + claudex_session toggle actions; 4 files; 15 tests) — commit e2f150e. W2: Plan 03 (recall-server search + recall instrumentation + _resolveActiveSessionId helper; 2 files; 11 tests) — commit 1ed271c. W3: Plan 04 (session-token-cost CLI + endsession skill update; 3 files; 11 tests) — commit 52d6956. W3: Plan 05 (why CLI + claudex-why skill; 2 files; 23 tests) — commit 44816c0. W4: Plan 06 (2 Vesna probes + integration test + STATE/ROADMAP/REQUIREMENTS + SUMMARY).
+**Last Activity Description:** Phase 9 closed end-to-end. 8 atomic per-module deletion commits across 8 waves; aggregate LOC −6021; Vesna 32/32 PASS at phase close + 8/8 spot-check at every sub-phase; V23 migration drops policy_weights + artifacts.q_value column; 11 migration test files bumped 22→23. Three documented deviations (see 09-SUMMARY.md). Phase 10 (Vesna probe suite as central validation) is next-unblocked.
+
+**Prior Phase 8.5 description (preserved for context):** Phase 8.5 shipped end-to-end across 4 waves. W1: Plan 01 (V22 schema + retrieval-log module + cl100k counter; 18 files / 929 insertions / 38 deletions; 34 new tests, all migration tests updated 21→22) — commit 3ce3b08. W1: Plan 02 (narration-directive module + recall-server append + claudex_session toggle actions; 4 files; 15 tests) — commit e2f150e. W2: Plan 03 (recall-server search + recall instrumentation + _resolveActiveSessionId helper; 2 files; 11 tests) — commit 1ed271c. W3: Plan 04 (session-token-cost CLI + endsession skill update; 3 files; 11 tests) — commit 52d6956. W3: Plan 05 (why CLI + claudex-why skill; 2 files; 23 tests) — commit 44816c0. W4: Plan 06 (2 Vesna probes + integration test + STATE/ROADMAP/REQUIREMENTS + SUMMARY).
 **Progress:** [██████████] 110%
 
-Phase: 9 of 16 (P7 — Angel simplification, sub-phased)
+Phase: 10 of 16 (Vesna probe suite as central validation)
 Plan: 0 of TBD in current phase
 Status: ready to plan
-Last activity: 2026-04-30 — Phase 8.5 shipped end-to-end (OBS-01..OBS-04 closed)
+Last activity: 2026-04-30 — Phase 9 closed end-to-end (CUR-05/06/07, EXTR-05, RETR-05 all closed)
 
-Progress: [██████████░░░░░░] 56%
+Progress: [████████████░░░░] 62%
 
 ## Accumulated Context
 
@@ -66,7 +68,7 @@ Decisions logged in PROJECT.md Key Decisions table. Summary:
 
 ## Phase 9 sub-phases shipped
 
-(In-flight — Phase 9 sub-phased per-module deletion across 8+1 sub-phases.)
+(Closed 2026-04-30 — Phase 9 complete across 8 sub-phase atomic commits + 1 close commit.)
 
 - 9.2 (autonomous-investigator) — shipped 2026-04-30, Vesna 8/8
 - 9.1 (cara-reasoning) — shipped 2026-04-30, Vesna 8/8
@@ -76,6 +78,7 @@ Decisions logged in PROJECT.md Key Decisions table. Summary:
 - 9.6 (proactive-curator) — shipped 2026-04-30, Vesna 8/8 (also dropped guardian.test.ts Proactive Curator section to keep file collectable)
 - 9.7 (data-quality) — shipped 2026-04-30, Vesna 8/8 (also dropped guardian.test.ts Data Quality section)
 - 9.8 (RL stack + V23 migration) — shipped 2026-04-30, Vesna 8/8; 7 RL files + 3 RL tests + obsolete phase-8 ablation test deleted; qMultiplier stripped from hybrid-retrieval; heartbeat Phase 8/4d3 RL blocks removed; V23 drops policy_weights table + artifacts.q_value column; 11 migration tests bumped to user_version 23; policy-registry.ts kept (T6 audit error — non-RL singleton with 8+ live consumers); LOC delta ~−2700
+- 9.9 (phase close) — shipped 2026-04-30, Vesna aggregate 32/32 (100%) across 5 integration test files (multiplier-ablation + cross-project + handoff-pickup + advisory-voice + self-instrumentation); heartbeat tick comments 38→28 (10 dropped); REQUIREMENTS.md/STATE.md/ROADMAP.md/SUMMARY.md/VESNA-RESULT.md updated; CUR-05/06/07, EXTR-05, RETR-05 closed
 
 ## Session Continuity
 

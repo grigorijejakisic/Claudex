@@ -28,7 +28,7 @@ Phase 1 (P0 crystallization, ✅) and Phase 2 (P1 artifact unification, ✅, T3 
 - [x] **Phase 7.5: Handoff format redesign** — COMPLETE 2026-04-29. Hybrid YAML status header + ADR body shipped; renderHandoff rewritten to one-line summary; ACTIVE.md migrated; 3 Vesna probes (active/paused/archived) PASS; HAND-01 + HAND-02 closed (HAND-03 deferred to Phase 11)
 - [x] **Phase 8: P6.5 — RL ablation gate** — Feature-flag deterministic go/no-go on RL deletion (decision by behavioral observation, not benchmark) — **CLOSED 2026-04-29 verdict DELETE_ALLOWED**
 - [x] **Phase 8.5: Recall observability + self-instrumented agent** — COMPLETE 2026-04-30. retrieval_log + cl100k counter + narration directive (advisory voice) + /silent toggle + /endsession cost block + /claudex-why slash; 2 Vesna probes pass; SC#2 cache-stability re-passes (12/12, budget 191/500).
-- [ ] **Phase 9: P7 — Angel simplification** — Per-module deletion of cognitive layer (T6 verified all consumers are in `assembler.ts` which Phase 5 deletes — safe)
+- [x] **Phase 9: P7 — Angel simplification** — COMPLETE 2026-04-30. Per-module deletion across 8 sub-phase atomic commits + 1 close commit. Aggregate LOC −6021. Vesna SC#1 PASS at 32/32 (100%). Heartbeat tick comments 38→28. Phase 8 verdict DELETE_ALLOWED honored in 9.8 (RL stack + V23 migration). CUR-05/06/07, EXTR-05, RETR-05 closed.
 - [ ] **Phase 10: Vesna probe suite as central validation** — Mine ~20 probes from real session histories; CI-gated; pass rate ≥80% required
 - [ ] **Phase 11: P9 — Final validation against SC#1-#4** — Behavioral suite + content-quality + cache stability + handoff pickup; tag v4
 
@@ -304,7 +304,18 @@ Plans:
   6. Net LOC delta ~−3000 to −4000 lines.
   7. Vesna pass rate maintained at every sub-phase (SC#1).
 
-**Plans:** TBD
+**Plans:** 9 plans in 9 waves — all COMPLETE 2026-04-30:
+- [x] 09-01-PLAN.md — sub-phase 9.2: delete autonomous-investigator.ts (Wave 1, commit 3409608)
+- [x] 09-02-PLAN.md — sub-phase 9.1: delete cara-reasoning.ts (Wave 2, commit c751f73)
+- [x] 09-03-PLAN.md — sub-phase 9.3: delete consolidator dream surface (Wave 3, commit 3be2357)
+- [x] 09-04-PLAN.md — sub-phase 9.4: delete crystallizePatternToSkill (Wave 4, commit 5a21d82; skill-writer.ts kept per consumer audit)
+- [x] 09-05-PLAN.md — sub-phase 9.5: delete cross-project-consolidator.ts (Wave 5, commit 748228a; cross-project canary 4/4)
+- [x] 09-06-PLAN.md — sub-phase 9.6: delete proactive-curator.ts (Wave 6, commit 00eaa65)
+- [x] 09-07-PLAN.md — sub-phase 9.7: delete data-quality.ts (Wave 7, commit 0c63307)
+- [x] 09-08-PLAN.md — sub-phase 9.8: delete RL stack + V23 migration (Wave 8, commit 7315433; policy-registry.ts kept per T6 audit error)
+- [x] 09-09-PLAN.md — Phase 9 close (Wave 9, this commit; Vesna 32/32, REQUIREMENTS/STATE/ROADMAP/SUMMARY/VESNA-RESULT updated)
+
+**Status:** PHASE 9 COMPLETE 2026-04-30. SC#1 Vesna PASS at 32/32 integration probes (100%); per-sub-phase 8-probe spot-check 8/8 throughout. Aggregate LOC −6021 (target was −3000 to −4000; exceeded due to migration test bumps and obsolete phase-8-rl-ablation.test.ts). Heartbeat tick comments 38→28. CUR-05/06/07, EXTR-05, RETR-05 closed. Phase 10 unblocked. See `.planning/phases/09-p7-angel-simplification/09-SUMMARY.md`.
 
 ### Phase 10: Vesna probe suite as central validation (NEW — promoted from smoke check)
 **Goal:** Behavioral validation is a first-class deliverable, not Phase 11 footnote. Mine ~20 probes from real session histories across all active projects; CI-gate.
@@ -360,6 +371,6 @@ Phase 9 may be scheduled parallel to 6/7 once Phase 5 ships (T6 verified safe). 
 | 7.5. Handoff format redesign | 0/0 | Not started | - |
 | 8. P6.5 — RL ablation gate | 0/0 | Not started | - |
 | 8.5. Recall observability + self-instrumented agent | 6/6 | Complete | 2026-04-30 |
-| 9. P7 — Angel simplification | 0/0 | Not started | - |
+| 9. P7 — Angel simplification | 9/9 | Complete | 2026-04-30 |
 | 10. Vesna probe suite (central validation) | 0/0 | Not started | - |
 | 11. P9 — Final validation against SC#1-#4 | 0/0 | Not started | - |

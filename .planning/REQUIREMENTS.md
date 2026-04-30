@@ -24,7 +24,7 @@
 - [x] **EXTR-02**: Detector writes `artifact(kind='directive_rule', scope=...)` with LLM-classified scope ∈ {session, project, universal}
 - [x] **EXTR-03**: Detector runs in Angel extraction phase BEFORE generic ingester
 - [~] **EXTR-04**: Detector precision — partial-B at joint=0.50; **held-out recall measurement + `negation_dont` family tune owned by Phase 3 merger**, target ≥0.85, floor ≥0.70
-- [ ] **EXTR-05**: Replace 6 v3 extractors with single Angel semantic ingester — owned by Phase 9
+- [x] **EXTR-05** (Phase 9, 2026-04-30): `crystallizePatternToSkill` deleted from `pattern-extractor.ts` (sub-phase 9.4, commit 5a21d82) along with heartbeat Phase 4g block. Surviving pattern-extractor exports (`extractPatternsFromSession`, `classifySessionDomains`, `getSessionTurns`) still drive Phase 2 of the heartbeat. `skill-writer.ts` retained — `bridgeCorrectionToSkill` is a live consumer.
 - [ ] **EXTR-06**: Transcript chunking via LLM topic-segmentation at `/endsession` — owned by Phase 4.1 (reach fix)
 
 ### Injection (INJ)
@@ -43,7 +43,7 @@
 - [x] **RETR-02** (Phase 6, 2026-04-29): Multiplier chain consolidated into one helper per multiplier with one flat documented weight vector (3 inner factors + 4 outer multipliers; 7 helpers; 1 canonical scoring function). Aggressive deletion deferred to a post-Phase-10 follow-up plan when the larger Vesna suite can resolve effects below 5pp. See `06-MULTIPLIER-ABLATION.md`.
 - [x] **RETR-03** (Phase 6, 2026-04-29): RIF suppression and spread activation retained verbatim; behavior locked by `phase-6-rif-spread-retained.test.ts` (8 invariant tests).
 - [x] **RETR-04** (Phase 6, 2026-04-29): MCP surface unchanged for the five canonical tools; verified via static structural lock-down in `phase-6-mcp-surface-unchanged.test.ts` against `mcp-surface-canonical.json`.
-- [x] **RETR-05** (Phase 6, 2026-04-29): Per-multiplier ablation A/B run on 11-probe set; 0pp delta on every flag at N=11 (below ~9pp resolution floor). Results in `06-MULTIPLIER-ABLATION.md` with deletion-debate-deferred-to-post-Phase-10 hook. Default-conservative axiom (KEEP unless evidence drops) applied per CONTEXT.md.
+- [x] **RETR-05** (Phase 6 → Phase 9.8 close, 2026-04-29 → 2026-04-30): Per-multiplier ablation A/B run on 11-probe set; 0pp delta on every flag at N=11 (below ~9pp resolution floor). Results in `06-MULTIPLIER-ABLATION.md` with deletion-debate-deferred-to-post-Phase-10 hook. Default-conservative axiom (KEEP unless evidence drops) applied per CONTEXT.md. **RL stack deletion shipped in Phase 9.8 (commit 7315433)** — Phase 8 verdict DELETE_ALLOWED honored; 7 RL files + V23 migration drop policy_weights + artifacts.q_value column.
 - [x] **RETR-06** (Phase 6.5, 2026-04-29): Task-pattern fingerprint matching at search time — `claudex_search` detects task-shaped queries (regex over verb + domain noun + `shape_vocabulary` Jaccard) and expands to cross-project artifacts via HYBRID equivalence (Stage 1 telemetry-handle overlap ≥3, Stage 2 cosine ≥0.85). Stage-2 ambiguous (0.70-0.85) logged with telemetry `event_kind='cross_project_ambiguous'` (V21 enum). Vesna SC#1 gate: 3/3 cross-project probes pass.
 - [x] **RETR-07** (Phase 6.5, 2026-04-29): Cross-project query expansion **default-ON**. Per-project opt-out via CLAUDE.md flag `claudex.cross_project_search: false` parsed by `readCrossProjectSearchFlag()` in `src/shared/claude-md-flags.ts`. Default-on rationale per CONTEXT.md Q10 lock.
 - [x] **RETR-08** (Phase 6, 2026-04-29): Cross-encoder reranker (BGE-v2-m3 on port 7439) is now load-bearing infrastructure. Bi-encoder fallback explicitly degraded; every fallback writes one row to `telemetry` with `event_kind='reranker_fallback'` and a reason from `unreachable/non_2xx/timeout/empty_response`. Session-start surfaces `## Reranker Health` line when 24h count > 0. CLAUDE.md and README.md updated.
@@ -51,9 +51,9 @@
 ### Curation (CUR)
 
 - [x] **CUR-01..CUR-04**: original Phase 4 deliverables — sectioned MEMORY.md writer, idempotent curation, auto-dream guard, write-time integrity
-- [x] **CUR-05**: Delete from Angel: `cara-reasoning.ts`, `autonomous-investigator.ts`, `consolidator.ts::runDreamConsolidation`, `pattern-extractor.ts::crystallizePatternToSkill`, `cross-project-consolidator.ts`, `proactive-curator.ts`, `data-quality.ts` — owned by Phase 9
-- [x] **CUR-06**: Gut `heartbeat.ts` phases — drop CARA, investigation, dream, skill crystallization, proactive curation, cross-project consolidation. Heartbeat tick from ~20 phases to ~8
-- [x] **CUR-07**: Angel keeps: idle monitoring, session auto-close, pattern→artifact extraction, entity resolution, embedding backfill, retention sweep, artifact promotion, MEMORY.md maintenance, service health supervision
+- [x] **CUR-05** (Phase 9, 2026-04-30): All 7 Angel modules deleted across 8 atomic commits — `autonomous-investigator.ts` (3409608), `cara-reasoning.ts` (c751f73), `consolidator::runDreamConsolidation` (3be2357), `pattern-extractor::crystallizePatternToSkill` (5a21d82), `cross-project-consolidator.ts` (748228a), `proactive-curator.ts` (00eaa65), `data-quality.ts` (0c63307).
+- [x] **CUR-06** (Phase 9, 2026-04-30): Heartbeat phases dropped — Phase 4e3b/4e3c (CARA + investigation), Phase 4e4 (dream), Phase 4g (skill crystallization), Phase 4e (proactive curation), Phase 4c (cross-project consolidation), Phase 4d (data quality). Heartbeat tick comments 38→28 (10 dropped); CONTEXT.md target was "~20 → ~8" — comment-marker count overstates the executable surface (sub-phase tags like 2a/2b nest under top-level Phase 2).
+- [x] **CUR-07** (Phase 9, 2026-04-30): Surviving heartbeat surface preserved — idle monitoring (Phase 1/1b/1c), pattern extraction (Phase 2/2a/3), memory monitor (Phase 5), Phase 4.1 curation bridge sweeps (Phase 5c) + Phase 5.5 feedback sweeps (Phase 5d), bulk artifact linking + embedding backfill (Phase 6/6b), observation consolidation (Phase 7), user profile sync (Phase 9), retention sweep (Phase 4b), task-pattern backfill (Phase 4b.5), codebase index (Phase 4d2), entity summary (Phase 4e2), cross-agent indexing (Phase 4e3a), pattern consolidation graduation (Phase 4f).
 - [x] **CUR-08**: MEMORY.md write-time integrity defense — sha256 read-back, alert + skip on external mutation, agents-don't-edit-above-sentinel rule
 
 #### Phase 4.1 redesign (NEW 2026-04-27)
@@ -175,15 +175,15 @@
 | STOR-09 | Phase 4.1 (or 6.5 — TBD in plan) | Pending |
 | EXTR-01..EXTR-03 | Phase 3 (P2) | Complete |
 | EXTR-04 | Phase 3 merger | Partial-with-followups — held-out recall measurement + `negation_dont` tune in merger |
-| EXTR-05 | Phase 9 (P7) | Pending |
+| EXTR-05 | Phase 9 (P7) | Done 2026-04-30 (sub-phase 9.4, commit 5a21d82) |
 | EXTR-06 | Phase 4.1 | Pending |
 | INJ-01..INJ-07 | Phase 5 (P4) | Pending |
 | RETR-01..RETR-04 | Phase 6 (P5) | Done 2026-04-29 (RETR-02 partially: consolidation, deletion deferred to post-Phase-10) |
-| RETR-05 | Phase 6 (per-multiplier ablation) | Done 2026-04-29 (0pp delta at N=11; deletion-debate-deferred-to-Phase-10) |
+| RETR-05 | Phase 6 (per-multiplier ablation) → Phase 9.8 (RL stack deletion) | Done 2026-04-29 (0pp at N=11) → RL deletion shipped 2026-04-30 (commit 7315433, V23 migration) |
 | RETR-06..RETR-07 | Phase 6.5 | Done 2026-04-29 |
 | RETR-08 | Phase 6 | Done 2026-04-29 |
 | CUR-01..CUR-04 | Phase 4 (P3) | Complete (superseded by 4.1) |
-| CUR-05..CUR-07 | Phase 9 (P7) | Pending |
+| CUR-05..CUR-07 | Phase 9 (P7) | Done 2026-04-30 (sub-phases 9.1-9.7, commits 3409608/c751f73/3be2357/5a21d82/748228a/00eaa65/0c63307) |
 | CUR-08 | Phase 4 (P3) | Complete |
 | CUR-09..CUR-15 | Phase 4.1 | Pending |
 | CUR-16..CUR-18 | Phase 5.5 | Complete (2026-04-29) |
