@@ -1,7 +1,27 @@
 {
   "name": "claudex-v3",
-  "version": "0.1.0",
-  "private": true,
+  "version": "4.1.0",
+  "license": "MIT",
+  "author": "Grigorije Jakisic",
+  "homepage": "https://github.com/grigorijejakisic/Claudex#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/grigorijejakisic/Claudex.git"
+  },
+  "bugs": {
+    "url": "https://github.com/grigorijejakisic/Claudex/issues"
+  },
+  "keywords": [
+    "claude-code",
+    "mcp",
+    "agent-memory",
+    "llm-tools",
+    "typescript",
+    "bun",
+    "claudex",
+    "persistent-memory",
+    "claude"
+  ],
   "type": "module",
   "scripts": {
     "build": "bun run build.ts",
