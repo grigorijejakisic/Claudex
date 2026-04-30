@@ -71,6 +71,7 @@ Decisions logged in PROJECT.md Key Decisions table. Summary:
 - 9.2 (autonomous-investigator) — shipped 2026-04-30, Vesna 8/8
 - 9.1 (cara-reasoning) — shipped 2026-04-30, Vesna 8/8
 - 9.3 (consolidator dream) — shipped 2026-04-30, Vesna 8/8
+- 9.4 (crystallizePatternToSkill) — shipped 2026-04-30, Vesna 8/8 (skill-writer.ts kept; bridgeCorrectionToSkill is a live consumer)
 
 ## Session Continuity
 

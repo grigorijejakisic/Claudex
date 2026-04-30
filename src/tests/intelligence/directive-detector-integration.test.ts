@@ -35,7 +35,6 @@ vi.mock('../../embeddings/embed-pipeline.js', () => ({
 vi.mock('../../angel/pattern-extractor.js', () => ({
   extractPatternsFromSession: (...args: unknown[]) => mockExtractPatterns(...args),
   classifySessionDomains: (...args: unknown[]) => mockClassifyDomains(...args),
-  crystallizePatternToSkill: vi.fn(),
 }));
 
 // Intelligence-path extractor/classifier modules touched by other heartbeat

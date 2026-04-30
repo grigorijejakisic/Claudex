@@ -31,7 +31,7 @@ import { cachedPrepare } from '../core/stmt-cache.js';
 import type { AngelConfig } from './types.js';
 import { getIdleSessions, getUnprocessedSessions, hasIdleWarning, markSessionProcessed, getEscalatedIdleSessions, detectStuckSession } from './session-monitor.js';
 import { sendIdleWarning, sendMessage } from './message-sender.js';
-import { extractPatternsFromSession, classifySessionDomains, crystallizePatternToSkill } from './pattern-extractor.js';
+import { extractPatternsFromSession, classifySessionDomains } from './pattern-extractor.js';
 import {
   extractCuratedContextFromSession,
   getSessionsPendingCuratedExtraction,
@@ -107,7 +107,6 @@ export interface TickResult {
   // Dream consolidation
   // Phase 11: Angel Intelligence
   stuck_detected?: number;
-  skills_crystallized?: number;
   // Phase 12: Curated Context Extraction
   curated_entries_proposed?: number;
   curated_sessions_scanned?: number;
@@ -1226,17 +1225,6 @@ export async function heartbeatTick(ctx: HeartbeatContext): Promise<TickResult> 
       // Non-critical
     }
 
-    // Phase 4g: Skill crystallization (A10)
-    // Crystallize proven patterns (maturity='proven', confidence>=0.8) into SKILL.md files.
-    // Capped at 1 per heartbeat tick. Rate-limited by Phase 4f interval.
-    try {
-      const crystallized = crystallizePatternToSkill(ctx.db);
-      if (crystallized > 0) {
-        result.skills_crystallized = crystallized;
-      }
-    } catch {
-      // Non-critical
-    }
   } catch (e) {
     result.error = e instanceof Error ? e.message : String(e);
   }

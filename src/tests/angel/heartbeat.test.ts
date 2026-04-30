@@ -36,7 +36,6 @@ vi.mock('../../angel/llama-client.js', () => ({
 vi.mock('../../angel/pattern-extractor.js', () => ({
   extractPatternsFromSession: vi.fn().mockResolvedValue({ patternsCreated: 0, summary: 'no patterns found' }),
   classifySessionDomains: vi.fn().mockResolvedValue(0),
-  crystallizePatternToSkill: vi.fn().mockReturnValue(0),
 }));
 
 vi.mock('../../intelligence/directive-detector.js', () => ({
