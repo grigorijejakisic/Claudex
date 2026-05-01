@@ -657,7 +657,8 @@ describe('computeMemoryMdPath — project-ID resolution (04-08-02)', () => {
     // Simulate: project ID "claudex-v3" maps to a Windows-style absolute path.
     // The CC slug for that path (via pathToCcSlug) must appear in the result —
     // NOT the raw project ID "claudex-v3".
-    const fakeProjectPath = path.join(tmpHome, 'Desktop', 'Projects', 'CLAUDEXv3');
+    // Path is arbitrary; resolveProjectPath returns it from the registry directly.
+    const fakeProjectPath = path.join(tmpHome, 'Projects', 'CLAUDEXv3');
     registerProject('claudex-v3', fakeProjectPath);
 
     const result = computeMemoryMdPath('claudex-v3');
@@ -692,7 +693,7 @@ describe('computeMemoryMdPath — project-ID resolution (04-08-02)', () => {
   });
 
   it('unresolvable project ID falls back to raw-ID slug (old behavior preserved)', () => {
-    // No projects.json, no matching Desktop/Projects scan entry.
+    // No projects.json, no matching projects-dir scan entry.
     // resolveProjectPath returns null → falls back to using the ID verbatim.
     const unknownId = 'some-unknown-project-id';
     const result = computeMemoryMdPath(unknownId);

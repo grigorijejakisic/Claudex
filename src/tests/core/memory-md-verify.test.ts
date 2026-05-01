@@ -180,7 +180,9 @@ describe('verifyMemoryMd', () => {
 
   it('derives slug from cwd when scope is not supplied', () => {
     // Use a cwd string that pathToCcSlug encodes the same way on Windows.
-    const cwd = 'C:/Users/Test/Desktop/Projects/alpha';
+    // Path content is arbitrary — the test only exercises the slug encoding,
+    // it never resolves the cwd via getProjectsDir.
+    const cwd = 'C:/Users/Test/Projects/alpha';
     const slug = pathToCcSlug(cwd);
     writeMemoryMd(slug, validSentinel('body\n<!-- USER EDITABLE -->\n## User Notes\n'));
 
