@@ -21,6 +21,12 @@
 *.cmd text eol=crlf
 *.ps1 text eol=crlf
 
+# INST-01: explicit install-wrapper rules — redundant with the *.sh / *.bat
+# rules above but documented here so first-time readers understand why
+# install.sh stays LF (POSIX shebang) and install.bat stays CRLF (cmd parser).
+install.sh text eol=lf
+install.bat text eol=crlf
+
 # Binary types — preserved as-is.
 *.png binary
 *.jpg binary
