@@ -28,6 +28,7 @@ import { detectTaskShape } from '../core/task-shape-detector.js';
 import { expandSearchCrossProject } from '../core/cross-project-search.js';
 import { readCrossProjectSearchFlag } from '../shared/claude-md-flags.js';
 import { resolveProjectPath } from '../shared/scope-detector.js';
+import { getProjectsDir } from '../shared/projects-dir.js';
 import { buildNarrationDirective, setNarrationSilent } from '../intelligence/narration-directive.js';
 import { recordRetrieval } from '../intelligence/retrieval-log.js';
 
@@ -111,7 +112,15 @@ export function logLessonRecallIfApplicable(
 // scope. The benefit of direct memory access far outweighs the cache difference.
 // ---------------------------------------------------------------------------
 
-const CLAUDEX_INSTRUCTIONS = `Claudex is active on this machine — a persistent memory system giving you context continuity across sessions.
+/**
+ * Build the MCP instructions string at registration time so the projects
+ * directory mention reflects the user's configured CLAUDEX_PROJECTS_DIR
+ * value rather than a hardcoded `~/Desktop/Projects/`. Called once when the
+ * server is constructed below; recall-server is a fresh process per CC
+ * connect, so resolving at construction is sufficient.
+ */
+function buildClaudexInstructions(): string {
+  return `Claudex is active on this machine — a persistent memory system giving you context continuity across sessions.
 
 ## When to Use Claudex Tools
 - claudex_search: FIRST CHOICE for any question about past work, decisions, learnings, experience patterns, or project knowledge. Also use when the user asks "do you remember..." — experience patterns (past corrections and lessons) are searchable here.
@@ -124,13 +133,16 @@ const CLAUDEX_INSTRUCTIONS = `Claudex is active on this machine — a persistent
 
 ## Navigation Rule
 Query Claudex before exploring the filesystem for context. Only read code files when you need to MODIFY them.
-All projects live in ~/Desktop/Projects/. The project registry is at ~/.claudex/projects.json.
+All projects live in ${getProjectsDir()}. The project registry is at ~/.claudex/projects.json.
 
 ## Safety
 Never call CC's CLIProxyAPI from a hook (deadlock). \`claudex_search\` ranks with RRF fusion over FTS5 + sqlite-vec channels — it does not invoke a reranker. The cross-encoder reranker (BAAI/bge-reranker-v2-m3 on port 7439) is used by the hybrid-retrieval path feeding session-start and user-prompt-submit hooks; \`hybrid-retrieval.ts\` falls back to the arctic-embed2 bi-encoder when that service is unavailable.${buildNarrationDirective(false)}`;
+}
+
+const CLAUDEX_INSTRUCTIONS = buildClaudexInstructions();
 
 /**
- * Test seam: expose the static instructions string for assertions in
+ * Test seam: expose the constructed instructions string for assertions in
  * narration-directive integration tests. The MCP runtime never imports this.
  */
 export function __getInstructionsForTesting(): string {
