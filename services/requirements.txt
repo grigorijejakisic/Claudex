@@ -1,0 +1,20 @@
+# Reranker venv requirements — pinned conservatively for first-install reproducibility.
+# See services/reranker.py for the live imports each line maps to.
+
+# torch — model inference (CPU wheel acceptable; CUDA optional via separate index)
+torch>=2.2,<3.0
+
+# sentence-transformers — provides CrossEncoder used by reranker.py
+sentence-transformers>=3.0,<4.0
+
+# transformers — hugging-face transitively required by sentence-transformers
+transformers>=4.40,<5.0
+
+# fastapi — HTTP surface for /rerank and /health
+fastapi>=0.110,<0.120
+
+# uvicorn — ASGI server bootstrapping FastAPI
+uvicorn[standard]>=0.27,<0.40
+
+# pydantic — request/response models
+pydantic>=2.0,<3.0
