@@ -5,8 +5,8 @@
 
 import * as path from 'path';
 import * as fs from 'fs';
-import * as os from 'os';
 import { getProjectsJsonPath } from './paths.js';
+import { getProjectsDir } from './projects-dir.js';
 import { readJsonFile, writeJsonFile } from './fs-helpers.js';
 
 interface ProjectEntry {
@@ -105,7 +105,8 @@ export function getProjectId(cwd: string): string {
 
 /**
  * Resolves a project ID to its directory path.
- * Checks projects.json first, then scans ~/Desktop/Projects/ for derived matches.
+ * Checks projects.json first, then scans the configured projects directory
+ * (CLAUDEX_PROJECTS_DIR, default ~/Projects/) for derived matches.
  * Returns null if no path can be determined. Never throws.
  */
 export function resolveProjectPath(projectId: string): string | null {
@@ -129,8 +130,9 @@ export function resolveProjectPath(projectId: string): string | null {
       }
     }
 
-    // 2. Scan ~/Desktop/Projects/ for unregistered directories whose derived ID matches
-    const baseDir = path.join(os.homedir(), 'Desktop', 'Projects');
+    // 2. Scan the configured projects directory (CLAUDEX_PROJECTS_DIR, default
+    //    ~/Projects/) for unregistered directories whose derived ID matches.
+    const baseDir = getProjectsDir();
     const entries = fs.readdirSync(baseDir, { withFileTypes: true });
     for (const entry of entries) {
       if (!entry.isDirectory()) continue;

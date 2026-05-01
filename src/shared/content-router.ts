@@ -6,7 +6,8 @@
  *
  * Two sources of project knowledge:
  * 1. projects.json — registered projects with IDs, paths, descriptions
- * 2. ~/Desktop/Projects/ scan — unregistered project directories
+ * 2. The configured projects directory (CLAUDEX_PROJECTS_DIR, default
+ *    ~/Projects/) scan — unregistered project directories
  *
  * Matching priority:
  * 1. File path match (strongest — content contains a project's full path)
@@ -16,9 +17,9 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
-import * as os from 'os';
 import { readJsonFile } from './fs-helpers.js';
 import { getProjectsJsonPath } from './paths.js';
+import { getProjectsDir } from './projects-dir.js';
 import { deriveProjectId } from './scope-detector.js';
 
 export interface ProjectSignature {
@@ -96,8 +97,8 @@ export function buildProjectIndex(): ProjectSignature[] {
     }
   } catch { /* non-throwing */ }
 
-  // 2. Unregistered project directories
-  const baseDir = path.join(os.homedir(), 'Desktop', 'Projects');
+  // 2. Unregistered project directories under the configured projects dir
+  const baseDir = getProjectsDir();
   try {
     const entries = fs.readdirSync(baseDir, { withFileTypes: true });
     for (const entry of entries) {
