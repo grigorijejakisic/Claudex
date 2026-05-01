@@ -90,8 +90,9 @@ export interface CurationResult {
  *
  * Resolution chain:
  *   1. Try `resolveProjectPath(project)` — looks up the Claudex project
- *      registry (`~/.claudex/projects.json`) and, if necessary, scans
- *      `~/Desktop/Projects/` for a directory whose derived ID matches.
+ *      registry (`~/.claudex/projects.json`) and, if necessary, scans the
+ *      configured projects directory (CLAUDEX_PROJECTS_DIR, default
+ *      `~/Projects/`) for a directory whose derived ID matches.
  *      If a filesystem path is returned, convert it to a CC slug via
  *      `pathToCcSlug` and build the `~/.claude/projects/<slug>/memory/MEMORY.md`
  *      path. This is the normal production path for Claudex project IDs like

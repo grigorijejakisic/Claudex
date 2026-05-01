@@ -116,7 +116,7 @@ Your job: given a subset of conversation turns that contain reframe / directive 
 - "reframe" — explicit supersession ("this replaces the old X"). Use when prior theory is being explicitly retired.
 - "preference" — standing disposition. "Prefer Sonnet for workers, Opus only for product-defining work."
 - "constraint" — hard rule. "Never touch the verifier — it's shipped."
-- "workspace_map" — paths. "Code lives at ~/Desktop/Lacuna, docs at ~/Desktop/Projects/Lacuna-Betting."
+- "workspace_map" — paths. "Code lives at ~/Desktop/Lacuna, docs at ~/Projects/Lacuna-Betting."
 - "shipped" — "DO NOT REBUILD" entries. "bet365_zap_verifier — Lacuna/src/verifier/zap.ts (session 22)".
 
 ## Project scope

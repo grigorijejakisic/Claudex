@@ -329,10 +329,15 @@ function summarizeBashCommand(cmd: string): string {
     // git commands → keep full (they're always meaningful)
     if (/^git\s/.test(lastCmd)) return lastCmd.slice(0, 60);
 
-    // Simplify absolute paths: /c/Users/Grigorije/Desktop/Projects/CLAUDEXv3/... → <project>/...
+    // Simplify absolute project paths to <project>/...
+    // Handles legacy (~/Desktop/Projects/<name>/) and new
+    // (CLAUDEX_PROJECTS_DIR / ~/Projects/<name>/) layouts on both
+    // Windows and POSIX-ish (/c/Users/...) path forms.
     let simplified = lastCmd
-      .replace(/[A-Z]:\\Users\\[^\\]+\\[^\\]+\\[^\\]+\\[^\\]+\\/gi, '<project>/')
-      .replace(/\/[a-z]\/Users\/[^/]+\/[^/]+\/[^/]+\/[^/]+\//gi, '<project>/');
+      .replace(/[A-Z]:\\Users\\[^\\]+\\Desktop\\Projects\\[^\\]+\\/gi, '<project>/')
+      .replace(/[A-Z]:\\Users\\[^\\]+\\Projects\\[^\\]+\\/gi, '<project>/')
+      .replace(/\/[a-z]\/Users\/[^/]+\/Desktop\/Projects\/[^/]+\//gi, '<project>/')
+      .replace(/\/[a-z]\/Users\/[^/]+\/Projects\/[^/]+\//gi, '<project>/');
 
     // Take first 3 meaningful tokens, cap at 60 chars
     const tokens = simplified.split(/\s+/).slice(0, 4).join(' ');

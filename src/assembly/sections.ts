@@ -68,7 +68,7 @@ function sanitizeTopicText(text: string | null | undefined, maxLen: number = 100
  */
 export function formatClaudexReadySection(): string {
   return `## Claudex Active
-Memory system is live. Use \`claudex_search\`, \`claudex_recall\`, \`claudex_events\` MCP tools to find context — don't explore the filesystem for it. All projects are in \`~/Desktop/Projects/\`.
+Memory system is live. Use \`claudex_search\`, \`claudex_recall\`, \`claudex_events\` MCP tools to find context — don't explore the filesystem for it. All projects are under your configured \`CLAUDEX_PROJECTS_DIR\` (default \`~/Projects/\`).
 
 When searching past context: use \`claudex_search\` (semantic search across all sessions and projects) instead of Grep-based memory file search. Claudex has 26K+ indexed observations with relevance ranking — flat-file grep will miss context that semantic search finds.`;
 }
