@@ -28,7 +28,7 @@ export async function detectOllama(
 
   // 1. Is the binary on PATH?
   try {
-    exec('ollama', ['--version'], { encoding: 'utf-8', timeout: 5000 });
+    exec('ollama', ['--version'], { encoding: 'utf-8', timeout: 5000, shell: true });
   } catch {
     return { ok: false, message: ollamaInstallMessage(platform) };
   }

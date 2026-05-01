@@ -11,9 +11,14 @@ import * as readline from 'readline';
 import { openDatabase, closeDatabase } from '../core/storage.js';
 import { initializeSchema, migrateFromV2, detectV2Database } from '../core/migrations.js';
 import { getDbPath, getClaudexHome, getConfigPath } from '../shared/paths.js';
+import { getProjectsDir } from '../shared/projects-dir.js';
 import { ensureDir, readJsonFile, writeJsonFile } from '../shared/fs-helpers.js';
 import { DEFAULT_CONFIG } from '../shared/constants.js';
 import { getDbStats } from '../shared/db-stats.js';
+import { checkBunVersion } from './bootstrap-steps/bun-version.js';
+import { detectOllama } from './bootstrap-steps/ollama-detect.js';
+import { pullEmbeddingModel } from './bootstrap-steps/model-pull.js';
+import { bootstrapReranker } from './bootstrap-steps/reranker-bootstrap.js';
 import Database from 'better-sqlite3';
 
 /** Hook file paths matching build.ts output in dist/adapters/cc-hooks/. */
@@ -174,14 +179,49 @@ export async function main(): Promise<void> {
   console.log('Claudex v3 Setup');
   console.log('================\n');
 
-  // 1. Create directory structure
+  const installDirPre = path.resolve(__dirname, '..', '..');
+
+  // [1/8] Bun version check
+  console.log('[1/8] Checking Bun version...');
+  const bunResult = await checkBunVersion();
+  console.log(`  ${bunResult.ok ? '[OK]' : '[FAIL]'} ${bunResult.message}`);
+  if (!bunResult.ok) process.exit(1);
+
+  // [2/8] Ollama detection (binary + daemon)
+  console.log('[2/8] Detecting Ollama...');
+  const ollamaResult = await detectOllama();
+  console.log(`  ${ollamaResult.ok ? '[OK]' : '[FAIL]'} ${ollamaResult.message}`);
+  if (!ollamaResult.ok) process.exit(1);
+
+  // [3/8] Pull embedding model
+  console.log('[3/8] Pulling embedding model (snowflake-arctic-embed2)...');
+  const modelResult = await pullEmbeddingModel();
+  console.log(`  ${modelResult.ok ? '[OK]' : '[FAIL]'} ${modelResult.message}`);
+  if (!modelResult.ok) process.exit(1);
+
+  // [4/8] Bootstrap BGE reranker (best-effort)
+  console.log('[4/8] Bootstrapping BGE reranker...');
+  const rerankerResult = await bootstrapReranker({ projectRoot: installDirPre });
+  console.log(`  [OK] ${rerankerResult.message}`);
+  if (rerankerResult.warning) {
+    console.log(`  [WARN] ${rerankerResult.warning}`);
+  }
+
+  // [5/8] Resolve and ensure projects directory
+  console.log('[5/8] Resolving projects directory...');
+  const projectsDir = getProjectsDir();
+  console.log(`  [OK] Projects directory: ${projectsDir}`);
+
+  // [6/8] Create directory structure
+  console.log('[6/8] Creating Claudex home directory structure...');
   const claudexHome = getClaudexHome();
   ensureDir(claudexHome);
   ensureDir(path.join(claudexHome, 'db'));
   ensureDir(path.join(claudexHome, 'identity'));
-  console.log(`[OK] Directory structure created: ${claudexHome}`);
+  console.log(`  [OK] ${claudexHome}`);
 
-  // 2. Database initialization
+  // [7/8] Database initialization
+  console.log('[7/8] Initializing database...');
   const dbPath = getDbPath();
 
   // Check for v2 before initializing (uses core detectV2Database which scans known paths)
@@ -223,35 +263,38 @@ export async function main(): Promise<void> {
   } finally {
     closeDatabase(db);
   }
-  console.log(`[OK] Database initialized: ${dbPath}`);
+  console.log(`  [OK] ${dbPath}`);
 
-  // 3. Write default config (only if not exists)
+  // Write default config (only if not exists)
   const configPath = getConfigPath();
   if (!fs.existsSync(configPath)) {
     await writeJsonFile(configPath, DEFAULT_CONFIG);
-    console.log(`[OK] Config written: ${configPath}`);
+    console.log(`  [OK] Config written: ${configPath}`);
   } else {
-    console.log(`[OK] Config already exists: ${configPath} (preserved)`);
+    console.log(`  [OK] Config preserved: ${configPath}`);
   }
 
-  // 4. Patch settings.json
-  const installDir = path.resolve(__dirname, '..', '..');
+  // [8/8] Patch settings.json
+  console.log('[8/8] Registering CC hooks in settings.json...');
+  const installDir = installDirPre;
   const hookPaths = getHookPaths(installDir);
   const settingsPath = getSettingsJsonPath();
   const patchResult = patchSettingsJson(settingsPath, hookPaths);
 
   if (patchResult.patched) {
     const suffix = patchResult.created ? ' (created)' : '';
-    console.log(`[OK] Hook paths registered in: ${settingsPath}${suffix}`);
+    console.log(`  [OK] Hooks registered in: ${settingsPath}${suffix}`);
   } else {
-    console.log(`[WARN] Could not patch settings.json at: ${settingsPath}`);
+    console.log(`  [WARN] Could not patch settings.json at: ${settingsPath}`);
   }
 
-  // 5. Summary
+  // Summary
   console.log(`\nSetup complete! Claudex v3 is ready.`);
-  console.log(`  - Database: ${dbPath}`);
-  console.log(`  - Config: ${configPath}`);
-  console.log(`  - Hooks: 25 registered in ${settingsPath}`);
+  console.log(`  - Database:         ${dbPath}`);
+  console.log(`  - Config:           ${configPath}`);
+  console.log(`  - Projects dir:     ${projectsDir}`);
+  console.log(`  - Reranker (:7439): ${rerankerResult.warning ? 'degraded — see warning above' : 'healthy'}`);
+  console.log(`  - Hooks:            25 registered in ${settingsPath}`);
 
   process.exit(0);
 }

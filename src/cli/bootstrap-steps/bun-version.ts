@@ -20,9 +20,16 @@ export async function checkBunVersion(
   const exec = opts.execFn ?? execFileSync;
   const min = opts.minVersion ?? MIN_BUN_VERSION;
 
+  // On Windows, bun ships as a .cmd or .ps1 shim that requires shell-PATH
+  // resolution. Use shell:true so `execFile` finds the right wrapper without
+  // hardcoding extensions. POSIX path resolution is unaffected by this flag.
   let raw: string;
   try {
-    raw = exec('bun', ['--version'], { encoding: 'utf-8', timeout: 5000 }).toString().trim();
+    raw = exec('bun', ['--version'], {
+      encoding: 'utf-8',
+      timeout: 5000,
+      shell: true,
+    }).toString().trim();
   } catch {
     return {
       ok: false,

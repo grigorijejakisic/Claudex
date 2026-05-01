@@ -135,7 +135,13 @@ function findPython(
 ): PythonResolution | null {
   for (const cand of candidates) {
     try {
-      const out = ex(cand, ['--version'], { encoding: 'utf-8', timeout: 5000 })
+      const out = ex(cand, ['--version'], {
+        encoding: 'utf-8',
+        timeout: 5000,
+        // shell:true → cross-platform PATH/shim resolution (handles Windows
+        // python.bat, python3.exe; POSIX unaffected).
+        shell: true,
+      })
         .toString()
         .trim();
       // Format: "Python 3.11.4"
@@ -163,6 +169,7 @@ function ensureVenv(
       encoding: 'utf-8',
       timeout: 60_000,
       stdio: ['ignore', 'pipe', 'pipe'],
+      shell: true,
     });
     return { ok: true, message: `venv created at ${venvDir}` };
   } catch (err) {

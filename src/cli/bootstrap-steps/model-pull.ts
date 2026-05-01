@@ -28,7 +28,10 @@ export async function pullEmbeddingModel(
 
   // 1. Already pulled?
   try {
-    const list = exec('ollama', ['list'], { encoding: 'utf-8' }).toString();
+    const list = exec('ollama', ['list'], {
+      encoding: 'utf-8',
+      shell: true,
+    }).toString();
     if (list.includes(model)) {
       return { ok: true, message: `Model ${model} already present` };
     }
@@ -41,7 +44,7 @@ export async function pullEmbeddingModel(
 
   // 2. Pull (timeout, stream progress to terminal so the user sees Ollama's bar)
   return new Promise<StepResult>((resolve) => {
-    const child = sp('ollama', ['pull', model], { stdio: 'inherit' });
+    const child = sp('ollama', ['pull', model], { stdio: 'inherit', shell: true });
     const timer = setTimeout(() => {
       try {
         child.kill();
