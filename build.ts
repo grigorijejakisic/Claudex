@@ -24,6 +24,7 @@ const requiredEntryPoints = [
   'src/cli/mark-pointers-helpful.ts',
   'src/cli/session-token-cost.ts',
   'src/cli/why.ts',
+  'src/cli/doctor.ts',
 ];
 
 /** Optional/scaffolding entry points — warn-and-skip if missing. */

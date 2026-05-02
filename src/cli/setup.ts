@@ -21,41 +21,16 @@ import { pullEmbeddingModel } from './bootstrap-steps/model-pull.js';
 import { bootstrapReranker } from './bootstrap-steps/reranker-bootstrap.js';
 import Database from 'better-sqlite3';
 
-/** Hook file paths matching build.ts output in dist/adapters/cc-hooks/. */
-export const HOOK_FILES: Record<string, string> = {
-  SessionStart: path.join('adapters', 'cc-hooks', 'session-start.cjs'),
-  UserPromptSubmit: path.join('adapters', 'cc-hooks', 'user-prompt-submit.cjs'),
-  PostToolUse: path.join('adapters', 'cc-hooks', 'post-tool-use.cjs'),
-  Stop: path.join('adapters', 'cc-hooks', 'stop.cjs'),
-  PreCompact: path.join('adapters', 'cc-hooks', 'pre-compact.cjs'),
-  SessionEnd: path.join('adapters', 'cc-hooks', 'session-end.cjs'),
-  PostCompact: path.join('adapters', 'cc-hooks', 'post-compact.cjs'),
-  SubagentStart: path.join('adapters', 'cc-hooks', 'subagent-start.cjs'),
-  SubagentStop: path.join('adapters', 'cc-hooks', 'subagent-stop.cjs'),
-  TaskCreated: path.join('adapters', 'cc-hooks', 'task-created.cjs'),
-  TaskCompleted: path.join('adapters', 'cc-hooks', 'task-completed.cjs'),
-  PermissionRequest: path.join('adapters', 'cc-hooks', 'permission-request.cjs'),
-  PermissionDenied: path.join('adapters', 'cc-hooks', 'permission-denied.cjs'),
-  Elicitation: path.join('adapters', 'cc-hooks', 'elicitation.cjs'),
-  ElicitationResult: path.join('adapters', 'cc-hooks', 'elicitation-result.cjs'),
-  PostToolUseFailure: path.join('adapters', 'cc-hooks', 'post-tool-use-failure.cjs'),
-  StopFailure: path.join('adapters', 'cc-hooks', 'stop-failure.cjs'),
-  ConfigChange: path.join('adapters', 'cc-hooks', 'config-change.cjs'),
-  InstructionsLoaded: path.join('adapters', 'cc-hooks', 'instructions-loaded.cjs'),
-  CwdChanged: path.join('adapters', 'cc-hooks', 'cwd-changed.cjs'),
-  Setup: path.join('adapters', 'cc-hooks', 'setup.cjs'),
-  WorktreeCreate: path.join('adapters', 'cc-hooks', 'worktree-create.cjs'),
-  WorktreeRemove: path.join('adapters', 'cc-hooks', 'worktree-remove.cjs'),
-  TeammateIdle: path.join('adapters', 'cc-hooks', 'teammate-idle.cjs'),
-  PreToolUse: path.join('adapters', 'cc-hooks', 'pre-tool-use.cjs'),
-};
-
-/**
- * Canonical list of hook names Claudex expects to register in
- * ~/.claude/settings.json. Used by `claudex doctor` (DIAG-06) to compare
- * against the actually-registered set.
- */
-export const EXPECTED_HOOK_NAMES: readonly string[] = Object.freeze(Object.keys(HOOK_FILES));
+// HOOK_FILES, EXPECTED_HOOK_NAMES, getSettingsJsonPath, and getHookPaths
+// live in ./hook-registry.ts so read-only consumers (e.g., `claudex doctor`)
+// can import them without bundling setup.ts's top-level main() bootstrap.
+// Re-exported here for back-compat with external imports.
+export {
+  HOOK_FILES,
+  EXPECTED_HOOK_NAMES,
+  getHookPaths,
+  getSettingsJsonPath,
+} from './hook-registry.js';
 
 /**
  * Hook matchers — CC regex-matches these against tool names (PreToolUse/PostToolUse),
@@ -71,24 +46,6 @@ const HOOK_MATCHERS: Partial<Record<string, string>> = {
   // Saves ~95% of unnecessary spawns (50-200 tool calls/session, ~5-10 are Agent).
   PreToolUse: 'Agent',
 };
-
-/**
- * Returns absolute paths to all hook dist files for the given install directory.
- */
-export function getHookPaths(installDir: string): Record<string, string> {
-  const result: Record<string, string> = {};
-  for (const [hookName, fileName] of Object.entries(HOOK_FILES)) {
-    result[hookName] = path.resolve(installDir, 'dist', fileName);
-  }
-  return result;
-}
-
-/**
- * Returns the path to ~/.claude/settings.json.
- */
-export function getSettingsJsonPath(): string {
-  return path.join(os.homedir(), '.claude', 'settings.json');
-}
 
 /**
  * Patches settings.json with hook entries, preserving existing hooks and settings.

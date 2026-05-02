@@ -3,7 +3,7 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import { makeCheckHooks } from '../../diagnostics/check-hooks.js';
-import { EXPECTED_HOOK_NAMES } from '../../cli/setup.js';
+import { EXPECTED_HOOK_NAMES } from '../../cli/hook-registry.js';
 
 let tmpDir = '';
 

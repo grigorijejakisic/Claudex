@@ -26,6 +26,25 @@ This is the difference v4 measures. Behavioral probes verify the recall-and-appl
 
 Coming in v4.1. Until then, this repository is internal infrastructure — the install path is not yet stable for strangers. Track [CHANGELOG.md](./CHANGELOG.md) for the v4.1 ship.
 
+## Diagnostics
+
+If something feels off — embeddings missing, hooks not firing, retrieval degraded — run:
+
+```bash
+bun run doctor
+```
+
+This checks the things Claudex needs to be healthy:
+
+- Bun runtime version (>=1.3)
+- SQLite DB schema matches the build
+- Ollama daemon reachable + `snowflake-arctic-embed2` embedding model pulled
+- BGE reranker reachable on port 7439
+- Claude Code hooks registered in `~/.claude/settings.json`
+- Angel guardian process alive with a fresh heartbeat
+
+Each check prints a one-line remediation if it fails. Pass `--json` for machine-readable output. Exit codes: `0` healthy (warnings allowed), `1` something's broken, `2` doctor itself crashed.
+
 ## Documentation
 
 - [CHANGELOG.md](./CHANGELOG.md) — release history starting at v4.0.0

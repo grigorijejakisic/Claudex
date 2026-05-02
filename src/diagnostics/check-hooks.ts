@@ -9,7 +9,7 @@
 
 import * as fs from 'fs';
 import type { CheckFn } from './types.js';
-import { getSettingsJsonPath, EXPECTED_HOOK_NAMES } from '../cli/setup.js';
+import { getSettingsJsonPath, EXPECTED_HOOK_NAMES } from '../cli/hook-registry.js';
 
 interface HookEntry {
   matcher?: string;
