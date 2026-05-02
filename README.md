@@ -1,5 +1,7 @@
 # Claudex
 
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](./LICENSE) [![Version](https://img.shields.io/badge/version-4.1.0-brightgreen.svg)](#) [![Vesna CI](https://github.com/grigorijejakisic/Claudex/actions/workflows/vesna.yml/badge.svg)](https://github.com/grigorijejakisic/Claudex/actions/workflows/vesna.yml)
+
 Persistent memory for LLM coding agents — they reach for it the way they reach for Grep.
 
 > **Status:** v4.1 Quick Start shipped (Phase 16 structural). Fresh-VM verification on macOS / Ubuntu 24.04 / Windows 11 is HITL-pending — see [docs/onboarding/](./docs/onboarding/) for per-platform runbooks. Track [CHANGELOG.md](./CHANGELOG.md) for the v4.1 release.

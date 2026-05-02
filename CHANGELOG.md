@@ -9,17 +9,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- **Phase 16 — Onboarding verification + README polish (structural):** README §Quick Start (clone → `bun run setup` → working session, ≤80 lines, references the install scripts and `bun run doctor` shipped in Phases 14-15 verbatim); README §Troubleshooting (≤120 lines, four canonical failures — Ollama not running, port 7439 dead, Bun version mismatch, hook registration failure — all routed through `bun run doctor` first); three onboarding fixtures at `docs/onboarding/{macos,linux,windows}.md` matching the Phase 11 SC#4 cold-start-trial template. Windows fixture is split-mode (steps 4-7 recorded from current dev machine, steps 1-3 HITL-pending for fresh-VM rigor).
+- _Nothing yet._ Track v4.2 milestone planning at `.planning/STATE.md` once it kicks off.
 
-### Pending (HITL — gate full Phase 16 close, do not block v4.1 ship)
+## [4.1.0] — 2026-05-02
+
+Distribution release. v4.0.0 (2026-04-30) shipped Claudex's internal infrastructure — organic tool use, behavior-gated retrieval, single-store SQLite + sqlite-vec, BGE-v2-m3 reranker. v4.1 makes that infrastructure installable by strangers and ships the repo publicly to `github.com/grigorijejakisic/Claudex`.
+
+### Added
+
+- **Phase 12 — Metadata + License + README foundation:** MIT LICENSE at repo root; `package.json` polished (description, repository, keywords, author, license fields); README §What/§Why/§Documentation/§License sections; CHANGELOG.md (this file) seeded; CONTRIBUTING.md established. The repo is now externally legible and legally redistributable.
+- **Phase 13 — Cross-platform code audit:** code-only sweep across path handling, hook semantics, file locking, subprocess spawn, line-ending policy. `.gitattributes` enforces LF for shell scripts; subprocess calls use platform-aware shells; path joins go through `path.join` everywhere; lock files use cross-platform primitives (`src/shared/process-control.ts`). No portability TODOs left in source.
+- **Phase 14 — Bootstrap install + configurable paths:** `bun run setup` is the single entry point — detects Bun, detects Ollama, pulls `snowflake-arctic-embed2` if missing, creates the BGE reranker Python venv at `services/.venv`, installs Python deps, spawns the reranker on port 7439, creates `~/.claudex/db/claudex.db`, and registers Claude Code hooks at `~/.claude/settings.json`. Idempotent. `CLAUDEX_PROJECTS_DIR` env var replaces the hardcoded `~/Desktop/Projects/` reference. Two thin entry points wrap setup: `install.sh` (macOS / Linux) and `install.bat` (Windows).
+- **Phase 15 — `bun run doctor` diagnostics:** parallel checks — Bun version, DB schema, Ollama daemon + `snowflake-arctic-embed2`, BGE reranker on `:7439`, Claude Code hooks, Angel guardian process, plus an aggregate exit-code rollup. Reranker check warns rather than fails (bi-encoder fallback covers it). Each check prints a one-line remediation when it fails.
+- **Phase 16 — Onboarding verification + README polish (structural):** README §Quick Start (clone → `bun run setup` → working session, ≤80 lines, references the install scripts and `bun run doctor` shipped in Phases 14-15 verbatim); README §Troubleshooting (≤120 lines, four canonical failures — Ollama not running, port 7439 dead, Bun version mismatch, hook registration failure — all routed through `bun run doctor` first); three onboarding fixtures at `docs/onboarding/{macos,linux,windows}.md` matching the Phase 11 SC#4 cold-start-trial template. Windows fixture is split-mode (steps 4-7 recorded from current dev machine, steps 1-3 HITL-pending for fresh-VM rigor).
+- **Phase 17 — Public ship:** README badges (license MIT, version 4.1.0, Vesna CI); `v4.1.0` annotated git tag; complete master history pushed to `github.com/grigorijejakisic/Claudex` (336 commits, fast-forward from v3-era `712c910`); GitHub release `v4.1.0 — Distribution` published with these notes; repository topics applied (`claude-code`, `mcp`, `agent-memory`, `llm-tools`, `typescript`, `bun`, `claudex`, `persistent-memory`, `claude`); branch protection runbook authored at `docs/onboarding/branch-protection-setup.md` for the operator-driven UI step.
+
+### Pending (HITL — operator-runnable; do not gate v4.1 ship)
 
 - **PLAT-06** — macOS install verified end-to-end on fresh VM
 - **PLAT-07** — Ubuntu 24.04 LTS install verified end-to-end on fresh VM
 - **PLAT-08** — Windows 11 install verified end-to-end on fresh VM (regression check)
 - **VER-04** — every friction surfaced in fixtures resolved as code fix / doctor check / README troubleshooting entry
 - **VER-05** — <30-minute install target measured and met on each platform
+- **REL-07** — branch protection rule for Vesna CI applied via GitHub UI on `grigorijejakisic/Claudex` (runbook at `docs/onboarding/branch-protection-setup.md`)
 
 The HITL-pending items follow the same pattern Phase 11 SC#4 used to ship v4.0.0 with three live cold-start trials still operator-runnable: structural close documented; operator returns when ready; v4.1 ships without waiting.
+
+### Stats
+
+- **44 v4.1 requirements:** 38 closed autonomously across Phases 12-17; 6 HITL-pending (operator-runnable).
+- **Hard gates:** `bun run build` green, `bun run test` 3188 baseline + 20 baseline llama-server-supervisor failures unchanged from v4.0.0, `bun run vesna` 17/17 GATED PASS, `bun run doctor` exit 0.
+- **DB schema unchanged from v4.0.0** (V24).
+- **Hook semantics unchanged from v4.0.0.**
 
 ## [4.0.0] — 2026-04-30
 
@@ -134,5 +155,6 @@ the v4.0.0 tag backwards for the full pre-public history.
 
 ---
 
-[Unreleased]: https://github.com/grigorijejakisic/Claudex/compare/v4.0.0...HEAD
+[Unreleased]: https://github.com/grigorijejakisic/Claudex/compare/v4.1.0...HEAD
+[4.1.0]: https://github.com/grigorijejakisic/Claudex/releases/tag/v4.1.0
 [4.0.0]: https://github.com/grigorijejakisic/Claudex/releases/tag/v4.0.0
