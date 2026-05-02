@@ -1,6 +1,6 @@
 # Claudex
 
-[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](./LICENSE) [![Version](https://img.shields.io/badge/version-4.1.0-brightgreen.svg)](#) [![Vesna CI](https://github.com/grigorijejakisic/Claudex/actions/workflows/vesna.yml/badge.svg)](https://github.com/grigorijejakisic/Claudex/actions/workflows/vesna.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](./LICENSE) [![Version](https://img.shields.io/badge/version-4.1.1-brightgreen.svg)](#) [![Vesna CI](https://github.com/grigorijejakisic/Claudex/actions/workflows/vesna.yml/badge.svg)](https://github.com/grigorijejakisic/Claudex/actions/workflows/vesna.yml)
 
 Persistent memory for LLM coding agents — they reach for it the way they reach for Grep.
 

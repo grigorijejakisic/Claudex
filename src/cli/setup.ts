@@ -24,13 +24,19 @@ import Database from 'better-sqlite3';
 // HOOK_FILES, EXPECTED_HOOK_NAMES, getSettingsJsonPath, and getHookPaths
 // live in ./hook-registry.ts so read-only consumers (e.g., `claudex doctor`)
 // can import them without bundling setup.ts's top-level main() bootstrap.
-// Re-exported here for back-compat with external imports.
-export {
+//
+// Split into separate import + export statements (rather than the combined
+// `export { ... } from` syntax) because esbuild's CJS output renames the
+// re-exported binding for disambiguation, leaving local call sites referencing
+// an undefined name (ReferenceError: getHookPaths is not defined). The split
+// pattern brings the symbols into the local module scope so call sites resolve.
+import {
   HOOK_FILES,
   EXPECTED_HOOK_NAMES,
   getHookPaths,
   getSettingsJsonPath,
 } from './hook-registry.js';
+export { HOOK_FILES, EXPECTED_HOOK_NAMES, getHookPaths, getSettingsJsonPath };
 
 /**
  * Hook matchers — CC regex-matches these against tool names (PreToolUse/PostToolUse),

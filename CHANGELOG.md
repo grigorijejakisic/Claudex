@@ -11,6 +11,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - _Nothing yet._ Track v4.2 milestone planning at `.planning/STATE.md` once it kicks off.
 
+## [4.1.1] — 2026-05-02
+
+Patch release. Fixes a stranger-blocking regression in `bun run setup` where step 8/8 (hook registration) crashed with `ReferenceError: getHookPaths is not defined`. Caught by the post-ship stranger-eyes test the user requested immediately after v4.1.0 went public — the same friction class that the deferred Phase 16 fresh-VM HITL trials would have surfaced.
+
+### Fixed
+
+- **Setup hook-registration regression** — `src/cli/setup.ts` re-exported `getHookPaths`, `HOOK_FILES`, `EXPECTED_HOOK_NAMES`, `getSettingsJsonPath` from `./hook-registry.js` using the combined `export { ... } from` syntax. esbuild's CJS bundle renamed the imported `getHookPaths` for disambiguation, leaving the internal call site at line 244 referencing an unbound name. The combined re-export is now split into separate `import` + `export` statements so the symbols enter the local module scope and call sites resolve. `bun run setup` completes step 8/8 cleanly; `bun run doctor` reports `25 of 25` hooks registered after re-setup.
+
 ## [4.1.0] — 2026-05-02
 
 Distribution release. v4.0.0 (2026-04-30) shipped Claudex's internal infrastructure — organic tool use, behavior-gated retrieval, single-store SQLite + sqlite-vec, BGE-v2-m3 reranker. v4.1 makes that infrastructure installable by strangers and ships the repo publicly to `github.com/grigorijejakisic/Claudex`.
