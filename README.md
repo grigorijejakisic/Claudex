@@ -2,7 +2,7 @@
 
 Persistent memory for LLM coding agents — they reach for it the way they reach for Grep.
 
-> **Status:** v4.0 shipped (internal infrastructure). v4.1 — Distribution — is in flight to make Claudex installable by strangers. Until v4.1 lands, install paths are not yet stable; track [CHANGELOG.md](./CHANGELOG.md) for ship dates.
+> **Status:** v4.1 Quick Start shipped (Phase 16 structural). Fresh-VM verification on macOS / Ubuntu 24.04 / Windows 11 is HITL-pending — see [docs/onboarding/](./docs/onboarding/) for per-platform runbooks. Track [CHANGELOG.md](./CHANGELOG.md) for the v4.1 release.
 
 ## What is Claudex?
 
@@ -22,9 +22,51 @@ Existing memory systems make the agent FOLLOW INSTRUCTIONS to query memory ("rem
 
 This is the difference v4 measures. Behavioral probes verify the recall-and-apply pattern landed; the audit history behind that bet is in [CHANGELOG.md](./CHANGELOG.md).
 
-## Installation
+## Quick Start
 
-Coming in v4.1. Until then, this repository is internal infrastructure — the install path is not yet stable for strangers. Track [CHANGELOG.md](./CHANGELOG.md) for the v4.1 ship.
+Claudex runs entirely on your machine. Bring `bun >=1.3`, `ollama`, and Python `3.11+` (the BGE reranker uses a Python venv). Then:
+
+### 1. Prereqs
+
+| Tool | Minimum | Install |
+|------|---------|---------|
+| Bun | 1.3 | `curl -fsSL https://bun.sh/install \| bash` (macOS / Linux) · `powershell -c "irm bun.sh/install.ps1 \| iex"` (Windows) |
+| Ollama | latest | https://ollama.com/download |
+| Python | 3.11 | `brew install python@3.11` (macOS) · `apt install python3.11 python3.11-venv` (Ubuntu 24.04) · https://www.python.org/downloads/ (Windows) |
+
+`bun run doctor` (after install) verifies each of these — no need to memorize floors.
+
+### 2. Clone
+
+```bash
+git clone https://github.com/grigorijejakisic/Claudex.git
+cd Claudex
+```
+
+(Note the capital `C` in the URL — the repo is `grigorijejakisic/Claudex`.)
+
+### 3. Install
+
+```bash
+./install.sh        # macOS / Linux
+install.bat         # Windows (cmd.exe or PowerShell)
+```
+
+Either entry point pre-flights Bun, then runs `bun install --frozen-lockfile && bun run build && bun run setup`. The `bun run setup` step is the substantive bootstrap — it detects Bun, detects Ollama, pulls `snowflake-arctic-embed2` if missing, creates the BGE reranker Python venv at `services/.venv`, installs Python deps, spawns the reranker on port 7439, creates `~/.claudex/db/claudex.db`, and registers Claude Code hooks at `~/.claude/settings.json`. Idempotent — re-running it on a working install is a no-op.
+
+### 4. Verify
+
+```bash
+bun run doctor
+```
+
+Six parallel checks: Bun version, DB schema, Ollama daemon + `snowflake-arctic-embed2`, BGE reranker on `:7439`, Claude Code hooks, Angel guardian process. Exit 0 means healthy; the reranker check warns rather than fails (bi-encoder fallback covers it). If anything fails, the doctor names the broken check and prints a one-line fix.
+
+### 5. First session
+
+By default Claudex tracks projects under `~/Projects/` (override via `CLAUDEX_PROJECTS_DIR=/some/other/path`). Open Claude Code in any subdirectory of that root — the SessionStart hook injects assembled context within the first user turn. No manual priming needed.
+
+If your projects already live elsewhere, set the env var before launching Claude Code; setup writes the value into `~/.claudex/projects.json` on first run.
 
 ## Diagnostics
 
@@ -44,6 +86,66 @@ This checks the things Claudex needs to be healthy:
 - Angel guardian process alive with a fresh heartbeat
 
 Each check prints a one-line remediation if it fails. Pass `--json` for machine-readable output. Exit codes: `0` healthy (warnings allowed), `1` something's broken, `2` doctor itself crashed.
+
+## Troubleshooting
+
+When something feels off, **always run `bun run doctor` first** — it pinpoints which subsystem is broken in under a second and prints a one-line remediation. The entries below cover the four canonical install failures and what each one looks like through the doctor lens.
+
+### Ollama not running
+
+**Symptom:** SessionStart assembly empty or stale; `claudex_search` calls return nothing; `bun run setup` hangs at "model-pull".
+
+**Diagnostic:** `bun run doctor` reports `✗ Ollama` with one of:
+- `daemon not reachable on 127.0.0.1:11434`
+- `binary missing from PATH`
+- `snowflake-arctic-embed2 not pulled`
+
+**Fix:**
+- macOS / Linux: start the daemon with `ollama serve &`. If the binary is missing, install per https://ollama.com/download.
+- Windows: launch the Ollama app from Start Menu (it runs as a tray service).
+- Once the daemon is up, run `bun run setup` again — the model-pull step is idempotent and will pull `snowflake-arctic-embed2` if it isn't already present.
+
+### Port 7439 dead (BGE reranker)
+
+**Symptom:** retrieval feels noticeably worse; SessionStart shows a "Reranker Health" line counting `reranker_fallback` events.
+
+**Diagnostic:** `bun run doctor` reports `⚠ Reranker` (warn, not fail — the bi-encoder fallback keeps retrieval working). Common causes:
+- `:7439/health` not reachable
+- Python venv at `services/.venv` missing or broken
+- The reranker process crashed and Angel hasn't restarted it yet
+
+**Fix:**
+- Re-run `bun run setup`. The reranker-bootstrap step recreates the venv if missing and respawns the reranker on `:7439`.
+- If the venv exists but the service won't start, delete `services/.venv/` and re-run `bun run setup` — the Python step is idempotent.
+- If `bun run doctor` still warns after re-setup, check the reranker process logs (location depends on how `bun run setup` started it — typically captured by Angel's `RerankerSupervisor`) for the underlying error. A common cause is a Python version mismatch — Phase 14 requires Python 3.11+.
+
+### Bun version mismatch
+
+**Symptom:** `bun run setup` exits 1 immediately with a version-floor message; or hooks fail at session-start with `bun: command not found`.
+
+**Diagnostic:** `bun run doctor` reports `✗ Bun version` with either:
+- `Bun not found` (binary missing)
+- `Bun X.Y.Z (<1.3 required)`
+
+**Fix:**
+- macOS / Linux: `curl -fsSL https://bun.sh/install | bash` (re-run installs the latest).
+- Windows: `powershell -c "irm bun.sh/install.ps1 | iex"`.
+- Verify with `bun --version`. The floor is `1.3.0` — anything below fails the doctor check.
+
+### Hook registration failure
+
+**Symptom:** SessionStart hook doesn't fire; first user turn shows no assembled context; PostToolUse events not recorded.
+
+**Diagnostic:** `bun run doctor` reports `✗ CC hooks` with `N of 25 registered (M missing)`. The doctor names the missing hook(s).
+
+**Fix:**
+- Re-run `bun run setup`. The hooks step patches `~/.claude/settings.json` to register every Claudex hook. Idempotent — safe to run on a working install.
+- If a hook still won't register after re-setup, your `~/.claude/settings.json` may have a syntax error from a manual edit. Validate with any JSON parser; the doctor will refuse to register hooks into invalid JSON.
+- After re-running setup, restart Claude Code. Hooks are loaded at session-start and don't hot-reload.
+
+---
+
+If `bun run doctor` exits 0 but something still feels broken, see [docs/onboarding/](./docs/onboarding/) for per-platform runbooks recording known friction points encountered on fresh VMs.
 
 ## Documentation
 
