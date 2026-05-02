@@ -22,7 +22,7 @@ import { bootstrapReranker } from './bootstrap-steps/reranker-bootstrap.js';
 import Database from 'better-sqlite3';
 
 /** Hook file paths matching build.ts output in dist/adapters/cc-hooks/. */
-const HOOK_FILES: Record<string, string> = {
+export const HOOK_FILES: Record<string, string> = {
   SessionStart: path.join('adapters', 'cc-hooks', 'session-start.cjs'),
   UserPromptSubmit: path.join('adapters', 'cc-hooks', 'user-prompt-submit.cjs'),
   PostToolUse: path.join('adapters', 'cc-hooks', 'post-tool-use.cjs'),
@@ -49,6 +49,13 @@ const HOOK_FILES: Record<string, string> = {
   TeammateIdle: path.join('adapters', 'cc-hooks', 'teammate-idle.cjs'),
   PreToolUse: path.join('adapters', 'cc-hooks', 'pre-tool-use.cjs'),
 };
+
+/**
+ * Canonical list of hook names Claudex expects to register in
+ * ~/.claude/settings.json. Used by `claudex doctor` (DIAG-06) to compare
+ * against the actually-registered set.
+ */
+export const EXPECTED_HOOK_NAMES: readonly string[] = Object.freeze(Object.keys(HOOK_FILES));
 
 /**
  * Hook matchers — CC regex-matches these against tool names (PreToolUse/PostToolUse),

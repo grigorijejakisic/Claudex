@@ -30,6 +30,7 @@ import { getDbPath, getClaudexHome } from '../shared/paths.js';
 import { initializeSchema, runMigrations } from '../core/migrations.js';
 import { ensureCollections, setVectorStoreDb } from '../embeddings/qdrant-client.js';
 import { startHeartbeat, type TickResult } from './heartbeat.js';
+import { getPidFilePath } from './pid-file.js';
 import { DEFAULT_ANGEL_CONFIG, type AngelConfig } from './types.js';
 import { RerankerSupervisor } from './reranker-supervisor.js';
 import { LlamaServerSupervisor } from './llama-server-supervisor.js';
@@ -99,9 +100,8 @@ function parseArgs(argv: string[]): Partial<AngelConfig> {
 // PID file management
 // ---------------------------------------------------------------------------
 
-function getPidFilePath(): string {
-  return path.join(getClaudexHome(), 'angel.pid');
-}
+// Re-export for backwards compatibility with code that imports from here.
+export { getPidFilePath } from './pid-file.js';
 
 function writePidFile(): void {
   try {

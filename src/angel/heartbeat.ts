@@ -43,6 +43,7 @@ import { consolidateObservationBatch, shouldConsolidate, markConsolidationRan } 
 import { syncUserProfiles } from './user-profile-sync.js';
 import { runRetentionSweep } from './retention-sweep.js';
 import { backfillTaskPatternsBatch } from './task-pattern-classifier.js';
+import { getPidFilePath } from './pid-file.js';
 import * as path from 'path';
 import * as fs from 'fs';
 import * as os from 'os';
@@ -1133,6 +1134,18 @@ export async function heartbeatTick(ctx: HeartbeatContext): Promise<TickResult> 
 
   } catch (e) {
     result.error = e instanceof Error ? e.message : String(e);
+  }
+
+  // DIAG-07 freshness signal: touch the PID file mtime so `claudex doctor`
+  // can verify Angel is alive even if it sits idle between meaningful work.
+  // Best-effort: if the touch fails (FS race, removed PID file), don't break
+  // the heartbeat — the next tick will re-attempt.
+  try {
+    const pidPath = getPidFilePath();
+    const now = new Date();
+    fs.utimesSync(pidPath, now, now);
+  } catch {
+    // Non-critical — heartbeat survival outweighs freshness signal accuracy
   }
 
   result.duration_ms = Date.now() - start;
