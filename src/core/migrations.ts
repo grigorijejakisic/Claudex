@@ -87,11 +87,18 @@ export { migrateV14toV15 };
  * user_version gates incremental ALTER migrations; schema_versions gates data migrations
  * and cross-install compatibility checks.
  */
+/**
+ * Target SQLite `PRAGMA user_version` for the current build.
+ * `claudex doctor` (DIAG-05) reads this to verify the on-disk DB is in sync.
+ * Bumping a migration must bump this constant in lockstep.
+ */
+export const TARGET_USER_VERSION = 24;
+
 export function runMigrations(db: Database): void {
   const row = db.pragma('user_version') as Array<{ user_version: number }>;
   let version = row[0]?.user_version ?? 0;
 
-  const TARGET_VERSION = 24;
+  const TARGET_VERSION = TARGET_USER_VERSION;
 
   if (version >= TARGET_VERSION) {
     // Still load sqlite-vec even if no migration is needed — the extension
