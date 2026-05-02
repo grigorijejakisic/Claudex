@@ -19,8 +19,8 @@
 
 - [x] **DOC-01**: `README.md` at repo root explains what Claudex is and who it's for in <500 words, in plain English (not insider jargon)
 - [x] **DOC-02**: README has a "Why Claudex" section that conveys the v4 thesis (organic memory tool use) with one concrete example
-- [ ] **DOC-03**: README has a Quick Start section: clone → `bun run setup` → open Claude Code → working session, all in <30 minutes
-- [ ] **DOC-04**: README has a Troubleshooting section covering Ollama not running, port 7439 dead, Bun version mismatch, hook registration failure
+- [x] **DOC-03**: README has a Quick Start section: clone → `bun run setup` → open Claude Code → working session, all in <30 minutes — closed 2026-05-02 in Phase 16 (plan 16-01)
+- [x] **DOC-04**: README has a Troubleshooting section covering Ollama not running, port 7439 dead, Bun version mismatch, hook registration failure — closed 2026-05-02 in Phase 16 (plan 16-01)
 - [x] **DOC-05**: `CHANGELOG.md` at repo root with v4.0.0 release notes (16-phase summary + SC#1-#4 evidence)
 - [x] **DOC-06**: `CONTRIBUTING.md` (or README section) covers development setup, running tests (`bun run test` not `bun test`), commit conventions
 
@@ -31,9 +31,9 @@
 - [x] **PLAT-03**: File-lock handling works on Mac/Linux (current Windows uses `taskkill`; Unix uses signal-based termination) — closed in Phase 13 (13-03 introduced src/shared/process-control.ts with terminateProcess + 8 unit tests; 0 callsites needed migration)
 - [x] **PLAT-04**: Subprocess spawning works cross-platform (no `cmd /c` chains; uses Node `spawn` or Bun `$` portably) — closed in Phase 13 (13-02 audit + 13-04 fix: heartbeat.ts:202 git auto-commit refactored from shell-string execSync to no-shell execFileSync array args)
 - [x] **PLAT-05**: Line endings normalized via `.gitattributes` (LF for source, CRLF for batch scripts) — closed in Phase 13 (13-05 extended .gitattributes with explicit per-extension rules; renormalize converted experience-patterns.ts CRLF→LF)
-- [ ] **PLAT-06**: Install verified end-to-end on macOS (latest stable) on a fresh VM; friction captured as test fixtures
-- [ ] **PLAT-07**: Install verified end-to-end on Linux (Ubuntu 24.04 LTS) on a fresh VM; friction captured as test fixtures
-- [ ] **PLAT-08**: Install verified end-to-end on Windows 11 on a fresh VM; regression check (current development platform)
+- [~] **PLAT-06**: Install verified end-to-end on macOS (latest stable) on a fresh VM; friction captured as test fixtures _(HITL — fixture authored at docs/onboarding/macos.md, awaiting fresh-VM run)_
+- [~] **PLAT-07**: Install verified end-to-end on Linux (Ubuntu 24.04 LTS) on a fresh VM; friction captured as test fixtures _(HITL — fixture authored at docs/onboarding/linux.md, awaiting fresh-VM run)_
+- [~] **PLAT-08**: Install verified end-to-end on Windows 11 on a fresh VM; regression check (current development platform) _(HITL — fixture authored at docs/onboarding/windows.md split-mode, autonomous half PASS, fresh-VM half awaiting operator)_
 
 ### Setup & Install (INST)
 
@@ -58,11 +58,11 @@
 
 ### Verification (VER)
 
-- [ ] **VER-01**: Onboarding fixture document at `docs/onboarding/macos.md` records every friction encountered installing on a fresh macOS VM
-- [ ] **VER-02**: Onboarding fixture at `docs/onboarding/linux.md` for Ubuntu 24.04 LTS VM
-- [ ] **VER-03**: Onboarding fixture at `docs/onboarding/windows.md` for Windows 11 VM (regression check)
-- [ ] **VER-04**: Each friction point in the three fixtures is resolved as: a code fix (preferred), a doctor check, or a README troubleshooting entry — none left as open
-- [ ] **VER-05**: <30 minute install target measured and met on each platform; total elapsed time recorded in fixture
+- [x] **VER-01**: Onboarding fixture document at `docs/onboarding/macos.md` records every friction encountered installing on a fresh macOS VM _(structural — file shipped 2026-05-02 in Phase 16 plan 16-02; friction blocks await operator)_
+- [x] **VER-02**: Onboarding fixture at `docs/onboarding/linux.md` for Ubuntu 24.04 LTS VM _(structural — file shipped 2026-05-02 in Phase 16 plan 16-02; friction blocks await operator)_
+- [x] **VER-03**: Onboarding fixture at `docs/onboarding/windows.md` for Windows 11 VM (regression check) _(structural — file shipped 2026-05-02 in Phase 16 plan 16-03 split-mode; autonomous half recorded, HITL half awaits operator)_
+- [~] **VER-04**: Each friction point in the three fixtures is resolved as: a code fix (preferred), a doctor check, or a README troubleshooting entry — none left as open _(HITL — friction resolution depends on PLAT-06/07/08 actually running)_
+- [~] **VER-05**: <30 minute install target measured and met on each platform; total elapsed time recorded in fixture _(HITL — measurement depends on PLAT-06/07/08 actually running)_
 
 ### Release & Ship (REL)
 
@@ -120,8 +120,8 @@ Updated 2026-04-30 during v4.1 roadmap creation.
 | LIC-03 | Phase 12 | Done |
 | DOC-01 | Phase 12 | Done |
 | DOC-02 | Phase 12 | Done |
-| DOC-03 | Phase 16 | Pending |
-| DOC-04 | Phase 16 | Pending |
+| DOC-03 | Phase 16 | Done |
+| DOC-04 | Phase 16 | Done |
 | DOC-05 | Phase 12 | Done |
 | DOC-06 | Phase 12 | Done |
 | PLAT-01 | Phase 13 | Done |
@@ -129,9 +129,9 @@ Updated 2026-04-30 during v4.1 roadmap creation.
 | PLAT-03 | Phase 13 | Done |
 | PLAT-04 | Phase 13 | Done |
 | PLAT-05 | Phase 13 | Done |
-| PLAT-06 | Phase 16 | Pending (HITL — fresh macOS VM) |
-| PLAT-07 | Phase 16 | Pending (HITL — fresh Ubuntu 24.04 VM) |
-| PLAT-08 | Phase 16 | Pending (HITL — fresh Windows 11 VM) |
+| PLAT-06 | Phase 16 | Pending (HITL — macOS fresh VM; fixture at docs/onboarding/macos.md) |
+| PLAT-07 | Phase 16 | Pending (HITL — Ubuntu 24.04 fresh VM; fixture at docs/onboarding/linux.md) |
+| PLAT-08 | Phase 16 | Pending (HITL — Windows 11 fresh VM; fixture at docs/onboarding/windows.md split-mode, autonomous half PASS) |
 | INST-01 | Phase 14 | Done |
 | INST-02 | Phase 14 | Done |
 | INST-03 | Phase 14 | Done |
@@ -147,11 +147,11 @@ Updated 2026-04-30 during v4.1 roadmap creation.
 | DIAG-06 | Phase 15 | Done |
 | DIAG-07 | Phase 15 | Done |
 | DIAG-08 | Phase 15 | Done |
-| VER-01 | Phase 16 | Pending (HITL fixture — macOS) |
-| VER-02 | Phase 16 | Pending (HITL fixture — Ubuntu 24.04) |
-| VER-03 | Phase 16 | Pending (HITL fixture — Windows 11) |
-| VER-04 | Phase 16 | Pending |
-| VER-05 | Phase 16 | Pending (HITL — measured per platform) |
+| VER-01 | Phase 16 | Done (structural — fixture shipped HITL-pending) |
+| VER-02 | Phase 16 | Done (structural — fixture shipped HITL-pending) |
+| VER-03 | Phase 16 | Done (structural — fixture shipped split-mode, recorded half PASS) |
+| VER-04 | Phase 16 | Pending (HITL — depends on PLAT-06/07/08 runs) |
+| VER-05 | Phase 16 | Pending (HITL — depends on PLAT-06/07/08 runs) |
 | REL-01 | Phase 17 | Pending |
 | REL-02 | Phase 17 | Pending |
 | REL-03 | Phase 17 | Pending |
@@ -169,10 +169,10 @@ Updated 2026-04-30 during v4.1 roadmap creation.
   - Phase 13: 5 reqs (PLAT-01..05)
   - Phase 14: 7 reqs (INST-01..07)
   - Phase 15: 8 reqs (DIAG-01..08)
-  - Phase 16: 10 reqs (PLAT-06..08, VER-01..05, DOC-03, DOC-04)
+  - Phase 16: 10 reqs total — 5 done structurally (DOC-03/04 + VER-01/02/03), 5 HITL-pending (PLAT-06/07/08 + VER-04/05)
   - Phase 17: 7 reqs (REL-01..07)
 
 ---
 *Requirements defined: 2026-04-30 (v4.1 milestone kickoff)*
 *Traceability mapped: 2026-04-30 (v4.1 roadmap creation)*
-*Last updated: 2026-04-30*
+*Last updated: 2026-05-02 (Phase 16 structural close — DOC-03/04 + VER-01/02/03 Done; PLAT-06..08 + VER-04/05 Pending HITL)*

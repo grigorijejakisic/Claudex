@@ -61,8 +61,8 @@ Phase 12 (Metadata + License + README foundation) ships the small, no-dependency
 - [x] **Phase 13: Cross-platform code audit** — paths / hooks / file locks / subprocess / line endings made portable across Windows + Mac + Linux (completed 2026-04-30)
 - [x] **Phase 14: Bootstrap install + configurable paths** — one-command `bun run setup`, Ollama + arctic-embed2 + BGE reranker boot, `CLAUDEX_PROJECTS_DIR` replaces hardcoded `~/Desktop/Projects/`
 - [x] **Phase 15: `claudex doctor` diagnostics** — self-diagnosis: Bun version, Ollama state, port 7439, DB schema, hook registration, Angel heartbeat (completed 2026-05-02)
-- [ ] **Phase 16: Onboarding verification + README polish** — HITL fresh-VM installs on macOS / Ubuntu 24.04 / Windows 11; <30-min target measured; Quick Start + Troubleshooting finalized
-- [ ] **Phase 17: Public ship to grigorijejakisic/claudex** — remote + history + tags + GitHub release + topics + badges + branch protection
+- [~] **Phase 16: Onboarding verification + README polish** — STRUCTURAL COMPLETE 2026-05-02 (DOC-03/04 + VER-01/02/03 shipped; PLAT-06..08 + VER-04/05 HITL-pending — fresh-VM operator runs gate full close)
+- [ ] **Phase 17: Public ship to grigorijejakisic/claudex** — remote + history + tags + GitHub release + topics + badges + branch protection (UNBLOCKED — HITL-pending Phase 16 items do not gate Phase 17 per Phase 11 SC#4 precedent)
 
 ## Phase Details
 
@@ -514,5 +514,7 @@ Phase 9 may be scheduled parallel to 6/7 once Phase 5 ships (T6 verified safe). 
 | 13. Cross-platform code audit | 5/5 | Complete | 2026-04-30 |
 | 14. Bootstrap install + configurable paths | 0/0 | Not started | - |
 | 15. `claudex doctor` diagnostics | 0/0 | Not started | - |
-| 16. Onboarding verification + README polish | 0/0 | Not started | - |
-| 17. Public ship to grigorijejakisic/claudex | 0/0 | Not started | - |
+| 16. Onboarding verification + README polish | 4/4 | Structural complete (HITL-pending: PLAT-06..08 + VER-04/05) | 2026-05-02 |
+| 17. Public ship to grigorijejakisic/claudex | 0/0 | Not started (UNBLOCKED — HITL-pending Phase 16 items do not gate Phase 17) | - |
+
+**HITL-pending pattern note:** Phase 16's structural close mirrors Phase 11 SC#4 — autonomous deliverables (README sections + fixture file shapes) ship; operator-driven verification (fresh-VM installs, friction resolution, <30-min measurement) deferred to a follow-up gate. Phase 17 is NOT blocked by these deferrals (locked per Phase 16 CONTEXT.md). The operator returns the three fixtures filled in when ready; PLAT-06..08 + VER-04/05 flip to `[x]` at that point.

@@ -7,7 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-(v4.1 phases will populate this section as they land.)
+### Added
+
+- **Phase 16 — Onboarding verification + README polish (structural):** README §Quick Start (clone → `bun run setup` → working session, ≤80 lines, references the install scripts and `bun run doctor` shipped in Phases 14-15 verbatim); README §Troubleshooting (≤120 lines, four canonical failures — Ollama not running, port 7439 dead, Bun version mismatch, hook registration failure — all routed through `bun run doctor` first); three onboarding fixtures at `docs/onboarding/{macos,linux,windows}.md` matching the Phase 11 SC#4 cold-start-trial template. Windows fixture is split-mode (steps 4-7 recorded from current dev machine, steps 1-3 HITL-pending for fresh-VM rigor).
+
+### Pending (HITL — gate full Phase 16 close, do not block v4.1 ship)
+
+- **PLAT-06** — macOS install verified end-to-end on fresh VM
+- **PLAT-07** — Ubuntu 24.04 LTS install verified end-to-end on fresh VM
+- **PLAT-08** — Windows 11 install verified end-to-end on fresh VM (regression check)
+- **VER-04** — every friction surfaced in fixtures resolved as code fix / doctor check / README troubleshooting entry
+- **VER-05** — <30-minute install target measured and met on each platform
+
+The HITL-pending items follow the same pattern Phase 11 SC#4 used to ship v4.0.0 with three live cold-start trials still operator-runnable: structural close documented; operator returns when ready; v4.1 ships without waiting.
 
 ## [4.0.0] — 2026-04-30
 
