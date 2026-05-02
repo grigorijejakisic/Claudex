@@ -11,6 +11,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - _Nothing yet._ Track v4.2 milestone planning at `.planning/STATE.md` once it kicks off.
 
+## [4.1.2] — 2026-05-02
+
+Test-coverage release. Closes the regression class that v4.1.1 fixed by adding subprocess-based bundle smoke tests, static bundle integrity checks, and install-script structural tests. The new tests would have caught the v4.1.1 `getHookPaths is not defined` regression at `bun run test` time, before public ship. Same friction class the deferred Phase 16 fresh-VM HITL trials were designed for; this is the unit-level complement.
+
+### Added
+
+- **`CLAUDEX_DRY_RUN=1` env flag** in `src/cli/setup.ts` — walks all 8 setup steps without side effects (no reranker venv creation, no `~/.claudex/*` mkdir, no DB init, no `~/.claude/settings.json` patch). Read-only probes (Bun, Ollama, model presence, projects dir, `getHookPaths()` call site) still execute. Used by tests to exercise the bundled CLI without mutating the user's machine.
+- **`src/tests/integration/cli-bundle-smoke.test.ts`** (7 tests) — spawns `node dist/cli/setup.cjs` with `CLAUDEX_DRY_RUN=1`, `node dist/cli/doctor.cjs`, `node dist/cli/doctor.cjs --json`, and `node dist/benchmark/vesna/cli.cjs` as subprocesses. Asserts no bundle-time failure patterns (`ReferenceError`, `SyntaxError`, `TypeError`, `Cannot find module`) appear in stdout/stderr, exit codes are sane, and expected output markers (e.g., `Would register N hooks`, `AGGREGATE`) are present. Catches the v4.1.1 regression class.
+- **`src/tests/cli/bundle-integrity.test.ts`** (5 tests) — `require()`s every guarded `.cjs` under `dist/cli/` (setup, doctor, why, session-token-cost) and asserts no top-level errors at module load. Cheap static guard for module-load-time bundle bugs.
+- **`src/tests/integration/install-script-smoke.test.ts`** (11 tests) — static-parses `install.sh` and `install.bat`, asserts portable shebang / `@echo off`, Bun pre-flight with install link, ordered invocation of `bun install --frozen-lockfile` → `bun run build` → `bun run setup`, `set -e` (POSIX) / `errorlevel` checks (Windows), and the Windows-specific `call bun ...` requirement (without `call`, control transfers to `bun.cmd` and never returns).
+
+### Coverage
+
+3211 passing tests (+23 over v4.1.1's 3188 baseline) + 20 pre-existing llama-server-supervisor failures unchanged. `bun run vesna` 17/17 GATED PASS, `bun run doctor` exit 0.
+
 ## [4.1.1] — 2026-05-02
 
 Patch release. Fixes a stranger-blocking regression in `bun run setup` where step 8/8 (hook registration) crashed with `ReferenceError: getHookPaths is not defined`. Caught by the post-ship stranger-eyes test the user requested immediately after v4.1.0 went public — the same friction class that the deferred Phase 16 fresh-VM HITL trials would have surfaced.

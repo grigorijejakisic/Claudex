@@ -144,9 +144,17 @@ async function askYesNo(question: string): Promise<boolean> {
 
 /**
  * Main setup entry point.
+ *
+ * `CLAUDEX_DRY_RUN=1` walks every step but skips side-effecting writes
+ * (reranker venv creation, ~/.claudex/* mkdir, DB init, settings.json patch).
+ * Read-only probes (Bun, Ollama, model presence, projects dir, getHookPaths
+ * call site) still execute. Used by tests to exercise the bundled CLI without
+ * mutating the user's machine — catches bundle-time symbol-binding regressions
+ * like v4.1.1's `ReferenceError: getHookPaths is not defined`.
  */
 export async function main(): Promise<void> {
-  console.log('Claudex v3 Setup');
+  const isDryRun = process.env.CLAUDEX_DRY_RUN === '1';
+  console.log(isDryRun ? 'Claudex v3 Setup (DRY RUN — no writes)' : 'Claudex v3 Setup');
   console.log('================\n');
 
   const installDirPre = path.resolve(__dirname, '..', '..');
@@ -161,20 +169,28 @@ export async function main(): Promise<void> {
   console.log('[2/8] Detecting Ollama...');
   const ollamaResult = await detectOllama();
   console.log(`  ${ollamaResult.ok ? '[OK]' : '[FAIL]'} ${ollamaResult.message}`);
-  if (!ollamaResult.ok) process.exit(1);
+  if (!ollamaResult.ok && !isDryRun) process.exit(1);
 
   // [3/8] Pull embedding model
   console.log('[3/8] Pulling embedding model (snowflake-arctic-embed2)...');
-  const modelResult = await pullEmbeddingModel();
-  console.log(`  ${modelResult.ok ? '[OK]' : '[FAIL]'} ${modelResult.message}`);
-  if (!modelResult.ok) process.exit(1);
+  if (isDryRun) {
+    console.log('  [OK] Skipped — dry run (would pull if missing)');
+  } else {
+    const modelResult = await pullEmbeddingModel();
+    console.log(`  ${modelResult.ok ? '[OK]' : '[FAIL]'} ${modelResult.message}`);
+    if (!modelResult.ok) process.exit(1);
+  }
 
   // [4/8] Bootstrap BGE reranker (best-effort)
   console.log('[4/8] Bootstrapping BGE reranker...');
-  const rerankerResult = await bootstrapReranker({ projectRoot: installDirPre });
-  console.log(`  [OK] ${rerankerResult.message}`);
-  if (rerankerResult.warning) {
-    console.log(`  [WARN] ${rerankerResult.warning}`);
+  if (isDryRun) {
+    console.log('  [OK] Skipped — dry run (would bootstrap venv + spawn :7439)');
+  } else {
+    const rerankerResult = await bootstrapReranker({ projectRoot: installDirPre });
+    console.log(`  [OK] ${rerankerResult.message}`);
+    if (rerankerResult.warning) {
+      console.log(`  [WARN] ${rerankerResult.warning}`);
+    }
   }
 
   // [5/8] Resolve and ensure projects directory
@@ -185,86 +201,96 @@ export async function main(): Promise<void> {
   // [6/8] Create directory structure
   console.log('[6/8] Creating Claudex home directory structure...');
   const claudexHome = getClaudexHome();
-  ensureDir(claudexHome);
-  ensureDir(path.join(claudexHome, 'db'));
-  ensureDir(path.join(claudexHome, 'identity'));
-  console.log(`  [OK] ${claudexHome}`);
+  if (!isDryRun) {
+    ensureDir(claudexHome);
+    ensureDir(path.join(claudexHome, 'db'));
+    ensureDir(path.join(claudexHome, 'identity'));
+  }
+  console.log(`  [OK] ${claudexHome}${isDryRun ? ' (skipped — dry run)' : ''}`);
 
   // [7/8] Database initialization
   console.log('[7/8] Initializing database...');
   const dbPath = getDbPath();
+  const configPath = getConfigPath();
+  if (isDryRun) {
+    console.log(`  [OK] ${dbPath} (skipped — dry run)`);
+    console.log(`  [OK] Config: ${configPath} (skipped — dry run)`);
+  } else {
+    // Check for v2 before initializing (uses core detectV2Database which scans known paths)
+    const v2Path = detectV2Database();
+    if (v2Path) {
+      const v2Stats = getDbStats(v2Path);
+      console.log(`\n[INFO] Existing v2 database detected:`);
+      console.log(`  Observations: ${v2Stats.observationCount}`);
+      console.log(`  Sessions: ${v2Stats.sessionCount}`);
+      console.log(`  Pressure scores: ${v2Stats.pressureCount}`);
 
-  // Check for v2 before initializing (uses core detectV2Database which scans known paths)
-  const v2Path = detectV2Database();
-  if (v2Path) {
-    const v2Stats = getDbStats(v2Path);
-    console.log(`\n[INFO] Existing v2 database detected:`);
-    console.log(`  Observations: ${v2Stats.observationCount}`);
-    console.log(`  Sessions: ${v2Stats.sessionCount}`);
-    console.log(`  Pressure scores: ${v2Stats.pressureCount}`);
+      const shouldMigrate = await askYesNo('Migrate v2 data? [y/N] ');
+      if (shouldMigrate) {
+        const resolvedV2 = path.resolve(v2Path);
+        const resolvedV3 = path.resolve(dbPath);
+        if (resolvedV2 === resolvedV3) {
+          console.log('[INFO] v2 database is already at v3 runtime path — skipping migration (in-place upgrade will apply)');
+        } else {
+          const backupPath = v2Path + '.v2-backup';
+          fs.copyFileSync(v2Path, backupPath);
+          console.log(`[OK] v2 backup created: ${backupPath}`);
 
-    const shouldMigrate = await askYesNo('Migrate v2 data? [y/N] ');
-    if (shouldMigrate) {
-      const resolvedV2 = path.resolve(v2Path);
-      const resolvedV3 = path.resolve(dbPath);
-      if (resolvedV2 === resolvedV3) {
-        // Skip migration — DB is already at runtime path; in-place upgrade handled by initializeSchema
-        console.log('[INFO] v2 database is already at v3 runtime path — skipping migration (in-place upgrade will apply)');
-      } else {
-        const backupPath = v2Path + '.v2-backup';
-        fs.copyFileSync(v2Path, backupPath);
-        console.log(`[OK] v2 backup created: ${backupPath}`);
-
-        const db = openDatabase(dbPath);
-        try {
-          migrateFromV2(db, v2Path);
-          console.log('[OK] v2 data migrated');
-        } finally {
-          closeDatabase(db);
+          const db = openDatabase(dbPath);
+          try {
+            migrateFromV2(db, v2Path);
+            console.log('[OK] v2 data migrated');
+          } finally {
+            closeDatabase(db);
+          }
         }
       }
     }
-  }
 
-  // Initialize schema (safe with CREATE IF NOT EXISTS)
-  const db = openDatabase(dbPath);
-  try {
-    initializeSchema(db);
-  } finally {
-    closeDatabase(db);
-  }
-  console.log(`  [OK] ${dbPath}`);
+    // Initialize schema (safe with CREATE IF NOT EXISTS)
+    const db = openDatabase(dbPath);
+    try {
+      initializeSchema(db);
+    } finally {
+      closeDatabase(db);
+    }
+    console.log(`  [OK] ${dbPath}`);
 
-  // Write default config (only if not exists)
-  const configPath = getConfigPath();
-  if (!fs.existsSync(configPath)) {
-    await writeJsonFile(configPath, DEFAULT_CONFIG);
-    console.log(`  [OK] Config written: ${configPath}`);
-  } else {
-    console.log(`  [OK] Config preserved: ${configPath}`);
+    // Write default config (only if not exists)
+    if (!fs.existsSync(configPath)) {
+      await writeJsonFile(configPath, DEFAULT_CONFIG);
+      console.log(`  [OK] Config written: ${configPath}`);
+    } else {
+      console.log(`  [OK] Config preserved: ${configPath}`);
+    }
   }
 
   // [8/8] Patch settings.json
+  // getHookPaths is ALWAYS called (even in dry run) so this exercises the
+  // bundle-time symbol-binding path that the v4.1.1 regression tripped over.
   console.log('[8/8] Registering CC hooks in settings.json...');
   const installDir = installDirPre;
   const hookPaths = getHookPaths(installDir);
   const settingsPath = getSettingsJsonPath();
-  const patchResult = patchSettingsJson(settingsPath, hookPaths);
-
-  if (patchResult.patched) {
-    const suffix = patchResult.created ? ' (created)' : '';
-    console.log(`  [OK] Hooks registered in: ${settingsPath}${suffix}`);
+  if (isDryRun) {
+    console.log(`  [OK] Would register ${Object.keys(hookPaths).length} hooks in: ${settingsPath} (dry run)`);
   } else {
-    console.log(`  [WARN] Could not patch settings.json at: ${settingsPath}`);
+    const patchResult = patchSettingsJson(settingsPath, hookPaths);
+    if (patchResult.patched) {
+      const suffix = patchResult.created ? ' (created)' : '';
+      console.log(`  [OK] Hooks registered in: ${settingsPath}${suffix}`);
+    } else {
+      console.log(`  [WARN] Could not patch settings.json at: ${settingsPath}`);
+    }
   }
 
   // Summary
-  console.log(`\nSetup complete! Claudex v3 is ready.`);
-  console.log(`  - Database:         ${dbPath}`);
-  console.log(`  - Config:           ${configPath}`);
+  console.log(`\n${isDryRun ? 'DRY RUN complete — no writes performed.' : 'Setup complete! Claudex v3 is ready.'}`);
+  console.log(`  - Database:         ${dbPath}${isDryRun ? ' (would init)' : ''}`);
+  console.log(`  - Config:           ${configPath}${isDryRun ? ' (would write/preserve)' : ''}`);
   console.log(`  - Projects dir:     ${projectsDir}`);
-  console.log(`  - Reranker (:7439): ${rerankerResult.warning ? 'degraded — see warning above' : 'healthy'}`);
-  console.log(`  - Hooks:            25 registered in ${settingsPath}`);
+  console.log(`  - Reranker (:7439): ${isDryRun ? 'skipped — dry run' : 'healthy or degraded — see step 4'}`);
+  console.log(`  - Hooks:            ${Object.keys(hookPaths).length} ${isDryRun ? 'would be registered' : 'registered'} in ${settingsPath}`);
 
   process.exit(0);
 }
