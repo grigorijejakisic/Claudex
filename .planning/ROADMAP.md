@@ -59,7 +59,7 @@ Phase 12 (Metadata + License + README foundation) ships the small, no-dependency
 
 - [x] **Phase 12: Metadata + License + README foundation** — LICENSE (MIT) + package.json polish + README v1 (what/why/who) + CHANGELOG + CONTRIBUTING (completed 2026-04-30)
 - [x] **Phase 13: Cross-platform code audit** — paths / hooks / file locks / subprocess / line endings made portable across Windows + Mac + Linux (completed 2026-04-30)
-- [ ] **Phase 14: Bootstrap install + configurable paths** — one-command `bun run setup`, Ollama + arctic-embed2 + BGE reranker boot, `CLAUDEX_PROJECTS_DIR` replaces hardcoded `~/Desktop/Projects/`
+- [x] **Phase 14: Bootstrap install + configurable paths** — one-command `bun run setup`, Ollama + arctic-embed2 + BGE reranker boot, `CLAUDEX_PROJECTS_DIR` replaces hardcoded `~/Desktop/Projects/`
 - [ ] **Phase 15: `claudex doctor` diagnostics** — self-diagnosis: Bun version, Ollama state, port 7439, DB schema, hook registration, Angel heartbeat
 - [ ] **Phase 16: Onboarding verification + README polish** — HITL fresh-VM installs on macOS / Ubuntu 24.04 / Windows 11; <30-min target measured; Quick Start + Troubleshooting finalized
 - [ ] **Phase 17: Public ship to grigorijejakisic/claudex** — remote + history + tags + GitHub release + topics + badges + branch protection
@@ -423,7 +423,7 @@ Plans:
 - [x] 13-04: PLAT-01 + PLAT-02 + PLAT-04 fix execution — single fix applied (heartbeat.ts:202 shell-string execSync → 3-step execFileSync array args); final audit report
 - [x] 13-05: PLAT-05 .gitattributes extension + phase close — extended baseline with per-extension rules; experience-patterns.ts renormalized CRLF→LF; STATE/ROADMAP/REQUIREMENTS marked
 
-**Status:** PHASE 13 COMPLETE 2026-04-30. SC#1 Vesna PASS at 17/17 (100%). bun run test 3123 + 20 baseline llama-server-supervisor failures unchanged from v4.0.0. PLAT-01..05 closed. Phase 14 unblocked.
+**Status:** PHASE 14 COMPLETE 2026-05-01. SC#1 Vesna PASS at 17/17 (100%). bun run test 3147 + 20 baseline llama-server-supervisor failures unchanged from v4.0.0. INST-01..07 closed (19 of 44 v4.1 reqs done). Phase 15 unblocked.
 
 ### Phase 14: Bootstrap install + configurable paths
 **Goal:** A stranger runs one command from a clean clone and ends up with Ollama running, the embedding model pulled, the BGE reranker alive on port 7439, hooks registered, and Claude Code producing working assembly within their first user turn.
@@ -437,7 +437,8 @@ Plans:
   5. Hardcoded `~/Desktop/Projects/` reference replaced with `CLAUDEX_PROJECTS_DIR` environment variable (default: `~/Projects/` cross-platform); MCP server registration uses the configurable directory; existing `~/.claudex/projects.json` migrates to new path conventions without losing entries (INST-05, INST-06)
   6. First-session UX verified: after `bun run setup`, opening Claude Code in any registered project produces a working session-start assembly within 1 user turn — no manual steps, no missing context (INST-07)
 
-**Plans:** TBD
+**Plans:** 14-01 (projects-dir helper + audit), 14-02 (callsite refactor), 14-03 (bootstrap steps), 14-04 (install wrappers), 14-05 (verify + close)
+**Closed:** 2026-05-01
 
 ### Phase 15: `claudex doctor` diagnostics
 **Goal:** When a stranger's install breaks, they run one command and learn exactly what's wrong and how to fix it — no GitHub issue required, no prior knowledge of which process owns which port.

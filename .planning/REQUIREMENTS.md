@@ -37,13 +37,13 @@
 
 ### Setup & Install (INST)
 
-- [ ] **INST-01**: One-command bootstrap (`bun run setup` and/or `./install.sh`) sets up everything from clean clone, returns 0 on success
-- [ ] **INST-02**: Bootstrap detects Ollama; if missing, prints platform-specific install instruction and exits 1
-- [ ] **INST-03**: Bootstrap pulls `snowflake-arctic-embed2` model via Ollama (idempotent — skips if already pulled)
-- [ ] **INST-04**: Bootstrap starts BGE reranker service on port 7439 (Python venv setup + dependencies + boot) or prints actionable failure
-- [ ] **INST-05**: Hardcoded `~/Desktop/Projects/` path replaced with configurable `CLAUDEX_PROJECTS_DIR` env var (default: `~/Projects/` cross-platform)
-- [ ] **INST-06**: MCP server registration uses the configurable projects directory; existing project registry migrates to new path conventions
-- [ ] **INST-07**: First-session UX: after `bun run setup`, opening Claude Code in any project produces working assembly within 1 user turn
+- [x] **INST-01**: One-command bootstrap (`bun run setup` and/or `./install.sh`) sets up everything from clean clone, returns 0 on success — closed 2026-05-01 in Phase 14 (plans 14-03, 14-04)
+- [x] **INST-02**: Bootstrap detects Ollama; if missing, prints platform-specific install instruction and exits 1 — closed 2026-05-01 in Phase 14 (plan 14-03)
+- [x] **INST-03**: Bootstrap pulls `snowflake-arctic-embed2` model via Ollama (idempotent — skips if already pulled) — closed 2026-05-01 in Phase 14 (plan 14-03)
+- [x] **INST-04**: Bootstrap starts BGE reranker service on port 7439 (Python venv setup + dependencies + boot) or prints actionable failure — closed 2026-05-01 in Phase 14 (plan 14-03; best-effort fallback per CONTEXT.md decision)
+- [x] **INST-05**: Hardcoded `~/Desktop/Projects/` path replaced with configurable `CLAUDEX_PROJECTS_DIR` env var (default: `~/Projects/` cross-platform) — closed 2026-05-01 in Phase 14 (plans 14-01, 14-02)
+- [x] **INST-06**: MCP server registration uses the configurable projects directory; existing project registry migrates to new path conventions — closed 2026-05-01 in Phase 14 (plan 14-02; no automatic data migration per CONTEXT.md decision)
+- [x] **INST-07**: First-session UX: after `bun run setup`, opening Claude Code in any project produces working assembly within 1 user turn — closed 2026-05-01 in Phase 14 (verified live in plan 14-05)
 
 ### Diagnostics (DIAG)
 
@@ -132,13 +132,13 @@ Updated 2026-04-30 during v4.1 roadmap creation.
 | PLAT-06 | Phase 16 | Pending (HITL — fresh macOS VM) |
 | PLAT-07 | Phase 16 | Pending (HITL — fresh Ubuntu 24.04 VM) |
 | PLAT-08 | Phase 16 | Pending (HITL — fresh Windows 11 VM) |
-| INST-01 | Phase 14 | Pending |
-| INST-02 | Phase 14 | Pending |
-| INST-03 | Phase 14 | Pending |
-| INST-04 | Phase 14 | Pending |
-| INST-05 | Phase 14 | Pending |
-| INST-06 | Phase 14 | Pending |
-| INST-07 | Phase 14 | Pending |
+| INST-01 | Phase 14 | Done |
+| INST-02 | Phase 14 | Done |
+| INST-03 | Phase 14 | Done |
+| INST-04 | Phase 14 | Done |
+| INST-05 | Phase 14 | Done |
+| INST-06 | Phase 14 | Done |
+| INST-07 | Phase 14 | Done |
 | DIAG-01 | Phase 15 | Pending |
 | DIAG-02 | Phase 15 | Pending |
 | DIAG-03 | Phase 15 | Pending |
