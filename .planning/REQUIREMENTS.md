@@ -66,13 +66,13 @@
 
 ### Release & Ship (REL)
 
-- [ ] **REL-01**: Public GitHub remote configured pointing to `github.com/grigorijejakisic/claudex`
-- [ ] **REL-02**: Initial push includes complete master history + all tags (v4.0.0 + v4.1.0)
-- [ ] **REL-03**: `v4.1.0` annotated git tag created and pushed
-- [ ] **REL-04**: GitHub release for v4.1.0 published with notes derived from `CHANGELOG.md`
-- [ ] **REL-05**: Repository topics set on GitHub for discoverability (final list TBD; candidates: `claude-code`, `mcp`, `agent-memory`, `llm-tools`, `typescript`, `bun`)
-- [ ] **REL-06**: README badges (license, version, build status) display correctly on GitHub
-- [ ] **REL-07**: Branch protection rule for Vesna CI applied via GitHub UI (manual step from Phase 10 carry-forward)
+- [x] **REL-01**: Public GitHub remote configured pointing to `github.com/grigorijejakisic/Claudex` — closed 2026-05-02 in Phase 17 (verified pre-phase; SSH remote `public` already in place)
+- [x] **REL-02**: Initial push includes complete master history + all tags (v4.0.0 + v4.1.0) — closed 2026-05-02 in Phase 17 (plan 17-02; `git push public master` fast-forward 712c910..d18c934, 337 commits; `git push public --tags` sent v4.0.0 + v4.1.0)
+- [x] **REL-03**: `v4.1.0` annotated git tag created and pushed — closed 2026-05-02 in Phase 17 (plan 17-02; annotated at d18c934 with locked Phase 12-17 message body)
+- [~] **REL-04**: GitHub release for v4.1.0 published with notes derived from `CHANGELOG.md` _(HITL — autonomous run via Corleanus failed with permission error on grigorijejakisic/Claudex; release notes preserved at /tmp/phase17-fallback/release-notes.md; awaiting operator gh-as-grigorijejakisic run per docs/onboarding/branch-protection-setup.md operator-fallback section)_
+- [~] **REL-05**: Repository topics set on GitHub for discoverability (final list: `claude-code`, `mcp`, `agent-memory`, `llm-tools`, `typescript`, `bun`, `claudex`, `persistent-memory`, `claude`) _(HITL — autonomous run via Corleanus failed with HTTP 404 on /topics endpoint, same permission root cause as REL-04; awaiting operator gh-as-grigorijejakisic run per docs/onboarding/branch-protection-setup.md operator-fallback section)_
+- [x] **REL-06**: README badges (license, version, build status) display correctly on GitHub — closed 2026-05-02 in Phase 17 (plan 17-01; 3 badges added at top of README; Vesna CI badge shows "no status" until first public CI run, acceptable per CONTEXT)
+- [~] **REL-07**: Branch protection rule for Vesna CI applied via GitHub UI (manual step from Phase 10 carry-forward) _(HITL — runbook at docs/onboarding/branch-protection-setup.md; operator runs the UI step post-ship)_
 
 ## v4.2+ Requirements (Deferred)
 
@@ -152,27 +152,29 @@ Updated 2026-04-30 during v4.1 roadmap creation.
 | VER-03 | Phase 16 | Done (structural — fixture shipped split-mode, recorded half PASS) |
 | VER-04 | Phase 16 | Pending (HITL — depends on PLAT-06/07/08 runs) |
 | VER-05 | Phase 16 | Pending (HITL — depends on PLAT-06/07/08 runs) |
-| REL-01 | Phase 17 | Pending |
-| REL-02 | Phase 17 | Pending |
-| REL-03 | Phase 17 | Pending |
-| REL-04 | Phase 17 | Pending |
-| REL-05 | Phase 17 | Pending |
-| REL-06 | Phase 17 | Pending |
-| REL-07 | Phase 17 | Pending (manual GitHub UI step from Phase 10 carry-forward) |
+| REL-01 | Phase 17 | Done |
+| REL-02 | Phase 17 | Done |
+| REL-03 | Phase 17 | Done |
+| REL-04 | Phase 17 | Pending (HITL — autonomous gh CLI lacked write permission on grigorijejakisic/Claudex; operator runs gh-as-grigorijejakisic per docs/onboarding/branch-protection-setup.md) |
+| REL-05 | Phase 17 | Pending (HITL — same permission root cause as REL-04; operator runs gh-as-grigorijejakisic per docs/onboarding/branch-protection-setup.md) |
+| REL-06 | Phase 17 | Done |
+| REL-07 | Phase 17 | Pending (HITL — operator runs UI step; runbook at docs/onboarding/branch-protection-setup.md) |
 
 **Coverage:**
 - v4.1 requirements: 44 total
 - Mapped to phases: 44 ✓
 - Unmapped: 0 ✓
 - Phase distribution:
-  - Phase 12: 7 reqs (LIC-01..03, DOC-01, DOC-02, DOC-05, DOC-06)
-  - Phase 13: 5 reqs (PLAT-01..05)
-  - Phase 14: 7 reqs (INST-01..07)
-  - Phase 15: 8 reqs (DIAG-01..08)
-  - Phase 16: 10 reqs total — 5 done structurally (DOC-03/04 + VER-01/02/03), 5 HITL-pending (PLAT-06/07/08 + VER-04/05)
-  - Phase 17: 7 reqs (REL-01..07)
+  - Phase 12: 7 reqs (LIC-01..03, DOC-01, DOC-02, DOC-05, DOC-06) — all Done
+  - Phase 13: 5 reqs (PLAT-01..05) — all Done
+  - Phase 14: 7 reqs (INST-01..07) — all Done
+  - Phase 15: 8 reqs (DIAG-01..08) — all Done
+  - Phase 16: 10 reqs total — 5 Done structurally (DOC-03/04 + VER-01/02/03), 5 HITL-pending (PLAT-06/07/08 + VER-04/05)
+  - Phase 17: 7 reqs total — 4 Done (REL-01, REL-02, REL-03, REL-06), 3 HITL-pending (REL-04, REL-05 awaiting operator gh-as-grigorijejakisic; REL-07 awaiting operator GitHub UI click)
+
+**v4.1 milestone status: SHIPPED 2026-05-02 at v4.1.0.** 36/44 reqs Done autonomously; 8/44 HITL-pending (PLAT-06..08, VER-04/05 from Phase 16; REL-04, REL-05, REL-07 from Phase 17 — all operator-runnable per published runbooks).
 
 ---
 *Requirements defined: 2026-04-30 (v4.1 milestone kickoff)*
 *Traceability mapped: 2026-04-30 (v4.1 roadmap creation)*
-*Last updated: 2026-05-02 (Phase 16 structural close — DOC-03/04 + VER-01/02/03 Done; PLAT-06..08 + VER-04/05 Pending HITL)*
+*Last updated: 2026-05-02 (Phase 17 close — REL-01..03, REL-06 Done; REL-04, REL-05, REL-07 Pending HITL; v4.1 milestone SHIPPED publicly)*

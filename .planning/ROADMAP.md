@@ -40,6 +40,8 @@ v4.0 is internal infrastructure. v4.1 = Distribution will make it installable by
 
 # Roadmap: Claudex v4.1 — Distribution
 
+**v4.1 — Distribution: SHIPPED 2026-05-02 at v4.1.0** — public on `github.com/grigorijejakisic/Claudex`. 36/44 reqs Done autonomously across Phases 12-17; 8/44 HITL-pending (PLAT-06..08, VER-04/05 from Phase 16; REL-04/05/07 from Phase 17 — all operator-runnable per published runbooks). Next milestone: v4.2 (TBD).
+
 ## Overview (v4.1)
 
 Six phases continuing from Phase 11. v4.1's goal: **a stranger clones Claudex, follows the README, and has a working session in <30 minutes with no insider knowledge.** Then ship to `github.com/grigorijejakisic/claudex` public.
@@ -62,7 +64,7 @@ Phase 12 (Metadata + License + README foundation) ships the small, no-dependency
 - [x] **Phase 14: Bootstrap install + configurable paths** — one-command `bun run setup`, Ollama + arctic-embed2 + BGE reranker boot, `CLAUDEX_PROJECTS_DIR` replaces hardcoded `~/Desktop/Projects/`
 - [x] **Phase 15: `claudex doctor` diagnostics** — self-diagnosis: Bun version, Ollama state, port 7439, DB schema, hook registration, Angel heartbeat (completed 2026-05-02)
 - [~] **Phase 16: Onboarding verification + README polish** — STRUCTURAL COMPLETE 2026-05-02 (DOC-03/04 + VER-01/02/03 shipped; PLAT-06..08 + VER-04/05 HITL-pending — fresh-VM operator runs gate full close)
-- [ ] **Phase 17: Public ship to grigorijejakisic/claudex** — remote + history + tags + GitHub release + topics + badges + branch protection (UNBLOCKED — HITL-pending Phase 16 items do not gate Phase 17 per Phase 11 SC#4 precedent)
+- [x] **Phase 17: Public ship to grigorijejakisic/Claudex** — SHIPPED 2026-05-02. v4.1.0 tagged at content-complete commit (d18c934); complete master history (337 commits) pushed to `grigorijejakisic/Claudex` as fast-forward from 712c910; v4.0.0 + v4.1.0 tags both visible on public; README badges live; branch protection runbook at `docs/onboarding/branch-protection-setup.md`. REL-01/02/03/06 [x]; REL-04/05 [~] HITL (gh CLI Corleanus auth lacked write to public repo; operator-fallback documented); REL-07 [~] HITL (operator runs UI step). v4.1 milestone SHIPPED publicly.
 
 ## Phase Details
 
@@ -470,19 +472,21 @@ Plans:
 
 **Plans:** TBD
 
-### Phase 17: Public ship to grigorijejakisic/claudex
-**Goal:** Tag v4.1.0, push the complete history to `github.com/grigorijejakisic/claudex` public, cut the GitHub release, and apply repo metadata + branch protection — the milestone closes the moment a stranger can find the repo via search and clone it.
+### Phase 17: Public ship to grigorijejakisic/Claudex
+**Goal:** Tag v4.1.0, push the complete history to `github.com/grigorijejakisic/Claudex` public, cut the GitHub release, and apply repo metadata + branch protection — the milestone closes the moment a stranger can find the repo via search and clone it.
 **Depends on:** Phase 16 (onboarding verified across all three platforms; <30-min target met)
 **Requirements:** REL-01, REL-02, REL-03, REL-04, REL-05, REL-06, REL-07
 **Success Criteria:**
-  1. Public GitHub remote is configured pointing at `github.com/grigorijejakisic/claudex` and the initial push includes complete master history plus all tags (v4.0.0 + v4.1.0); `git ls-remote` confirms parity with local (REL-01, REL-02)
+  1. Public GitHub remote is configured pointing at `github.com/grigorijejakisic/Claudex` and the initial push includes complete master history plus all tags (v4.0.0 + v4.1.0); `git ls-remote` confirms parity with local (REL-01, REL-02)
   2. `v4.1.0` annotated git tag is created, signed if signing is enabled, and pushed to the public remote (REL-03)
   3. GitHub release for v4.1.0 is published with notes derived from `CHANGELOG.md` — release page is reachable, displays the v4.1 narrative, and links to the v4.0.0 archive (REL-04)
   4. Repository topics applied via GitHub UI/API for discoverability (final list confirmed at ship time from candidates: `claude-code`, `mcp`, `agent-memory`, `llm-tools`, `typescript`, `bun`); topics visible on the public repo page (REL-05)
   5. README badges (license, version, build status) render correctly on the public GitHub page — the Vesna CI workflow from Phase 10 reports green; license + version badges link to canonical sources (REL-06)
   6. Branch protection rule for the Vesna CI gate is applied via GitHub UI on the public repo (carries forward the manual step deferred from Phase 10 close) — main is protected, Vesna check is required (REL-07)
 
-**Plans:** TBD
+**Plans:** 17-01 (CHANGELOG + badges) → 17-02 (v4.1.0 tag + push) → 17-03 (GitHub release + topics + branch-protection runbook) → 17-04 (close + push to BOTH remotes)
+
+**Closed:** 2026-05-02 with 4 plans / 3 atomic implementation commits + this close commit. REL-01/02/03/06 [x] (autonomous); REL-04/05/07 [~] HITL (REL-04 + REL-05 await operator gh-as-grigorijejakisic re-run; REL-07 awaits operator GitHub UI click). Public ship landed: v4.1 milestone SHIPPED publicly at `github.com/grigorijejakisic/Claudex`.
 
 ## Progress
 
@@ -515,6 +519,6 @@ Phase 9 may be scheduled parallel to 6/7 once Phase 5 ships (T6 verified safe). 
 | 14. Bootstrap install + configurable paths | 0/0 | Not started | - |
 | 15. `claudex doctor` diagnostics | 0/0 | Not started | - |
 | 16. Onboarding verification + README polish | 4/4 | Structural complete (HITL-pending: PLAT-06..08 + VER-04/05) | 2026-05-02 |
-| 17. Public ship to grigorijejakisic/claudex | 0/0 | Not started (UNBLOCKED — HITL-pending Phase 16 items do not gate Phase 17) | - |
+| 17. Public ship to grigorijejakisic/Claudex | 4/4 | Closed 2026-05-02 (REL-01/02/03/06 [x]; REL-04/05/07 [~] HITL) | 2026-05-02 |
 
 **HITL-pending pattern note:** Phase 16's structural close mirrors Phase 11 SC#4 — autonomous deliverables (README sections + fixture file shapes) ship; operator-driven verification (fresh-VM installs, friction resolution, <30-min measurement) deferred to a follow-up gate. Phase 17 is NOT blocked by these deferrals (locked per Phase 16 CONTEXT.md). The operator returns the three fixtures filled in when ready; PLAT-06..08 + VER-04/05 flip to `[x]` at that point.
