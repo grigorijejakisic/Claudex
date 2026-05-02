@@ -60,7 +60,7 @@ Phase 12 (Metadata + License + README foundation) ships the small, no-dependency
 - [x] **Phase 12: Metadata + License + README foundation** — LICENSE (MIT) + package.json polish + README v1 (what/why/who) + CHANGELOG + CONTRIBUTING (completed 2026-04-30)
 - [x] **Phase 13: Cross-platform code audit** — paths / hooks / file locks / subprocess / line endings made portable across Windows + Mac + Linux (completed 2026-04-30)
 - [x] **Phase 14: Bootstrap install + configurable paths** — one-command `bun run setup`, Ollama + arctic-embed2 + BGE reranker boot, `CLAUDEX_PROJECTS_DIR` replaces hardcoded `~/Desktop/Projects/`
-- [ ] **Phase 15: `claudex doctor` diagnostics** — self-diagnosis: Bun version, Ollama state, port 7439, DB schema, hook registration, Angel heartbeat
+- [x] **Phase 15: `claudex doctor` diagnostics** — self-diagnosis: Bun version, Ollama state, port 7439, DB schema, hook registration, Angel heartbeat (completed 2026-05-02)
 - [ ] **Phase 16: Onboarding verification + README polish** — HITL fresh-VM installs on macOS / Ubuntu 24.04 / Windows 11; <30-min target measured; Quick Start + Troubleshooting finalized
 - [ ] **Phase 17: Public ship to grigorijejakisic/claudex** — remote + history + tags + GitHub release + topics + badges + branch protection
 

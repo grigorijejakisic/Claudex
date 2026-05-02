@@ -47,14 +47,14 @@
 
 ### Diagnostics (DIAG)
 
-- [ ] **DIAG-01**: `bun run doctor` command exists and is documented in README
-- [ ] **DIAG-02**: Doctor checks Bun version (>=1.3) — pass / fail / version-found
-- [ ] **DIAG-03**: Doctor checks Ollama running + `snowflake-arctic-embed2` model pulled
-- [ ] **DIAG-04**: Doctor checks BGE reranker reachable on port 7439 (HTTP probe)
-- [ ] **DIAG-05**: Doctor checks `~/.claudex/db/claudex.db` exists and schema version matches build
-- [ ] **DIAG-06**: Doctor checks Claude Code hooks registered (reads CC settings, finds Claudex hooks)
-- [ ] **DIAG-07**: Doctor checks Angel process alive (PID file + heartbeat freshness)
-- [ ] **DIAG-08**: Doctor returns exit 0 if all pass, exit 1 with actionable error per failed check
+- [x] **DIAG-01**: `bun run doctor` command exists and is documented in README — closed 2026-05-02 in Phase 15 (plan 15-05; README §Diagnostics)
+- [x] **DIAG-02**: Doctor checks Bun version (>=1.3) — pass / fail / version-found — closed 2026-05-02 in Phase 15 (plan 15-02)
+- [x] **DIAG-03**: Doctor checks Ollama running + `snowflake-arctic-embed2` model pulled — closed 2026-05-02 in Phase 15 (plan 15-03)
+- [x] **DIAG-04**: Doctor checks BGE reranker reachable on port 7439 (HTTP probe) — closed 2026-05-02 in Phase 15 (plan 15-03; warn-on-fail per CONTEXT.md)
+- [x] **DIAG-05**: Doctor checks `~/.claudex/db/claudex.db` exists and schema version matches build — closed 2026-05-02 in Phase 15 (plan 15-02; reads TARGET_USER_VERSION from migrations.ts)
+- [x] **DIAG-06**: Doctor checks Claude Code hooks registered (reads CC settings, finds Claudex hooks) — closed 2026-05-02 in Phase 15 (plan 15-04; canonical EXPECTED_HOOK_NAMES in hook-registry.ts)
+- [x] **DIAG-07**: Doctor checks Angel process alive (PID file + heartbeat freshness) — closed 2026-05-02 in Phase 15 (plan 15-04; freshness signal = PID file mtime touched by heartbeatTick, no schema migration)
+- [x] **DIAG-08**: Doctor returns exit 0 if all pass, exit 1 with actionable error per failed check — closed 2026-05-02 in Phase 15 (plan 15-05; exit 2 reserved for orchestrator crashes)
 
 ### Verification (VER)
 
@@ -139,14 +139,14 @@ Updated 2026-04-30 during v4.1 roadmap creation.
 | INST-05 | Phase 14 | Done |
 | INST-06 | Phase 14 | Done |
 | INST-07 | Phase 14 | Done |
-| DIAG-01 | Phase 15 | Pending |
-| DIAG-02 | Phase 15 | Pending |
-| DIAG-03 | Phase 15 | Pending |
-| DIAG-04 | Phase 15 | Pending |
-| DIAG-05 | Phase 15 | Pending |
-| DIAG-06 | Phase 15 | Pending |
-| DIAG-07 | Phase 15 | Pending |
-| DIAG-08 | Phase 15 | Pending |
+| DIAG-01 | Phase 15 | Done |
+| DIAG-02 | Phase 15 | Done |
+| DIAG-03 | Phase 15 | Done |
+| DIAG-04 | Phase 15 | Done |
+| DIAG-05 | Phase 15 | Done |
+| DIAG-06 | Phase 15 | Done |
+| DIAG-07 | Phase 15 | Done |
+| DIAG-08 | Phase 15 | Done |
 | VER-01 | Phase 16 | Pending (HITL fixture — macOS) |
 | VER-02 | Phase 16 | Pending (HITL fixture — Ubuntu 24.04) |
 | VER-03 | Phase 16 | Pending (HITL fixture — Windows 11) |
