@@ -302,3 +302,121 @@ export function dualWriteAssistantMessage(
 
   return { turnNumber, episodicId, updatedLegacy };
 }
+
+// ---------------------------------------------------------------------------
+// Tool result — single-row write (no legacy mirror; tool results are not turns)
+// ---------------------------------------------------------------------------
+
+export interface ToolResultWriteParams {
+  db: Database;
+  sessionId: string;
+  project: string;
+  /** Becomes `source` (literal tool name, not prefixed). */
+  toolName: string;
+  /** Serialized into metadata_json under `tool_input` for Phase 2 indexing. */
+  toolInput: Record<string, unknown>;
+  /** Becomes `content`. Stringified verbatim — no decomposition. */
+  toolResult: string;
+  /** Current turn for this session, or undefined if no user prompt has fired yet. */
+  turnNumber?: number;
+  /** Optional FK to the assistant_message row that called this tool. Null in Phase 1. */
+  parentEventId?: number;
+}
+
+export interface ToolResultWriteResult {
+  episodicId: number | null;
+}
+
+/**
+ * Single-transaction write for a tool_result event. Per CONTEXT.md, tool
+ * results are NOT decomposed into sub-rows — the tool boundary is the
+ * natural split, and Phase 4's extractor will treat tool_result rows as
+ * non-extraction-eligible by default.
+ *
+ * No legacy mirror: `conversation_turns` was never the home for tool calls.
+ * Single-row write inside a transaction so the rollback-and-telemetry
+ * pattern matches Plan 02.
+ */
+export function writeToolResult(params: ToolResultWriteParams): ToolResultWriteResult {
+  let episodicId: number | null = null;
+  try {
+    const tx = params.db.transaction(() => {
+      episodicId = insertEpisodicRow(params.db, {
+        session_id: params.sessionId,
+        project: params.project,
+        turn_number: params.turnNumber ?? null,
+        type: 'tool_result',
+        source: params.toolName,
+        content: params.toolResult,
+        provenance: 'tool_result',
+        parent_event_id: params.parentEventId ?? null,
+        content_hash: sha256(params.toolResult),
+        metadata_json: JSON.stringify({ tool_input: params.toolInput }),
+      });
+    });
+    tx();
+  } catch (err) {
+    recordEpisodicWriteFailure(params.db, params.sessionId, captureError(err, 'post-tool-use', {
+      tool: params.toolName,
+      kind: 'tool_result',
+    }));
+    throw err;
+  }
+  return { episodicId };
+}
+
+// ---------------------------------------------------------------------------
+// Environmental event — session boundaries, Angel heartbeat, and friends
+// ---------------------------------------------------------------------------
+
+export interface EnvironmentalWriteParams {
+  db: Database;
+  sessionId: string;
+  project: string;
+  /** Locked subset for Phase 1; future phases extend through metadata_json. */
+  type: 'session_boundary' | 'environmental_event';
+  /** Identifier of the producer, e.g. 'cc-hooks/session-start' or 'angel/heartbeat'. */
+  source: string;
+  /** Human-readable description, e.g. "Session opened: <id>". */
+  content: string;
+  /** Modality-specific fields (PIDs, idle minutes, error fingerprints, etc.). */
+  metadata?: Record<string, unknown>;
+}
+
+export interface EnvironmentalWriteResult {
+  episodicId: number | null;
+}
+
+/**
+ * Single-row write for an environmental event. Always writes with
+ * `provenance='environmental'`, `turn_number=NULL`, `parent_event_id=NULL`.
+ * Used by session-start, session-end, Angel heartbeat. Phase 6 will revisit
+ * this writer when fsnotify-driven boundaries land.
+ */
+export function writeEnvironmentalEvent(params: EnvironmentalWriteParams): EnvironmentalWriteResult {
+  let episodicId: number | null = null;
+  try {
+    const tx = params.db.transaction(() => {
+      episodicId = insertEpisodicRow(params.db, {
+        session_id: params.sessionId,
+        project: params.project,
+        turn_number: null,
+        type: params.type,
+        source: params.source,
+        content: params.content,
+        provenance: 'environmental',
+        parent_event_id: null,
+        content_hash: sha256(params.content),
+        metadata_json: params.metadata ? JSON.stringify(params.metadata) : null,
+      });
+    });
+    tx();
+  } catch (err) {
+    recordEpisodicWriteFailure(params.db, params.sessionId, captureError(err, params.source, {
+      kind: 'environmental',
+      type: params.type,
+    }));
+    throw err;
+  }
+  return { episodicId };
+}

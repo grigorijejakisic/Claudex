@@ -20,6 +20,8 @@ import { buildToolSignature } from '../../intelligence/behavioral-signals.js';
 import { matchTriggers } from '../../intelligence/trigger-engine.js';
 import { extractEventsFromToolUse, recordEvent, recordEventDeduped } from '../../core/session-events.js';
 import { mapToolToDomain } from '../../intelligence/critical-reminders.js';
+import { writeToolResult } from '../../core/episodic-events.js';
+import { cachedPrepare } from '../../core/stmt-cache.js';
 import * as fs from 'fs';
 
 // ---------------------------------------------------------------------------
@@ -305,6 +307,36 @@ const main = wrapHook('PostToolUse', async (input, ctx) => {
     }
   } catch (e) {
     emitErrorTelemetry(ctx.db, input.session_id, 'post_tool_use/edit_integrity', e);
+  }
+
+  // ---------------------------------------------------------------------------
+  // V5 Plan 01-03 (EPI-03, EPI-05): episodic substrate write for the tool result.
+  // Each PostToolUse fires exactly one writeToolResult — provenance='tool_result',
+  // source=<toolName>, content=stringified tool_response, metadata_json carries
+  // the tool_input so Phase 2 indexes can filter by args without parsing.
+  // turn_number = current MAX(turn_number) for this session, or NULL when no
+  // user prompt has fired yet. parent_event_id stays NULL in Phase 1 (Phase 4
+  // links tool_result rows back to assistant_message when retrieval needs it).
+  // Non-fatal: telemetry-on-rollback inside writeToolResult records any failure;
+  // we never let the new write break the existing PostToolUse flow.
+  // ---------------------------------------------------------------------------
+  try {
+    const toolResultText = toolOutput !== undefined ? JSON.stringify(toolOutput) : '';
+    const lastTurn = cachedPrepare(ctx.db,
+      `SELECT MAX(turn_number) as max_turn FROM conversation_turns WHERE session_id = ?`
+    ).get(input.session_id) as { max_turn: number | null } | undefined;
+    const turnNumber = lastTurn?.max_turn ?? undefined;
+    writeToolResult({
+      db: ctx.db,
+      sessionId: input.session_id,
+      project: routedProject,
+      toolName: toolName || 'unknown',
+      toolInput,
+      toolResult: toolResultText,
+      ...(turnNumber !== undefined && turnNumber !== null ? { turnNumber } : {}),
+    });
+  } catch (e) {
+    emitErrorTelemetry(ctx.db, input.session_id, 'post_tool_use/episodic_tool_result', e);
   }
 
   return {};
