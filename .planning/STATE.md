@@ -11,10 +11,10 @@ See: `.planning/PROJECT.md` (created 2026-05-04)
 ## Current Position
 
 **Current Milestone:** v5 — Bound Multi-Modal Episodes
-**Phase:** 1 — Episode substrate (context gathered)
-**Plan:** —
-**Status:** CONTEXT.md written; ready for `/gsd:plan-phase 1`
-**Last activity:** 2026-05-04 — Phase 1 context gathered (`44058a8`); resume file `.planning/phases/01-episode-substrate/01-CONTEXT.md`
+**Phase:** 1 — Episode substrate (SHIPPED 2026-05-04)
+**Plan:** 01-04 complete; Phase 1 done. Ready for Phase 2 discuss.
+**Status:** All 4 plans (01-01..01-04) shipped with SUMMARYs on disk. V25 migration + dual-write substrate + 4-provenance writers + integration tests + substrate README all landed. Vesna 17/17 preserved. Pre-existing 27 test failures (llama-* + phase-5-full-gate) unchanged from master baseline; no new regressions from Phase 1.
+**Last activity:** 2026-05-04 — Phase 1 SHIPPED via `/auto-execute-phase 1`. Final commit `2ee5de1` (Plan 01-04 SUMMARY). Substrate is empty by design — Phase 2 (multi-modal index seeds + density-at-scale) builds the first index from rows accumulated post-ship.
 
 ### v5 Phase Structure (Initial — Refinable in Phase 1 Discuss)
 

@@ -15,9 +15,11 @@ The substrate phases (1, 3, 6) ship engineering. The empirical phases (2, 5) pro
 
 ## Phases
 
-- [ ] **Phase 1: Episode substrate** _(type: engineering)_
+- [x] **Phase 1: Episode substrate** _(type: engineering)_ — SHIPPED 2026-05-04
 
     Schema design + write path. New `episodic_events` table with `{id, ts, session_id, type, source, content, provenance, ...}`. Provenance tags: `organic | injected | tool_result | environmental`. Coexists with `conversation_turns` initially — every UserPromptSubmit, every Stop hook, every tool result writes a parallel event row with structured fields. Migration is forward-only; old conversation_turns remain as legacy. Goal: a clean substrate to build the rest on, with the Mem0 trap structurally impossible because injected spans are tagged at write time.
+
+    **Outcome:** V25 migration with 4 indexes + closed-enum `provenance` CHECK; helpers `dualWriteUserPrompt`/`dualWriteAssistantMessage`/`writeToolResult`/`writeEnvironmentalEvent` in `src/core/episodic-events.ts`; PostToolUse + session-start + session-end + Angel heartbeat instrumented; 60+ EPI-tagged tests including stub-extractor proof of EPI-07 Mem0-trap-impossibility; substrate operator README + environmental audit at `.planning/phases/01-episode-substrate/`. Vesna 17/17 preserved.
 
 - [ ] **Phase 2: Multi-modal index seeds + density-at-scale check** _(type: empirical)_
 
