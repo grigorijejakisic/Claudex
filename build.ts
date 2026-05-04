@@ -39,6 +39,7 @@ const optionalEntryPoints = [
   'src/benchmark/analyze-results.ts',
   'src/benchmark/memory-quality/cli.ts',
   'src/benchmark/vesna/cli.ts',
+  'src/benchmark/episodic-density/cli.ts',
   'src/benchmarks/directive-detector/build-candidates.ts',
   'src/benchmarks/directive-detector/label-candidates.ts',
   'src/benchmarks/directive-detector/run-precision.ts',
