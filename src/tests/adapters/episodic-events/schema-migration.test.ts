@@ -149,9 +149,14 @@ describe('Phase 1 Plan 01 — episodic_events V25 migration (EPI-01, EPI-02, EPI
     expect(() => stmt.run('sess', 'proj', 'user_prompt', 'cc-hooks/test', 'x', 'organic', null)).toThrow(/NOT NULL/i);
   });
 
-  it('EPI-01: PRAGMA user_version reaches V25 (TARGET_USER_VERSION)', () => {
-    expect(TARGET_USER_VERSION).toBe(25);
+  it('EPI-01: PRAGMA user_version reaches TARGET_USER_VERSION (V25 substrate gate)', () => {
+    // Phase 2 (IDX-01) bumped TARGET_USER_VERSION from 25 to 26 by adding the
+    // error-fingerprint sidecar. The substrate gate this test guards is "the
+    // V25 episode_events table is reachable from a fresh DB"; we verify the
+    // pragma matches the latest target rather than pinning to a single number,
+    // so future schema bumps don't have to revisit this assertion.
+    expect(TARGET_USER_VERSION).toBeGreaterThanOrEqual(25);
     const uv = (db.pragma('user_version') as Array<{ user_version: number }>)[0]?.user_version;
-    expect(uv).toBe(25);
+    expect(uv).toBe(TARGET_USER_VERSION);
   });
 });
