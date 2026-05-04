@@ -281,7 +281,7 @@ describe('initializeSchema idempotency — post-V17 re-open', () => {
     const db = openDatabase(dbPath);
     try {
       const uv = (db.pragma('user_version') as Array<{ user_version: number }>)[0].user_version;
-      expect(uv).toBe(24);
+      expect(uv).toBe(25);
     } finally {
       db.close();
     }

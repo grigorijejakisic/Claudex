@@ -1722,3 +1722,43 @@ export function migrateV23toV24(db: Database): boolean {
   }
   return true;
 }
+
+/**
+ * V25 — Phase 1 (v5) episode substrate.
+ *
+ * Adds the `episodic_events` table. Each row is a typed conversational or
+ * environmental event with provenance attached as a row attribute (closed
+ * enum CHECK constraint). The substrate is forward-only and write-only in
+ * Phase 1 — no readers, no embeddings, no backfill of legacy
+ * `conversation_turns`. See
+ * `.planning/phases/01-episode-substrate/01-CONTEXT.md` for the design and
+ * `.planning/phases/01-episode-substrate/01-04-substrate-readme.md` for the
+ * operator-facing reference (lands in Plan 01-04).
+ *
+ * Idempotent — `CREATE TABLE IF NOT EXISTS` and `CREATE INDEX IF NOT EXISTS`
+ * mean re-running on a V25+ DB is a no-op.
+ */
+export function migrateV24toV25(db: Database): boolean {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS episodic_events (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      session_id TEXT NOT NULL,
+      project TEXT NOT NULL,
+      ts_epoch INTEGER NOT NULL DEFAULT (unixepoch()),
+      turn_number INTEGER,
+      type TEXT NOT NULL,
+      source TEXT NOT NULL,
+      content TEXT NOT NULL,
+      provenance TEXT NOT NULL CHECK (provenance IN ('organic','injected','tool_result','environmental')),
+      parent_event_id INTEGER REFERENCES episodic_events(id),
+      content_hash TEXT NOT NULL,
+      metadata_json TEXT,
+      schema_version SMALLINT NOT NULL DEFAULT 1
+    );
+    CREATE INDEX IF NOT EXISTS idx_epev_session_turn_ts ON episodic_events(session_id, turn_number, ts_epoch);
+    CREATE INDEX IF NOT EXISTS idx_epev_project_ts     ON episodic_events(project, ts_epoch);
+    CREATE INDEX IF NOT EXISTS idx_epev_provenance     ON episodic_events(provenance);
+    CREATE INDEX IF NOT EXISTS idx_epev_parent         ON episodic_events(parent_event_id);
+  `);
+  return true;
+}

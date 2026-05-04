@@ -34,10 +34,10 @@ const LEGACY_OLD_TABLES = [
 ] as const;
 
 describe('Phase 11 V23→V24 migration (drop legacy _old tables)', () => {
-  it('fresh DB reaches user_version=24', () => {
+  it('fresh DB reaches user_version=25 (V25 = episode substrate, ceiling raised by Phase 1)', () => {
     const db = new Database(':memory:');
     initializeSchema(db);
-    expect(getUserVersion(db)).toBe(24);
+    expect(getUserVersion(db)).toBe(25);
     db.close();
   });
 

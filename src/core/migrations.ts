@@ -43,6 +43,7 @@ import {
   migrateV21toV22,
   migrateV22toV23,
   migrateV23toV24,
+  migrateV24toV25,
   migrateSchemaFixes,
   cleanupOrphanTables,
   upgradeV2SchemaInPlace,
@@ -92,7 +93,7 @@ export { migrateV14toV15 };
  * `claudex doctor` (DIAG-05) reads this to verify the on-disk DB is in sync.
  * Bumping a migration must bump this constant in lockstep.
  */
-export const TARGET_USER_VERSION = 24;
+export const TARGET_USER_VERSION = 25;
 
 export function runMigrations(db: Database): void {
   const row = db.pragma('user_version') as Array<{ user_version: number }>;
@@ -132,6 +133,7 @@ export function runMigrations(db: Database): void {
     [21, () => { migrateV21toV22(db); }],
     [22, () => { migrateV22toV23(db); }],
     [23, () => { migrateV23toV24(db); }],
+    [24, () => { migrateV24toV25(db); }],
   ];
 
   // Handle special cases for version 0 and 1
@@ -330,6 +332,14 @@ export function initializeSchema(db: Database): void {
   if (currentUv < 24) {
     migrateV23toV24(db);
     db.pragma('user_version = 24');
+  }
+  // V5 Phase 1 (EPI-01): episode substrate. Creates `episodic_events` with
+  // closed-enum `provenance` CHECK constraint and supporting indexes.
+  // Idempotent via IF NOT EXISTS. Fresh-DB path lands here; runMigrations
+  // step-table covers existing-DB upgrades from V24.
+  if (currentUv < 25) {
+    migrateV24toV25(db);
+    db.pragma('user_version = 25');
   }
 }
 
