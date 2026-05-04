@@ -75,9 +75,11 @@ export function parseWrappers(text: string): ParsedWrappers {
   // organic spans. Avoids the second pass `.replace()` would do.
   const fresh = new RegExp(WRAPPER_REGEX.source, WRAPPER_REGEX.flags);
   let lastIndex = 0;
-  let strippedParts: string[] = [];
+  const strippedParts: string[] = [];
   let match: RegExpExecArray | null;
+  let matched = false;
   while ((match = fresh.exec(text)) !== null) {
+    matched = true;
     if (match.index > lastIndex) {
       strippedParts.push(text.slice(lastIndex, match.index));
     }
@@ -95,6 +97,9 @@ export function parseWrappers(text: string): ParsedWrappers {
     strippedParts.push(text.slice(lastIndex));
   }
 
-  const organic = (strippedParts.length > 0 ? strippedParts.join('') : text).trim();
+  // When the loop matched at least one wrapper, organic is the join of
+  // intervening spans (which may be empty). Otherwise, organic is the
+  // original text. Both cases get trimmed.
+  const organic = (matched ? strippedParts.join('') : text).trim();
   return { organic, injected };
 }

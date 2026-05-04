@@ -100,4 +100,11 @@ describe('parseWrappers (EPI-04)', () => {
     expect(r.injected[0].tag).toBe('system-reminder');
     expect(r.injected[0].content).toBe('x');
   });
+
+  it('concatenated wrappers with no separator -> organic is empty (regression)', () => {
+    const r = parseWrappers('<system-reminder>SR</system-reminder><experience-data>EXP</experience-data>');
+    expect(r.injected).toHaveLength(2);
+    expect(r.injected.map(b => b.content)).toEqual(['SR', 'EXP']);
+    expect(r.organic).toBe('');
+  });
 });
