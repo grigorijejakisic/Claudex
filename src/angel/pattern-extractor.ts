@@ -63,24 +63,72 @@ export function getSessionTurns(
 }
 
 /**
+ * Wrapper tags injected into conversation turns by hooks and the assembly
+ * pipeline. Their bodies must NEVER be fed to the pattern extractor as if
+ * they were the user's words or the assistant's reply — that closes the
+ * Mem0 feedback loop where the LLM "extracts" patterns it just saw injected
+ * into its own context (helpful_count > times_triggered is the smoking gun).
+ *
+ * Applied conservatively: we strip the body and replace with a short
+ * `[injected:<tag>]` marker so the LLM can still see that injection
+ * happened (turn structure preserved) without re-extracting from it.
+ */
+const INJECTED_BLOCK_TAGS = [
+  'experience-data',
+  'system-reminder',
+  'file-content',
+  'task-notification',
+  'user-prompt-submit-hook',
+  'session-start-hook',
+  'command-message',
+  'command-name',
+  'local-command-stdout',
+  'local-command-stderr',
+];
+
+/**
+ * Strip injected wrapper blocks from a single turn's text before pattern
+ * extraction. Replaces each block with `[injected:<tag>]` so structure is
+ * preserved without leaking the contents.
+ *
+ * Exported for testing.
+ */
+export function stripInjectedBlocks(text: string | null | undefined): string {
+  if (!text) return '';
+  let out = text;
+  for (const tag of INJECTED_BLOCK_TAGS) {
+    // Non-greedy match; case-insensitive on tag; allow attributes in opening tag.
+    const re = new RegExp(`<${tag}(?:\\s[^>]*)?>[\\s\\S]*?<\\/${tag}>`, 'gi');
+    out = out.replace(re, `[injected:${tag}]`);
+  }
+  return out;
+}
+
+/**
  * Format conversation turns into a readable transcript for Claude analysis.
  * Truncates individual turns to keep total under ~8000 chars.
+ *
+ * Strips injected wrapper blocks (system-reminders, experience-data, file
+ * inlines, task-notifications) before truncation so the LLM never sees its
+ * own injected output as fodder for re-extraction.
  */
 function formatTranscript(turns: ConversationTurn[]): string {
   const parts: string[] = [];
   const maxTurnLen = Math.min(1500, Math.floor(8000 / Math.max(turns.length, 1)));
 
   for (const turn of turns) {
-    if (turn.user_text) {
-      const text = turn.user_text.length > maxTurnLen
-        ? turn.user_text.slice(0, maxTurnLen) + '...'
-        : turn.user_text;
+    const userClean = stripInjectedBlocks(turn.user_text);
+    if (userClean) {
+      const text = userClean.length > maxTurnLen
+        ? userClean.slice(0, maxTurnLen) + '...'
+        : userClean;
       parts.push(`[Turn ${turn.turn_number}] USER: ${text}`);
     }
-    if (turn.assistant_text) {
-      const text = turn.assistant_text.length > maxTurnLen
-        ? turn.assistant_text.slice(0, maxTurnLen) + '...'
-        : turn.assistant_text;
+    const assistantClean = stripInjectedBlocks(turn.assistant_text);
+    if (assistantClean) {
+      const text = assistantClean.length > maxTurnLen
+        ? assistantClean.slice(0, maxTurnLen) + '...'
+        : assistantClean;
       parts.push(`[Turn ${turn.turn_number}] ASSISTANT: ${text}`);
     }
   }
@@ -166,15 +214,20 @@ const DIRECTIVE_INDICATORS = [
  * Pre-scan user turns for directive keywords. Returns turns that likely
  * contain standing directives, even if a small LLM would miss them.
  * These are prepended to the transcript with a [DIRECTIVE CANDIDATE] marker.
+ *
+ * Strips injected blocks before scanning — without this, an injected
+ * `<experience-data>` block containing "always X" would be treated as a
+ * fresh user directive and re-promoted on every session.
  */
 function extractDirectiveCandidates(turns: ConversationTurn[]): string[] {
   const candidates: string[] = [];
   for (const turn of turns) {
-    if (!turn.user_text) continue;
-    const lower = turn.user_text.toLowerCase();
+    const cleanUserText = stripInjectedBlocks(turn.user_text);
+    if (!cleanUserText) continue;
+    const lower = cleanUserText.toLowerCase();
     for (const indicator of DIRECTIVE_INDICATORS) {
       if (lower.includes(indicator)) {
-        candidates.push(`[Turn ${turn.turn_number}] [DIRECTIVE CANDIDATE] USER: ${turn.user_text.substring(0, 500)}`);
+        candidates.push(`[Turn ${turn.turn_number}] [DIRECTIVE CANDIDATE] USER: ${cleanUserText.substring(0, 500)}`);
         break; // One match per turn is enough
       }
     }
@@ -185,6 +238,11 @@ function extractDirectiveCandidates(turns: ConversationTurn[]): string[] {
 /**
  * Detect repeated user directives across sessions.
  * If the same phrase pattern appears in 2+ sessions, it's a standing rule.
+ *
+ * Defends against the Mem0 feedback loop by post-filtering LIKE matches:
+ * a phrase that appears only inside an injected `<experience-data>` block
+ * does NOT count as a repeated user directive — it's the same pattern
+ * looking at itself.
  */
 function findCrossSessionDirectives(
   db: Database,
@@ -203,15 +261,27 @@ function findCrossSessionDirectives(
 
     // Search for similar phrases in OTHER sessions' conversation turns
     const searchTerms = words.slice(0, 5).join(' ');
+    const needle = searchTerms.substring(0, 30).toLowerCase();
     try {
+      // Fetch user_text so we can post-filter — LIKE alone matches injected
+      // experience-data blocks, which would falsely confirm a "repeated" rule.
       const matches = cachedPrepare(db,
-        `SELECT DISTINCT ct.session_id FROM conversation_turns ct
+        `SELECT DISTINCT ct.session_id, ct.user_text FROM conversation_turns ct
          WHERE ct.project = ? AND ct.user_text LIKE ? AND ct.session_id != ?
-         LIMIT 3`
-      ).all(project, `%${searchTerms.substring(0, 30)}%`, currentSessionId) as Array<{ session_id: string }>;
+         LIMIT 6`
+      ).all(project, `%${needle}%`, currentSessionId) as Array<{ session_id: string; user_text: string | null }>;
 
-      if (matches.length >= 1) {
-        repeated.push(`[REPEATED ACROSS ${matches.length + 1} SESSIONS] ${directive}`);
+      const distinctRealSessions = new Set<string>();
+      for (const row of matches) {
+        const cleaned = stripInjectedBlocks(row.user_text).toLowerCase();
+        if (cleaned.includes(needle)) {
+          distinctRealSessions.add(row.session_id);
+          if (distinctRealSessions.size >= 3) break;
+        }
+      }
+
+      if (distinctRealSessions.size >= 1) {
+        repeated.push(`[REPEATED ACROSS ${distinctRealSessions.size + 1} SESSIONS] ${directive}`);
       }
     } catch { /* non-fatal */ }
   }
