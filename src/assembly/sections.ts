@@ -75,7 +75,12 @@ When searching past context: use \`claudex_search\` (semantic search across all 
 
 /**
  * Reranker health — observational note when the cross-encoder fell back to
- * the bi-encoder in the last 24h (Phase 6 P5 — RETR-08).
+ * the bi-encoder in the last hour (Phase 6 P5 — RETR-08).
+ *
+ * Window is 1h, not 24h: a single fallback hours ago is rarely actionable
+ * (the supervisor likely already restarted the service), but it would keep
+ * nagging in every new session for a full day under the old threshold.
+ * 1h surfaces live failure clusters and lets stale single events age out.
  *
  * The cross-encoder (BAAI/bge-reranker-v2-m3 on port 7439, supervised by
  * Angel's RerankerSupervisor) is load-bearing infrastructure. Bi-encoder
@@ -89,11 +94,11 @@ When searching past context: use \`claudex_search\` (semantic search across all 
  * the Phase 7 advisory-voice framing direction.
  */
 export function formatRerankerHealthSection(db: Database): string | null {
-  const n = readRerankerFallbackCount(db, 86400);
+  const n = readRerankerFallbackCount(db, 3600);
   if (n === 0) return null;
   const plural = n === 1 ? 'time' : 'times';
   return `## Reranker Health
-Note: cross-encoder reranker fell back to bi-encoder ${n} ${plural} in the last 24h. The cross-encoder (BGE-v2-m3 on port 7439) is the precision layer; the bi-encoder fallback (snowflake-arctic-embed2 cosine via Ollama) is a degraded mode. If this count is non-zero across multiple sessions, restart \`services/reranker.py\` — Angel's RerankerSupervisor will resume management.`;
+Note: cross-encoder reranker fell back to bi-encoder ${n} ${plural} in the last hour. The cross-encoder (BGE-v2-m3 on port 7439) is the precision layer; the bi-encoder fallback (snowflake-arctic-embed2 cosine via Ollama) is a degraded mode. If this surfaces across multiple sessions, restart \`services/reranker.py\` — Angel's RerankerSupervisor will resume management.`;
 }
 
 /**

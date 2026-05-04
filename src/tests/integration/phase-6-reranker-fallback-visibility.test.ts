@@ -202,7 +202,7 @@ describe('Phase 6 reranker fallback visibility (RETR-08)', () => {
     db.close();
   });
 
-  it('formatRerankerHealthSection returns null when no fallbacks in 24h', () => {
+  it('formatRerankerHealthSection returns null when no fallbacks in window', () => {
     const { db } = createTestDbWithSession('sess-health-zero');
     expect(formatRerankerHealthSection(db)).toBeNull();
     db.close();
@@ -219,6 +219,7 @@ describe('Phase 6 reranker fallback visibility (RETR-08)', () => {
     expect(out).not.toBeNull();
     expect(out).toContain('## Reranker Health');
     expect(out).toContain('3 times');
+    expect(out).toContain('last hour');
     expect(out).toContain('cross-encoder');
     expect(out).toContain('bi-encoder');
     expect(out).toContain('BGE-v2-m3');
@@ -240,6 +241,20 @@ describe('Phase 6 reranker fallback visibility (RETR-08)', () => {
     expect(out).toContain('1 time');
     expect(out).not.toContain('1 times');
 
+    db.close();
+  });
+
+  it('formatRerankerHealthSection ignores fallbacks older than 1h (banner does not nag for stale events)', () => {
+    const { db, sessionId } = createTestDbWithSession('sess-health-stale');
+
+    // Insert a fallback row with a timestamp 2 hours ago — outside the 1h window.
+    const twoHoursAgo = Math.floor(Date.now() / 1000) - 2 * 3600;
+    db.prepare(
+      `INSERT INTO telemetry (session_id, event_kind, detail, adapter, timestamp_epoch)
+       VALUES (?, 'reranker_fallback', ?, 'hybrid-retrieval', ?)`,
+    ).run(sessionId, JSON.stringify({ reason: 'unreachable' }), twoHoursAgo);
+
+    expect(formatRerankerHealthSection(db)).toBeNull();
     db.close();
   });
 
