@@ -28,6 +28,8 @@ import type { Database } from 'better-sqlite3';
 import { createHash } from 'node:crypto';
 import { cachedPrepare } from './stmt-cache.js';
 import { parseWrappers } from '../extraction/wrapper-parser.js';
+import { computeErrorFingerprint } from './error-fingerprint.js';
+import { loadConfig } from '../shared/config.js';
 
 export type Provenance = 'organic' | 'injected' | 'tool_result' | 'environmental';
 
@@ -321,6 +323,15 @@ export interface ToolResultWriteParams {
   turnNumber?: number;
   /** Optional FK to the assistant_message row that called this tool. Null in Phase 1. */
   parentEventId?: number;
+  /**
+   * Phase 2 IDX-01 — when true (the default), `writeToolResult` computes an
+   * error fingerprint over `toolResult` and stores it under
+   * `metadata_json.error_fingerprint` if `looksLikeStackTrace(toolResult)`
+   * matches. Set to false to bypass — used by Plan 02-05's verdict-driven
+   * flag flip on KILL/SCOPE_DOWN. When omitted, falls back to
+   * `loadConfig().features.error_fingerprint`.
+   */
+  errorFingerprintEnabled?: boolean;
 }
 
 export interface ToolResultWriteResult {
@@ -338,6 +349,25 @@ export interface ToolResultWriteResult {
  * pattern matches Plan 02.
  */
 export function writeToolResult(params: ToolResultWriteParams): ToolResultWriteResult {
+  // Phase 2 IDX-01: best-effort fingerprint on tool_result content. The
+  // fingerprinter is pure CPU; any failure is recorded to telemetry and
+  // swallowed so the Phase 1 atomicity contract (single transactional row,
+  // never blocked by metadata) is preserved.
+  let fpKey: { error_fingerprint: ReturnType<typeof computeErrorFingerprint> } | Record<string, never> = {};
+  const flagOn = params.errorFingerprintEnabled ?? resolveErrorFingerprintFlag();
+  if (flagOn && typeof params.toolResult === 'string' && params.toolResult.length > 0) {
+    try {
+      const fp = computeErrorFingerprint(params.toolResult);
+      if (fp) fpKey = { error_fingerprint: fp };
+    } catch (err) {
+      recordEpisodicWriteFailure(params.db, params.sessionId, captureError(err, 'post-tool-use', {
+        tool: params.toolName,
+        kind: 'fingerprint_error',
+      }));
+      // fp omitted; fall through with the original metadata only
+    }
+  }
+
   let episodicId: number | null = null;
   try {
     const tx = params.db.transaction(() => {
@@ -351,7 +381,7 @@ export function writeToolResult(params: ToolResultWriteParams): ToolResultWriteR
         provenance: 'tool_result',
         parent_event_id: params.parentEventId ?? null,
         content_hash: sha256(params.toolResult),
-        metadata_json: JSON.stringify({ tool_input: params.toolInput }),
+        metadata_json: JSON.stringify({ tool_input: params.toolInput, ...fpKey }),
       });
     });
     tx();
@@ -363,6 +393,22 @@ export function writeToolResult(params: ToolResultWriteParams): ToolResultWriteR
     throw err;
   }
   return { episodicId };
+}
+
+/**
+ * Resolve the `features.error_fingerprint` flag from on-disk config without
+ * letting any I/O exception surface as a write-path failure. Uses
+ * `loadConfig()` (which is itself non-throwing) and treats a missing /
+ * malformed flag as `true` — matching the Phase 2 default in DEFAULT_CONFIG.
+ */
+function resolveErrorFingerprintFlag(): boolean {
+  try {
+    const cfg = loadConfig();
+    const flag = cfg?.features?.error_fingerprint;
+    return typeof flag === 'boolean' ? flag : true;
+  } catch {
+    return true;
+  }
 }
 
 // ---------------------------------------------------------------------------

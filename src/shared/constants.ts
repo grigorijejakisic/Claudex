@@ -88,6 +88,10 @@ export const DEFAULT_CONFIG = {
     critical_threshold: 0.80,
     checkpoint_cooldown_seconds: 300,
   },
+  features: {
+    fts5_search: true,
+    error_fingerprint: true,
+  },
 } as const;
 
 /**

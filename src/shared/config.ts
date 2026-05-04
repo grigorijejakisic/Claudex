@@ -63,6 +63,15 @@ export interface ClaudexConfig {
   };
   features: {
     fts5_search: boolean;
+    /**
+     * Phase 2 IDX-01 — gates ingest-time error-fingerprint computation in
+     * `writeToolResult` and the explicit one-time backfill in
+     * `src/benchmark/episodic-density/`. Defaults to `true` for Phase 2 so
+     * the corpus is populated and the measurement harness has signal to
+     * score; Plan 02-05 flips this to `false` if the empirical-phase verdict
+     * lands on KILL or SCOPE_DOWN (CONTEXT item 7 negative-result handling).
+     */
+    error_fingerprint: boolean;
   };
   adapter: string;
 }
@@ -121,7 +130,7 @@ function validateConfig(config: ClaudexConfig): ClaudexConfig {
     { key: 'observability', fields: { enabled: 'boolean', retention_days: 'number', retain_error_count: 'number' } },
     { key: 'gsd', fields: { enabled: 'boolean' } },
     { key: 'context', fields: { advisory_threshold: 'number', warning_threshold: 'number', critical_threshold: 'number', checkpoint_cooldown_seconds: 'number' } },
-    { key: 'features', fields: { fts5_search: 'boolean' } },
+    { key: 'features', fields: { fts5_search: 'boolean', error_fingerprint: 'boolean' } },
   ];
 
   for (const { key, fields } of sectionChecks) {
