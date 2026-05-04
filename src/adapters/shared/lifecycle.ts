@@ -5,6 +5,7 @@
  */
 
 import type Database from 'better-sqlite3';
+import { createHash } from 'node:crypto';
 import type { ClaudexConfig } from '../../shared/config.js';
 import type { TokenUsage } from '../../shared/types.js';
 import { processToolObservation, processToolObservationAsync, checkNovelty } from '../../extraction/extractor.js';
@@ -28,6 +29,11 @@ import { pruneTelemetry, emitTelemetry } from '../../observability/telemetry.js'
 import { emitErrorTelemetry } from '../../observability/error-telemetry.js';
 import { addJournalEntry, getJournalBySession, getSessionMilestones } from '../../core/journal.js';
 import type { RecallMetadata } from '../../core/journal.js';
+import { dualWriteUserPrompt, dualWriteAssistantMessage } from '../../core/episodic-events.js';
+
+function sha256(s: string): string {
+  return createHash('sha256').update(s, 'utf8').digest('hex');
+}
 import { getSessionEvents } from '../../core/session-events.js';
 import { recordEvent } from '../../core/session-events.js';
 import { cachedPrepare } from '../../core/stmt-cache.js';
@@ -486,19 +492,29 @@ export function storeConversationTurn(
   assistantText: string | undefined,
 ): void {
   if (!userText && !assistantText) return;
+  // V5 Plan 01-02: keep the v4 contract (non-throwing INSERT) but route
+  // through the dual-write helpers so the episodic substrate captures every
+  // turn. Two distinct call patterns:
+  //   - Both texts present  -> a fresh user prompt + assistant message in one
+  //     conversational turn. Wrap in two helper calls so the substrate gets
+  //     1 organic user_prompt + 1 organic assistant_message + (N injected if
+  //     the user text contains wrappers). The legacy table ends up with one
+  //     row that has BOTH user_text and assistant_text populated — preserved
+  //     by dualWriteAssistantMessage's "UPDATE pending row" fallback.
+  //   - Only assistant text  -> defer to the assistant-message helper.
+  //   - Only user text       -> defer to the user-prompt helper (legacy
+  //     callers that mirror the split-write pattern).
   try {
-    // Get next turn number for this session
-    const lastTurn = cachedPrepare(db,
-      `SELECT MAX(turn_number) as max_turn FROM conversation_turns WHERE session_id = ?`
-    ).get(sessionId) as { max_turn: number | null } | undefined;
-    const turnNumber = (lastTurn?.max_turn ?? -1) + 1;
-
-    cachedPrepare(db,
-      `INSERT INTO conversation_turns (session_id, project, turn_number, user_text, assistant_text)
-       VALUES (?, ?, ?, ?, ?)`
-    ).run(sessionId, project, turnNumber, userText ?? null, assistantText ?? null);
+    if (userText) {
+      dualWriteUserPrompt(db, sessionId, project, userText);
+    }
+    if (assistantText) {
+      dualWriteAssistantMessage(db, sessionId, project, assistantText);
+    }
   } catch {
-    // Non-throwing — conversation storage failure must never break the hook
+    // Non-throwing — conversation storage failure must never break the hook.
+    // Telemetry-on-rollback inside the helper has already captured the
+    // failure with provenance-aware detail.
   }
 }
 
@@ -509,6 +525,11 @@ export function storeConversationTurn(
  * Split-write pattern: UserPromptSubmit creates the row with user_text,
  * Stop hook fills in assistant_text via updateConversationTurnAssistant.
  * This ensures user messages survive even if the session dies before Stop fires.
+ *
+ * V5 Plan 01-02: now routes through dualWriteUserPrompt so the same call
+ * also lands the organic + injected episodic_events rows in a single
+ * transaction. The external signature is unchanged; callers see the same
+ * non-throwing void contract.
  */
 export function storeConversationTurnUserText(
   db: Database.Database,
@@ -518,17 +539,9 @@ export function storeConversationTurnUserText(
 ): void {
   if (!userText) return;
   try {
-    const lastTurn = cachedPrepare(db,
-      `SELECT MAX(turn_number) as max_turn FROM conversation_turns WHERE session_id = ?`
-    ).get(sessionId) as { max_turn: number | null } | undefined;
-    const turnNumber = (lastTurn?.max_turn ?? -1) + 1;
-
-    cachedPrepare(db,
-      `INSERT INTO conversation_turns (session_id, project, turn_number, user_text, assistant_text)
-       VALUES (?, ?, ?, ?, NULL)`
-    ).run(sessionId, project, turnNumber, userText);
+    dualWriteUserPrompt(db, sessionId, project, userText);
   } catch {
-    // Non-throwing
+    // Non-throwing — failure already recorded as telemetry by the helper.
   }
 }
 
@@ -537,6 +550,14 @@ export function storeConversationTurnUserText(
  * Called by Stop hook to complete the split-write from UserPromptSubmit.
  * Returns true if a row was updated, false if no pending turn was found.
  * Non-throwing.
+ *
+ * V5 Plan 01-02: when the UPDATE succeeds, ALSO write the matching
+ * episodic_events row (assistant_message, organic provenance) inside the
+ * same transaction. When the UPDATE finds no pending row, the caller's
+ * fallback (`storeConversationTurn(undefined, assistantText)`) routes
+ * through the dual-write helper, so the substrate is filled exactly once
+ * either way. The boolean return preserves the v4 contract — true on
+ * UPDATE-succeeded, false on no-pending-row OR error.
  */
 export function updateConversationTurnAssistant(
   db: Database.Database,
@@ -544,15 +565,38 @@ export function updateConversationTurnAssistant(
   assistantText: string,
 ): boolean {
   try {
-    const result = cachedPrepare(db,
-      `UPDATE conversation_turns SET assistant_text = ?
-       WHERE id = (
-         SELECT id FROM conversation_turns
+    let updated = false;
+    let pendingProject: string | null = null;
+    let pendingTurn: number | null = null;
+
+    const tx = db.transaction(() => {
+      const pending = cachedPrepare(db,
+        `SELECT id, project, turn_number FROM conversation_turns
          WHERE session_id = ? AND assistant_text IS NULL
-         ORDER BY turn_number DESC LIMIT 1
-       )`
-    ).run(assistantText, sessionId);
-    return (result.changes ?? 0) > 0;
+         ORDER BY turn_number DESC LIMIT 1`
+      ).get(sessionId) as { id: number; project: string; turn_number: number } | undefined;
+
+      if (!pending) return;
+
+      cachedPrepare(db,
+        `UPDATE conversation_turns SET assistant_text = ? WHERE id = ?`
+      ).run(assistantText, pending.id);
+      updated = true;
+      pendingProject = pending.project;
+      pendingTurn = pending.turn_number;
+
+      // Mirror to episodic_events with the same turn_number — keeps the
+      // organic user_prompt and organic assistant_message visibly threaded.
+      cachedPrepare(db,
+        `INSERT INTO episodic_events
+           (session_id, project, turn_number, type, source, content, provenance, parent_event_id, content_hash, metadata_json)
+         VALUES (?, ?, ?, 'assistant_message', 'cc-hooks/stop', ?, 'organic', NULL, ?, NULL)`
+      ).run(sessionId, pending.project, pending.turn_number, assistantText, sha256(assistantText));
+    });
+    tx();
+    void pendingProject;
+    void pendingTurn;
+    return updated;
   } catch {
     return false;
   }

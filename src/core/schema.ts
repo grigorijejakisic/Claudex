@@ -803,7 +803,8 @@ CREATE TABLE IF NOT EXISTS telemetry (
     'hook_invocation', 'injection', 'observation_capture', 'decision_capture',
     'checkpoint_write', 'enrichment', 'topic_shift', 'dedup', 'decay_prune', 'error',
     'reranker_fallback',
-    'cross_project_ambiguous', 'cross_project_query_expansion'
+    'cross_project_ambiguous', 'cross_project_query_expansion',
+    'episodic_write_failure'
   )),
   detail TEXT NOT NULL DEFAULT '{}' CHECK (json_valid(detail)),
   latency_ms REAL,

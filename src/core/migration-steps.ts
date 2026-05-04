@@ -1726,17 +1726,23 @@ export function migrateV23toV24(db: Database): boolean {
 /**
  * V25 — Phase 1 (v5) episode substrate.
  *
- * Adds the `episodic_events` table. Each row is a typed conversational or
- * environmental event with provenance attached as a row attribute (closed
- * enum CHECK constraint). The substrate is forward-only and write-only in
- * Phase 1 — no readers, no embeddings, no backfill of legacy
- * `conversation_turns`. See
+ * Two additive changes:
+ *   1. CREATE TABLE episodic_events with the locked column set + closed-enum
+ *      provenance CHECK constraint + 4 supporting indexes.
+ *   2. Extend telemetry.event_kind CHECK enum with 'episodic_write_failure'
+ *      so the dual-write rollback path (Plans 01-02 / 01-03) can record
+ *      atomicity failures as queryable rows. Same rebuild-and-copy pattern
+ *      as V19→V20 (reranker_fallback) and V20→V21 (cross_project_*).
+ *
+ * The substrate is forward-only and write-only in Phase 1 — no readers, no
+ * embeddings, no backfill of legacy `conversation_turns`. See
  * `.planning/phases/01-episode-substrate/01-CONTEXT.md` for the design and
  * `.planning/phases/01-episode-substrate/01-04-substrate-readme.md` for the
  * operator-facing reference (lands in Plan 01-04).
  *
  * Idempotent — `CREATE TABLE IF NOT EXISTS` and `CREATE INDEX IF NOT EXISTS`
- * mean re-running on a V25+ DB is a no-op.
+ * mean re-running on a V25+ DB is a no-op; the telemetry rebuild guards on
+ * `telemetryAcceptsEpisodicWriteFailure(db)`.
  */
 export function migrateV24toV25(db: Database): boolean {
   db.exec(`
@@ -1760,5 +1766,38 @@ export function migrateV24toV25(db: Database): boolean {
     CREATE INDEX IF NOT EXISTS idx_epev_provenance     ON episodic_events(provenance);
     CREATE INDEX IF NOT EXISTS idx_epev_parent         ON episodic_events(parent_event_id);
   `);
+
+  // Telemetry CHECK enum rebuild — same pattern as V19→V20 / V20→V21.
+  // Skip when telemetry doesn't exist yet (stub-DB / fresh-DB tail flow runs
+  // TELEMETRY_SCHEMA later) or when the enum already includes the new value.
+  if (hasTable(db, 'telemetry')
+      && hasColumn(db, 'telemetry', 'event_kind')
+      && !telemetryAcceptsEpisodicWriteFailure(db)) {
+    const tx = db.transaction(() => {
+      db.exec(`ALTER TABLE telemetry RENAME TO telemetry_v24;`);
+      db.exec(`DROP INDEX IF EXISTS idx_telemetry_session;`);
+      db.exec(`DROP INDEX IF EXISTS idx_telemetry_kind;`);
+      db.exec(TELEMETRY_SCHEMA);
+      db.exec(`
+        INSERT INTO telemetry (id, session_id, event_kind, detail, latency_ms, timestamp_epoch, adapter)
+        SELECT id, session_id, event_kind, detail, latency_ms, timestamp_epoch, adapter
+        FROM telemetry_v24;
+      `);
+      db.exec(`DROP TABLE telemetry_v24;`);
+    });
+    tx();
+  }
   return true;
+}
+
+/**
+ * Probe whether the current `telemetry.event_kind` CHECK constraint admits
+ * `'episodic_write_failure'`. Used as the V25 idempotency guard.
+ */
+function telemetryAcceptsEpisodicWriteFailure(db: Database): boolean {
+  if (!hasTable(db, 'telemetry')) return false;
+  const row = db.prepare(
+    `SELECT sql FROM sqlite_master WHERE type='table' AND name='telemetry'`
+  ).get() as { sql?: string } | undefined;
+  return !!row?.sql && row.sql.includes("'episodic_write_failure'");
 }
