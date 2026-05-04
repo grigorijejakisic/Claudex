@@ -1,7 +1,8 @@
 # v5 Episodic Memory — Research + Architecture Discussion
 
 **Date:** 2026-04-30
-**Status:** Discussion-stage (pre-roadmap)
+**Status:** Discussion-stage (pre-roadmap). **Engineering substrate only — read the framing doc first.**
+**Read order:** `2026-05-04-v5-bound-episodes-framing.md` is the cognitive frame; this doc is the engineering plumbing under it. If anything in this doc contradicts the framing doc, the framing doc wins.
 **Origin:** Mid-pipeline conversation during Phase 9–10 auto-orchestrate run; user's PC crashed earlier same session, surfacing the architectural gap this document captures.
 **Intent:** Capture the v5 design conversation + supporting research while context is fresh, so it's revisitable when v4 closes (post-Phase 11) and v5 milestone planning begins.
 
