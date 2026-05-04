@@ -88,6 +88,19 @@ Each task was committed atomically:
 - `src/tests/adapters/episodic-events/schema-migration.test.ts` - New file, 10 tests covering shape, indexes, CHECK enum, idempotency, legacy preservation, defaults, NOT NULL, self-FK, TARGET_USER_VERSION.
 - 12 existing migration test files - mechanical bump from `user_version=24` to `25` to track the new ceiling.
 
+## Follow-on extension landed in Plan 01-02 (commit `a0ad303`)
+
+V25 was extended in-place during Plan 01-02 to also rebuild the `telemetry` table with `'episodic_write_failure'` added to the `event_kind` CHECK enum. CONTEXT.md mandates that dual-write rollback must produce a queryable telemetry row — that's a Phase 1 substrate requirement, not optional. Codebase precedent is exact: V19→V20 already extended the telemetry CHECK enum to add `reranker_fallback`, and V20→V21 did it again for `cross_project_*`. Same rebuild-and-copy pattern applies here, with idempotency probe `telemetryAcceptsEpisodicWriteFailure(db)`.
+
+This is a follow-on increment to V25, not a contradiction — both plans honor the same substrate goal: "the V25 episode substrate INCLUDING its observability is one coherent unit." Splitting the enum extension into a separate V26-just-for-CHECK would have been migration churn for no benefit.
+
+Mechanics:
+- `migrateV24toV25` in `src/core/migration-steps.ts` extended (commit `a0ad303`)
+- `TELEMETRY_SCHEMA` in `src/core/schema.ts` updated to include `'episodic_write_failure'`
+- All 156 prior migration tests continue to pass (V20/V21 telemetry rebuild tests + V25 idempotency tests)
+- The 10 V25 schema-migration tests do NOT assert on the CHECK enum's exact values, so no test updates were required
+- Approved by team-lead under autonomous mandate; documented in 01-02-SUMMARY.md as a Rule 4 architectural deviation
+
 ## Final DDL Committed
 
 ```sql
