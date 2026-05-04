@@ -11,10 +11,10 @@ See: `.planning/PROJECT.md` (created 2026-05-04)
 ## Current Position
 
 **Current Milestone:** v5 — Bound Multi-Modal Episodes
-**Phase:** 1 — Episode substrate (about to begin)
+**Phase:** 1 — Episode substrate (context gathered)
 **Plan:** —
-**Status:** Seeded; awaiting `/auto-orchestrate` to spawn phase 1 discuss
-**Last activity:** 2026-05-04 — milestone seeded; archive of v4 → `v4-final/` committed (`077b3ec`); v5 framing doc committed (`f07d893`)
+**Status:** CONTEXT.md written; ready for `/gsd:plan-phase 1`
+**Last activity:** 2026-05-04 — Phase 1 context gathered (`44058a8`); resume file `.planning/phases/01-episode-substrate/01-CONTEXT.md`
 
 ### v5 Phase Structure (Initial — Refinable in Phase 1 Discuss)
 
