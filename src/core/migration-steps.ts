@@ -1801,3 +1801,47 @@ function telemetryAcceptsEpisodicWriteFailure(db: Database): boolean {
   ).get() as { sql?: string } | undefined;
   return !!row?.sql && row.sql.includes("'episodic_write_failure'");
 }
+
+/**
+ * V25 → V26: Phase 2 IDX-01 — error-fingerprint sidecar.
+ *
+ * Creates `episodic_index_error_fingerprint`, the FIRST sidecar pattern in the
+ * v5 substrate (per CONTEXT item 6 of `.planning/phases/02-multi-modal-index-
+ * seeds-density-check/02-CONTEXT.md`):
+ *   - inverted index over per-row error fingerprints derived from
+ *     `episodic_events.metadata_json.error_fingerprint`
+ *   - `corpus_origin` CHECK enum makes the v4-backfill / phase1-organic split
+ *     observable in post-hoc analysis (CONTEXT item 2 known-limitation)
+ *   - foreign key to `episodic_events(id)` (FKs are not enforced by default in
+ *     this codebase — declaration only; matches Phase 1 conventions)
+ *   - three indexes covering the hot lookups (shingle_hash, episode_event_id,
+ *     and the (project, ts_epoch) range scan for cluster analysis)
+ *
+ * The episodic_events table is intentionally NOT altered — Phase 1's "no ALTER
+ * TABLE on episodic_events" contract holds. Per-row fingerprint payloads land
+ * in `metadata_json.error_fingerprint` (Plan 02-02); inverted-index rows land
+ * here via Plan 02-03's explicit backfill.
+ *
+ * Idempotent — `CREATE TABLE IF NOT EXISTS` and `CREATE INDEX IF NOT EXISTS`
+ * mean re-running on a V26+ DB is a no-op.
+ */
+export function migrateV25toV26(db: Database): boolean {
+  if (hasTable(db, 'episodic_index_error_fingerprint')) {
+    return false;
+  }
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS episodic_index_error_fingerprint (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      shingle_hash TEXT NOT NULL,
+      episode_event_id INTEGER NOT NULL REFERENCES episodic_events(id),
+      ts_epoch INTEGER NOT NULL,
+      project TEXT NOT NULL,
+      corpus_origin TEXT NOT NULL CHECK (corpus_origin IN ('phase1_organic','v4_backfill')),
+      schema_version SMALLINT NOT NULL DEFAULT 1
+    );
+    CREATE INDEX IF NOT EXISTS idx_epev_efp_shingle      ON episodic_index_error_fingerprint(shingle_hash);
+    CREATE INDEX IF NOT EXISTS idx_epev_efp_event        ON episodic_index_error_fingerprint(episode_event_id);
+    CREATE INDEX IF NOT EXISTS idx_epev_efp_project_ts   ON episodic_index_error_fingerprint(project, ts_epoch);
+  `);
+  return true;
+}

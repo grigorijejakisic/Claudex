@@ -44,6 +44,7 @@ import {
   migrateV22toV23,
   migrateV23toV24,
   migrateV24toV25,
+  migrateV25toV26,
   migrateSchemaFixes,
   cleanupOrphanTables,
   upgradeV2SchemaInPlace,
@@ -93,7 +94,7 @@ export { migrateV14toV15 };
  * `claudex doctor` (DIAG-05) reads this to verify the on-disk DB is in sync.
  * Bumping a migration must bump this constant in lockstep.
  */
-export const TARGET_USER_VERSION = 25;
+export const TARGET_USER_VERSION = 26;
 
 export function runMigrations(db: Database): void {
   const row = db.pragma('user_version') as Array<{ user_version: number }>;
@@ -134,6 +135,7 @@ export function runMigrations(db: Database): void {
     [22, () => { migrateV22toV23(db); }],
     [23, () => { migrateV23toV24(db); }],
     [24, () => { migrateV24toV25(db); }],
+    [25, () => { migrateV25toV26(db); }],
   ];
 
   // Handle special cases for version 0 and 1
@@ -340,6 +342,14 @@ export function initializeSchema(db: Database): void {
   if (currentUv < 25) {
     migrateV24toV25(db);
     db.pragma('user_version = 25');
+  }
+  // V5 Phase 2 (IDX-01): error-fingerprint sidecar. First sidecar pattern in
+  // the v5 substrate — inverted index of metadata_json-derived fingerprints
+  // for cross-session error recall. Idempotent. Fresh-DB path lands here;
+  // runMigrations step-table covers existing-DB upgrades from V25.
+  if (currentUv < 26) {
+    migrateV25toV26(db);
+    db.pragma('user_version = 26');
   }
 }
 
