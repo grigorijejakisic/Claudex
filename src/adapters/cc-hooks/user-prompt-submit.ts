@@ -24,6 +24,7 @@ import { setExperienceFlags, getExperienceFlags } from '../../intelligence/exper
 import { detectCorrectionSignal } from '../../intelligence/correction-detection.js';
 import { recordEvent } from '../../core/session-events.js';
 import { findSimilarThreadsAsync } from '../../intelligence/thread-tracker.js';
+import { parseWrappers } from '../../extraction/wrapper-parser.js';
 import { shouldRunReflection, runBatchReflection } from '../../intelligence/batch-reflection.js';
 import { extractDomain, generateDomainAdvisory, getWeakDomains } from '../../intelligence/capability-tracker.js';
 import { getThreadState } from '../../core/thread.js';
@@ -263,7 +264,7 @@ const main = wrapHook('UserPromptSubmit', async (input, ctx) => {
   // from <task-notification>, <system-reminder>, <experience-data> content.
   if (prompt) {
     try {
-      const userText = prompt.replace(/<(?:task-notification|system-reminder|experience-data|local-command-caveat|command-message|command-name|command-args|local-command-stdout|file-content)[^>]*>[\s\S]*?<\/(?:task-notification|system-reminder|experience-data|local-command-caveat|command-message|command-name|command-args|local-command-stdout|file-content)>/gi, '').trim();
+      const { organic: userText } = parseWrappers(prompt);
       const correctionFlagged = detectCorrectionSignal(userText);
       if (correctionFlagged) {
         setExperienceFlags(ctx.db, input.session_id, {
