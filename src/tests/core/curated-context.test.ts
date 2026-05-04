@@ -18,6 +18,7 @@ import {
   type CuratedEntry,
 } from '../../core/curated-context.js';
 import { GLOBAL_PROJECT_SCOPE } from '../../shared/constants.js';
+import { TARGET_USER_VERSION } from '../../core/migrations.js';
 
 describe('curated-context', () => {
   let db: TestDatabase;
@@ -42,7 +43,7 @@ describe('curated-context', () => {
 
     it('bumps user_version to current TARGET_VERSION (21 after Phase 6.5)', () => {
       const row = db.pragma('user_version') as Array<{ user_version: number }>;
-      expect(row[0]?.user_version).toBe(25);
+      expect(row[0]?.user_version).toBe(TARGET_USER_VERSION);
     });
 
     it('has idx_pcc_project_status index', () => {

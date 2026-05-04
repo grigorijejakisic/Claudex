@@ -12,7 +12,7 @@
 
 import { describe, it, expect, beforeEach } from 'vitest';
 import Database from 'better-sqlite3';
-import { initializeSchema } from '../../core/migrations.js';
+import { initializeSchema, TARGET_USER_VERSION } from '../../core/migrations.js';
 import {
   getEmbeddingProvider,
   resetEmbeddingPipeline,
@@ -241,7 +241,7 @@ describe('V10 schema on fresh install', () => {
     const db = createTestDb();
     try {
       const row = db.pragma('user_version') as Array<{ user_version: number }>;
-      expect(row[0].user_version).toBe(25);
+      expect(row[0].user_version).toBe(TARGET_USER_VERSION);
     } finally {
       db.close();
     }

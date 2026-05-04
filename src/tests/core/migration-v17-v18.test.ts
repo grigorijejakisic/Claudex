@@ -12,7 +12,7 @@
 
 import { describe, it, expect } from 'vitest';
 import Database from 'better-sqlite3';
-import { initializeSchema, runMigrations } from '../../core/migrations.js';
+import { initializeSchema, runMigrations, TARGET_USER_VERSION } from '../../core/migrations.js';
 import { migrateV17toV18 } from '../../core/migration-steps.js';
 
 function getUserVersion(db: Database.Database): number {
@@ -25,7 +25,7 @@ describe('Phase 4.1 V17→V18 migration', () => {
     const db = new Database(':memory:');
     initializeSchema(db);
 
-    expect(getUserVersion(db)).toBe(25);
+    expect(getUserVersion(db)).toBe(TARGET_USER_VERSION);
 
     const tables = (db.prepare(
       "SELECT name FROM sqlite_master WHERE type='table' ORDER BY name"
@@ -41,7 +41,7 @@ describe('Phase 4.1 V17→V18 migration', () => {
     const db = new Database(':memory:');
     initializeSchema(db);
     expect(() => initializeSchema(db)).not.toThrow();
-    expect(getUserVersion(db)).toBe(25);
+    expect(getUserVersion(db)).toBe(TARGET_USER_VERSION);
 
     const tables = (db.prepare(
       "SELECT name FROM sqlite_master WHERE type='table' AND name IN ('shape_vocabulary', 'shape_candidates')"
@@ -58,7 +58,7 @@ describe('Phase 4.1 V17→V18 migration', () => {
     // step itself is also IF NOT EXISTS-guarded so a partial pre-state is fine.
     runMigrations(db);
     // Phase 6.5 raised TARGET_VERSION to 21.
-    expect(getUserVersion(db)).toBe(25);
+    expect(getUserVersion(db)).toBe(TARGET_USER_VERSION);
     db.close();
   });
 

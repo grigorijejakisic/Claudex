@@ -18,7 +18,7 @@
 
 import { describe, it, expect } from 'vitest';
 import Database from 'better-sqlite3';
-import { initializeSchema, runMigrations } from '../../core/migrations.js';
+import { initializeSchema, runMigrations, TARGET_USER_VERSION } from '../../core/migrations.js';
 import { migrateV21toV22 } from '../../core/migration-steps.js';
 import { recordRetrieval, listSessionRetrievals } from '../../intelligence/retrieval-log.js';
 
@@ -31,7 +31,7 @@ describe('Phase 8.5 V21→V22 migration (retrieval_log + session_flag)', () => {
   it('fresh DB reaches user_version=22', () => {
     const db = new Database(':memory:');
     initializeSchema(db);
-    expect(getUserVersion(db)).toBe(25);
+    expect(getUserVersion(db)).toBe(TARGET_USER_VERSION);
     db.close();
   });
 
@@ -134,7 +134,7 @@ describe('Phase 8.5 V21→V22 migration (retrieval_log + session_flag)', () => {
     expect(() => migrateV21toV22(db)).not.toThrow();
     expect(() => migrateV21toV22(db)).not.toThrow();
     expect(() => runMigrations(db)).not.toThrow();
-    expect(getUserVersion(db)).toBe(25);
+    expect(getUserVersion(db)).toBe(TARGET_USER_VERSION);
 
     db.close();
   });

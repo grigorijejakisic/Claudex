@@ -29,6 +29,7 @@ import Database from 'better-sqlite3';
 import { runV17Migration } from '../../../core/migration/v17-runner.js';
 import { loadSqliteVec } from '../../../core/sqlite-vec-loader.js';
 import { openDatabase } from '../../../core/storage.js';
+import { TARGET_USER_VERSION } from '../../../core/migrations.js';
 import { writeStaleReview } from '../../../core/migration/stale-review-parser.js';
 import type { EmbedderLike } from '../../../core/migration/v17-embed-stage.js';
 
@@ -281,7 +282,7 @@ describe('initializeSchema idempotency — post-V17 re-open', () => {
     const db = openDatabase(dbPath);
     try {
       const uv = (db.pragma('user_version') as Array<{ user_version: number }>)[0].user_version;
-      expect(uv).toBe(25);
+      expect(uv).toBe(TARGET_USER_VERSION);
     } finally {
       db.close();
     }

@@ -5,7 +5,7 @@
  */
 
 import Database from 'better-sqlite3';
-import { runMigrations, initializeSchema } from '../../core/migrations.js';
+import { runMigrations, initializeSchema, TARGET_USER_VERSION } from '../../core/migrations.js';
 import { addJournalEntry, searchJournalFTS } from '../../core/journal.js';
 
 /** Creates a DB with v2-era artifacts table (old CHECK constraint). */
@@ -173,7 +173,7 @@ describe('migrateV2toV3', () => {
       runMigrations(db);
       const row = db.pragma('user_version') as Array<{ user_version: number }>;
       // v2→v3→...→v21 (latest, Phase 6.5)
-      expect(row[0].user_version).toBe(25);
+      expect(row[0].user_version).toBe(TARGET_USER_VERSION);
     } finally {
       db.close();
     }
@@ -370,7 +370,7 @@ describe('migrateV7toV8 (Evolved Flow)', () => {
 
       // Verify latest schema version (Phase 8.5 raised TARGET_VERSION to 22)
       const version = (db.pragma('user_version') as Array<{ user_version: number }>)[0].user_version;
-      expect(version).toBe(25);
+      expect(version).toBe(TARGET_USER_VERSION);
 
       // Verify recall_text column exists
       const cols = db.pragma('table_info(session_journal)') as Array<{ name: string }>;

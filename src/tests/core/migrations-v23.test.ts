@@ -16,7 +16,7 @@
 
 import { describe, it, expect } from 'vitest';
 import Database from 'better-sqlite3';
-import { initializeSchema } from '../../core/migrations.js';
+import { initializeSchema, TARGET_USER_VERSION } from '../../core/migrations.js';
 import { migrateV23toV24 } from '../../core/migration-steps.js';
 
 function getUserVersion(db: Database.Database): number {
@@ -37,7 +37,7 @@ describe('Phase 11 V23→V24 migration (drop legacy _old tables)', () => {
   it('fresh DB reaches user_version=25 (V25 = episode substrate, ceiling raised by Phase 1)', () => {
     const db = new Database(':memory:');
     initializeSchema(db);
-    expect(getUserVersion(db)).toBe(25);
+    expect(getUserVersion(db)).toBe(TARGET_USER_VERSION);
     db.close();
   });
 

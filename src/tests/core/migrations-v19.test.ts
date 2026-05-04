@@ -14,7 +14,7 @@
 
 import { describe, it, expect } from 'vitest';
 import Database from 'better-sqlite3';
-import { initializeSchema, runMigrations } from '../../core/migrations.js';
+import { initializeSchema, runMigrations, TARGET_USER_VERSION } from '../../core/migrations.js';
 
 function getUserVersion(db: Database.Database): number {
   const row = db.pragma('user_version') as Array<{ user_version: number }>;
@@ -34,7 +34,7 @@ describe('Phase 5.5 V18→V19 migration', () => {
     initializeSchema(db);
 
     // Phase 6.5 raised TARGET_VERSION to 21; V19 tables remain present.
-    expect(getUserVersion(db)).toBe(25);
+    expect(getUserVersion(db)).toBe(TARGET_USER_VERSION);
     expect(tableExists(db, 'lesson_pointer')).toBe(true);
     expect(tableExists(db, 'pointer_recall_log')).toBe(true);
 
@@ -58,7 +58,7 @@ describe('Phase 5.5 V18→V19 migration', () => {
     runMigrations(db);
 
     // V18→V19 step still runs as part of the upgrade chain; final stamp is V21.
-    expect(getUserVersion(db)).toBe(25);
+    expect(getUserVersion(db)).toBe(TARGET_USER_VERSION);
     const seed = db.prepare(
       `SELECT field, value, promoted_session_count FROM shape_vocabulary WHERE field = 'task_shape'`
     ).get() as { field: string; value: string; promoted_session_count: number };
@@ -75,12 +75,12 @@ describe('Phase 5.5 V18→V19 migration', () => {
   it('runMigrations is idempotent on a fully-migrated DB (no error, no schema churn)', () => {
     const db = new Database(':memory:');
     initializeSchema(db);
-    expect(getUserVersion(db)).toBe(25);
+    expect(getUserVersion(db)).toBe(TARGET_USER_VERSION);
 
     expect(() => runMigrations(db)).not.toThrow();
-    expect(getUserVersion(db)).toBe(25);
+    expect(getUserVersion(db)).toBe(TARGET_USER_VERSION);
     expect(() => initializeSchema(db)).not.toThrow();
-    expect(getUserVersion(db)).toBe(25);
+    expect(getUserVersion(db)).toBe(TARGET_USER_VERSION);
 
     db.close();
   });

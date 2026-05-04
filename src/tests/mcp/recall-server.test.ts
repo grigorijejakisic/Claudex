@@ -3,7 +3,7 @@
  */
 
 import Database from 'better-sqlite3';
-import { initializeSchema, runMigrations } from '../../core/migrations.js';
+import { initializeSchema, runMigrations, TARGET_USER_VERSION } from '../../core/migrations.js';
 import { createArtifact, searchArtifactsGlobal } from '../../core/artifacts.js';
 import { hybridSearchSync } from '../../core/hybrid-retrieval.js';
 import { cachedPrepare } from '../../core/stmt-cache.js';
@@ -166,7 +166,7 @@ describe('fresh DB initialization', () => {
 
       // Verify user_version is current (Phase 6.5 raised TARGET_VERSION to 21)
       const row = db.pragma('user_version') as Array<{ user_version: number }>;
-      expect(row[0].user_version).toBe(25);
+      expect(row[0].user_version).toBe(TARGET_USER_VERSION);
     } finally {
       db.close();
     }

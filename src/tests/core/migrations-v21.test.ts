@@ -21,7 +21,7 @@
 
 import { describe, it, expect } from 'vitest';
 import Database from 'better-sqlite3';
-import { initializeSchema, runMigrations } from '../../core/migrations.js';
+import { initializeSchema, runMigrations, TARGET_USER_VERSION } from '../../core/migrations.js';
 
 function getUserVersion(db: Database.Database): number {
   const row = db.pragma('user_version') as Array<{ user_version: number }>;
@@ -33,7 +33,7 @@ describe('Phase 6.5 V20→V21 migration (artifact_task_pattern + telemetry +cros
     const db = new Database(':memory:');
     initializeSchema(db);
 
-    expect(getUserVersion(db)).toBe(25);
+    expect(getUserVersion(db)).toBe(TARGET_USER_VERSION);
 
     const sidecar = db.prepare(
       "SELECT 1 AS one FROM sqlite_master WHERE type='table' AND name='artifact_task_pattern'"
@@ -120,13 +120,13 @@ describe('Phase 6.5 V20→V21 migration (artifact_task_pattern + telemetry +cros
   it('runMigrations is idempotent on a V21 DB (no churn, no demotion)', () => {
     const db = new Database(':memory:');
     initializeSchema(db);
-    expect(getUserVersion(db)).toBe(25);
+    expect(getUserVersion(db)).toBe(TARGET_USER_VERSION);
 
     expect(() => runMigrations(db)).not.toThrow();
-    expect(getUserVersion(db)).toBe(25);
+    expect(getUserVersion(db)).toBe(TARGET_USER_VERSION);
 
     expect(() => initializeSchema(db)).not.toThrow();
-    expect(getUserVersion(db)).toBe(25);
+    expect(getUserVersion(db)).toBe(TARGET_USER_VERSION);
 
     // No `telemetry_v20` left behind by an idempotent re-run.
     const stale = db.prepare(
@@ -163,7 +163,7 @@ describe('Phase 6.5 V20→V21 migration (artifact_task_pattern + telemetry +cros
 
     runMigrations(db);
 
-    expect(getUserVersion(db)).toBe(25);
+    expect(getUserVersion(db)).toBe(TARGET_USER_VERSION);
 
     const after = db.prepare(
       `SELECT id, session_id, event_kind, detail, latency_ms, adapter
