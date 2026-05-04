@@ -13,6 +13,7 @@ import { emitErrorTelemetry } from '../../observability/error-telemetry.js';
 import { runSessionEndCleanup } from '../shared/lifecycle.js';
 import { clearSessionSignals, sweepExpiredSignals } from '../../core/session-signals.js';
 import { recordEvent } from '../../core/session-events.js';
+import { writeEnvironmentalEvent } from '../../core/episodic-events.js';
 
 const main = wrapHook('SessionEnd', async (input, ctx) => {
   const gauge = getTokenGauge({
@@ -56,6 +57,25 @@ const main = wrapHook('SessionEnd', async (input, ctx) => {
     clearSessionSignals(ctx.db, input.session_id);
     sweepExpiredSignals(ctx.db);
   } catch { /* non-critical */ }
+
+  // V5 Plan 01-03 (EPI-03): episode-substrate session_boundary marker
+  // (paired with the session-start row from cc-hooks/session-start).
+  try {
+    writeEnvironmentalEvent({
+      db: ctx.db,
+      sessionId: input.session_id,
+      project: ctx.project,
+      type: 'session_boundary',
+      source: 'cc-hooks/session-end',
+      content: `Session closed: ${input.session_id}`,
+      metadata: {
+        session_id: input.session_id,
+        project: ctx.project,
+      },
+    });
+  } catch (e) {
+    emitErrorTelemetry(ctx.db, input.session_id, 'session_end/episodic_boundary', e);
+  }
 
   return {};
 });

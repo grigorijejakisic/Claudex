@@ -49,6 +49,8 @@ import * as fs from 'fs';
 import * as os from 'os';
 import { getSessionEvents, synthesizeSessionSummary, saveSessionSummary } from '../core/session-events.js';
 import { captureRecallFlowEntry } from '../adapters/shared/lifecycle.js';
+import { writeEnvironmentalEvent } from '../core/episodic-events.js';
+import { GLOBAL_PROJECT_SCOPE } from '../shared/constants.js';
 import type { RerankerSupervisor } from './reranker-supervisor.js';
 import type { LlamaServerSupervisor } from './llama-server-supervisor.js';
 import {
@@ -136,6 +138,25 @@ export async function heartbeatTick(ctx: HeartbeatContext): Promise<TickResult> 
     domains_classified: 0,
     duration_ms: 0,
   };
+
+  // V5 Plan 01-03 (EPI-03): episode-substrate environmental_event marker for
+  // the tick. Required by Phase 6's idle-timeout sweep — fsnotify needs
+  // heartbeat rows to distinguish "active" from "dormant" processes/sessions.
+  // Angel may fire-and-forget per .claude/rules/hooks-safety.md, but
+  // writeEnvironmentalEvent is synchronous so we just call it. Failures are
+  // recorded as telemetry by the helper; we additionally swallow any throw
+  // here so a substrate write does not break the heartbeat loop.
+  try {
+    writeEnvironmentalEvent({
+      db: ctx.db,
+      sessionId: 'angel-heartbeat',
+      project: GLOBAL_PROJECT_SCOPE,
+      type: 'environmental_event',
+      source: 'angel/heartbeat',
+      content: 'Heartbeat tick',
+      metadata: { tick_started_epoch_ms: start },
+    });
+  } catch { /* non-fatal; telemetry-on-rollback already recorded */ }
 
   try {
     // Phase 1: Idle session detection

@@ -16,6 +16,7 @@ import { ingestFileArtifacts, pruneStaleFileArtifacts } from '../../core/file-in
 import { getLastSessionSummary, synthesizeSessionSummary, getSessionEvents, saveSessionSummary, recordEvent } from '../../core/session-events.js';
 import { cachedPrepare } from '../../core/stmt-cache.js';
 import { captureRecallFlowEntry } from '../shared/lifecycle.js';
+import { writeEnvironmentalEvent } from '../../core/episodic-events.js';
 import { writeClaudeEnvFile, detectCcMemoryConflict } from '../shared/env-file.js';
 import { verifyMemoryMd } from '../../core/memory-md-verify.js';
 import { predictSessionIntent, CONFIDENCE_THRESHOLD } from '../../intelligence/intent-predictor.js';
@@ -138,6 +139,27 @@ const main = wrapHook('SessionStart', async (input, ctx) => {
     });
   } catch (e) {
     emitErrorTelemetry(ctx.db, input.session_id, 'session_start/create', e);
+  }
+
+  // V5 Plan 01-03 (EPI-03): episode-substrate session_boundary marker.
+  // Phase 6 reads start+end pairs to compute episode windows; Phase 1
+  // populates them. Non-fatal — telemetry-on-rollback handles failure.
+  try {
+    writeEnvironmentalEvent({
+      db: ctx.db,
+      sessionId: input.session_id,
+      project: ctx.project,
+      type: 'session_boundary',
+      source: 'cc-hooks/session-start',
+      content: `Session opened: ${input.session_id}`,
+      metadata: {
+        session_id: input.session_id,
+        project: ctx.project,
+        cwd: input.cwd,
+      },
+    });
+  } catch (e) {
+    emitErrorTelemetry(ctx.db, input.session_id, 'session_start/episodic_boundary', e);
   }
 
   // Close orphaned sessions: any session still 'active' but older than 1 hour
