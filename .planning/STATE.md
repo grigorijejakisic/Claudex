@@ -11,9 +11,9 @@ See: `.planning/PROJECT.md` (created 2026-05-04, reframed 2026-05-05)
 ## Current Position
 
 **Current Milestone:** v5 — Bound Multi-Modal Episodes (reframed 2026-05-05 to substrate-only)
-**Phase:** 4 — Angel reduction (next; pending discuss)
+**Phase:** 4 — Angel reduction SHIPPED 2026-05-05; Phase 6 next
 **Plan:** —
-**Status:** Milestone reframe committed 2026-05-05 after Phase 2.1 closed with KILL × 2 (joining Phase 2's KILL → 3 consistent KILL bound experiences). Locked decision rule fired honestly; phases premised on the multi-handle/density-fusion thesis (3, 5) dropped. Methodology that produced the honest KILL — pre-committed decision rule, locked corpus, multiple bound measurements, append-only aggregator, Wilson/Newcombe CI binding — promoted to v5 standard practice. Full reframe: `.planning/reframes/2026-05-05-multi-handle-kill.md`.
+**Status:** Three v5 phases shipped on 2026-05-05: milestone reframe (multi-handle thesis KILL × 3), then Phase 4 Angel reduction via `/auto-orchestrate` (discuss-4 → plan-4 → execute-4, 31 commits). Methodology that produced the honest KILL — pre-committed decision rule, locked corpus, multiple bound measurements, append-only aggregator, Wilson/Newcombe CI binding — promoted to v5 standard practice. Full reframe: `.planning/reframes/2026-05-05-multi-handle-kill.md`.
 
 **Verdict log:**
 - Phase 1 (2026-05-04, type: engineering): SHIPPED. V25 migration + episodic_events table + dualWrite helpers + 60+ EPI-tagged tests. Stub-extractor proves Mem0-trap structurally impossible. Vesna 17/17 preserved.
@@ -21,11 +21,12 @@ See: `.planning/PROJECT.md` (created 2026-05-04, reframed 2026-05-05)
 - Phase 2.1-strict (2026-05-05, ≥3-frame, n=20): KILL. Δp@5 +0.10 [-0.157, +0.376]; Δr@10 -0.05 [-0.274, +0.172]; density 0.2418; latency p99 ratio 0.83.
 - Phase 2.1-relaxed (2026-05-05, ≥2-frame, n=19): KILL. Δp@5 +0.21 [-0.033, +0.491]; Δr@10 +0.05 [-0.141, +0.226]; density 0.2418; latency p99 ratio 1.31.
 - Phase 3 (multi-handle retrieval cutover): DROPPED 2026-05-05 — premised on dead thesis.
+- Phase 4 (2026-05-05, type: engineering): SHIPPED. Three extraction sites deleted (A `pattern-extractor.ts`, B `experience-scoring.ts` step 1, C `heartbeat.ts` synthesis loop — C uncovered during discuss). V28 BEFORE INSERT trigger blocks new rows structurally via TEMP `session_pragmas` sidecar. `classifySessionDomains` relocated to `domain-classifier.ts`. Three-layer cutoff (JSDoc tombstones + `extraction-deleted.test.ts` regression guard + V28 trigger). Mem0 fix `0d0fbca` deleted as structurally obsolete. Net: ~1100 lines deleted, ~700 added. Ship gates: Vesna **18/18 PASS** (new VAL-02 probe `extraction-deleted-001.json`), build clean, 3380/3415 tests passing (27 pre-existing failures unchanged).
 - Phase 5 (density-based abstraction): DROPPED 2026-05-05 — same dead thesis.
 
-**Last activity:** 2026-05-05 — Phase 2.1 closed (commits da56ecd → ac2bcb2); aggregator updated; user-approval gate fired; milestone reframe committed; ROADMAP/REQUIREMENTS/PROJECT/STATE updated.
+**Last activity:** 2026-05-05 — Phase 4 SHIPPED via /auto-orchestrate. ROADMAP.md + CLAUDE.md + STATE.md updated for the close.
 
-**Next step:** `/gsd:discuss-phase 4` (or `/auto-orchestrate --from-phase 4`) for Angel reduction. Phase 4 reframed (sharpened, not weakened) — strip extraction-time pattern creation because the mechanism *itself* violates the parable, independent of whether multi-handle retrieval ever ships.
+**Next step:** `/auto-orchestrate --from-phase 6` for Crash-resilient episode boundary (fsnotify + heartbeat + idle-sweep + PID-liveness, engineering-doc Recommendation #1).
 
 ## v5 Phase Structure (Post-Reframe)
 

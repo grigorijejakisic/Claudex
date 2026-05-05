@@ -48,11 +48,29 @@ The architectural framing (parable) is locked in `.planning/research/2026-05-04-
 
     Reasoning: `.planning/reframes/2026-05-05-multi-handle-kill.md`.
 
-- [ ] **Phase 4: Angel reduction** _(type: engineering with code-trace prerequisite)_ — **NEXT**
+- [x] **Phase 4: Angel reduction** _(type: engineering with code-trace prerequisite)_ — SHIPPED 2026-05-05
 
-    **Reframed 2026-05-05:** scope sharpened, not weakened. Trace dependencies of `src/angel/pattern-extractor.ts` and the `experience_patterns` table across `intelligence/`, `assembly/`, dashboard CLI, observability surfaces. Anything that reads from those structures gets either: (a) re-pointed at direct episode reads (Phase 1 substrate) where applicable, or (b) preserved as a legacy read path with a TODO. Then **delete extraction-time pattern creation** — the mechanism whereby the Angel abstracts patterns at write time from N=1 experiences. That mechanism *itself* violates the parable; killing it is correct independent of whether multi-handle retrieval ever ships. The Angel's role becomes binding + indexing on Phase 1's substrate, not abstraction. The Mem0 fix from 2026-05-04 (`0d0fbca`) becomes structurally obsolete because the wound is closed.
+    **Reframed 2026-05-05** (sharpened, not weakened) and **shipped same day** through `/auto-orchestrate` (discuss-4 → plan-4 → execute-4, 31 atomic commits across 9 plans).
 
-    No re-pointing at episode-based fusion (that was Phase 3 — dropped). Readers either read episodes directly or stay on legacy `experience_patterns` rows in deprecation mode.
+    **Outcome:** Three extraction-time pattern creation sites deleted (Site A `pattern-extractor.ts:554`, Site B `experience-scoring.ts` step 1, Site C `heartbeat.ts` synthesis loop — Site C surfaced during discuss). V28 schema cutoff trigger blocks new INSERTs structurally (TEMP trigger + per-connection `temp.session_pragmas` override sidecar for fixtures/migrations). `classifySessionDomains` extracted to new `src/angel/domain-classifier.ts`; correction-signal infra preserved at `src/intelligence/correction-detection.ts`. `applyExperienceFeedback` step 2 (score feedback) + step 3 (flag rotation) survive — they read existing rows, not extract.
+
+    Three-layer cutoff signal in place:
+    - L1: JSDoc tombstones on `experience-patterns.ts` module + `createPattern` function pointing at the reframe artifact.
+    - L2: `extraction-deleted.test.ts` regression guard (4 assertions including heartbeat lesson-immutability).
+    - L3: V28 BEFORE INSERT trigger via TEMP `session_pragmas` sidecar.
+
+    Reader policy: 9 reader sites (assembler, heartbeat janitor, intelligence/*, embed pipeline, mcp recall, hooks step 2/3) carry uniform legacy-with-TODO comment pointing at the reframe and Phase 7's retirement responsibility. No re-points at episode-based fusion (Phase 3 dropped). 88 existing rows untouched.
+
+    Mem0 fix from `0d0fbca` deleted with Site A — now structurally obsolete. `skill-writer.ts` deleted as orphaned with Site A. `markSessionProcessed` deleted; `sessions_processed`/`patterns_extracted` heartbeat fields soft-no-op'd to preserve observability surfaces.
+
+    **Ship gates verified:**
+    - SC#1 Vesna: 17/17 → **18/18 PASS at 100%** (new VAL-02 probe `extraction-deleted-001.json`)
+    - `bun run build`: clean
+    - `bun run test`: 3380/3415 passing (27 pre-existing failures unchanged from master baseline)
+
+    Net code change: ~1100 lines deleted, ~700 added — pure shrinkage on production path.
+
+    **Phase rename consideration deferred:** The phase name "Angel reduction" originally targeted Site A only; Site B (intelligence/) and Site C (Angel/heartbeat) emerged during discuss. CONTEXT.md flagged this for user-approval-gate review. Decision: name stays — historical accident, the reframe artifact carries the explanation, and renaming retroactively is a 30-second decision the user can take at any future time.
 
 - [-] **Phase 5: Density-based abstraction** _(type: empirical)_ — **DROPPED 2026-05-05**
 

@@ -35,7 +35,7 @@ These are archival v4-ship-time numbers; not used as ship gates per the v4 audit
 ```bash
 bun run build          # esbuild, ~70ms, outputs to dist/
 bun run test           # vitest, 100+ files, 3000+ tests
-bun run vesna          # SC#1 ship-gate — 17/17 PASS at 100%
+bun run vesna          # SC#1 ship-gate — 18/18 PASS at 100%
 bun run sc3            # SC#3 ship-gate — every active project ≥80% MEMORY.md content quality
 bun run setup          # register hooks
 node dist/angel/index.cjs  # start Angel (auto-spawned by session-start)
