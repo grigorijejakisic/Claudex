@@ -2,43 +2,49 @@
  * Experience pattern scoring — extracted from Stop hook for single-responsibility.
  *
  * Handles:
- *   1. Pattern extraction from correction signals
- *   2. Topic-aware score feedback (reward/penalise patterns from previous turn)
- *   3. Flag rotation (promote injected → awaiting, clear correction state)
+ *   1. Topic-aware score feedback (reward/penalise patterns from previous turn)
+ *   2. Flag rotation (promote injected → awaiting, clear correction state)
  *
  * All operations are non-throwing — failures are logged to error telemetry
  * and the remaining steps continue.
+ *
+ * Phase 4 reduction: the prior step 1 (pattern extraction from correction
+ * signals) was deleted because it created experience_patterns rows from
+ * single-turn N=1 correction signals — extraction-time abstraction. See
+ * .planning/reframes/2026-05-05-multi-handle-kill.md.
  */
 
 import type { Database } from 'better-sqlite3';
 import type { ClaudexConfig } from '../shared/config.js';
-import { CC_CAPABILITIES } from '../shared/constants.js';
 import { emitErrorTelemetry } from '../observability/error-telemetry.js';
 import {
-  createPattern,
-  classifyPatternScope,
   updatePatternScore,
   incrementUsefulCount,
   escalatePattern,
 } from './experience-patterns.js';
-import { detectEnrichmentProvider } from './enrichment.js';
 import { getExperienceFlags, setExperienceFlags, type ExperienceFlags } from './experience-flags.js';
-import { extractPatternFromAssistantText, extractLessonFromUserCorrection, findCausalEvent, storeCausalAttribution } from './correction-detection.js';
 import { tokenizeQuery } from '../shared/search-utils.js';
 
 /**
- * Runs experience pattern extraction, score feedback, and flag rotation.
+ * Runs score feedback on awaiting patterns + flag rotation.
  *
  * Called by the Stop hook after all other lifecycle steps have completed.
  * Each sub-step is independently guarded so failures don't cascade.
+ *
+ * Phase 4 reduction: this function used to also extract new patterns from
+ * correction signals (Site B). That step was deleted; the function now
+ * only scores existing patterns and rotates the injected/awaiting flags.
+ * Signature preserved for caller compatibility — _lastAssistantText and
+ * _config are no longer used but kept in the signature so the Stop hook
+ * call site does not need to change.
  */
 export async function applyExperienceFeedback(
   db: Database,
   sessionId: string,
-  lastAssistantText: string | undefined,
+  _lastAssistantText: string | undefined,
   lastUserText: string | undefined,
   routedProject: string,
-  config: ClaudexConfig,
+  _config: ClaudexConfig,
 ): Promise<void> {
   let expFlags: ExperienceFlags = {
     correction_flagged: false,
@@ -61,57 +67,7 @@ export async function applyExperienceFeedback(
       correction_prompt,
     } = expFlags;
 
-    // 1. Pattern extraction — only when a correction was flagged this turn.
-    //    Two-path extraction (Meta-Policy Reflexion / ExpeL inspired):
-    //    PRIMARY: extract from user's correction text (most reliable — user
-    //    literally states the lesson: "always use X", "never do Y")
-    //    SUPPLEMENTARY: extract from assistant's response (self-reflective
-    //    acknowledgement phrases like "the fix is...", "going forward...")
-    if (correction_flagged && lastUserText) {
-      try {
-        // Primary: user correction — the user states the lesson directly
-        let extracted = extractLessonFromUserCorrection(lastUserText);
-
-        // Supplementary: assistant response — structured self-reflection
-        if (!extracted && lastAssistantText) {
-          extracted = extractPatternFromAssistantText(lastAssistantText, lastUserText);
-        }
-
-        if (extracted) {
-          // Detect enrichment provider for LLM-based scope classification (non-blocking)
-          let enrichmentProvider: Awaited<ReturnType<typeof detectEnrichmentProvider>> = null;
-          try {
-            enrichmentProvider = await detectEnrichmentProvider(
-              {
-                baseUrl: config.enrichment.ollama_base_url,
-                model: config.enrichment.ollama_model,
-                enabled: config.enrichment.enabled,
-              },
-              CC_CAPABILITIES,
-            );
-          } catch {
-            // Non-fatal — heuristic fallback handles this
-          }
-
-          // Classify scope: LLM -> heuristic -> default project-scoped
-          const scopedProject = await classifyPatternScope(extracted, routedProject, enrichmentProvider);
-          const patternId = createPattern(db, extracted, sessionId, scopedProject);
-
-          // Wire causal attribution: trace which session event the user is correcting
-          // and link it to the pattern for richer root-cause analysis.
-          try {
-            const causal = findCausalEvent(db, sessionId, lastUserText);
-            if (causal) {
-              storeCausalAttribution(db, patternId, causal.event_id);
-            }
-          } catch { /* Non-critical — pattern created regardless */ }
-        }
-      } catch (e) {
-        emitErrorTelemetry(db, sessionId, 'stop/exp_pattern_create', e);
-      }
-    }
-
-    // 2. Topic-aware score feedback — score patterns from the PREVIOUS turn
+    // 1. Topic-aware score feedback — score patterns from the PREVIOUS turn
     //    (awaiting_feedback_ids). These patterns were injected last turn; we now
     //    know whether the user corrected this turn.
     //
@@ -187,7 +143,7 @@ export async function applyExperienceFeedback(
   } catch (e) {
     emitErrorTelemetry(db, sessionId, 'stop/exp_flags', e);
   } finally {
-    // 3. Promote this turn's injected patterns + topic keys to awaiting_feedback
+    // 2. Promote this turn's injected patterns + topic keys to awaiting_feedback
     //    for next turn. Clear correction state and current-turn injection lists.
     //    Only runs when flags were successfully read — avoids overwriting valid
     //    awaiting_feedback_ids with stale defaults if getExperienceFlags threw.
