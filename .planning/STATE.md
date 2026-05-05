@@ -11,12 +11,14 @@ See: `.planning/PROJECT.md` (created 2026-05-04)
 ## Current Position
 
 **Current Milestone:** v5 — Bound Multi-Modal Episodes
-**Phase:** 2 — Multi-modal index seeds + density-at-scale check (SHIPPED 2026-05-04, verdict KILL)
-**Plan:** 02-01..02-05 complete; Phase 2 done. Ready for user-approval gate before Phase 3.
-**Status:** All 5 plans shipped. V26 sidecar + pure fingerprinter + backfill (135 fingerprints / 19 projects on operator DB) + Wilson/Newcombe measurement harness + verdict module + runner all landed. Vesna 17/17 preserved. Pre-existing 27 test failures (llama-* + phase-5-full-gate) unchanged from master baseline; no new regressions.
-**Verdict:** **KILL.** Decision rule fired honestly: criterion 1 failed CI binding (delta_p5 +10pp but ci_lower -0.157 at n=20 test pairs); criterion 2 failed density (intra_project_share 0.234 < 0.30); criterion 3 passed (latency p99 ratio 0.89). Per CONTEXT item 7: probes stay disabled, `DEFAULT_CONFIG.features.error_fingerprint` flipped true→false, backfill rows retained (10678 sidecar + 187 fingerprinted episodes). Code retained at flag for future reference; harness reusable by Phase 5.
-**Last activity:** 2026-05-04 — Phase 2 SHIPPED via `/auto-execute-phase 2`. Final commit `71506e6` (all 5 plan SUMMARYs).
-**Next step:** **User-approval gate before Phase 3.** Phase 3's multi-handle cutover plan is NOT justified by Phase 2's measurement. Options to discuss: (a) re-plan Phase 3 with a different non-semantic index (affect, structural-shape); (b) stack-trace-aware tokenizer for the semantic embedder; (c) abandon multi-handle and revisit density-only Phase 5; (d) rerun on a larger corpus or with a different pair-labeler. See `.planning/phases/02-multi-modal-index-seeds-density-check/02-05-SUMMARY.md` for full operator narrative.
+**Phase:** 2.1 — Corpus-expansion rerun (about to begin)
+**Plan:** —
+**Status:** Phase 2 produced ONE bound measurement at n=20 with verdict KILL. User-approval (2026-05-05) selected Option 4: rerun with expanded corpus to produce a SECOND bound measurement before drawing milestone-level conclusions. Per the parable: a single experience is not yet an abstraction — density across multiple measurements is what produces real signal.
+**Verdict log:**
+- Phase 2 (2026-05-04, n=20 held-out): criterion 1 failed CI binding (delta_p5 +10pp but ci_lower -0.157); criterion 2 failed density (intra_project_share 0.234 < 0.30); criterion 3 passed (latency p99 ratio 0.89). Decision rule fired honestly. Code retained at flag-off; harness preserved for reuse.
+- Phase 2.1 (pending): same harness, expanded corpus targeting n≥200, same locked decision rule verbatim.
+**Last activity:** 2026-05-05 — user selected Option 4 (corpus-expansion rerun) at the post-Phase-2 gate. ROADMAP.md updated with Phase 2.1 entry framed as "second bound measurement, not thesis-test." Spawning discuss-2.1.
+**Next step:** Phase 2.1 discuss → plan → execute. The discipline being applied: empirical phases produce bound experiences. Multiple measurements are aggregated; no single phase's verdict abstracts to a milestone-level claim. Phase 3 stays gated on accumulated evidence, not on any single phase's outcome.
 
 ### v5 Phase Structure (Initial — Refinable in Phase 1 Discuss)
 

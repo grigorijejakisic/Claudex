@@ -27,7 +27,17 @@ The substrate phases (1, 3, 6) ship engineering. The empirical phases (2, 5) pro
 
     **Outcome:** V26 sidecar `episodic_index_error_fingerprint` + pure fingerprinter + idempotent backfill (135 fingerprints / 19 projects on operator DB; 10,678 sidecar rows) + Wilson/Newcombe measurement harness + verdict runner. Live measurement: criterion 1 FAILED (delta_p5 +10pp but Wilson CI lower -0.157 at n=20 — CI-binding discipline rejected as noise); criterion 2 FAILED (intra_project_share 0.234 < 0.30 threshold); criterion 3 PASSED (latency p99 ratio 0.89). Per CONTEXT item 7: Vesna probes remain in `.disabled/`, `DEFAULT_CONFIG.features.error_fingerprint` flipped true→false, backfill data retained, harness reusable by Phase 5. Phase 3's multi-handle cutover plan is **NOT** ready — escalate to user-approval gate. Full report at `.planning/phases/02-multi-modal-index-seeds-density-check/02-05-SUMMARY.md` + `02-RESULTS.md` + `02-results.json`.
 
-- [ ] **Phase 3: Multi-handle retrieval cutover** _(type: engineering)_
+- [ ] **Phase 2.1: Corpus-expansion rerun (second bound measurement)** _(type: empirical)_
+
+    Approved 2026-05-05 by user. Phase 2 produced ONE bound measurement at n=20: +10pp on precision@5 with Wilson CI [-0.157, ?]. Following the parable: a single experience is not yet an abstraction. Phase 2.1 produces a SECOND bound measurement under different conditions (expanded corpus targeting n≥200 held-out pairs) so density can do its work — multiple consistent results across phases produce real signal; one measurement does not.
+
+    **What changes vs Phase 2:** corpus size only. Reuse the existing harness at `src/benchmark/episodic-density/`, the V26 sidecar, the fingerprinter, the Wilson/Newcombe verdict module, and CONTEXT.md item 5's locked decision rule verbatim. Pair-labeler may be relaxed (frame-overlap threshold ↓ from ≥3 to ≥2) if the strict labeler can't reach n=200 — relaxation flagged in RESULTS.md, validated against a manual spot-check sample.
+
+    **What this phase does NOT do:** declare the multi-handle thesis dead, declare the parable's density claim invalid, or pre-commit to any Phase 3 reshape. Each verdict outcome (clear / unclear / KILL-confirmed) is another bound experience that aggregates with Phase 2's; the milestone-level abstraction (does multi-handle work at our scale?) emerges from density of consistent results across Phase 2, 2.1, and any follow-on empirical phases — not from any single measurement.
+
+    No code added that wasn't in Phase 2. Outputs: `.planning/phases/02.1-corpus-expansion-rerun/02.1-RESULTS.md` + `02.1-results.json`. The Vesna probes stay in `.disabled/` until two measurements consistently green-light — single-experience flips would themselves violate the parable.
+
+- [ ] **Phase 3: Multi-handle retrieval cutover** _(type: engineering, **GATED on Phase 2.1 verdict**)_
 
     Replace `src/core/hybrid-retrieval.ts` fusion with episode-based multi-handle retrieval. Every recall path queries N indexes (semantic, FTS, plus the validated Phase 2 starters), fuses by RRF or learned weights, applies provenance filter (suppress injected-span hits when extracting / when matching against current organic content). Cut over `experience_warning_triggers` and the assembly pipeline's experience-pattern injection to fire from episodes-by-handle, not from extracted rules. Existing `experience_pattern` rows remain readable but become a deprecation surface.
 
