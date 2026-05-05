@@ -1,6 +1,10 @@
 /**
  * Shared test database helpers.
  * Eliminates duplicated DB setup across test files.
+ *
+ * Phase 4 note: createPattern()-using tests must call allowLegacyPatternInsert(db)
+ * in beforeEach() — the V28 trigger blocks INSERTs by default. See
+ * .planning/reframes/2026-05-05-multi-handle-kill.md.
  */
 
 import Database from 'better-sqlite3';
@@ -57,4 +61,25 @@ export function createTestDbWithData(opts: {
     source: opts.source ?? 'test',
   });
   return { db, sessionId, project };
+}
+
+/**
+ * Phase 4: enable legacy `experience_patterns` INSERTs for the duration of a test.
+ * Camp III tests that seed via createPattern() must call this in beforeEach().
+ * extraction-deleted.test.ts deliberately does NOT call this — that test
+ * relies on the V28 trigger blocking would-be writes.
+ */
+export function allowLegacyPatternInsert(db: TestDatabase): void {
+  db.exec(
+    "INSERT OR REPLACE INTO temp.session_pragmas(key, value) VALUES ('allow_legacy_pattern_insert', '1')"
+  );
+}
+
+/**
+ * Phase 4: clear the legacy-INSERT pragma. Call in afterEach() to keep
+ * test-isolation tight; if your DB connection doesn't survive across
+ * tests, this is a no-op.
+ */
+export function blockLegacyPatternInsert(db: TestDatabase): void {
+  db.exec("DELETE FROM temp.session_pragmas WHERE key='allow_legacy_pattern_insert'");
 }
