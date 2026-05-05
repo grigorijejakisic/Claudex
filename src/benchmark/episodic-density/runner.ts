@@ -152,16 +152,19 @@ ${verdict.decision_rule_quote
 
 ${metricsTable('Pooled', harness.metrics.pooled)}
 
-${metricsTable('phase1_organic only', harness.metrics.phase1_organic)}
-
 ${metricsTable('v4_backfill only', harness.metrics.v4_backfill)}
+
+${metricsTable('phase1_organic_pre_phase2_close only', harness.metrics.phase1_organic_pre_phase2_close)}
+
+${metricsTable('phase1_organic_post_phase2_close only', harness.metrics.phase1_organic_post_phase2_close)}
 
 ### Deltas vs A (Newcombe 95% CI)
 | Comparison | Δ precision@5 (CI) | Δ recall@10 (CI) | Origin split |
 |------------|--------------------|------------------|--------------|
 ${deltaRow('C - A', harness.deltas.pooled.C_vs_A, 'pooled')}
-${deltaRow('C - A', harness.deltas.phase1_organic.C_vs_A, 'phase1_organic')}
 ${deltaRow('C - A', harness.deltas.v4_backfill.C_vs_A, 'v4_backfill')}
+${deltaRow('C - A', harness.deltas.phase1_organic_pre_phase2_close.C_vs_A, 'phase1_organic_pre_phase2_close')}
+${deltaRow('C - A', harness.deltas.phase1_organic_post_phase2_close.C_vs_A, 'phase1_organic_post_phase2_close')}
 ${deltaRow('B - A', harness.deltas.pooled.B_vs_A, 'pooled')}
 
 ---
@@ -194,8 +197,9 @@ p99(C) / p99(A) = ${dri.p99_fused_over_p99_semantic.toFixed(4)} (criterion 3 thr
 ## Corpus
 
 - Total fingerprinted episodes: ${harness.corpus_size.total}
-- phase1_organic: ${harness.corpus_size.phase1_organic}
 - v4_backfill: ${harness.corpus_size.v4_backfill}
+- phase1_organic_pre_phase2_close: ${harness.corpus_size.phase1_organic_pre_phase2_close}
+- phase1_organic_post_phase2_close: ${harness.corpus_size.phase1_organic_post_phase2_close}
 - Projects covered: ${harness.corpus_size.projects.join(', ')}
 - Test set size: ${harness.pairs.test} pairs
 

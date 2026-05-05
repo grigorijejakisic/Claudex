@@ -22,7 +22,7 @@ describe('evalQuery', () => {
       'C_fused',
       [10, 20, 30, 40], // positives
       hits(10, 99, 20, 88, 77, 30), // top-3 positives at ranks 1, 3, 6
-      'phase1_organic',
+      'phase1_organic_pre_phase2_close',
       1.5,
     );
     expect(ev.precision_at_5).toBeCloseTo(2 / 5, 6); // ranks 1 & 3 -> 2 positives in top-5
@@ -36,14 +36,14 @@ describe('evalQuery', () => {
       'A_semantic',
       [50, 60],
       hits(1, 2, 3, 4, 5),
-      'phase1_organic',
+      'phase1_organic_pre_phase2_close',
       1.0,
     );
     expect(ev.reciprocal_rank).toBe(0);
   });
 
   it('recall@10 with no positives returns 0 (avoids divide-by-zero)', () => {
-    const ev = evalQuery(1, 'A_semantic', [], hits(1, 2, 3), 'phase1_organic', 1.0);
+    const ev = evalQuery(1, 'A_semantic', [], hits(1, 2, 3), 'phase1_organic_pre_phase2_close', 1.0);
     expect(ev.recall_at_10).toBe(0);
   });
 });
@@ -61,7 +61,7 @@ describe('aggregate', () => {
         precision_at_5: i < 2 ? 0.2 : 0,
         recall_at_10: i < 3 ? 1 : 0,
         reciprocal_rank: i < 2 ? 1 : i < 3 ? 1 / 6 : 0,
-        origin_bucket: 'phase1_organic',
+        origin_bucket: 'phase1_organic_pre_phase2_close',
         latency_ms: 1.0 + i,
       });
     }
@@ -86,7 +86,7 @@ describe('aggregate', () => {
   it('origin_split filters queries by their bucket', () => {
     const queries = mkPerQuery();
     queries[0].origin_bucket = 'v4_backfill';
-    const aggOrganic = aggregate(queries, 'A_semantic', 'phase1_organic');
+    const aggOrganic = aggregate(queries, 'A_semantic', 'phase1_organic_pre_phase2_close');
     const aggV4 = aggregate(queries, 'A_semantic', 'v4_backfill');
     const aggPooled = aggregate(queries, 'A_semantic', 'pooled');
     expect(aggOrganic.n + aggV4.n).toBe(aggPooled.n);

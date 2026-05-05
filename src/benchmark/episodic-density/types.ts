@@ -9,18 +9,36 @@
 
 /**
  * Closed enum tagging where a sidecar row's source data came from.
- * Mandatory for every sidecar insert (CONTEXT item 2 known-limitation
- * visibility) — Plan 02-04 splits metrics by this dimension.
+ * Mandatory for every sidecar insert (Phase 2 CONTEXT item 2 known-
+ * limitation visibility); Plan 02-04 splits metrics by this dimension.
  *
- *   - 'phase1_organic' : `episodic_events` rows written post-Phase-1 ship
- *     (commit 9434ab9, 2026-05-04). Provenance-clean tool_result rows.
- *   - 'v4_backfill'    : v4 `artifacts` rows (artifact_type='observation')
- *     whose content matched stack-trace shape. No Phase 1 provenance tags;
- *     mixed quality. Tagged so post-hoc analysis can split clean from dirty.
+ * Phase 2.1 widens this to a phase-anchored three-tier scheme
+ * (CONTEXT.md decision 1c): organic events are partitioned by whether
+ * their `ts_epoch` precedes or follows Phase 2's measurement timestamp
+ * (`PHASE2_CLOSE_TS_EPOCH` below). Date-anchoring was rejected because
+ * it would require re-stamping on re-runs; phase-anchoring keeps the
+ * partition invariant.
+ *
+ *   - 'v4_backfill'                     — unchanged from Phase 2; v4
+ *     `artifacts` (artifact_type='observation') stack-trace-shaped rows.
+ *   - 'phase1_organic_pre_phase2_close' — `episodic_events`
+ *     provenance='tool_result' rows whose `ts_epoch <= PHASE2_CLOSE_TS_EPOCH`.
+ *     Includes everything that fed Phase 2's measurement.
+ *   - 'phase1_organic_post_phase2_close' — `episodic_events`
+ *     provenance='tool_result' rows whose `ts_epoch > PHASE2_CLOSE_TS_EPOCH`.
+ *     Organic accumulation since Phase 2 closed; expected to be small
+ *     (CONTEXT.md decision 1a caveat).
+ *
+ * BackfillSource keeps the legacy two-tier shape as a forward-compat
+ * surface for the Phase 2 backfill summary; production paths that read
+ * sidecar rows use CorpusOrigin (three-tier).
  */
-export type CorpusOrigin = 'phase1_organic' | 'v4_backfill';
+export type CorpusOrigin =
+  | 'v4_backfill'
+  | 'phase1_organic_pre_phase2_close'
+  | 'phase1_organic_post_phase2_close';
 
-export type BackfillSource = CorpusOrigin;
+export type BackfillSource = 'phase1_organic' | 'v4_backfill';
 
 /**
  * In-memory representation of a fingerprinted episode plus the metadata
@@ -50,6 +68,14 @@ export interface IndexedEvent {
 /**
  * Per-source backfill counters; assembled into the runner's CLI output and
  * the corpus-audit document at .planning/.../02-03-corpus-audit.md.
+ *
+ * Phase 2.1: counters keep the legacy two-source split (phase1_organic
+ * vs v4_backfill) at the BackfillSummary level — the three-tier
+ * sub-partition of organic rows happens at sidecar-insert classification
+ * time, not at the source-table walk. Aggregating the two organic tiers
+ * in one BackfillSummary entry keeps the existing CLI/test surface
+ * intact while the harness reads the three-tier partition off the
+ * sidecar.
  */
 export interface PerSourceCounters {
   rows_scanned: number;
@@ -76,6 +102,25 @@ export interface BackfillSummary {
  * Bound at execution time (Plan 02-03 Task 1 verification) per the spec.
  */
 export const PHASE1_SHIP_TS_EPOCH = 1777929975 as const;
+
+/**
+ * Phase 2's measurement was generated at this Unix epoch second. Sourced
+ * verbatim from `.planning/phases/02-multi-modal-index-seeds-density-check/02-results.json`
+ * `harness.ts_epoch`. The Phase 2.1 corpus_origin scheme partitions
+ * organic events at this boundary (CONTEXT.md decision 1c — phase-
+ * anchored, not date-anchored, so re-runs preserve the partition
+ * meaning).
+ *
+ * Boundary inclusivity: `ts_epoch <= PHASE2_CLOSE_TS_EPOCH` maps to
+ * `phase1_organic_pre_phase2_close`; strictly greater maps to
+ * `phase1_organic_post_phase2_close`.
+ *
+ * **Do not edit this constant unless Phase 2's measurement is re-run.**
+ * Editing it post-hoc would silently rewrite which events count as
+ * pre-vs-post; that violates the append-only bound-experience invariant
+ * (CONTEXT.md decision 4d).
+ */
+export const PHASE2_CLOSE_TS_EPOCH = 1777940002 as const;
 
 /** Floor: ≥50 fingerprinted episodes AND ≥3 projects (CONTEXT item 2). */
 export const FLOOR_FINGERPRINTED = 50 as const;

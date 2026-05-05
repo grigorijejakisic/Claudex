@@ -45,6 +45,7 @@ import {
   migrateV23toV24,
   migrateV24toV25,
   migrateV25toV26,
+  migrateV26toV27,
   migrateSchemaFixes,
   cleanupOrphanTables,
   upgradeV2SchemaInPlace,
@@ -94,7 +95,7 @@ export { migrateV14toV15 };
  * `claudex doctor` (DIAG-05) reads this to verify the on-disk DB is in sync.
  * Bumping a migration must bump this constant in lockstep.
  */
-export const TARGET_USER_VERSION = 26;
+export const TARGET_USER_VERSION = 27;
 
 export function runMigrations(db: Database): void {
   const row = db.pragma('user_version') as Array<{ user_version: number }>;
@@ -136,6 +137,7 @@ export function runMigrations(db: Database): void {
     [23, () => { migrateV23toV24(db); }],
     [24, () => { migrateV24toV25(db); }],
     [25, () => { migrateV25toV26(db); }],
+    [26, () => { migrateV26toV27(db); }],
   ];
 
   // Handle special cases for version 0 and 1
@@ -350,6 +352,14 @@ export function initializeSchema(db: Database): void {
   if (currentUv < 26) {
     migrateV25toV26(db);
     db.pragma('user_version = 26');
+  }
+  // V5 Phase 2.1 (IDX-04): widen corpus_origin CHECK constraint to the
+  // three-tier phase-anchored scheme (v4_backfill /
+  // phase1_organic_pre_phase2_close / phase1_organic_post_phase2_close).
+  // Idempotent — guards on the legacy CHECK signature.
+  if (currentUv < 27) {
+    migrateV26toV27(db);
+    db.pragma('user_version = 27');
   }
 }
 

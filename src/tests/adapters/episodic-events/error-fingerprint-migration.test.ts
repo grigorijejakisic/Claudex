@@ -120,10 +120,17 @@ describe('Phase 2 Plan 01 — episodic_index_error_fingerprint V26 migration (ID
     expect(() => insertSidecarRow(parentId, 'phase2_synthetic')).toThrowError(/CHECK/i);
   });
 
-  it('IDX-01: CHECK constraint accepts both phase1_organic and v4_backfill', () => {
+  it('IDX-04 (V27): CHECK constraint accepts the three-tier corpus_origin set', () => {
+    // Phase 2.1 (CONTEXT.md decision 1c) widened the CHECK constraint via
+    // V26→V27 migration. The legacy 'phase1_organic' tier is no longer
+    // accepted; the three accepted values are v4_backfill +
+    // phase1_organic_pre_phase2_close + phase1_organic_post_phase2_close.
     const parentId = insertEpisodicEvent();
-    expect(() => insertSidecarRow(parentId, 'phase1_organic', 'h1')).not.toThrow();
-    expect(() => insertSidecarRow(parentId, 'v4_backfill', 'h2')).not.toThrow();
+    expect(() => insertSidecarRow(parentId, 'v4_backfill', 'h1')).not.toThrow();
+    expect(() => insertSidecarRow(parentId, 'phase1_organic_pre_phase2_close', 'h2')).not.toThrow();
+    expect(() => insertSidecarRow(parentId, 'phase1_organic_post_phase2_close', 'h3')).not.toThrow();
+    // Legacy value rejected post-V27.
+    expect(() => insertSidecarRow(parentId, 'phase1_organic', 'h4')).toThrowError(/CHECK/i);
   });
 
   it('IDX-01: re-running migrations on a V26 DB is a no-op (idempotent)', () => {
@@ -153,7 +160,7 @@ describe('Phase 2 Plan 01 — episodic_index_error_fingerprint V26 migration (ID
 
   it('IDX-01: schema_version defaults to 1 when omitted on insert', () => {
     const parentId = insertEpisodicEvent();
-    insertSidecarRow(parentId, 'phase1_organic', 'sv-default');
+    insertSidecarRow(parentId, 'phase1_organic_pre_phase2_close', 'sv-default');
     const row = db
       .prepare(
         `SELECT schema_version FROM ${SIDECAR_TABLE} WHERE shingle_hash = ?`,
@@ -171,7 +178,7 @@ describe('Phase 2 Plan 01 — episodic_index_error_fingerprint V26 migration (ID
              (shingle_hash, episode_event_id, ts_epoch, project, corpus_origin)
            VALUES (?, ?, ?, ?, ?)`,
         )
-        .run(null, parentId, 1746316800, 'proj', 'phase1_organic'),
+        .run(null, parentId, 1746316800, 'proj', 'phase1_organic_pre_phase2_close'),
     ).toThrowError(/NOT NULL/i);
     expect(() =>
       db
@@ -180,7 +187,7 @@ describe('Phase 2 Plan 01 — episodic_index_error_fingerprint V26 migration (ID
              (shingle_hash, episode_event_id, ts_epoch, project, corpus_origin)
            VALUES (?, ?, ?, ?, ?)`,
         )
-        .run('hashX', null, 1746316800, 'proj', 'phase1_organic'),
+        .run('hashX', null, 1746316800, 'proj', 'phase1_organic_pre_phase2_close'),
     ).toThrowError(/NOT NULL/i);
   });
 

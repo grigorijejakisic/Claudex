@@ -147,7 +147,7 @@ describe('Phase 2 Plan 03 — backfill module (IDX-01)', () => {
       SELECT s.corpus_origin AS origin, e.provenance
         FROM episodic_index_error_fingerprint s
         JOIN episodic_events e ON e.id = s.episode_event_id
-       WHERE s.corpus_origin = 'phase1_organic'
+       WHERE s.corpus_origin = 'phase1_organic_pre_phase2_close'
     `).all() as Array<{ origin: string; provenance: string }>;
     expect(organicCheck.length).toBeGreaterThan(0);
     for (const row of organicCheck) {

@@ -83,24 +83,36 @@ export interface DecisionRuleInputs {
   p99_fused_over_p99_semantic: number;
 }
 
+/**
+ * Phase 2.1 widens the corpus_origin partition (CONTEXT.md decision 1c)
+ * from two tiers to three. The HarnessRunResult shape gains explicit
+ * `phase1_organic_pre_phase2_close` and `phase1_organic_post_phase2_close`
+ * keys; Phase 2's already-published `02-results.json` uses the old
+ * `phase1_organic` key as data on disk — that file is never re-rendered
+ * and the aggregator reads it as untyped JSON, so the old key on disk
+ * is intentional and append-only.
+ */
 export interface HarnessRunResult {
   ts_epoch: number;
   corpus_size: {
     total: number;
-    phase1_organic: number;
     v4_backfill: number;
+    phase1_organic_pre_phase2_close: number;
+    phase1_organic_post_phase2_close: number;
     projects: string[];
   };
   pairs: { total: number; train: number; test: number; seed: number };
   metrics: {
     pooled: PerSplitMetrics;
-    phase1_organic: PerSplitMetrics;
     v4_backfill: PerSplitMetrics;
+    phase1_organic_pre_phase2_close: PerSplitMetrics;
+    phase1_organic_post_phase2_close: PerSplitMetrics;
   };
   deltas: {
     pooled: PerSplitDeltas;
-    phase1_organic: PerSplitDeltas;
     v4_backfill: PerSplitDeltas;
+    phase1_organic_pre_phase2_close: PerSplitDeltas;
+    phase1_organic_post_phase2_close: PerSplitDeltas;
   };
   density: DensitySignal;
   decision_rule_inputs: DecisionRuleInputs;
@@ -147,7 +159,13 @@ function buildCorpus(db: Database): IndexedEvent[] {
     }
     const fp = parsed.error_fingerprint as ErrorFingerprint | undefined;
     if (!fp || !Array.isArray(fp.shingles)) continue;
-    const origin = originByEvent.get(row.id) ?? 'phase1_organic';
+    // Phase 2.1: every corpus event must carry a three-tier corpus_origin
+    // from the sidecar (Plan 02.1-01 backfill). If a row has no sidecar
+    // entry — which would mean a fingerprint exists in metadata_json but
+    // the V26 sidecar wasn't written — skip the row rather than silently
+    // mis-classify; the operator must re-run `cli backfill` to repopulate.
+    const origin = originByEvent.get(row.id);
+    if (!origin) continue;
     out.push({
       episode_event_id: row.id,
       project: row.project,
@@ -254,8 +272,9 @@ export async function runHarness(
     };
   }
   const pooled = aggregateAll('pooled');
-  const organic = aggregateAll('phase1_organic');
   const v4 = aggregateAll('v4_backfill');
+  const organicPre = aggregateAll('phase1_organic_pre_phase2_close');
+  const organicPost = aggregateAll('phase1_organic_post_phase2_close');
 
   function computeDeltas(splitMetrics: PerSplitMetrics): PerSplitDeltas {
     return {
@@ -290,16 +309,27 @@ export async function runHarness(
     ts_epoch: Math.floor(Date.now() / 1000),
     corpus_size: {
       total: corpus.length,
-      phase1_organic: corpus.filter(e => e.corpus_origin === 'phase1_organic').length,
       v4_backfill: corpus.filter(e => e.corpus_origin === 'v4_backfill').length,
+      phase1_organic_pre_phase2_close: corpus.filter(
+        e => e.corpus_origin === 'phase1_organic_pre_phase2_close',
+      ).length,
+      phase1_organic_post_phase2_close: corpus.filter(
+        e => e.corpus_origin === 'phase1_organic_post_phase2_close',
+      ).length,
       projects: Array.from(projectSet).sort(),
     },
     pairs: { total: allPairs.length, train: split.train.length, test: split.test.length, seed: split.seed },
-    metrics: { pooled, phase1_organic: organic, v4_backfill: v4 },
+    metrics: {
+      pooled,
+      v4_backfill: v4,
+      phase1_organic_pre_phase2_close: organicPre,
+      phase1_organic_post_phase2_close: organicPost,
+    },
     deltas: {
       pooled: computeDeltas(pooled),
-      phase1_organic: computeDeltas(organic),
       v4_backfill: computeDeltas(v4),
+      phase1_organic_pre_phase2_close: computeDeltas(organicPre),
+      phase1_organic_post_phase2_close: computeDeltas(organicPost),
     },
     density,
     decision_rule_inputs,

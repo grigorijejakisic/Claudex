@@ -37,7 +37,7 @@ function makeEvent(
     project,
     ts_epoch: 1700000000 + id,
     session_id,
-    corpus_origin: 'phase1_organic',
+    corpus_origin: 'phase1_organic_pre_phase2_close',
     outer_exception: outer,
     shingles: [],
     raw_content: raw,
@@ -114,8 +114,8 @@ describe('splitTrainTest', () => {
         outer_exception: 'TypeError',
         overlap_frame_count: 3,
         same_project: i % 2 === 0,
-        origin_a: 'phase1_organic',
-        origin_b: 'phase1_organic',
+        origin_a: 'phase1_organic_pre_phase2_close',
+        origin_b: 'phase1_organic_pre_phase2_close',
       });
     }
     return out;

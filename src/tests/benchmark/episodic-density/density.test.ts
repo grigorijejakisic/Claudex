@@ -12,7 +12,7 @@ function makeEvent(id: number, project: string, shingles: string[]): IndexedEven
     project,
     ts_epoch: 1700000000 + id,
     session_id: `s-${id}`,
-    corpus_origin: 'phase1_organic',
+    corpus_origin: 'phase1_organic_pre_phase2_close',
     outer_exception: 'TypeError',
     shingles,
     raw_content: '',

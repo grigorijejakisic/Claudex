@@ -45,11 +45,34 @@ import {
 import { writeEnvironmentalEvent } from '../../core/episodic-events.js';
 import {
   PHASE1_SHIP_TS_EPOCH,
+  PHASE2_CLOSE_TS_EPOCH,
   FLOOR_FINGERPRINTED,
   FLOOR_PROJECTS,
   type BackfillSummary,
+  type CorpusOrigin,
   type PerSourceCounters,
 } from './types.js';
+
+/**
+ * Three-tier corpus_origin classifier (CONTEXT.md decision 1c).
+ *
+ * Pure: no DB, no clock. Tested directly in
+ * `src/tests/benchmark/episodic-density/backfill-corpus-origin.test.ts`.
+ *
+ *   - provenance !== 'organic'  → 'v4_backfill'
+ *   - provenance === 'organic' AND ts_epoch <= PHASE2_CLOSE_TS_EPOCH
+ *       → 'phase1_organic_pre_phase2_close'
+ *   - provenance === 'organic' AND ts_epoch >  PHASE2_CLOSE_TS_EPOCH
+ *       → 'phase1_organic_post_phase2_close'
+ *
+ * Boundary inclusivity is documented on PHASE2_CLOSE_TS_EPOCH.
+ */
+export function classifyCorpusOrigin(provenance: string, ts_epoch: number): CorpusOrigin {
+  if (provenance !== 'organic') return 'v4_backfill';
+  return ts_epoch <= PHASE2_CLOSE_TS_EPOCH
+    ? 'phase1_organic_pre_phase2_close'
+    : 'phase1_organic_post_phase2_close';
+}
 
 interface OrganicRow {
   id: number;
@@ -166,15 +189,20 @@ export function backfillPhase1Organic(
       continue;
     }
 
+    // Phase 2.1: classify each organic row by ts_epoch into the pre- or
+    // post-phase-2-close tier (CONTEXT.md decision 1c). The legacy single
+    // 'phase1_organic' tag is gone — rows on either side of
+    // PHASE2_CLOSE_TS_EPOCH carry distinct sidecar origins now.
+    const origin = classifyCorpusOrigin('organic', row.ts_epoch);
     const tx = db.transaction(() => {
       db.prepare(ORGANIC_UPDATE_METADATA).run(
         mergeFingerprint(row.metadata_json, fp),
         row.id,
       );
-      db.prepare(SIDECAR_DELETE_BY_EVENT).run(row.id, 'phase1_organic');
+      db.prepare(SIDECAR_DELETE_BY_EVENT).run(row.id, origin);
       const insert = db.prepare(SIDECAR_INSERT);
       for (const shingle of fp.shingles) {
-        insert.run(shingle, row.id, row.ts_epoch, row.project, 'phase1_organic');
+        insert.run(shingle, row.id, row.ts_epoch, row.project, origin);
         counters.sidecar_writes++;
       }
     });
@@ -261,11 +289,15 @@ export function backfillV4Artifacts(
         shadowId = result.episodicId;
       }
 
+      // v4 artifacts are always classified as 'v4_backfill' regardless
+      // of timestamp (CONTEXT.md decision 1c — phase-anchoring applies to
+      // organic rows only; v4 is its own tier).
+      const v4Origin = classifyCorpusOrigin('environmental', row.timestamp_epoch ?? 0);
       const tx = db.transaction(() => {
-        db.prepare(SIDECAR_DELETE_BY_EVENT).run(shadowId, 'v4_backfill');
+        db.prepare(SIDECAR_DELETE_BY_EVENT).run(shadowId, v4Origin);
         const insert = db.prepare(SIDECAR_INSERT);
         for (const shingle of fp.shingles) {
-          insert.run(shingle, shadowId, row.timestamp_epoch ?? 0, row.project, 'v4_backfill');
+          insert.run(shingle, shadowId, row.timestamp_epoch ?? 0, row.project, v4Origin);
           counters.sidecar_writes++;
         }
       });
@@ -297,6 +329,25 @@ export async function runBackfill(
   const projectSet = new Set<string>([...phase1.projects, ...v4.projects]);
   const totalFingerprinted = phase1.fingerprinted + v4.fingerprinted;
   const totalProjects = projectSet.size;
+
+  // CONTEXT.md decision 1c: surface the three-tier sidecar distribution
+  // so the operator can eyeball pre-vs-post-Phase-2-close drift before
+  // running the harness. Descriptive log line; not gating.
+  if (!opts?.dryRun) {
+    try {
+      const counts = db.prepare(`
+        SELECT corpus_origin, COUNT(*) as n
+          FROM episodic_index_error_fingerprint
+         GROUP BY corpus_origin
+         ORDER BY corpus_origin
+      `).all() as Array<{ corpus_origin: string; n: number }>;
+      // eslint-disable-next-line no-console
+      console.error(`[backfill] per-tier sidecar counts: ${JSON.stringify(counts)}`);
+    } catch {
+      // Sidecar table unavailable — skip the log; not load-bearing.
+    }
+  }
+
   return {
     phase1_organic: phase1,
     v4_backfill: v4,

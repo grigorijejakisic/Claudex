@@ -1845,3 +1845,76 @@ export function migrateV25toV26(db: Database): boolean {
   `);
   return true;
 }
+
+/**
+ * V26→V27 (Phase 2.1 IDX-04 — three-tier corpus_origin partition).
+ *
+ * Phase 2's V26 introduced `episodic_index_error_fingerprint` with a
+ * CHECK constraint accepting `corpus_origin IN ('phase1_organic',
+ * 'v4_backfill')`. Phase 2.1 (CONTEXT.md decision 1c) replaces the
+ * single `phase1_organic` tier with a phase-anchored two-way split
+ * (`phase1_organic_pre_phase2_close` / `phase1_organic_post_phase2_close`)
+ * so re-runs preserve the partition meaning across time.
+ *
+ * SQLite has no `ALTER TABLE ... DROP CHECK`, so we rebuild the table:
+ *   1. Rename existing table.
+ *   2. Create the new table with the relaxed CHECK constraint covering
+ *      all three accepted values (v4_backfill stays unchanged).
+ *   3. Copy rows, mapping the legacy 'phase1_organic' value to
+ *      'phase1_organic_pre_phase2_close' (every legacy organic row was
+ *      written by Phase 2's backfill — i.e. before PHASE2_CLOSE_TS_EPOCH —
+ *      so the pre-tier is the correct mapping).
+ *   4. Drop the old table.
+ *   5. Re-create indexes.
+ *
+ * Idempotent: a second run is a no-op because the new CHECK constraint
+ * already accepts all three values; `hasTable` short-circuit + the
+ * legacy-rename guard.
+ */
+export function migrateV26toV27(db: Database): boolean {
+  if (!hasTable(db, 'episodic_index_error_fingerprint')) return false;
+
+  // Detect legacy CHECK constraint: if the schema lists only the old
+  // two values, we need to rebuild. If the new three-value form is
+  // already present, this migration is a no-op.
+  const sqlRow = db.prepare(
+    "SELECT sql FROM sqlite_master WHERE type='table' AND name='episodic_index_error_fingerprint'",
+  ).get() as { sql?: string } | undefined;
+  const sql = sqlRow?.sql ?? '';
+  if (sql.includes('phase1_organic_pre_phase2_close')) return false;
+
+  db.exec(`
+    ALTER TABLE episodic_index_error_fingerprint RENAME TO _v26_episodic_index_error_fingerprint;
+
+    CREATE TABLE episodic_index_error_fingerprint (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      shingle_hash TEXT NOT NULL,
+      episode_event_id INTEGER NOT NULL REFERENCES episodic_events(id),
+      ts_epoch INTEGER NOT NULL,
+      project TEXT NOT NULL,
+      corpus_origin TEXT NOT NULL CHECK (corpus_origin IN ('v4_backfill','phase1_organic_pre_phase2_close','phase1_organic_post_phase2_close')),
+      schema_version SMALLINT NOT NULL DEFAULT 1
+    );
+
+    INSERT INTO episodic_index_error_fingerprint (id, shingle_hash, episode_event_id, ts_epoch, project, corpus_origin, schema_version)
+      SELECT
+        id,
+        shingle_hash,
+        episode_event_id,
+        ts_epoch,
+        project,
+        CASE corpus_origin
+          WHEN 'phase1_organic' THEN 'phase1_organic_pre_phase2_close'
+          ELSE corpus_origin
+        END,
+        schema_version
+      FROM _v26_episodic_index_error_fingerprint;
+
+    DROP TABLE _v26_episodic_index_error_fingerprint;
+
+    CREATE INDEX IF NOT EXISTS idx_epev_efp_shingle    ON episodic_index_error_fingerprint(shingle_hash);
+    CREATE INDEX IF NOT EXISTS idx_epev_efp_event      ON episodic_index_error_fingerprint(episode_event_id);
+    CREATE INDEX IF NOT EXISTS idx_epev_efp_project_ts ON episodic_index_error_fingerprint(project, ts_epoch);
+  `);
+  return true;
+}
