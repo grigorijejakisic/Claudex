@@ -11,7 +11,7 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { createTestDb, type TestDatabase } from '../helpers/test-db.js';
+import { createTestDb, allowLegacyPatternInsert, type TestDatabase } from '../helpers/test-db.js';
 import { createPattern } from '../../intelligence/experience-patterns.js';
 import { upsertLearning } from '../../core/learnings.js';
 import { createArtifact } from '../../core/artifacts.js';
@@ -27,6 +27,7 @@ describe('assembleWorkerContext', () => {
 
   beforeEach(() => {
     db = createTestDb();
+    allowLegacyPatternInsert(db);
   });
 
   afterEach(() => {

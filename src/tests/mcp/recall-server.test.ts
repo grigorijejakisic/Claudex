@@ -17,6 +17,8 @@ function createDb(): Database.Database {
   const db = new Database(':memory:');
   db.pragma('journal_mode = WAL');
   initializeSchema(db);
+  // Phase 4: opt in to legacy experience_patterns INSERTs for this test fixture.
+  db.exec("INSERT OR REPLACE INTO temp.session_pragmas(key, value) VALUES ('allow_legacy_pattern_insert', '1')");
   return db;
 }
 

@@ -1,12 +1,12 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { createTestDb, type TestDatabase } from '../helpers/test-db.js';
+import { createTestDb, allowLegacyPatternInsert, type TestDatabase } from '../helpers/test-db.js';
 import { recordOutcome, getPatternEffectiveness, inferOutcomeFromSession } from '../../intelligence/outcome-tracker.js';
 import { createPattern } from '../../intelligence/experience-patterns.js';
 
 describe('outcome-tracker', () => {
   let db: TestDatabase;
 
-  beforeEach(() => { db = createTestDb(); });
+  beforeEach(() => { db = createTestDb(); allowLegacyPatternInsert(db); });
   afterEach(() => { db.close(); });
 
   it('records an outcome', () => {

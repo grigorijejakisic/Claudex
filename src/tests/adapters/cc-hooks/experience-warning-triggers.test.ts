@@ -14,7 +14,7 @@
 
 import { describe, test, expect, beforeEach, afterEach } from 'vitest';
 import { ulid } from 'ulid';
-import { createTestDb, type TestDatabase } from '../../helpers/test-db.js';
+import { createTestDb, allowLegacyPatternInsert, type TestDatabase } from '../../helpers/test-db.js';
 import {
   EXPLICIT_QUERY_KEYWORDS,
   isExplicitMemoryQuery,
@@ -26,7 +26,7 @@ import { GLOBAL_PROJECT_SCOPE } from '../../../shared/constants.js';
 
 let db: TestDatabase;
 
-beforeEach(() => { db = createTestDb(); });
+beforeEach(() => { db = createTestDb(); allowLegacyPatternInsert(db); });
 afterEach(() => { db.close(); });
 
 function seedPattern(opts: {

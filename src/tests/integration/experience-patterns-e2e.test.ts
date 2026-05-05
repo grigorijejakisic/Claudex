@@ -17,7 +17,7 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { createTestDbWithSession, type TestDatabase } from '../helpers/test-db.js';
+import { createTestDbWithSession, allowLegacyPatternInsert, type TestDatabase } from '../helpers/test-db.js';
 import {
   createPattern,
   generateTopicKey,
@@ -59,6 +59,7 @@ describe('experience-patterns two-turn e2e: inject → promote → score', () =>
 
   beforeEach(() => {
     ({ db, sessionId } = createTestDbWithSession('e2e-session', project));
+    allowLegacyPatternInsert(db);
   });
 
   afterEach(() => { db.close(); });

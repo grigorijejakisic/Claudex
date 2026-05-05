@@ -3,7 +3,7 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { createTestDb, type TestDatabase } from '../helpers/test-db.js';
+import { createTestDb, allowLegacyPatternInsert, type TestDatabase } from '../helpers/test-db.js';
 import { tokenizeQuery } from '../../shared/search-utils.js';
 import {
   createPattern,
@@ -56,7 +56,7 @@ function getById(db: TestDatabase, id: string): ExperiencePattern | undefined {
 describe('createPattern', () => {
   let db: TestDatabase;
 
-  beforeEach(() => { db = createTestDb(); });
+  beforeEach(() => { db = createTestDb(); allowLegacyPatternInsert(db); });
   afterEach(() => { db.close(); });
 
   it('creates a pattern with correct defaults (score=2, times_triggered=0)', () => {
@@ -175,7 +175,7 @@ describe('findMatchingPatterns', () => {
   let db: TestDatabase;
   const project = 'proj-a';
 
-  beforeEach(() => { db = createTestDb(); });
+  beforeEach(() => { db = createTestDb(); allowLegacyPatternInsert(db); });
   afterEach(() => { db.close(); });
 
   it('returns empty array when no patterns exist', () => {
@@ -316,7 +316,7 @@ describe('findMatchingPatterns', () => {
 describe('updatePatternScore', () => {
   let db: TestDatabase;
 
-  beforeEach(() => { db = createTestDb(); });
+  beforeEach(() => { db = createTestDb(); allowLegacyPatternInsert(db); });
   afterEach(() => { db.close(); });
 
   it('increments score by positive delta', () => {
@@ -349,7 +349,7 @@ describe('updatePatternScore', () => {
 describe('incrementTriggerCount', () => {
   let db: TestDatabase;
 
-  beforeEach(() => { db = createTestDb(); });
+  beforeEach(() => { db = createTestDb(); allowLegacyPatternInsert(db); });
   afterEach(() => { db.close(); });
 
   it('increments times_triggered', () => {
@@ -394,7 +394,7 @@ describe('incrementTriggerCount', () => {
 describe('incrementUsefulCount', () => {
   let db: TestDatabase;
 
-  beforeEach(() => { db = createTestDb(); });
+  beforeEach(() => { db = createTestDb(); allowLegacyPatternInsert(db); });
   afterEach(() => { db.close(); });
 
   it('increments times_useful', () => {
@@ -420,7 +420,7 @@ describe('incrementUsefulCount', () => {
 describe('pruneDeadPatterns', () => {
   let db: TestDatabase;
 
-  beforeEach(() => { db = createTestDb(); });
+  beforeEach(() => { db = createTestDb(); allowLegacyPatternInsert(db); });
   afterEach(() => { db.close(); });
 
   it('removes patterns with score <= 0', () => {
@@ -491,7 +491,7 @@ describe('pruneDeadPatterns', () => {
 describe('deduplicateCheck', () => {
   let db: TestDatabase;
 
-  beforeEach(() => { db = createTestDb(); });
+  beforeEach(() => { db = createTestDb(); allowLegacyPatternInsert(db); });
   afterEach(() => { db.close(); });
 
   it('returns null when no patterns exist', () => {
@@ -627,7 +627,7 @@ describe('classifyPatternScope (heuristic — no enrichment provider)', () => {
 describe('promoteToGlobalIfCrossProject', () => {
   let db: TestDatabase;
 
-  beforeEach(() => { db = createTestDb(); });
+  beforeEach(() => { db = createTestDb(); allowLegacyPatternInsert(db); });
   afterEach(() => { db.close(); });
 
   it('promotes a discovery pattern from project A to __global__ when triggered in project B', () => {
@@ -687,7 +687,7 @@ describe('promoteToGlobalIfCrossProject', () => {
 describe('cross-project matching after promotion', () => {
   let db: TestDatabase;
 
-  beforeEach(() => { db = createTestDb(); });
+  beforeEach(() => { db = createTestDb(); allowLegacyPatternInsert(db); });
   afterEach(() => { db.close(); });
 
   it('finds a pattern from project B after it is promoted to __global__', () => {
@@ -790,7 +790,7 @@ describe('generateTopicKey', () => {
 describe('topic-aware scoring', () => {
   let db: TestDatabase;
 
-  beforeEach(() => { db = createTestDb(); });
+  beforeEach(() => { db = createTestDb(); allowLegacyPatternInsert(db); });
   afterEach(() => { db.close(); });
 
   it('penalises only the pattern whose topic overlaps the correction', () => {
@@ -1089,7 +1089,7 @@ describe('getMaturityWeight', () => {
 describe('updatePatternConfidence', () => {
   let db: TestDatabase;
 
-  beforeEach(() => { db = createTestDb(); });
+  beforeEach(() => { db = createTestDb(); allowLegacyPatternInsert(db); });
   afterEach(() => { db.close(); });
 
   it('updates confidence in the database', () => {
@@ -1114,7 +1114,7 @@ describe('updatePatternConfidence', () => {
 describe('promotePatternMaturity', () => {
   let db: TestDatabase;
 
-  beforeEach(() => { db = createTestDb(); });
+  beforeEach(() => { db = createTestDb(); allowLegacyPatternInsert(db); });
   afterEach(() => { db.close(); });
 
   it('promotes a pattern to established', () => {
@@ -1139,7 +1139,7 @@ describe('promotePatternMaturity', () => {
 describe('invertToWarning', () => {
   let db: TestDatabase;
 
-  beforeEach(() => { db = createTestDb(); });
+  beforeEach(() => { db = createTestDb(); allowLegacyPatternInsert(db); });
   afterEach(() => { db.close(); });
 
   it('prepends WARNING prefix and changes type to behavioral', () => {
@@ -1177,7 +1177,7 @@ describe('invertToWarning', () => {
 describe('decayPatternConfidence', () => {
   let db: TestDatabase;
 
-  beforeEach(() => { db = createTestDb(); });
+  beforeEach(() => { db = createTestDb(); allowLegacyPatternInsert(db); });
   afterEach(() => { db.close(); });
 
   it('decays confidence for all patterns when no triggered IDs', () => {
@@ -1226,7 +1226,7 @@ describe('decayPatternConfidence', () => {
 describe('harmful multiplier (4×)', () => {
   let db: TestDatabase;
 
-  beforeEach(() => { db = createTestDb(); });
+  beforeEach(() => { db = createTestDb(); allowLegacyPatternInsert(db); });
   afterEach(() => { db.close(); });
 
   it('harmful feedback drops score by 4 per increment', () => {
@@ -1266,7 +1266,7 @@ describe('harmful multiplier (4×)', () => {
 describe('pattern maturity defaults on creation', () => {
   let db: TestDatabase;
 
-  beforeEach(() => { db = createTestDb(); });
+  beforeEach(() => { db = createTestDb(); allowLegacyPatternInsert(db); });
   afterEach(() => { db.close(); });
 
   it('new pattern starts as candidate with confidence 0.5', () => {
