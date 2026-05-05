@@ -1,5 +1,6 @@
 /**
- * Two-turn end-to-end integration test for the experience-patterns inject → promote → score cycle.
+ * Two-turn end-to-end integration test for the experience-patterns inject →
+ * promote → score cycle.
  *
  * Tests the full lifecycle exercised by UserPromptSubmit (injection), Stop/finally
  * (promotion to awaiting), and the next Stop (score feedback) — without spawning
@@ -8,6 +9,14 @@
  * Turn 1 injection is simulated via direct flag writes (UserPromptSubmit's job),
  * then applyExperienceFeedback() is called for the Stop hook — testing the real
  * production scoring + flag rotation path.
+ *
+ * Phase 4 inversion: tests that previously asserted end-to-end CREATION
+ * (stop-hook → applyExperienceFeedback → INSERT) now assert NON-CREATION
+ * because Phase 4 deleted extraction-time pattern creation. Read-side and
+ * score-feedback paths still test the same behavior. Each scoring case below
+ * also includes an explicit "row count unchanged after correction signal"
+ * assertion that catches a Site B regression at the integration level (the
+ * unit-level guard is `extraction-deleted.test.ts`).
  *
  * Scenario:
  *   Turn 1 — UserPromptSubmit injects two patterns (A and B).
@@ -127,13 +136,26 @@ describe('experience-patterns two-turn e2e: inject → promote → score', () =>
     // -----------------------------------------------------------------------
     // Turn 2 Step 2: Call applyExperienceFeedback (Stop hook).
     // Scores awaiting patterns: A penalised (topic overlap), B neutral.
-    // Pass undefined for assistant/user text to skip pattern extraction —
-    // we only care about the scoring path here.
+    // Phase 4 inversion: a correction signal MUST NOT create a new pattern.
     // -----------------------------------------------------------------------
-    await applyExperienceFeedback(db, sessionId, undefined, undefined, project, testConfig);
+    const rowCountBefore = (db.prepare(
+      'SELECT COUNT(*) as c FROM experience_patterns',
+    ).get() as { c: number }).c;
+    await applyExperienceFeedback(db, sessionId,
+      'I see — going forward I will use OAuth.',
+      correctionPrompt,
+      project, testConfig);
+    const rowCountAfter = (db.prepare(
+      'SELECT COUNT(*) as c FROM experience_patterns',
+    ).get() as { c: number }).c;
 
     // -----------------------------------------------------------------------
-    // Assertions: A penalised (2 → 1), B unchanged (2)
+    // Phase 4 row count guard: correction signal does not create new patterns.
+    // -----------------------------------------------------------------------
+    expect(rowCountAfter).toBe(rowCountBefore);
+
+    // -----------------------------------------------------------------------
+    // Score assertions: A penalised (2 → 1), B unchanged (2)
     // -----------------------------------------------------------------------
     expect(getById(db, idA)!.score).toBe(1);
     expect(getById(db, idB)!.score).toBe(2);
