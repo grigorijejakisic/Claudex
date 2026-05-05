@@ -14,6 +14,7 @@ import { runSessionEndCleanup } from '../shared/lifecycle.js';
 import { clearSessionSignals, sweepExpiredSignals } from '../../core/session-signals.js';
 import { recordEvent } from '../../core/session-events.js';
 import { writeEnvironmentalEvent } from '../../core/episodic-events.js';
+import { emitCleanEndsessionClose } from './session-end-close-marker.js';
 
 const main = wrapHook('SessionEnd', async (input, ctx) => {
   const gauge = getTokenGauge({
@@ -76,6 +77,11 @@ const main = wrapHook('SessionEnd', async (input, ctx) => {
   } catch (e) {
     emitErrorTelemetry(ctx.db, input.session_id, 'session_end/episodic_boundary', e);
   }
+
+  // Phase 6 EBD-02: clean_endsession close-marker emission.
+  // Helper extracted to session-end-close-marker.ts so tests can
+  // exercise the same code path without triggering this file's main().
+  emitCleanEndsessionClose(ctx.db, input.session_id, ctx.project);
 
   return {};
 });
