@@ -80,7 +80,14 @@ The architectural framing (parable) is locked in `.planning/research/2026-05-04-
 
 - [ ] **Phase 6: Crash-resilient episode boundary** _(type: engineering)_
 
-    Implement engineering-doc Recommendation #1: Angel-as-source-of-truth for session-end. fsnotify on the JSONL directory + heartbeat row from session + idle-timeout sweep + PID-liveness with stale detection. Episode boundaries (when does an episode "close" so synthesis fires?) decided here — likely per-thread or per-detected-intent-shift, not per-session. Once this lands, the agent's lifetime is decoupled from memory persistence: PC crash, OOM, hung agent — the episode is on disk, Angel synthesizes when the episode goes quiet.
+    Implement engineering-doc Recommendation #1: Angel-as-source-of-truth for session-end. fsnotify on the JSONL directory + heartbeat row from session + idle-timeout sweep + PID-liveness with stale detection. **Episode = session (sub-session segmentation deferred to v6+ per CONTEXT 2026-05-05).** Detection-only — close emits a single `episode_closed` environmental event row via Phase 1's `writeEnvironmentalEvent`; no synthesis fires (Phase 5 dropped). Once this lands, agent lifetime is decoupled from memory persistence: PC crash, OOM, hung agent — the close marker fires when the episode goes quiet.
+
+    **Plans:** 5 plans in 5 waves
+    - [ ] 06-01-PLAN.md — V29 schema (episode_boundary_cursor table + sessions.last_heartbeat_ts/last_jsonl_write_ts columns)
+    - [ ] 06-02-PLAN.md — chokidar runtime dep + jsonl-watcher / pid-liveness / thresholds modules
+    - [ ] 06-03-PLAN.md — heartbeat column writes in 5 hooks (UserPromptSubmit / PreToolUse / PostToolUse / Stop / SessionEnd) + clean_endsession close emission
+    - [ ] 06-04-PLAN.md — composition rule + cursor + boundary detector with heartbeat-compare-before-cleanup guard and re-open handling
+    - [ ] 06-05-PLAN.md — Angel integration (heartbeat tick + watcher boot/shutdown) + Vesna VAL-04 crash-resilience probe
 
 - [ ] **Phase 7: v4 coexistence / migration / ship** _(type: engineering)_
 
