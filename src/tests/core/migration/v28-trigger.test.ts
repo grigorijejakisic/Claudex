@@ -23,10 +23,10 @@ describe('V28 — experience_patterns INSERT-blocked trigger', () => {
     db.close();
   });
 
-  it('runs migrations to TARGET_USER_VERSION = 28', () => {
-    expect(TARGET_USER_VERSION).toBe(28);
+  it('runs migrations to TARGET_USER_VERSION = 29 (V29 raised by Phase 6 boundary substrate)', () => {
+    expect(TARGET_USER_VERSION).toBe(29);
     const row = db.pragma('user_version') as Array<{ user_version: number }>;
-    expect(row[0].user_version).toBe(28);
+    expect(row[0].user_version).toBe(29);
   });
 
   it('creates the experience_patterns_insert_blocked TEMP trigger', () => {
@@ -83,7 +83,7 @@ describe('V28 — experience_patterns INSERT-blocked trigger', () => {
     runMigrations(db);
     runMigrations(db);
     const row = db.pragma('user_version') as Array<{ user_version: number }>;
-    expect(row[0].user_version).toBe(28);
+    expect(row[0].user_version).toBe(29);
   });
 
   it('FTS5 sync trigger experience_patterns_ai still fires after permitted INSERT', () => {
