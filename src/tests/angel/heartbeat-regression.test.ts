@@ -2,62 +2,21 @@
  * Regression tests for Angel heartbeat bug fixes.
  *
  * Covers:
- * - Stale string match: 'no patterns found' is in definitiveOutcomes list
  * - Process guard: isPythonScriptRunning checks for specific script name
  * - Services-down interval override: when critical services are observed down,
  *   the next-interval computation pins to ACTIVE cadence instead of drifting
  *   into idle backoff (so ensureRunning recovery happens on the next tick,
  *   not 10–30 min later).
+ *
+ * Phase 4 narrowing: the prior `definitiveOutcomes` regression cases were
+ * dropped — that list lived in the deleted Site A pattern-extraction loop
+ * (Plan 04-02). The list itself no longer exists in heartbeat.ts.
  */
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import Database from 'better-sqlite3';
 import { computeNextInterval } from '../../angel/heartbeat.js';
 import type { TickResult } from '../../angel/heartbeat.js';
-
-// ---------------------------------------------------------------------------
-// Regression: Stale string match in definitive outcomes
-// The definitiveOutcomes list must include 'no patterns found' (not the stale
-// 'no corrections found'). Without 'no patterns found', sessions with that
-// summary never get marked as processed and are retried every tick forever.
-// ---------------------------------------------------------------------------
-
-describe('Stale string match — definitiveOutcomes (regression)', () => {
-  // Replicate the exact definitiveOutcomes list from heartbeat.ts
-  const definitiveOutcomes = ['too few turns', 'insufficient content', 'no patterns found', 'no patterns array'];
-
-  it('includes "no patterns found" in definitive outcomes', () => {
-    expect(definitiveOutcomes).toContain('no patterns found');
-  });
-
-  it('does NOT include stale "no corrections found" string', () => {
-    expect(definitiveOutcomes).not.toContain('no corrections found');
-  });
-
-  it('matches extraction summary that contains "no patterns found"', () => {
-    const summary = 'no patterns found in 5-turn session';
-    const isDefinitive = definitiveOutcomes.some(o => summary.includes(o));
-    expect(isDefinitive).toBe(true);
-  });
-
-  it('matches "no patterns array" (malformed LLM output)', () => {
-    const summary = 'no patterns array in response';
-    const isDefinitive = definitiveOutcomes.some(o => summary.includes(o));
-    expect(isDefinitive).toBe(true);
-  });
-
-  it('does NOT match transient failure summaries', () => {
-    const transients = [
-      'extraction failed',
-      'no LLM available (CliProxy + API + Ollama cloud + local all failed)',
-      'empty LLM response',
-    ];
-    for (const summary of transients) {
-      const isDefinitive = definitiveOutcomes.some(o => summary.includes(o));
-      expect(isDefinitive).toBe(false);
-    }
-  });
-});
 
 // ---------------------------------------------------------------------------
 // Regression: Process guard checks for specific script name
