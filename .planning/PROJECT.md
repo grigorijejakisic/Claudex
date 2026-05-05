@@ -4,7 +4,7 @@
 
 Claudex is a persistent memory system for LLM coding agents. **v4.0.0 SHIPPED 2026-04-30, v4.1.0 SHIPPED 2026-05-02** — internal infrastructure now distributed publicly on `github.com/grigorijejakisic/Claudex`. Built on SQLite + sqlite-vec + Ollama embeddings + BGE-reranker-v2-m3. v4 archived at `.planning/v4-final/`.
 
-**Current milestone: v5 — Bound Multi-Modal Episodes.** The cognitive layer Claudex was missing: stop storing extracted rules, start storing bound experiences with multi-modal recall handles.
+**Current milestone: v5 — Bound Multi-Modal Episodes (substrate-only after 2026-05-05 reframe).** The cognitive layer Claudex was missing — stop storing extracted rules, start storing bound experiences with provenance. The original thesis had three load-bearing legs (substrate + multi-handle recall + density abstraction). Phase 2/2.1 produced 3 consistent KILL bound experiences against legs 2 and 3 at our scale; the locked decision rule fired and those legs were dropped 2026-05-05. Leg 1 (substrate with provenance, shipped in Phase 1) survives. Recall in v5 stays on v4's hybrid-retrieval pipeline. Reframe: `.planning/reframes/2026-05-05-multi-handle-kill.md`.
 
 ## The Parable (Cognitive Frame)
 
@@ -14,35 +14,33 @@ Source: session `b3e10b98-262b-4a56-814d-fae32726be60` turn 14 (verbatim user st
 
 Full framing: `.planning/research/2026-05-04-v5-bound-episodes-framing.md`. Engineering substrate: `.planning/research/2026-04-30-v5-episodic-memory.md`.
 
-## Core Value
+## Core Value (post-reframe 2026-05-05)
 
-**v5 = Claudex stores bound multi-modal episodes; recall is by any modality; abstraction emerges from density.**
+**v5 = Claudex stores bound multi-modal episodes with provenance.** That's the surviving thesis. Recall by any modality and abstraction-from-density were empirically rejected at our scale (3 consistent KILL bound experiences in `.planning/aggregates/multi-handle.json`); v5 keeps v4's hybrid-retrieval pipeline unchanged. Future milestones may revisit retrieval theses on Phase 1's substrate, under the methodology Phase 2/2.1 proved.
 
-That's the whole thesis. Everything else — substrate format, projection model, session-end detection, privacy scoping, multi-modal indexing — is plumbing for this idea.
-
-**Canonical example:** today, when the agent in this session was asked about the "child and stove parable" it took 5 turns of `claudex_search` archaeology because the parable was stored only as a synthesized abstract, not as a bound episode. Under v5, the keyword "child" or "parable" or "v5 framing" would have fired the whole conversation back as a single recall event.
+**Canonical example (still relevant):** when the agent was asked about the "child and stove parable" it took 5 turns of `claudex_search` archaeology because the parable was stored only as a synthesized abstract, not as a bound episode. Phase 1's provenance-tagged substrate makes the parable retrievable by direct key (session, project, topic). Whether *better* retrieval mechanics surface it more reliably is a question for future milestones — not v5.
 
 ## Current Milestone: v5 — Bound Multi-Modal Episodes
 
 **Goal:** Replace v4's extract-and-store-rules architecture with bind-and-store-episodes, retrievable by multi-modal handles, with abstraction emerging from clusters at recall time rather than from upfront LLM extraction.
 
-**Locked claims (2026-05-04 framing-doc commit):**
+**Locked claims (post-reframe 2026-05-05):**
 
-1. **Episode substrate is structured-by-modality**, not flat text. Every event row carries `{type, ts, source, content, provenance}` minimum. Provenance tag (`organic | injected | tool_result | environmental`) is non-negotiable — that's the structural fix for the Mem0 feedback loop tactically patched in commit `0d0fbca`.
-2. **Recall is multi-handle.** Any modality can fire an episode. No single canonical query path. Today's semantic-only retrieval is one handle of many.
-3. **Abstraction is density-driven, not extraction-driven.** Patterns are not pre-stored as rules; they emerge from clusters of episodes at recall time.
-4. **The 2026-04-30 engineering research doc is plumbing for this, not the thesis.** It remains valid as engineering reference; the framing doc supersedes it as the cognitive frame.
-5. **Most of v4's `src/angel/pattern-extractor.ts` is dead-code under v5.** The Mem0 fix from 2026-05-04 stops the bleeding; v5's binding-substrate prevents the wound.
+1. **Episode substrate is structured-by-modality** with provenance — SHIPPED Phase 1. Every event row carries `{type, ts, source, content, provenance}` minimum. Provenance tag (`organic | injected | tool_result | environmental`) is non-negotiable and structurally prevents the Mem0 feedback loop tactically patched in commit `0d0fbca`.
+2. ~~**Recall is multi-handle.**~~ — **REJECTED 2026-05-05** by 3 consistent KILL bound experiences. v4's hybrid-retrieval (semantic + FTS + reranker) stays in production unchanged in v5.
+3. ~~**Abstraction is density-driven, not extraction-driven.**~~ — **REJECTED 2026-05-05** by same 3 KILLs. Density at our scale measured at 0.2418 (threshold 0.30), repeatable across labelers — not noise, just below threshold. `experience_patterns` legacy reads stay live; no replacement abstraction in v5.
+4. **Extraction-time pattern creation is dead under v5.** Phase 4 deletes it from `src/angel/pattern-extractor.ts`. The mechanism *itself* violates the parable (abstracts from N=1 experience), independent of whether multi-handle retrieval ever ships. The Mem0 fix from `0d0fbca` becomes structurally obsolete.
+5. **The 2026-04-30 engineering research doc** remains valid as engineering reference for the substrate. The 2026-05-04 framing doc remains valid as the cognitive frame (the parable). Both docs are now annotated by the reframe — the parable's *epistemic discipline* is what we keep; the parable's *retrieval thesis at our scale* is what the data rejected.
 
-**Target capability (subject to refinement during phase planning):**
+**Target capability (post-reframe scope):**
 
-- New event-log table (working name: `episodic_events`) with provenance-tagged structured rows; coexists with `conversation_turns` initially, supersedes for retrieval purposes
-- Multi-modal indexes beyond semantic+FTS: error-fingerprint, structural-shape, affect-signal, speaker-typed (each a small specialized retrieval surface)
-- Multi-handle retrieval: hybrid fusion across all live indexes, with provenance-aware extraction filtering
-- Angel reduction: delete LLM-extraction at write-time; LLM moves to query-time density-fusion if needed (or embedding-only path if cost demands)
-- Density-based abstraction: cluster episodes that fire together; surface clusters that exceed thresholds as inferred (non-stored) patterns
-- Crash-resilient episode boundary: Angel-as-source-of-truth for session-end via fsnotify + heartbeat + idle-sweep + PID liveness (engineering-doc Recommendation #1)
-- v4 coexistence / migration plan: existing 88 experience_patterns + 191 learnings + 126 decisions + 659 mental_models — migrate, re-derive, or coexist? Decided per-category during phase planning.
+- ✓ Event-log table (`episodic_events`) with provenance-tagged structured rows; coexists with `conversation_turns` (Phase 1 SHIPPED)
+- ✗ Multi-modal indexes beyond semantic+FTS — error-fingerprint built and tested, KILL verdict; no further indexes pursued in v5
+- ✗ Multi-handle retrieval / RRF fusion — dropped (thesis KILL)
+- Angel reduction: delete extraction-time pattern creation (Phase 4 — surviving and sharpened)
+- ✗ Density-based abstraction — dropped (thesis KILL)
+- Crash-resilient episode boundary: Angel-as-source-of-truth for session-end via fsnotify + heartbeat + idle-sweep + PID liveness (Phase 6, engineering-doc Recommendation #1)
+- v4 coexistence / migration plan: per-table decision (Phase 7 — narrowed: no multi-handle retrieval to migrate)
 
 **Out of scope for v5:**
 
@@ -52,25 +50,39 @@ That's the whole thesis. Everything else — substrate format, projection model,
 
 ## Requirements
 
-See `REQUIREMENTS.md` for the requirements graph. Categories (initial scope, refinable during phase planning):
+See `REQUIREMENTS.md` for the requirements graph. Categories (post-reframe scope):
 
-- **EPI** — Episode substrate (schema, write path, provenance tags)
-- **IDX** — Multi-modal indexes (error-fingerprint, structural, affect, speaker)
-- **RET** — Multi-handle retrieval (fusion, provenance filtering)
-- **ABS** — Density-based abstraction (clustering, surfacing)
-- **AR** — Angel reduction (LLM extraction removal, replacement architecture)
-- **EBD** — Episode-boundary detection (crash-resilient session-end)
-- **MIG** — v4 coexistence / migration
-- **VAL** — Validation (Vesna probes, density at scale, multi-handle recall behavior)
+- **EPI** — Episode substrate (schema, write path, provenance tags) — **SHIPPED Phase 1**
+- ~~**IDX**~~ — Multi-modal indexes — **investigation closed Phase 2/2.1, KILL × 3**
+- ~~**RET**~~ — Multi-handle retrieval — **dropped 2026-05-05**
+- ~~**ABS**~~ — Density-based abstraction — **dropped 2026-05-05**
+- **AR** — Angel reduction (extraction-time pattern creation deletion) — Phase 4 NEXT
+- **EBD** — Episode-boundary detection (crash-resilient session-end) — Phase 6
+- **MIG** — v4 coexistence / migration — Phase 7 (narrowed)
+- **VAL** — Validation (Vesna probes; VAL-03 transformed to KILL-regression probe) — Phase 7
 
-## Honest Uncertainties (locked from 2026-05-04 conversation)
+## Empirical Methodology — v5 Standard Practice (promoted from Phase 2/2.1)
 
-These are **not** architectural blockers — they are empirical/engineering questions that get resolved during phase execution:
+The Phase 2/2.1 discipline produced the honest KILL that drove the reframe. It is now the v5 standard for any future empirical phase:
 
-1. **Angel reduction depends on a code trace** — `experience_patterns` reads scattered across `intelligence/`, `assembly/`, dashboard CLI. Trace before deletion.
-2. **Density at our scale** — Stanford Generative Agents had hundreds of observations per NPC; we have ~9K observations across 1,001 sessions and 6 active projects. Whether density-driven abstraction surfaces signal vs noise is empirical.
-3. **Multi-modal "any handle fires episode" at scale** — works for one burn memory; we'll have thousands. Suppression / ranking / dampening rules are tuning work.
-4. **Query-time LLM cost** — moving extraction from post-hoc (offline, cheap-ish) to recall-time (hot path) shifts cost profile. Local model? Embedding-only? Per-phase decision.
-5. **Whether the parable holds at engineering-scale** — strong cognitive frame, well-grounded, but unproven on our substrate. Empirical phases must allow "this didn't work as theorized" as a valid outcome.
+1. **Pre-commit the decision rule** in CONTEXT.md before measurement runs. No goalpost shifts after seeing results.
+2. **Lock the corpus and harness.** Same code, same data, same pair-set across replications.
+3. **Multiple bound measurements before milestone-level claims** — append-only aggregator at `.planning/aggregates/{topic}.{md,json}`. One experience is not abstraction. The parable applies to ourselves.
+4. **Wilson/Newcombe CI binding for noise rejection.** At small n, point-deltas of +5pp can be inside the CI of zero. Require the lower bound to bind.
+5. **Descriptive-not-gating audits.** Agent autonomy on audit work; precision/recall metrics reported, not used as gates.
+6. **Negative results are valid outputs.** "This didn't work, here's what we learned" is a successful empirical-phase outcome.
 
-These five inform per-phase scoping; they are NOT a list of risks to mitigate before starting. They are surfaced here so phase teammates know what's known-uncertain vs. locked.
+## Honest Uncertainties (post-reframe)
+
+Resolved by Phase 2/2.1:
+
+- ✗ ~~Density at our scale~~ — answered NO empirically (intra_project_share 0.2418 < 0.30 threshold, repeatable across labelers).
+- ✗ ~~Multi-modal "any handle fires episode" at scale~~ — moot, multi-handle thesis dropped.
+- ✗ ~~Query-time LLM cost~~ — moot, no query-time fusion in v5.
+- ✗ ~~Whether the parable holds at engineering-scale~~ — answered partially: the *epistemic discipline* (density across measurements before abstraction) holds and was validated by being applied to ourselves. The *retrieval claim* (multi-modal handles + density-driven abstraction beat semantic-only) does not hold at our scale on this corpus.
+
+Surviving for phase 4/6/7 execution:
+
+1. **Angel reduction depends on a code trace** — `experience_patterns` reads scattered across `intelligence/`, `assembly/`, dashboard CLI. Trace before deletion (Phase 4 prerequisite).
+2. **Episode boundary unit** — per-thread, per-intent-shift, per-task-completion — investigated during Phase 6 discuss.
+3. **Per-table migration decisions** — `experience_patterns`, `learning`, `decision`, `mental_model`, `directive_rule`, `critical_rule`, `transcript_chunk`. Phase 7 discuss.

@@ -2,58 +2,61 @@
 
 ## Project Reference
 
-See: `.planning/PROJECT.md` (created 2026-05-04)
+See: `.planning/PROJECT.md` (created 2026-05-04, reframed 2026-05-05)
 
-**Core value:** v5 = Claudex stores bound multi-modal episodes; recall is by any modality; abstraction emerges from density.
+**Core value (post-reframe 2026-05-05):** v5 = Claudex stores bound multi-modal episodes with provenance (substrate). Recall remains v4's hybrid-retrieval (semantic + FTS + reranker) unchanged in v5. Abstraction-from-density was empirically rejected at our scale (3 KILL bound experiences in `.planning/aggregates/multi-handle.json`).
 
-**Current focus:** **v5 milestone seeded 2026-05-04.** PROJECT.md / ROADMAP.md / REQUIREMENTS.md / STATE.md written from the framing doc (`research/2026-05-04-v5-bound-episodes-framing.md`) + engineering doc (`research/2026-04-30-v5-episodic-memory.md`) + the 2026-05-04 architectural conversation. v4.0.0 + v4.1.0 SHIPPED (archived at `.planning/v4-final/`). Ready for `/auto-orchestrate` to start phase 1.
+**Current focus:** Post-reframe execution. v5 is now a **substrate-only milestone** — no replacement thesis. Phase 1 shipped (V25/V26/V27 substrate). Phase 2/2.1 closed with KILL verdict. Phases 3 and 5 DROPPED. Next surviving phase: **Phase 4 (Angel reduction)**, then 6 (boundary), then 7 (narrowed coexistence/migration/ship).
 
 ## Current Position
 
-**Current Milestone:** v5 — Bound Multi-Modal Episodes
-**Phase:** 2.1 — Corpus-expansion rerun (CONTEXT gathered; ready for plan)
+**Current Milestone:** v5 — Bound Multi-Modal Episodes (reframed 2026-05-05 to substrate-only)
+**Phase:** 4 — Angel reduction (next; pending discuss)
 **Plan:** —
-**Status:** Phase 2 produced ONE bound measurement at n=20 with verdict KILL. User-approval (2026-05-05) selected Option 4: rerun with expanded corpus to produce a SECOND bound measurement before drawing milestone-level conclusions. Per the parable: a single experience is not yet an abstraction — density across multiple measurements is what produces real signal. Phase 2.1 CONTEXT.md committed (44ba6a3); locks four areas: corpus expansion (1a-C / 1b-A / 1c three-tier phase-anchored), threshold-tested labeler (strict ≥3 + relaxed ≥2 run independently, two parallel verdicts no combination), descriptive-not-gating audit (20 stratified per tier, full agent autonomy), and aggregating reporting (per-phase RESULTS + new `.planning/aggregates/multi-handle.{md,json}` append-only event-sourced layer).
+**Status:** Milestone reframe committed 2026-05-05 after Phase 2.1 closed with KILL × 2 (joining Phase 2's KILL → 3 consistent KILL bound experiences). Locked decision rule fired honestly; phases premised on the multi-handle/density-fusion thesis (3, 5) dropped. Methodology that produced the honest KILL — pre-committed decision rule, locked corpus, multiple bound measurements, append-only aggregator, Wilson/Newcombe CI binding — promoted to v5 standard practice. Full reframe: `.planning/reframes/2026-05-05-multi-handle-kill.md`.
+
 **Verdict log:**
-- Phase 2 (2026-05-04, n=20 held-out): criterion 1 failed CI binding (delta_p5 +10pp but ci_lower -0.157); criterion 2 failed density (intra_project_share 0.234 < 0.30); criterion 3 passed (latency p99 ratio 0.89). Decision rule fired honestly. Code retained at flag-off; harness preserved for reuse.
-- Phase 2.1 (pending): same harness + locked decision rule verbatim, expanded corpus targeting n≥200 per labeler tier, two parallel bound experiences (strict + relaxed).
-**Last activity:** 2026-05-04 — discuss-2.1 captured CONTEXT.md (4 areas locked across 4 message exchanges with team-lead). Committed at 44ba6a3.
-**Next step:** Phase 2.1 plan (`/gsd:plan-phase 2.1` or auto-pipeline). Discipline being applied: empirical phases produce bound experiences. Multiple measurements are aggregated; no single phase's verdict abstracts to a milestone-level claim. Phase 3 stays gated on accumulated evidence in `.planning/aggregates/multi-handle.json`, not on any single phase's outcome.
+- Phase 1 (2026-05-04, type: engineering): SHIPPED. V25 migration + episodic_events table + dualWrite helpers + 60+ EPI-tagged tests. Stub-extractor proves Mem0-trap structurally impossible. Vesna 17/17 preserved.
+- Phase 2 (2026-05-04, n=20 ad-hoc held-out): KILL. Criterion 1 failed CI binding (Δp@5 +10pp but Wilson CI lower -0.157); criterion 2 failed density (intra_project_share 0.234 < 0.30); criterion 3 passed (latency p99 ratio 0.89). Decision rule fired honestly. Code retained at flag-off; harness preserved.
+- Phase 2.1-strict (2026-05-05, ≥3-frame, n=20): KILL. Δp@5 +0.10 [-0.157, +0.376]; Δr@10 -0.05 [-0.274, +0.172]; density 0.2418; latency p99 ratio 0.83.
+- Phase 2.1-relaxed (2026-05-05, ≥2-frame, n=19): KILL. Δp@5 +0.21 [-0.033, +0.491]; Δr@10 +0.05 [-0.141, +0.226]; density 0.2418; latency p99 ratio 1.31.
+- Phase 3 (multi-handle retrieval cutover): DROPPED 2026-05-05 — premised on dead thesis.
+- Phase 5 (density-based abstraction): DROPPED 2026-05-05 — same dead thesis.
 
-### v5 Phase Structure (Initial — Refinable in Phase 1 Discuss)
+**Last activity:** 2026-05-05 — Phase 2.1 closed (commits da56ecd → ac2bcb2); aggregator updated; user-approval gate fired; milestone reframe committed; ROADMAP/REQUIREMENTS/PROJECT/STATE updated.
 
-| Phase | Goal | Type | Requirements |
-|-------|------|------|--------------|
-| 1 — Episode substrate | Schema + write path with provenance tags; Mem0 trap structurally impossible | engineering | EPI-01..07 |
-| 2 — Multi-modal index seeds + density-at-scale check | Build one non-semantic index (error-fingerprint), measure recall improvement, validate density at our scale | empirical | IDX-01..04 |
-| 3 — Multi-handle retrieval cutover | Rewrite hybrid-retrieval to fuse N indexes; cut warning_triggers + assembly injection over to episode-based | engineering | RET-01..05 |
-| 4 — Angel reduction | Trace dependencies; delete extraction-time pattern creation; Angel becomes bind+index, not abstract | engineering | AR-01..05 |
-| 5 — Density-based abstraction | Cluster matching episodes; surface high-density clusters as inferred patterns at retrieval time (not stored) | empirical | ABS-01..04 |
-| 6 — Crash-resilient episode boundary | fsnotify + heartbeat + idle-sweep + PID-liveness; episode unit defined; agent lifetime decoupled from memory persistence | engineering | EBD-01..06 |
-| 7 — v4 coexistence / migration / ship | Per-table decision (retire/re-derive/preserve); Vesna update; **v5.0.0 tag** | engineering | MIG-01..05, VAL-01..06 |
+**Next step:** `/gsd:discuss-phase 4` (or `/auto-orchestrate --from-phase 4`) for Angel reduction. Phase 4 reframed (sharpened, not weakened) — strip extraction-time pattern creation because the mechanism *itself* violates the parable, independent of whether multi-handle retrieval ever ships.
 
-**Coverage:** 7 phases, ~35 requirements (initial seed; will expand/contract during per-phase discuss).
+## v5 Phase Structure (Post-Reframe)
 
-**Phase typing:** Phases 2 and 5 are `type: empirical` — their CONTEXT.md must frame success as measurable hypotheses; their PLAN.md include measurement protocols; their SUMMARY.md may legitimately report "this didn't work, here's what we learned." Auto-orchestrate's user-approval gate after each phase IS the iteration loop.
+| Phase | Goal | Type | Status | Requirements |
+|-------|------|------|--------|--------------|
+| 1 — Episode substrate | Schema + write path with provenance tags; Mem0 trap structurally impossible | engineering | SHIPPED 2026-05-04 | EPI-01..07 |
+| 2 — Multi-modal index seeds + density-at-scale check | Build error-fingerprint index, measure recall improvement, validate density at our scale | empirical | SHIPPED 2026-05-04, KILL | IDX-01..04 (closed) |
+| 2.1 — Corpus-expansion rerun | Second + third bound measurements with strict and relaxed labelers | empirical | SHIPPED 2026-05-05, KILL × 2 | IDX-* (investigation closed) |
+| 3 — Multi-handle retrieval cutover | Rewrite hybrid-retrieval to fuse N indexes | engineering | **DROPPED 2026-05-05** | RET-01..05 (dropped) |
+| 4 — Angel reduction | Trace dependencies; delete extraction-time pattern creation; Angel becomes bind+index, not abstract | engineering | **NEXT** | AR-01..05 |
+| 5 — Density-based abstraction | Cluster matching episodes; surface high-density clusters as inferred patterns at retrieval time | empirical | **DROPPED 2026-05-05** | ABS-01..04 (dropped) |
+| 6 — Crash-resilient episode boundary | fsnotify + heartbeat + idle-sweep + PID-liveness | engineering | pending | EBD-01..06 |
+| 7 — v4 coexistence / migration / ship (narrowed) | Per-table decision (retire/re-derive/preserve); Vesna update; **v5.0.0 tag** | engineering | pending | MIG-01..05, VAL-01/02/03'/04/05/06 |
 
-## Notes for the Phase 1 Discuss Teammate
+**Coverage:** 4 surviving phases (1 shipped, 4/6/7 pending). Phases 2/2.1 closed with KILL. Phases 3/5 dropped.
 
-You are the first teammate spawned by `/auto-orchestrate` for v5. The orchestrator (the calling Claude session) seeded this `.planning/` from the framing doc + engineering doc, but the user has not yet had a discuss-step conversation about Phase 1's specific scope. Your job:
+## Empirical methodology (v5 standard, promoted from Phase 2/2.1)
 
-1. **Read the framing doc first** (`.planning/research/2026-05-04-v5-bound-episodes-framing.md`). Then engineering doc. Then PROJECT.md. Then this STATE.md.
-2. **Frame Phase 1 as: "Episode substrate."** Schema + write path. EPI-01..07 are the seeded requirements. You may add or refine.
-3. **Open questions to surface during discuss** (not exhaustive):
-    - Exact schema for `episodic_events` — single table or one-per-event-type?
-    - Backfill strategy: do we re-process existing `conversation_turns` into events on cutover, or only forward-flow?
-    - How are tool_use blocks (which today live in `assistant_text` as embedded JSON) decomposed into typed tool_result events?
-    - Coexistence depth: how long do we maintain both `conversation_turns` and `episodic_events`?
-    - How does the substrate interact with the existing observation/artifact tables — separate concern, or unified?
-4. **Honor the parable.** The v5 thesis is locked. Don't redesign the cognitive frame — refine the engineering plumbing to serve it.
-5. **The orchestrator that wrote this STATE.md is in a separate session.** When you SendMessage with questions, the orchestrator answers from its conversation context (which includes the architectural discussion that produced this seed) — but it does not have access to its own prior thinking past `/clear`. So ask precise, scoped questions that the framing doc + engineering doc + this STATE.md should not already answer.
+Any future empirical phase in v5 (or future milestones) follows this pattern, proven by Phase 2/2.1:
+
+1. **Pre-commit the decision rule** in CONTEXT.md before measurement runs. No goalpost shifts after seeing results.
+2. **Lock the corpus and harness.** Same code, same data, same pair-set across replications.
+3. **Multiple bound measurements before milestone-level claims.** Append-only aggregator at `.planning/aggregates/{topic}.{md,json}`. One experience is not abstraction.
+4. **Wilson/Newcombe CI binding for noise rejection.** At small n, point-deltas of +5pp can be inside the CI of zero. Require the lower bound to bind.
+5. **Descriptive-not-gating audits.** Agent autonomy on audit work; precision/recall metrics reported, not used as gates.
+6. **Negative results are valid outputs.** "This didn't work, here's what we learned" is a successful empirical-phase outcome.
 
 ## Notes for the Operator
 
 - v4-final archive at `.planning/v4-final/` is read-only history; do not modify.
 - v4.1 HITL items (PLAT-06/07/08, VER-04/05, REL-04/05/07) remain on your plate at your discretion — they don't block v5.
-- The Mem0 fix from commit `0d0fbca` (2026-05-04) is tactical; v5 phase 4 makes it structurally obsolete via provenance tagging.
-- If `/auto-orchestrate` is interrupted, resume via `--from-phase N`. The disk is the state machine.
+- The Mem0 fix from commit `0d0fbca` (2026-05-04) is tactical; Phase 4 makes it structurally obsolete via extraction-time-pattern-creation deletion (the structural cause).
+- If `/auto-orchestrate` is interrupted, resume via `--from-phase 4`. The disk is the state machine.
+- Aggregator bug noted in 2026-05-05 closeout: `.planning/aggregates/multi-handle.md` shows Unix-epoch dates ("1970-01-01") and n=60 row aggregations instead of the per-tier 19/20. The summary numbers in `02.1-RESULTS.md` are correct; only the aggregator's snapshot is wrong. Cosmetic; non-blocking. Fix during Phase 4 sweep or carry to v5.1.

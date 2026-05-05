@@ -2,14 +2,17 @@
 
 ## Overview
 
-Seven phases. The architectural commit (parable + thesis) is locked in `.planning/research/2026-05-04-v5-bound-episodes-framing.md` and PROJECT.md. This roadmap is the **execution sketch** — phase boundaries are reasonable hypotheses, not guarantees. The user-approval gate between phases is the iteration loop. Phases marked `type: empirical` are explicitly investigations: their CONTEXT.md frames success as measurable hypotheses, their PLAN.md include measurement protocols, their SUMMARY.md may legitimately report "this didn't work, here's what we learned" as a successful outcome.
+**Milestone reframed 2026-05-05.** Phases 2 and 2.1 produced 3 consistent KILL bound experiences against the multi-handle/density-fusion thesis. The locked decision rule fired; phases 3 and 5 (which were premised on that thesis) are dropped. v5 becomes a **substrate-only milestone** with no replacement thesis. Full reasoning: `.planning/reframes/2026-05-05-multi-handle-kill.md`.
 
-The substrate phases (1, 3, 6) ship engineering. The empirical phases (2, 5) prove the parable holds at our scale before we commit further. Phases 4 and 7 are coordinated cleanup — Angel reduction (4) requires the substrate (1, 3) to be live; v4 migration (7) requires the new path to be validated (5).
+Surviving shape: Phase 1 substrate (shipped), Phase 4 Angel reduction, Phase 6 crash-resilient episode boundary, Phase 7 narrowed v4 coexistence / migration / ship. The parable as cognitive frame stands; legs 2 and 3 of the v5 thesis (recall-by-any-modality via fusion, abstraction-from-density) do not. Methodology that produced the honest KILL — pre-committed decision rule, locked corpus, multiple bound measurements, append-only aggregator, Wilson/Newcombe CI binding — is promoted to v5 standard practice for any future empirical phase.
+
+The architectural framing (parable) is locked in `.planning/research/2026-05-04-v5-bound-episodes-framing.md` and PROJECT.md. This roadmap is the **execution sketch** — phase boundaries are reasonable hypotheses, not guarantees. The user-approval gate between phases is the iteration loop. Phases marked `type: empirical` are explicitly investigations: their CONTEXT.md frames success as measurable hypotheses, their PLAN.md include measurement protocols, their SUMMARY.md may legitimately report "this didn't work, here's what we learned" as a successful outcome.
 
 **Status legend:**
 - `[ ]` Pending
 - `[x]` Complete
 - `[~]` Partial-with-followups
+- `[-]` Dropped (with reasoning)
 - `type: engineering` — discuss → plan → execute, ship feature
 - `type: empirical` — discuss → plan → measure, ship learning (which may include negative results)
 
@@ -27,27 +30,35 @@ The substrate phases (1, 3, 6) ship engineering. The empirical phases (2, 5) pro
 
     **Outcome:** V26 sidecar `episodic_index_error_fingerprint` + pure fingerprinter + idempotent backfill (135 fingerprints / 19 projects on operator DB; 10,678 sidecar rows) + Wilson/Newcombe measurement harness + verdict runner. Live measurement: criterion 1 FAILED (delta_p5 +10pp but Wilson CI lower -0.157 at n=20 — CI-binding discipline rejected as noise); criterion 2 FAILED (intra_project_share 0.234 < 0.30 threshold); criterion 3 PASSED (latency p99 ratio 0.89). Per CONTEXT item 7: Vesna probes remain in `.disabled/`, `DEFAULT_CONFIG.features.error_fingerprint` flipped true→false, backfill data retained, harness reusable by Phase 5. Phase 3's multi-handle cutover plan is **NOT** ready — escalate to user-approval gate. Full report at `.planning/phases/02-multi-modal-index-seeds-density-check/02-05-SUMMARY.md` + `02-RESULTS.md` + `02-results.json`.
 
-- [ ] **Phase 2.1: Corpus-expansion rerun (second bound measurement)** _(type: empirical)_
+- [x] **Phase 2.1: Corpus-expansion rerun (second bound measurement)** _(type: empirical)_ — SHIPPED 2026-05-05, **verdict KILL × 2**
 
-    Approved 2026-05-05 by user. Phase 2 produced ONE bound measurement at n=20: +10pp on precision@5 with Wilson CI [-0.157, ?]. Following the parable: a single experience is not yet an abstraction. Phase 2.1 produces a SECOND bound measurement under different conditions (expanded corpus targeting n≥200 held-out pairs) so density can do its work — multiple consistent results across phases produce real signal; one measurement does not.
+    Approved 2026-05-05 by user. Phase 2 produced ONE bound measurement at n=20: +10pp on precision@5 with Wilson CI [-0.157, ?]. Following the parable: a single experience is not yet an abstraction. Phase 2.1 produced TWO additional bound measurements under different labeler-strictness conditions (strict ≥3-frame and relaxed ≥2-frame) so density could do its work — multiple consistent results across measurements produce real signal; one measurement does not.
 
-    **What changes vs Phase 2:** corpus size only. Reuse the existing harness at `src/benchmark/episodic-density/`, the V26 sidecar, the fingerprinter, the Wilson/Newcombe verdict module, and CONTEXT.md item 5's locked decision rule verbatim. Pair-labeler may be relaxed (frame-overlap threshold ↓ from ≥3 to ≥2) if the strict labeler can't reach n=200 — relaxation flagged in RESULTS.md, validated against a manual spot-check sample.
+    **What changed vs Phase 2:** corpus shape (three-tier `corpus_origin` partition: v4_backfill, phase1_organic_pre_phase2_close, phase1_organic_post_phase2_close — V26→V27 schema), threshold-tested labeler (strict + relaxed run independently with no combined verdict), descriptive-not-gating audit (20 stratified per tier, full agent autonomy), and append-only aggregator at `.planning/aggregates/multi-handle.{md,json}`. Reused: harness, V26 sidecar, fingerprinter, Wilson/Newcombe verdict module, and CONTEXT.md item 5's locked decision rule **verbatim**.
 
-    **What this phase does NOT do:** declare the multi-handle thesis dead, declare the parable's density claim invalid, or pre-commit to any Phase 3 reshape. Each verdict outcome (clear / unclear / KILL-confirmed) is another bound experience that aggregates with Phase 2's; the milestone-level abstraction (does multi-handle work at our scale?) emerges from density of consistent results across Phase 2, 2.1, and any follow-on empirical phases — not from any single measurement.
+    **Outcome:** Strict tier (n=20): KILL — Δp@5 +0.10 [-0.157, +0.376], Δr@10 -0.05 [-0.274, +0.172], density 0.2418 (< 0.30). Relaxed tier (n=19): KILL — Δp@5 +0.21 [-0.033, +0.491], Δr@10 +0.05 [-0.141, +0.226], density 0.2418 (< 0.30, identical-to-3-decimals — repeatability of the density floor confirms it's the corpus's actual signal, not sampling noise). Aggregator now contains 3 KILL bound experiences across labelers and tiers. Locked decision rule's KILL branch fires at user-approval gate.
 
-    No code added that wasn't in Phase 2. Outputs: `.planning/phases/02.1-corpus-expansion-rerun/02.1-RESULTS.md` + `02.1-results.json`. The Vesna probes stay in `.disabled/` until two measurements consistently green-light — single-experience flips would themselves violate the parable.
+    **What this phase did NOT do:** prejudge the milestone reframe. The KILL was honest output of the pre-committed rule against three measurements. The user-approval gate at phase close is where the milestone-level decision was made — see `.planning/reframes/2026-05-05-multi-handle-kill.md`.
 
-- [ ] **Phase 3: Multi-handle retrieval cutover** _(type: engineering, **GATED on Phase 2.1 verdict**)_
+    Full report: `.planning/phases/02.1-corpus-expansion-rerun/02.1-RESULTS.md` + `02.1-results.json`. Plan-checker verdict: PASS WITH NOTES (`02.1-VERIFICATION.md`).
 
-    Replace `src/core/hybrid-retrieval.ts` fusion with episode-based multi-handle retrieval. Every recall path queries N indexes (semantic, FTS, plus the validated Phase 2 starters), fuses by RRF or learned weights, applies provenance filter (suppress injected-span hits when extracting / when matching against current organic content). Cut over `experience_warning_triggers` and the assembly pipeline's experience-pattern injection to fire from episodes-by-handle, not from extracted rules. Existing `experience_pattern` rows remain readable but become a deprecation surface.
+- [-] **Phase 3: Multi-handle retrieval cutover** _(type: engineering)_ — **DROPPED 2026-05-05**
 
-- [ ] **Phase 4: Angel reduction** _(type: engineering with code-trace prerequisite)_
+    Premised on the multi-handle/density-fusion thesis killed by Phase 2/2.1's three consistent KILL verdicts. v4's `hybrid-retrieval.ts` (semantic + FTS + reranker) stays in production unchanged. No RRF cutover ships in v5. Existing `experience_warning_triggers` and assembly experience-pattern injection continue firing from `experience_patterns` legacy rows (which Phase 4 Angel reduction will stop *creating new instances of* — but reads remain live). Future milestones (v6+) may revisit retrieval theses on Phase 1's substrate, under the methodology Phase 2/2.1 proved.
 
-    Trace dependencies of `src/angel/pattern-extractor.ts` and the `experience_patterns` table across `intelligence/`, `assembly/`, dashboard CLI, observability surfaces. Anything that reads from those structures gets either: (a) re-pointed at the new episode-based retrieval, or (b) preserved as a legacy read path with a TODO. Then delete extraction-time pattern creation. The Angel writes episodes (Phase 1) and indexes (Phase 2/3) but **stops trying to abstract during write**. LLM moves to query-time fusion if needed; otherwise embedding-only. The Mem0 fix from 2026-05-04 (`0d0fbca`) becomes obsolete because the structural cause is gone.
+    Reasoning: `.planning/reframes/2026-05-05-multi-handle-kill.md`.
 
-- [ ] **Phase 5: Density-based abstraction** _(type: empirical)_
+- [ ] **Phase 4: Angel reduction** _(type: engineering with code-trace prerequisite)_ — **NEXT**
 
-    Investigation. When N episodes match a query and cluster by semantic+structural similarity above threshold T, surface the cluster as an inferred pattern at retrieval time — without ever storing it as a row. Tune N and T against real recall queries. Validate against Phase 4's migrated readers: does retrieval-time density abstraction subsume what `experience_patterns` did, or are there cases where it under-/over-surfaces? **Negative result is a valid output** — if density at our scale is noise, fall back to a lighter-touch surface (e.g., explicit "you've hit similar episodes N times" advisory) without claiming abstraction.
+    **Reframed 2026-05-05:** scope sharpened, not weakened. Trace dependencies of `src/angel/pattern-extractor.ts` and the `experience_patterns` table across `intelligence/`, `assembly/`, dashboard CLI, observability surfaces. Anything that reads from those structures gets either: (a) re-pointed at direct episode reads (Phase 1 substrate) where applicable, or (b) preserved as a legacy read path with a TODO. Then **delete extraction-time pattern creation** — the mechanism whereby the Angel abstracts patterns at write time from N=1 experiences. That mechanism *itself* violates the parable; killing it is correct independent of whether multi-handle retrieval ever ships. The Angel's role becomes binding + indexing on Phase 1's substrate, not abstraction. The Mem0 fix from 2026-05-04 (`0d0fbca`) becomes structurally obsolete because the wound is closed.
+
+    No re-pointing at episode-based fusion (that was Phase 3 — dropped). Readers either read episodes directly or stay on legacy `experience_patterns` rows in deprecation mode.
+
+- [-] **Phase 5: Density-based abstraction** _(type: empirical)_ — **DROPPED 2026-05-05**
+
+    Premised on the same multi-handle/density-fusion thesis killed by Phase 2/2.1. Intra-project density measured at 0.2418 on both 2.1 tiers (threshold was 0.30) — and the value's repeatability across labelers confirms it's the corpus's actual density floor, not noise. There is no density signal at our scale to abstract from. `experience_patterns` legacy reads stay live; no retrieval-time clustering replaces them in v5. Future milestones may revisit if substrate growth changes the density profile.
+
+    Reasoning: `.planning/reframes/2026-05-05-multi-handle-kill.md`.
 
 - [ ] **Phase 6: Crash-resilient episode boundary** _(type: engineering)_
 
@@ -55,27 +66,27 @@ The substrate phases (1, 3, 6) ship engineering. The empirical phases (2, 5) pro
 
 - [ ] **Phase 7: v4 coexistence / migration / ship** _(type: engineering)_
 
-    Decide per-category what happens to v4 storage:
-    - `experience_patterns` (88 rows, inflated): retire — replaced by Phase 5 density abstraction
+    **Narrowed 2026-05-05** — no multi-handle retrieval to migrate. Decide per-category what happens to v4 storage:
+    - `experience_patterns` (88 rows, inflated): retire — Phase 4 stops new instances; reads stay live during deprecation. NOT replaced by density abstraction (Phase 5 dropped); v4's `experience_warning_triggers` continues reading these rows in legacy mode until a future milestone replaces the surface.
     - `learning` (191 rows): re-derive as projections from raw episodes? Or preserve as legacy "synthesized fact" surface?
     - `decision` (126 rows): same question
     - `mental_model` (659 rows): probably keep — these are user-/agent-confirmed long-term, not extraction artifacts
     - `directive_rule`, `critical_rule`: likely keep — explicit rules that earned their status
     - `transcript_chunk`: superseded by Phase 1 substrate
 
-    Then: Vesna probe suite update, ship gate validation, **v5.0.0 tag**.
+    Then: Vesna probe suite update (existing 17 + new VAL-01/02/04 + KILL-regression VAL-03'), ship gate validation, **v5.0.0 tag**.
 
 ## Phase typing rationale
 
-Two-thirds of v5 is engineering (1, 3, 4, 6, 7) — the substrate, the cutover, the cleanup. One-third is empirical (2, 5) — the density and indexing claims that the parable promises but our scale does not yet prove. Auto-orchestrate runs all of them with the same discuss → plan → execute → user-approval flow; the *type* tag tells phase teammates whether to write CONTEXT/PLAN/SUMMARY as "implement this" or as "investigate this and report what we learned."
+Post-reframe: surviving v5 is mostly engineering (1, 4, 6, 7). The empirical phases (2, 2.1) shipped their bound experiences and produced the KILL verdict that drove the reframe. No further empirical phases are scheduled in v5. Auto-orchestrate runs surviving phases with discuss → plan → execute → user-approval flow.
+
+The methodology proven by Phase 2/2.1 (pre-committed decision rule, locked corpus, multiple bound measurements, append-only aggregator at `.planning/aggregates/`, descriptive-not-gating audits, Wilson/Newcombe CI binding) is recorded as **v5 standard practice** for any future empirical phase. See PROJECT.md and `.planning/reframes/2026-05-05-multi-handle-kill.md`.
 
 ## Validation criteria (refined during phase planning)
 
-The v4 ship gates were SC#1 (Vesna 100%), SC#2 (≤500 token cache-stable), SC#3 (MEMORY.md content quality), SC#4 (handoff pickup). v5's ship gates need re-derivation against the parable. Initial sketch:
+The v4 ship gates were SC#1 (Vesna 100%), SC#2 (≤500 token cache-stable), SC#3 (MEMORY.md content quality), SC#4 (handoff pickup). v5's ship gates after reframe:
 
-- **SC-V5-1: Episodic recall.** Probes that establish "the keyword X fires the episode where it was discussed last session" — directly addresses today's failure mode where the parable couldn't be recalled.
-- **SC-V5-2: No re-extraction inflation.** Provenance-tagged write path makes the Mem0 feedback loop structurally impossible. Probe asserts injected-span content does not contribute to extracted artifacts.
-- **SC-V5-3: Density at scale.** N-fold cross-validation that high-density clusters surface meaningful patterns vs noise; phase 5 output validates or invalidates.
-- **SC-V5-4: Crash-resilient.** Kill -9 mid-session; verify Angel still synthesizes on idle timeout. Engineering-doc Recommendation #1 validation.
-
-These are placeholders. Phase 1 discuss may revise.
+- **SC-V5-1: Episodic recall.** Probes that establish "the keyword X fires the episode where it was discussed last session" — directly addresses today's failure mode where the parable couldn't be recalled. Driven by Phase 1's substrate (already shipped) and validated by Vesna probes added in Phase 7.
+- **SC-V5-2: No re-extraction inflation.** Provenance-tagged write path makes the Mem0 feedback loop structurally impossible. Probe asserts injected-span content does not contribute to extracted artifacts. Validated against the post-Phase-4 codepath (extraction-time pattern creation deleted).
+- **SC-V5-3': KILL-regression probe** (transformed from original "density at scale"). Probe replays the Phase 2.1 harness against the locked corpus + decision rule and asserts the KILL verdict reproduces. Future accidental restoration of the dead multi-handle thesis fails this probe.
+- **SC-V5-4: Crash-resilient.** Kill -9 mid-session; verify Angel still synthesizes on idle timeout. Engineering-doc Recommendation #1 validation. Driven by Phase 6.
