@@ -120,6 +120,12 @@ export interface TickResult {
   // Local Intelligence Amplifier
   services_down?: string[];
   codebase_files_indexed?: number;
+  // Phase 6: crash-resilient episode boundary tick
+  boundary_closes_emitted?: number;
+  boundary_closes_aborted?: number;
+  boundary_reopens_emitted?: number;
+  boundary_reopens_anomalous?: number;
+  boundary_cursor_replays?: number;
   duration_ms: number;
   error?: string;
 }
@@ -1139,6 +1145,31 @@ export async function heartbeatTick(ctx: HeartbeatContext): Promise<TickResult> 
     fs.utimesSync(pidPath, now, now);
   } catch {
     // Non-critical — heartbeat survival outweighs freshness signal accuracy
+  }
+
+  // V5 Phase 6: crash-resilient episode boundary tick. Runs after retention
+  // so cursor advances are visible to subsequent observability surfaces.
+  // Bounded LIMIT 25 inside runBoundaryTick. Failures are caught here so a
+  // boundary-tick error never breaks the heartbeat loop.
+  try {
+    const { runBoundaryTick } = await import('./boundary/boundary-detector.js');
+    const { loadThresholds } = await import('./boundary/thresholds.js');
+    const boundary = runBoundaryTick(ctx.db, loadThresholds());
+    result.boundary_closes_emitted    = boundary.closesEmitted;
+    result.boundary_closes_aborted    = boundary.closesAborted;
+    result.boundary_reopens_emitted   = boundary.reopensEmitted;
+    result.boundary_reopens_anomalous = boundary.reopensAnomalous;
+    result.boundary_cursor_replays    = boundary.cursorReplays;
+  } catch (err) {
+    try {
+      const message = err instanceof Error ? err.message : String(err);
+      cachedPrepare(ctx.db,
+        `INSERT INTO telemetry (session_id, event_kind, detail, adapter)
+         VALUES ('angel-heartbeat', 'episodic_write_failure',
+                 json_object('phase6','runBoundaryTick','error_message',?),
+                 'angel-boundary')`
+      ).run(message.slice(0, 500));
+    } catch { /* last-resort */ }
   }
 
   result.duration_ms = Date.now() - start;

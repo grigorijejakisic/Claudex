@@ -30,6 +30,7 @@ import { getDbPath, getClaudexHome } from '../shared/paths.js';
 import { initializeSchema, runMigrations } from '../core/migrations.js';
 import { ensureCollections, setVectorStoreDb } from '../embeddings/qdrant-client.js';
 import { startHeartbeat, type TickResult } from './heartbeat.js';
+import { startJsonlWatcher, type JsonlWatcherController } from './boundary/jsonl-watcher.js';
 import { getPidFilePath } from './pid-file.js';
 import { DEFAULT_ANGEL_CONFIG, type AngelConfig } from './types.js';
 import { RerankerSupervisor } from './reranker-supervisor.js';
@@ -283,6 +284,19 @@ async function main(): Promise<void> {
     idle_threshold_minutes: Math.round(config.idleThresholdSeconds / 60),
   });
 
+  // V5 Phase 6: JSONL watcher feeds sessions.last_jsonl_write_ts on every
+  // ~/.claude/projects/**/*.jsonl write. Watcher errors are telemetered
+  // internally via 'jsonl_watcher_unreachable'. Non-fatal: if the boot
+  // throws (ENOENT / chokidar bind failure), Angel continues in degraded
+  // mode using PID + heartbeat-only signals.
+  let jsonlWatcher: JsonlWatcherController | null = null;
+  try {
+    jsonlWatcher = startJsonlWatcher(db);
+    log('info', 'JSONL watcher started');
+  } catch (err) {
+    log('warn', `JSONL watcher boot failed (continuing in degraded mode): ${err instanceof Error ? err.message : String(err)}`);
+  }
+
   // Start heartbeat — wire both supervisors through so the heartbeat can
   // call ensureRunning() whenever their health probes report them as down.
   // Without this, a single supervisor failure at boot would leave the
@@ -293,11 +307,14 @@ async function main(): Promise<void> {
   );
 
   // Signal handlers for graceful shutdown
-  const shutdown = (signal: string) => {
+  const shutdown = async (signal: string) => {
     log('info', `${signal} received — shutting down`);
     heartbeat.stop();
     rerankerSupervisor.stop();
     llamaServerSupervisor.stop();
+    if (jsonlWatcher) {
+      try { await jsonlWatcher.close(); } catch { /* swallow */ }
+    }
     setVectorStoreDb(null); // release reference before db.close()
     removePidFile();
     try { db.close(); } catch { /* */ }
