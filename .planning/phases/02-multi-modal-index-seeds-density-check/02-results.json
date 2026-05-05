@@ -1,0 +1,468 @@
+{
+  "schema_version": 1,
+  "generated_at_ts_epoch": 1777940002,
+  "harness": {
+    "ts_epoch": 1777940002,
+    "corpus_size": {
+      "total": 136,
+      "phase1_organic": 7,
+      "v4_backfill": 129,
+      "projects": [
+        "big-balkan",
+        "big-mozzart-clean",
+        "big-mozzy-v2",
+        "claude-code-buildable-6deec3e5",
+        "claudex",
+        "claudex-v2",
+        "claudex-v3",
+        "daemon-9f9827ee",
+        "desktop-01dcc792",
+        "kompas-98604047",
+        "lacuna-betting-9f1d552c",
+        "nexus-app-56a23c73",
+        "nexus-app-f0158b12",
+        "nexus-e53c6c93",
+        "nexus-v2-7e3c3a02",
+        "openclaw-main",
+        "oracle-3951898e",
+        "projects-3892a6d8",
+        "vesna-6abb357b"
+      ]
+    },
+    "pairs": {
+      "total": 191,
+      "train": 152,
+      "test": 39,
+      "seed": 42
+    },
+    "metrics": {
+      "pooled": {
+        "A": {
+          "variant": "A_semantic",
+          "origin_split": "pooled",
+          "n": 20,
+          "precision_at_5": {
+            "point": 0.65,
+            "lower": 0.4328542750684442,
+            "upper": 0.818808176876017,
+            "n": 20
+          },
+          "recall_at_10": {
+            "point": 0.9,
+            "lower": 0.6989663528135878,
+            "upper": 0.9721335190383086,
+            "n": 20
+          },
+          "mrr": {
+            "mean": 0.433452380952381,
+            "ci_lower": 0.27533035714285714,
+            "ci_upper": 0.6100863095238095,
+            "n": 20
+          },
+          "latency_ms": {
+            "p50": 1.3952499999999972,
+            "p95": 1.976174999999993,
+            "p99": 2.880194999999998
+          }
+        },
+        "B": {
+          "variant": "B_fingerprint",
+          "origin_split": "pooled",
+          "n": 20,
+          "precision_at_5": {
+            "point": 0.75,
+            "lower": 0.5312991206074114,
+            "upper": 0.8881382993000237,
+            "n": 20
+          },
+          "recall_at_10": {
+            "point": 0.95,
+            "lower": 0.7638688045357189,
+            "upper": 0.9911185512976646,
+            "n": 20
+          },
+          "mrr": {
+            "mean": 0.493531746031746,
+            "ci_lower": 0.33543452380952377,
+            "ci_upper": 0.6406121031746033,
+            "n": 20
+          },
+          "latency_ms": {
+            "p50": 0.21520000000000294,
+            "p95": 0.5086649999999932,
+            "p99": 0.5461330000000002
+          }
+        },
+        "C": {
+          "variant": "C_fused",
+          "origin_split": "pooled",
+          "n": 20,
+          "precision_at_5": {
+            "point": 0.75,
+            "lower": 0.5312991206074114,
+            "upper": 0.8881382993000237,
+            "n": 20
+          },
+          "recall_at_10": {
+            "point": 0.85,
+            "lower": 0.6395811333571357,
+            "upper": 0.9476312545132735,
+            "n": 20
+          },
+          "mrr": {
+            "mean": 0.42686507936507934,
+            "ci_lower": 0.2669097222222222,
+            "ci_upper": 0.6135982142857144,
+            "n": 20
+          },
+          "latency_ms": {
+            "p50": 1.6171000000000006,
+            "p95": 2.1654050000000007,
+            "p99": 2.571321000000001
+          }
+        }
+      },
+      "phase1_organic": {
+        "A": {
+          "variant": "A_semantic",
+          "origin_split": "phase1_organic",
+          "n": 0,
+          "precision_at_5": {
+            "point": 0,
+            "lower": 0,
+            "upper": 0,
+            "n": 0
+          },
+          "recall_at_10": {
+            "point": 0,
+            "lower": 0,
+            "upper": 0,
+            "n": 0
+          },
+          "mrr": {
+            "mean": 0,
+            "ci_lower": 0,
+            "ci_upper": 0,
+            "n": 0
+          },
+          "latency_ms": {
+            "p50": 0,
+            "p95": 0,
+            "p99": 0
+          }
+        },
+        "B": {
+          "variant": "B_fingerprint",
+          "origin_split": "phase1_organic",
+          "n": 0,
+          "precision_at_5": {
+            "point": 0,
+            "lower": 0,
+            "upper": 0,
+            "n": 0
+          },
+          "recall_at_10": {
+            "point": 0,
+            "lower": 0,
+            "upper": 0,
+            "n": 0
+          },
+          "mrr": {
+            "mean": 0,
+            "ci_lower": 0,
+            "ci_upper": 0,
+            "n": 0
+          },
+          "latency_ms": {
+            "p50": 0,
+            "p95": 0,
+            "p99": 0
+          }
+        },
+        "C": {
+          "variant": "C_fused",
+          "origin_split": "phase1_organic",
+          "n": 0,
+          "precision_at_5": {
+            "point": 0,
+            "lower": 0,
+            "upper": 0,
+            "n": 0
+          },
+          "recall_at_10": {
+            "point": 0,
+            "lower": 0,
+            "upper": 0,
+            "n": 0
+          },
+          "mrr": {
+            "mean": 0,
+            "ci_lower": 0,
+            "ci_upper": 0,
+            "n": 0
+          },
+          "latency_ms": {
+            "p50": 0,
+            "p95": 0,
+            "p99": 0
+          }
+        }
+      },
+      "v4_backfill": {
+        "A": {
+          "variant": "A_semantic",
+          "origin_split": "v4_backfill",
+          "n": 20,
+          "precision_at_5": {
+            "point": 0.65,
+            "lower": 0.4328542750684442,
+            "upper": 0.818808176876017,
+            "n": 20
+          },
+          "recall_at_10": {
+            "point": 0.9,
+            "lower": 0.6989663528135878,
+            "upper": 0.9721335190383086,
+            "n": 20
+          },
+          "mrr": {
+            "mean": 0.433452380952381,
+            "ci_lower": 0.27533035714285714,
+            "ci_upper": 0.6100863095238095,
+            "n": 20
+          },
+          "latency_ms": {
+            "p50": 1.3952499999999972,
+            "p95": 1.976174999999993,
+            "p99": 2.880194999999998
+          }
+        },
+        "B": {
+          "variant": "B_fingerprint",
+          "origin_split": "v4_backfill",
+          "n": 20,
+          "precision_at_5": {
+            "point": 0.75,
+            "lower": 0.5312991206074114,
+            "upper": 0.8881382993000237,
+            "n": 20
+          },
+          "recall_at_10": {
+            "point": 0.95,
+            "lower": 0.7638688045357189,
+            "upper": 0.9911185512976646,
+            "n": 20
+          },
+          "mrr": {
+            "mean": 0.493531746031746,
+            "ci_lower": 0.33543452380952377,
+            "ci_upper": 0.6406121031746033,
+            "n": 20
+          },
+          "latency_ms": {
+            "p50": 0.21520000000000294,
+            "p95": 0.5086649999999932,
+            "p99": 0.5461330000000002
+          }
+        },
+        "C": {
+          "variant": "C_fused",
+          "origin_split": "v4_backfill",
+          "n": 20,
+          "precision_at_5": {
+            "point": 0.75,
+            "lower": 0.5312991206074114,
+            "upper": 0.8881382993000237,
+            "n": 20
+          },
+          "recall_at_10": {
+            "point": 0.85,
+            "lower": 0.6395811333571357,
+            "upper": 0.9476312545132735,
+            "n": 20
+          },
+          "mrr": {
+            "mean": 0.42686507936507934,
+            "ci_lower": 0.2669097222222222,
+            "ci_upper": 0.6135982142857144,
+            "n": 20
+          },
+          "latency_ms": {
+            "p50": 1.6171000000000006,
+            "p95": 2.1654050000000007,
+            "p99": 2.571321000000001
+          }
+        }
+      }
+    },
+    "deltas": {
+      "pooled": {
+        "B_vs_A": {
+          "baseline": "A_semantic",
+          "variant": "B_fingerprint",
+          "origin_split": "pooled",
+          "delta_precision_at_5": {
+            "point": 0.09999999999999998,
+            "lower": -0.1573605556210078,
+            "upper": 0.37627210359950614,
+            "n": 20
+          },
+          "delta_recall_at_10": {
+            "point": 0.04999999999999993,
+            "lower": -0.1551956689647459,
+            "upper": 0.24961980486367677,
+            "n": 20
+          }
+        },
+        "C_vs_A": {
+          "baseline": "A_semantic",
+          "variant": "C_fused",
+          "origin_split": "pooled",
+          "delta_precision_at_5": {
+            "point": 0.09999999999999998,
+            "lower": -0.1573605556210078,
+            "upper": 0.37627210359950614,
+            "n": 20
+          },
+          "delta_recall_at_10": {
+            "point": -0.050000000000000044,
+            "lower": -0.27348688811406024,
+            "upper": 0.1724395288794631,
+            "n": 20
+          }
+        }
+      },
+      "phase1_organic": {
+        "B_vs_A": {
+          "baseline": "A_semantic",
+          "variant": "B_fingerprint",
+          "origin_split": "phase1_organic",
+          "delta_precision_at_5": {
+            "point": 0,
+            "lower": 0,
+            "upper": 0,
+            "n": 0
+          },
+          "delta_recall_at_10": {
+            "point": 0,
+            "lower": 0,
+            "upper": 0,
+            "n": 0
+          }
+        },
+        "C_vs_A": {
+          "baseline": "A_semantic",
+          "variant": "C_fused",
+          "origin_split": "phase1_organic",
+          "delta_precision_at_5": {
+            "point": 0,
+            "lower": 0,
+            "upper": 0,
+            "n": 0
+          },
+          "delta_recall_at_10": {
+            "point": 0,
+            "lower": 0,
+            "upper": 0,
+            "n": 0
+          }
+        }
+      },
+      "v4_backfill": {
+        "B_vs_A": {
+          "baseline": "A_semantic",
+          "variant": "B_fingerprint",
+          "origin_split": "v4_backfill",
+          "delta_precision_at_5": {
+            "point": 0.09999999999999998,
+            "lower": -0.1573605556210078,
+            "upper": 0.37627210359950614,
+            "n": 20
+          },
+          "delta_recall_at_10": {
+            "point": 0.04999999999999993,
+            "lower": -0.1551956689647459,
+            "upper": 0.24961980486367677,
+            "n": 20
+          }
+        },
+        "C_vs_A": {
+          "baseline": "A_semantic",
+          "variant": "C_fused",
+          "origin_split": "v4_backfill",
+          "delta_precision_at_5": {
+            "point": 0.09999999999999998,
+            "lower": -0.1573605556210078,
+            "upper": 0.37627210359950614,
+            "n": 20
+          },
+          "delta_recall_at_10": {
+            "point": -0.050000000000000044,
+            "lower": -0.27348688811406024,
+            "upper": 0.1724395288794631,
+            "n": 20
+          }
+        }
+      }
+    },
+    "density": {
+      "noise_floor": 0,
+      "noise_sigma": 0.10991047970356123,
+      "cluster_threshold": 0.21982095940712246,
+      "cluster_count": {
+        "weak_K2": 9,
+        "strong_K5": 2
+      },
+      "intra_project_share": 0.23430962343096234,
+      "density_meaningful": false,
+      "random_pair_sample_size": 1000
+    },
+    "decision_rule_inputs": {
+      "held_out_test_n": 20,
+      "fused_p5_minus_semantic_p5": {
+        "delta": 0.09999999999999998,
+        "ci_lower": -0.1573605556210078,
+        "ci_upper": 0.37627210359950614
+      },
+      "fused_r10_minus_semantic_r10": {
+        "delta": -0.050000000000000044,
+        "ci_lower": -0.27348688811406024,
+        "ci_upper": 0.1724395288794631
+      },
+      "intra_project_share": 0.23430962343096234,
+      "p99_fused_over_p99_semantic": 0.8927593444193893
+    }
+  },
+  "verdict": {
+    "kind": "KILL",
+    "criteria": {
+      "criterion_1": {
+        "name": "criterion_1_fusion_improvement",
+        "passed": false,
+        "observed": 0.09999999999999998,
+        "threshold": 0.05,
+        "evidence": "delta_p5=0.1000 (CI lower -0.1574); delta_r10=-0.0500 (CI lower -0.2735); n=20; CI-binding failed both metrics",
+        "applies_to": "criterion_1"
+      },
+      "criterion_2": {
+        "name": "criterion_2_density_signal",
+        "passed": false,
+        "observed": 0.23430962343096234,
+        "threshold": 0.3,
+        "evidence": "intra_project_share=0.2343 (threshold 0.30)",
+        "applies_to": "criterion_2"
+      },
+      "criterion_3": {
+        "name": "criterion_3_latency_budget",
+        "passed": true,
+        "observed": 0.8927593444193893,
+        "threshold": 2,
+        "evidence": "p99(C) / p99(A) = 0.8928 (threshold 2.0)",
+        "applies_to": "criterion_3"
+      }
+    },
+    "reasoning": "Criterion 1 FAILED (delta_p5=0.1000 (CI lower -0.1574); delta_r10=-0.0500 (CI lower -0.2735); n=20; CI-binding failed both metrics). Criterion 2 FAILED (intra_project_share=0.2343 (threshold 0.30)). Criterion 3 PASSED (p99(C) / p99(A) = 0.8928 (threshold 2.0)). Verdict: KILL — no measurable signal or density is noise; Phase 3 plan rewritten at user-approval gate.",
+    "computed_at_ts_epoch": 1777940002,
+    "decision_rule_quote": "## 5. Decision rule — locked BEFORE measurement runs\n\nEmpirical-phase discipline: this rule is committed to CONTEXT.md and PLAN.md before the harness is built. **No moving goalposts after we see results.**\n\n**GREEN-LIGHT Phase 3 — proceed with full multi-handle retrieval cutover:**\n\nALL three must hold on the **held-out test set**:\n1. RRF-fusion has measurable improvement over semantic-only — minimum **+5pp on either precision@5 OR recall@10**, AND the **Wilson 95% CI lower bound on the delta is ≥ 0** (i.e., the improvement is not statistically indistinguishable from zero at our sample size). The AND-CI-bound is the discipline that prevents green-lighting on noise — at n≈40-60 pairs, raw point-deltas of +5pp can be inside the CI of zero.\n2. Density at scale produces signal — ≥30% of high-similarity pairs (per #4) are intra-project recurrent.\n3. Latency p99 of fused retrieval < 2× semantic-only baseline. Cost discipline: a marginally-better signal that doubles tail latency is not worth shipping.\n\n**SCOPE-DOWN to advisory — Phase 3 ships, but lighter than originally planned:**\nImprovement exists on specific subsets (e.g. only Python stack traces, only one project) but not broadly. Phase 3 ships an **advisory-only surface** (\"you've hit a similar error before, see episode X\") without aggressive RRF fusion in the production retrieval path. Phase 5 density abstraction is de-scoped accordingly (advisory, not abstraction).\n\n**KILL — pivot or stop:**\nNo measurable improvement (criteria 1 fails on held-out CI bound) OR density is pure noise (criteria 2 fails). Phase 3 plan is rewritten or the multi-handle thesis is reconsidered at the milestone level."
+  }
+}
