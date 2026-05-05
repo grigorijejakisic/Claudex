@@ -11,14 +11,14 @@ See: `.planning/PROJECT.md` (created 2026-05-04)
 ## Current Position
 
 **Current Milestone:** v5 — Bound Multi-Modal Episodes
-**Phase:** 2.1 — Corpus-expansion rerun (about to begin)
+**Phase:** 2.1 — Corpus-expansion rerun (CONTEXT gathered; ready for plan)
 **Plan:** —
-**Status:** Phase 2 produced ONE bound measurement at n=20 with verdict KILL. User-approval (2026-05-05) selected Option 4: rerun with expanded corpus to produce a SECOND bound measurement before drawing milestone-level conclusions. Per the parable: a single experience is not yet an abstraction — density across multiple measurements is what produces real signal.
+**Status:** Phase 2 produced ONE bound measurement at n=20 with verdict KILL. User-approval (2026-05-05) selected Option 4: rerun with expanded corpus to produce a SECOND bound measurement before drawing milestone-level conclusions. Per the parable: a single experience is not yet an abstraction — density across multiple measurements is what produces real signal. Phase 2.1 CONTEXT.md committed (44ba6a3); locks four areas: corpus expansion (1a-C / 1b-A / 1c three-tier phase-anchored), threshold-tested labeler (strict ≥3 + relaxed ≥2 run independently, two parallel verdicts no combination), descriptive-not-gating audit (20 stratified per tier, full agent autonomy), and aggregating reporting (per-phase RESULTS + new `.planning/aggregates/multi-handle.{md,json}` append-only event-sourced layer).
 **Verdict log:**
 - Phase 2 (2026-05-04, n=20 held-out): criterion 1 failed CI binding (delta_p5 +10pp but ci_lower -0.157); criterion 2 failed density (intra_project_share 0.234 < 0.30); criterion 3 passed (latency p99 ratio 0.89). Decision rule fired honestly. Code retained at flag-off; harness preserved for reuse.
-- Phase 2.1 (pending): same harness, expanded corpus targeting n≥200, same locked decision rule verbatim.
-**Last activity:** 2026-05-05 — user selected Option 4 (corpus-expansion rerun) at the post-Phase-2 gate. ROADMAP.md updated with Phase 2.1 entry framed as "second bound measurement, not thesis-test." Spawning discuss-2.1.
-**Next step:** Phase 2.1 discuss → plan → execute. The discipline being applied: empirical phases produce bound experiences. Multiple measurements are aggregated; no single phase's verdict abstracts to a milestone-level claim. Phase 3 stays gated on accumulated evidence, not on any single phase's outcome.
+- Phase 2.1 (pending): same harness + locked decision rule verbatim, expanded corpus targeting n≥200 per labeler tier, two parallel bound experiences (strict + relaxed).
+**Last activity:** 2026-05-04 — discuss-2.1 captured CONTEXT.md (4 areas locked across 4 message exchanges with team-lead). Committed at 44ba6a3.
+**Next step:** Phase 2.1 plan (`/gsd:plan-phase 2.1` or auto-pipeline). Discipline being applied: empirical phases produce bound experiences. Multiple measurements are aggregated; no single phase's verdict abstracts to a milestone-level claim. Phase 3 stays gated on accumulated evidence in `.planning/aggregates/multi-handle.json`, not on any single phase's outcome.
 
 ### v5 Phase Structure (Initial — Refinable in Phase 1 Discuss)
 
