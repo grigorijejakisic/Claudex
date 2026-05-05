@@ -21,9 +21,11 @@ The substrate phases (1, 3, 6) ship engineering. The empirical phases (2, 5) pro
 
     **Outcome:** V25 migration with 4 indexes + closed-enum `provenance` CHECK; helpers `dualWriteUserPrompt`/`dualWriteAssistantMessage`/`writeToolResult`/`writeEnvironmentalEvent` in `src/core/episodic-events.ts`; PostToolUse + session-start + session-end + Angel heartbeat instrumented; 60+ EPI-tagged tests including stub-extractor proof of EPI-07 Mem0-trap-impossibility; substrate operator README + environmental audit at `.planning/phases/01-episode-substrate/`. Vesna 17/17 preserved.
 
-- [ ] **Phase 2: Multi-modal index seeds + density-at-scale check** _(type: empirical)_
+- [x] **Phase 2: Multi-modal index seeds + density-at-scale check** _(type: empirical)_ — SHIPPED 2026-05-04, **verdict KILL**
 
     Investigation phase. Pick **one** non-semantic index and prove it works on a small corpus. Recommended starter: error-fingerprint (token-shingle + edit-distance over stack traces). Build it on Phase 1's substrate, populate with 30–50 episodes from real Claudex sessions, measure: (a) does the index fire on similar errors? (b) when fired alongside semantic recall, does fusion improve precision/recall? (c) at the scale of our episode corpus (~9K observations across projects), is density a meaningful signal or pure noise? Output is a measurement report. **Negative result is a valid output** — if error-fingerprint doesn't justify its complexity, scope it down or pivot before phase 3 builds on it.
+
+    **Outcome:** V26 sidecar `episodic_index_error_fingerprint` + pure fingerprinter + idempotent backfill (135 fingerprints / 19 projects on operator DB; 10,678 sidecar rows) + Wilson/Newcombe measurement harness + verdict runner. Live measurement: criterion 1 FAILED (delta_p5 +10pp but Wilson CI lower -0.157 at n=20 — CI-binding discipline rejected as noise); criterion 2 FAILED (intra_project_share 0.234 < 0.30 threshold); criterion 3 PASSED (latency p99 ratio 0.89). Per CONTEXT item 7: Vesna probes remain in `.disabled/`, `DEFAULT_CONFIG.features.error_fingerprint` flipped true→false, backfill data retained, harness reusable by Phase 5. Phase 3's multi-handle cutover plan is **NOT** ready — escalate to user-approval gate. Full report at `.planning/phases/02-multi-modal-index-seeds-density-check/02-05-SUMMARY.md` + `02-RESULTS.md` + `02-results.json`.
 
 - [ ] **Phase 3: Multi-handle retrieval cutover** _(type: engineering)_
 

@@ -11,10 +11,12 @@ See: `.planning/PROJECT.md` (created 2026-05-04)
 ## Current Position
 
 **Current Milestone:** v5 — Bound Multi-Modal Episodes
-**Phase:** 1 — Episode substrate (SHIPPED 2026-05-04)
-**Plan:** 01-04 complete; Phase 1 done. Ready for Phase 2 discuss.
-**Status:** All 4 plans (01-01..01-04) shipped with SUMMARYs on disk. V25 migration + dual-write substrate + 4-provenance writers + integration tests + substrate README all landed. Vesna 17/17 preserved. Pre-existing 27 test failures (llama-* + phase-5-full-gate) unchanged from master baseline; no new regressions from Phase 1.
-**Last activity:** 2026-05-04 — Phase 1 SHIPPED via `/auto-execute-phase 1`. Final commit `2ee5de1` (Plan 01-04 SUMMARY). Substrate is empty by design — Phase 2 (multi-modal index seeds + density-at-scale) builds the first index from rows accumulated post-ship.
+**Phase:** 2 — Multi-modal index seeds + density-at-scale check (SHIPPED 2026-05-04, verdict KILL)
+**Plan:** 02-01..02-05 complete; Phase 2 done. Ready for user-approval gate before Phase 3.
+**Status:** All 5 plans shipped. V26 sidecar + pure fingerprinter + backfill (135 fingerprints / 19 projects on operator DB) + Wilson/Newcombe measurement harness + verdict module + runner all landed. Vesna 17/17 preserved. Pre-existing 27 test failures (llama-* + phase-5-full-gate) unchanged from master baseline; no new regressions.
+**Verdict:** **KILL.** Decision rule fired honestly: criterion 1 failed CI binding (delta_p5 +10pp but ci_lower -0.157 at n=20 test pairs); criterion 2 failed density (intra_project_share 0.234 < 0.30); criterion 3 passed (latency p99 ratio 0.89). Per CONTEXT item 7: probes stay disabled, `DEFAULT_CONFIG.features.error_fingerprint` flipped true→false, backfill rows retained (10678 sidecar + 187 fingerprinted episodes). Code retained at flag for future reference; harness reusable by Phase 5.
+**Last activity:** 2026-05-04 — Phase 2 SHIPPED via `/auto-execute-phase 2`. Final commit `71506e6` (all 5 plan SUMMARYs).
+**Next step:** **User-approval gate before Phase 3.** Phase 3's multi-handle cutover plan is NOT justified by Phase 2's measurement. Options to discuss: (a) re-plan Phase 3 with a different non-semantic index (affect, structural-shape); (b) stack-trace-aware tokenizer for the semantic embedder; (c) abandon multi-handle and revisit density-only Phase 5; (d) rerun on a larger corpus or with a different pair-labeler. See `.planning/phases/02-multi-modal-index-seeds-density-check/02-05-SUMMARY.md` for full operator narrative.
 
 ### v5 Phase Structure (Initial — Refinable in Phase 1 Discuss)
 
