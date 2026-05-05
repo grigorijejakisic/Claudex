@@ -1949,3 +1949,65 @@ export function migrateV26toV27(db: Database): boolean {
 export function migrateV27toV28(_db: Database): boolean {
   return true;
 }
+
+/**
+ * V28→V29 (Phase 6 EBD-05 — crash-resilient episode boundary substrate).
+ *
+ * Lands two pieces of durable state needed by the boundary detector:
+ *
+ *   1. New `episode_boundary_cursor` table — per (project, session_id):
+ *      last_processed_jsonl_offset, last_processed_event_ts_epoch,
+ *      last_close_event_id. Crash-replay cursor: on reboot, the watcher
+ *      resumes from the last cursor row instead of re-emitting close events.
+ *
+ *   2. Two columns on `sessions`:
+ *      - last_heartbeat_ts INTEGER NULL — bumped by the 5 lifecycle hooks
+ *        (UserPromptSubmit / PreToolUse / PostToolUse / Stop / SessionEnd).
+ *      - last_jsonl_write_ts INTEGER NULL — bumped by the chokidar watcher
+ *        when a JSONL append is observed.
+ *
+ * Soft FK: `last_close_event_id` references `episodic_events.id` but no
+ * PRAGMA foreign_keys flip in V29 (schema-wide FK enforcement is a separate
+ * decision deferred per CONTEXT). Phase 6 plan 04's boundary detector
+ * uses heartbeat-compare-before-cleanup as the durability invariant, not
+ * SQLite-side FK semantics.
+ *
+ * Idempotent via existence checks on the cursor table and column-name
+ * substring scan of the sessions DDL (SQLite has no IF NOT EXISTS for
+ * ALTER TABLE ADD COLUMN — same pattern as `.claude/rules/schema-migration.md`).
+ * Re-running on a V29 DB is a no-op (returns false).
+ */
+export function migrateV28toV29(db: Database): boolean {
+  const hasCursor = hasTable(db, 'episode_boundary_cursor');
+  const sessionsColsRow = db.prepare(
+    "SELECT sql FROM sqlite_master WHERE type='table' AND name='sessions'"
+  ).get() as { sql?: string } | undefined;
+  const sessionsSql = sessionsColsRow?.sql ?? '';
+  const hasHeartbeatCol = sessionsSql.includes('last_heartbeat_ts');
+  const hasJsonlCol = sessionsSql.includes('last_jsonl_write_ts');
+  if (hasCursor && hasHeartbeatCol && hasJsonlCol) return false;
+
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS episode_boundary_cursor (
+      project                       TEXT    NOT NULL,
+      session_id                    TEXT    NOT NULL,
+      last_processed_jsonl_offset   INTEGER NOT NULL DEFAULT 0,
+      last_processed_event_ts_epoch INTEGER NOT NULL DEFAULT 0,
+      last_close_event_id           INTEGER,
+      PRIMARY KEY (project, session_id)
+    );
+    CREATE INDEX IF NOT EXISTS idx_ebc_session
+      ON episode_boundary_cursor(session_id);
+    CREATE INDEX IF NOT EXISTS idx_ebc_close_event
+      ON episode_boundary_cursor(last_close_event_id) WHERE last_close_event_id IS NOT NULL;
+  `);
+
+  if (!hasHeartbeatCol) {
+    try { db.exec(`ALTER TABLE sessions ADD COLUMN last_heartbeat_ts INTEGER`); } catch { /* already added */ }
+  }
+  if (!hasJsonlCol) {
+    try { db.exec(`ALTER TABLE sessions ADD COLUMN last_jsonl_write_ts INTEGER`); } catch { /* already added */ }
+  }
+
+  return true;
+}
