@@ -54,7 +54,6 @@ import { GLOBAL_PROJECT_SCOPE } from '../shared/constants.js';
 import type { RerankerSupervisor } from './reranker-supervisor.js';
 import type { LlamaServerSupervisor } from './llama-server-supervisor.js';
 import {
-  callLocalLLM,
   checkLlamaServerHealth,
   isCloudModel,
   LLAMA_MODEL_ALIAS,
@@ -1075,10 +1074,10 @@ export async function heartbeatTick(ctx: HeartbeatContext): Promise<TickResult> 
           result.patterns_promoted_to_always = promoted;
         }
 
-        // Merge similar patterns using Qdrant semantic similarity + LLM synthesis.
-        // For each high-score pattern, find semantically similar ones via vector search.
-        // If found, use LLM to synthesize an abstract principle, then merge.
-        // Falls back to string-matching merge when Qdrant/LLM unavailable.
+        // Dedup similar high-score patterns: vector search → score absorption +
+        // DELETE absorbed rows. No content synthesis. Phase 4 deleted the LLM-
+        // driven lesson rewrite (Site C of the extraction-creation kill).
+        // See .planning/reframes/2026-05-05-multi-handle-kill.md.
         try {
           const { findSimilarPatterns } = await import('../intelligence/experience-patterns.js');
           const mergeTargets = cachedPrepare(ctx.db,
@@ -1087,32 +1086,16 @@ export async function heartbeatTick(ctx: HeartbeatContext): Promise<TickResult> 
           ).all() as Array<{ id: string; trigger_context: string; lesson: string; score: number }>;
 
           const merged = new Set<string>();
+          // Phase 4: dedup + score absorption only. LLM lesson synthesis was
+          // deleted because synthesizing a new abstract principle from N rows
+          // is extraction-time abstraction (Mem0 trap at smaller scale).
           for (const target of mergeTargets) {
             if (merged.has(target.id)) continue;
             const similar = await findSimilarPatterns(ctx.db, target.id, target.trigger_context, 3, 0.80);
             const toMerge = similar.filter(s => !merged.has(s.id) && s.id !== target.id);
             if (toMerge.length === 0) continue;
 
-            // Try LLM synthesis — combine lessons into one abstract principle
-            let synthesizedLesson = target.lesson;
-            try {
-              const lessons = [target.lesson, ...toMerge.map(m => m.lesson)].join('\n- ');
-              const prompt = `These are related learnings from a coding assistant's experience:\n- ${lessons}\n\nSynthesize ONE concise abstract principle (max 200 chars) that captures the common rule. Output only the principle, nothing else.`;
-
-              const text = await callLocalLLM({
-                prompt,
-                // Budget for Gemma's reasoning_content overhead — 256 is
-                // too small (all burned on reasoning). 1024 leaves room for
-                // a short synthesized principle.
-                maxTokens: 1024,
-              });
-              if (text.length > 10 && text.length < 300) {
-                synthesizedLesson = text;
-              }
-            } catch { /* LLM failed — keep original lesson */ }
-
-            // Merge: absorb scores, update lesson, delete absorbed patterns
-            let totalAbsorbed = 0;
+            // Merge: absorb scores, delete absorbed patterns.
             for (const m of toMerge) {
               cachedPrepare(ctx.db,
                 `UPDATE experience_patterns SET score = score + ? WHERE id = ?`
@@ -1121,14 +1104,6 @@ export async function heartbeatTick(ctx: HeartbeatContext): Promise<TickResult> 
                 `DELETE FROM experience_patterns WHERE id = ?`
               ).run(m.id);
               merged.add(m.id);
-              totalAbsorbed += m.score;
-            }
-
-            // Update lesson with synthesized version
-            if (synthesizedLesson !== target.lesson) {
-              cachedPrepare(ctx.db,
-                `UPDATE experience_patterns SET lesson = ? WHERE id = ?`
-              ).run(synthesizedLesson, target.id);
             }
           }
 
