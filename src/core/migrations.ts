@@ -46,6 +46,7 @@ import {
   migrateV24toV25,
   migrateV25toV26,
   migrateV26toV27,
+  migrateV27toV28,
   migrateSchemaFixes,
   cleanupOrphanTables,
   upgradeV2SchemaInPlace,
@@ -95,7 +96,7 @@ export { migrateV14toV15 };
  * `claudex doctor` (DIAG-05) reads this to verify the on-disk DB is in sync.
  * Bumping a migration must bump this constant in lockstep.
  */
-export const TARGET_USER_VERSION = 27;
+export const TARGET_USER_VERSION = 28;
 
 export function runMigrations(db: Database): void {
   const row = db.pragma('user_version') as Array<{ user_version: number }>;
@@ -138,6 +139,7 @@ export function runMigrations(db: Database): void {
     [24, () => { migrateV24toV25(db); }],
     [25, () => { migrateV25toV26(db); }],
     [26, () => { migrateV26toV27(db); }],
+    [27, () => { migrateV27toV28(db); }],
   ];
 
   // Handle special cases for version 0 and 1
@@ -360,6 +362,41 @@ export function initializeSchema(db: Database): void {
   if (currentUv < 27) {
     migrateV26toV27(db);
     db.pragma('user_version = 27');
+  }
+  // V5 Phase 4 (AR-03): mark this DB as past the V28 cutoff. The actual
+  // gating mechanism (TEMP table + TEMP trigger) is installed unconditionally
+  // below — TEMP objects don't persist across connections, so re-installation
+  // happens every initializeSchema call.
+  if (currentUv < 28) {
+    migrateV27toV28(db);
+    db.pragma('user_version = 28');
+  }
+
+  // Phase 4 (V28): per-connection sidecar + TEMP TRIGGER guarding writes
+  // to the legacy `experience_patterns` table. Both objects live in the
+  // `temp` schema because (a) SQLite forbids a permanent-schema trigger
+  // from referencing temp objects and (b) overrides must be per-connection
+  // so tests cannot leak to production code paths. Phase 7 retirement work
+  // for other legacy tables (learning, decision, transcript_chunk) can
+  // reuse `session_pragmas` with different keys. Must run AFTER the
+  // experience_patterns table is created (SCHEMA_V3 / post-V17 path) and
+  // on every initializeSchema call — TEMP objects do not persist.
+  if (hasTable(db, 'experience_patterns')) {
+    db.exec(`
+      CREATE TEMP TABLE IF NOT EXISTS session_pragmas (
+        key TEXT PRIMARY KEY,
+        value TEXT
+      );
+
+      CREATE TEMP TRIGGER IF NOT EXISTS experience_patterns_insert_blocked
+      BEFORE INSERT ON experience_patterns
+      WHEN (SELECT value FROM temp.session_pragmas
+            WHERE key='allow_legacy_pattern_insert' LIMIT 1) IS NULL
+      BEGIN
+        SELECT RAISE(FAIL,
+          'experience_patterns is read-only legacy after Phase 4 (.planning/reframes/2026-05-05-multi-handle-kill.md). Set session_pragma allow_legacy_pattern_insert=1 only for tests, fixtures, or Phase 7 retirement work.');
+      END;
+    `);
   }
 }
 

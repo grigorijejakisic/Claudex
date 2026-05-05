@@ -1918,3 +1918,34 @@ export function migrateV26toV27(db: Database): boolean {
   `);
   return true;
 }
+
+/**
+ * V27→V28 (Phase 4 AR-03 — extraction-time pattern creation cutoff, Layer 3).
+ *
+ * Marker migration: bumps user_version 27→28 to record that this DB has
+ * acknowledged the Phase 4 cutoff contract. The actual gating mechanism
+ * lives in `initializeSchema()` (see `installPhase4PatternGuard` /
+ * temp.session_pragmas wiring there) because:
+ *
+ *   - SQLite forbids a permanent-schema trigger from referencing temp
+ *     objects (`trigger ... cannot reference objects in database temp`).
+ *   - Per CONTEXT.md, the override sidecar MUST be a per-connection TEMP
+ *     table so test/fixture overrides cannot leak to other connections.
+ *   - A TEMP TRIGGER + TEMP TABLE pair satisfies both constraints; both
+ *     get installed at connection-open time inside `initializeSchema()`.
+ *
+ * Phase 4 deletes the three production code sites that previously INSERTed
+ * into `experience_patterns` (Sites A/B/C — see
+ * `.planning/reframes/2026-05-05-multi-handle-kill.md` and 04-CONTEXT.md).
+ * The TEMP trigger is the schema-level guard against future regression:
+ * any caller wanting to write must opt in by setting the pragma, which
+ * makes the deviation greppable and reviewable. Phase 7 retirement work
+ * will ultimately drop / project / keep this table.
+ *
+ * Idempotent: a no-op body. The runMigrations runner advances
+ * `user_version` from 27 to 28 once this entry is reached; re-running on
+ * an already-V28 DB is a no-op via the runner's version comparison.
+ */
+export function migrateV27toV28(_db: Database): boolean {
+  return true;
+}
