@@ -1,8 +1,30 @@
 /**
  * Experience Patterns — cross-session failure pattern memory with ExpeL scoring.
  *
- * Patterns are created when correction signals are detected, matched via FTS5
- * on every user prompt, and scored based on usefulness feedback:
+ * ## Phase 4 status: read-only-legacy
+ *
+ * Phase 4 (Angel reduction) deleted ALL production code paths that INSERT into
+ * the `experience_patterns` table. The V28 migration (Plan 04-01) installs a
+ * BEFORE INSERT TEMP trigger that blocks writes unless a per-connection
+ * `temp.session_pragmas` row sets `allow_legacy_pattern_insert='1'`.
+ *
+ * Sites deleted in Phase 4:
+ *   - Angel: extractPatternsFromSession (src/angel/pattern-extractor.ts — file deleted, Plan 04-02)
+ *   - Hooks: applyExperienceFeedback step 1 (src/intelligence/experience-scoring.ts, Plan 04-03)
+ *   - Heartbeat: LLM-merge synthesis (src/angel/heartbeat.ts:1090–1149, Plan 04-04)
+ *
+ * createPattern survives as an EXPORTED function for these legitimate uses:
+ *   - Test fixtures (Camp III tests must call allowLegacyPatternInsert in beforeEach)
+ *   - Phase 7 retirement work (re-deriving from episodic_events; see ROADMAP.md MIG-*)
+ *   - Operator one-shot scripts (with explicit pragma override)
+ *
+ * Do NOT call createPattern from production code. The trigger will RAISE FAIL.
+ * If you find yourself wanting to: read .planning/reframes/2026-05-05-multi-handle-kill.md.
+ *
+ * ## Original surface (still accurate for the read paths)
+ *
+ * Patterns are matched via FTS5 on every user prompt and scored based on
+ * usefulness feedback:
  *   +1 per useful trigger (no re-correction after warning)
  *   -1 per false positive (re-correction despite warning)
  *   deleted when score reaches 0
@@ -330,6 +352,14 @@ export function promoteToGlobalIfCrossProject(
 // ---------------------------------------------------------------------------
 
 /**
+ * @phase4_status read-only-legacy
+ *
+ * Phase 4 deleted all production INSERT callers; the V28 trigger blocks
+ * writes from connections without `allow_legacy_pattern_insert=1` in
+ * temp.session_pragmas. Use only from test fixtures, Phase 7 retirement
+ * tooling, or explicit operator scripts. See module-level docblock + the
+ * 2026-05-05 reframe at .planning/reframes/2026-05-05-multi-handle-kill.md.
+ *
  * Creates a new experience pattern.
  * Sanitizes text fields before storage to prevent prompt injection.
  * Checks for duplicates first — if a similar trigger_context already exists
