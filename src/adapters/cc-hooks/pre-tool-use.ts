@@ -11,6 +11,7 @@
  */
 
 import { wrapHook } from './infrastructure.js';
+import { cachedPrepare } from '../../core/stmt-cache.js';
 
 /**
  * Looks up permission decision for a tool call.
@@ -24,9 +25,17 @@ function lookupPermissionDecision(
   return undefined;
 }
 
-const main = wrapHook('PreToolUse', async (input, _ctx) => {
+const main = wrapHook('PreToolUse', async (input, ctx) => {
   const toolName = (input.tool_name as string) || '';
   const toolInput = (input.tool_input as Record<string, unknown>) || {};
+
+  // Phase 6 EBD-02: heartbeat tick. Best-effort; never fails the hook.
+  try {
+    const now = Math.floor(Date.now() / 1000);
+    cachedPrepare(ctx.db,
+      `UPDATE sessions SET last_heartbeat_ts = ? WHERE session_id = ?`
+    ).run(now, input.session_id);
+  } catch { /* swallow */ }
 
   // X8: Permission decision lookup (all tools)
   const permissionResult = lookupPermissionDecision(toolName, toolInput);

@@ -89,6 +89,14 @@ const main = wrapHook('Stop', async (input, ctx) => {
     ?? undefined;
   const lastUserText = (input.prompt as string) ?? (input.user_prompt as string) ?? undefined;
 
+  // Phase 6 EBD-02: heartbeat tick. Best-effort; never fails the hook.
+  try {
+    const now = Math.floor(Date.now() / 1000);
+    cachedPrepare(ctx.db,
+      `UPDATE sessions SET last_heartbeat_ts = ? WHERE session_id = ?`
+    ).run(now, input.session_id);
+  } catch { /* swallow */ }
+
   // Content-aware routing — route decisions/insights to the correct project
   const routingContent = ((lastUserText || '') + ' ' + (lastAssistantText || '')).substring(0, 5000);
   const projectIndex = buildProjectIndex();

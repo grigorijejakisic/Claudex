@@ -34,6 +34,7 @@ import { autoNameSession } from '../../core/session-discovery.js';
 import { acknowledgeTransfer } from '../../core/session-transfer.js';
 import { classifyIntent, getRetrievalConfigForIntent } from '../../intelligence/intent-classifier.js';
 import type { IntentType, RetrievalConfig } from '../../intelligence/intent-classifier.js';
+import { cachedPrepare } from '../../core/stmt-cache.js';
 
 /** CC internal messages that should not trigger any context processing. */
 const CC_INTERNAL_RE = /^(tasknotification\s|outputfile)/i;
@@ -58,6 +59,16 @@ const main = wrapHook('UserPromptSubmit', async (input, ctx) => {
   try {
     await ensureAngelRunning(ctx.db, input.session_id, ctx.project, /* isUserTurn */ true);
   } catch { /* Angel is optional */ }
+
+  // Phase 6 EBD-02: heartbeat tick. Plan 04's boundary detector reads
+  // sessions.last_heartbeat_ts to decide ALIVE/DORMANT/TERMINATED.
+  // Best-effort: a DB lock or schema mismatch must NEVER fail the hook.
+  try {
+    const now = Math.floor(Date.now() / 1000);
+    cachedPrepare(ctx.db,
+      `UPDATE sessions SET last_heartbeat_ts = ? WHERE session_id = ?`
+    ).run(now, input.session_id);
+  } catch { /* swallow — column write is best-effort */ }
 
   // ---------------------------------------------------------------------------
   // Intent classification (Phase 18) — pure regex, <1ms, non-throwing.

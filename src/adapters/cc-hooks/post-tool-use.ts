@@ -34,6 +34,14 @@ const main = wrapHook('PostToolUse', async (input, ctx) => {
   const toolInput = (input.tool_input as Record<string, unknown>) || {};
   const toolOutput = (input.tool_response as Record<string, unknown>) || undefined;
 
+  // Phase 6 EBD-02: heartbeat tick. Best-effort; never fails the hook.
+  try {
+    const now = Math.floor(Date.now() / 1000);
+    cachedPrepare(ctx.db,
+      `UPDATE sessions SET last_heartbeat_ts = ? WHERE session_id = ?`
+    ).run(now, input.session_id);
+  } catch { /* swallow */ }
+
   // Content-aware routing — route to the project the content belongs to
   const routingContent = extractRoutingContent(toolInput, toolOutput);
   const projectIndex = buildProjectIndex();
