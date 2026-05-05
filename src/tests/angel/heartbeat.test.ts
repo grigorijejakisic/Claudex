@@ -33,8 +33,7 @@ vi.mock('../../angel/llama-client.js', () => ({
   LLAMA_MODEL_ALIAS: 'glm-5.1:cloud',
 }));
 
-vi.mock('../../angel/pattern-extractor.js', () => ({
-  extractPatternsFromSession: vi.fn().mockResolvedValue({ patternsCreated: 0, summary: 'no patterns found' }),
+vi.mock('../../angel/domain-classifier.js', () => ({
   classifySessionDomains: vi.fn().mockResolvedValue(0),
 }));
 
@@ -74,7 +73,6 @@ vi.mock('../../angel/session-monitor.js', () => ({
   getIdleSessions: vi.fn().mockReturnValue([]),
   hasIdleWarning: vi.fn().mockReturnValue(false),
   getUnprocessedSessions: vi.fn().mockReturnValue([]),
-  markSessionProcessed: vi.fn(),
   getEscalatedIdleSessions: vi.fn().mockReturnValue([]),
   detectStuckSession: vi.fn().mockReturnValue(null),
 }));

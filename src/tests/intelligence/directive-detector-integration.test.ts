@@ -20,7 +20,6 @@ import { applyV17DDL } from '../../core/migration/v17-ddl.js';
 // ── Mocks (must be declared BEFORE the module under test is imported) ─────
 const mockCallLocalLLM = vi.fn<(opts: unknown) => Promise<string>>();
 const mockEmbedText = vi.fn<(text: string) => Promise<number[] | null>>();
-const mockExtractPatterns = vi.fn<(...args: unknown[]) => Promise<{ patternsCreated: number; summary: string }>>();
 const mockClassifyDomains = vi.fn<(...args: unknown[]) => Promise<number>>();
 
 vi.mock('../../angel/llama-client.js', () => ({
@@ -32,8 +31,7 @@ vi.mock('../../angel/llama-client.js', () => ({
 vi.mock('../../embeddings/embed-pipeline.js', () => ({
   embedText: (text: string) => mockEmbedText(text),
 }));
-vi.mock('../../angel/pattern-extractor.js', () => ({
-  extractPatternsFromSession: (...args: unknown[]) => mockExtractPatterns(...args),
+vi.mock('../../angel/domain-classifier.js', () => ({
   classifySessionDomains: (...args: unknown[]) => mockClassifyDomains(...args),
 }));
 
@@ -110,10 +108,8 @@ describe('directive-detector integration with Angel heartbeat', () => {
 
     mockCallLocalLLM.mockReset();
     mockEmbedText.mockReset();
-    mockExtractPatterns.mockReset();
     mockClassifyDomains.mockReset();
 
-    mockExtractPatterns.mockResolvedValue({ patternsCreated: 0, summary: 'no patterns found' });
     mockClassifyDomains.mockResolvedValue(0);
     // embedder returns a different unit vector per call so dedup never collides
     let embCalls = 0;
@@ -168,44 +164,37 @@ describe('directive-detector integration with Angel heartbeat', () => {
     expect(linked).toBe(2);
   });
 
-  it('failure isolation: directive throw does NOT block pattern-extractor', async () => {
+  it('failure isolation: directive throw does NOT crash the tick', async () => {
     seedTurn(db, sessionId, project, 1, 'always use Bun');
     mockCallLocalLLM.mockRejectedValue(new Error('simulated network failure'));
 
     const tick = await heartbeatTick(mkCtx(db));
 
-    // Pattern-extractor must still have been called for this session
-    expect(mockExtractPatterns).toHaveBeenCalledTimes(1);
-    const args = mockExtractPatterns.mock.calls[0];
-    expect(args[1]).toBe(sessionId);
-
     // tick completes without throwing
     expect(tick.error).toBeUndefined();
     // zero directives extracted, but the error counter may or may not be bumped
     expect(tick.directives_extracted ?? 0).toBe(0);
+    // domain classification still runs after directive failure
+    expect(mockClassifyDomains).toHaveBeenCalled();
   });
 
-  it('call order: directive extraction runs BEFORE pattern extraction', async () => {
+  it('directive extraction is the only LLM call in the Phase-2 loop body', async () => {
+    // Phase 4 (AR-01): pattern extraction was deleted — domain classification
+    // is what remains, and it never calls the local LLM in this test (the
+    // fixture topic is empty so classifySessionDomains returns 0 without
+    // calling callLocalLLM). Therefore the only call to mockCallLocalLLM
+    // inside the loop body is the directive-detector path.
     seedTurn(db, sessionId, project, 1, 'always use Bun');
-    const callOrder: string[] = [];
-    mockCallLocalLLM.mockImplementation(async () => {
-      callOrder.push('directive_llm');
-      return JSON.stringify({
-        is_directive: false, confidence: 0.9, polarity: null, scope: null,
-        suggested_title: null, normalized_text: null, reasoning: 'x',
-      });
-    });
-    mockExtractPatterns.mockImplementation(async () => {
-      callOrder.push('pattern_extractor');
-      return { patternsCreated: 0, summary: 'no patterns found' };
-    });
+    mockCallLocalLLM.mockResolvedValue(JSON.stringify({
+      is_directive: false, confidence: 0.9, polarity: null, scope: null,
+      suggested_title: null, normalized_text: null, reasoning: 'x',
+    }));
 
     await heartbeatTick(mkCtx(db));
 
-    const dirIdx = callOrder.indexOf('directive_llm');
-    const patIdx = callOrder.indexOf('pattern_extractor');
-    expect(dirIdx).toBeGreaterThanOrEqual(0);
-    expect(patIdx).toBeGreaterThanOrEqual(0);
-    expect(dirIdx).toBeLessThan(patIdx);
+    // The directive detector hits the LLM exactly once for the seeded turn.
+    expect(mockCallLocalLLM).toHaveBeenCalled();
+    // classifySessionDomains was called exactly once in the loop body.
+    expect(mockClassifyDomains).toHaveBeenCalledTimes(1);
   });
 });
