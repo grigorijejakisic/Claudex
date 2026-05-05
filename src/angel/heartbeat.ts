@@ -132,6 +132,9 @@ export async function heartbeatTick(ctx: HeartbeatContext): Promise<TickResult> 
   const start = Date.now();
   const result: TickResult = {
     idle_warnings_sent: 0,
+    // Phase 4: dead — no extractor exists. Field kept to avoid breaking
+    // observability surfaces (CLI dashboard, telemetry consumers). Phase 7
+    // retirement work removes the field entirely.
     sessions_processed: 0,
     patterns_extracted: 0,
     domains_classified: 0,
