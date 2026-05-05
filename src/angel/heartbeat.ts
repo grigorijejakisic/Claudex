@@ -29,9 +29,9 @@
 import type { Database } from 'better-sqlite3';
 import { cachedPrepare } from '../core/stmt-cache.js';
 import type { AngelConfig } from './types.js';
-import { getIdleSessions, getUnprocessedSessions, hasIdleWarning, markSessionProcessed, getEscalatedIdleSessions, detectStuckSession } from './session-monitor.js';
+import { getIdleSessions, getUnprocessedSessions, hasIdleWarning, getEscalatedIdleSessions, detectStuckSession } from './session-monitor.js';
 import { sendIdleWarning, sendMessage } from './message-sender.js';
-import { extractPatternsFromSession, classifySessionDomains } from './pattern-extractor.js';
+import { classifySessionDomains } from './domain-classifier.js';
 import {
   extractCuratedContextFromSession,
   getSessionsPendingCuratedExtraction,
@@ -302,28 +302,16 @@ export async function heartbeatTick(ctx: HeartbeatContext): Promise<TickResult> 
         // pattern-extractor post-condition below.
       }
 
+      // Phase 4 (AR-01): Site A extraction-time pattern creation deleted.
+      // The Angel's role is binding/indexing on Phase 1 substrate, not
+      // extraction-time abstraction. classifySessionDomains survives
+      // because it writes capability_boundaries (binding/indexing), not
+      // experience_patterns. See .planning/reframes/2026-05-05-multi-handle-kill.md.
+      //
+      // result.sessions_processed and result.patterns_extracted stay as
+      // 0-default fields for observability surfaces; Phase 7 retirement
+      // work decides whether to drop them.
       try {
-        const extraction = await extractPatternsFromSession(
-          ctx.db,
-          session.session_id,
-          session.project,
-          ctx.config.maxPatternsPerSession,
-          ctx.config.localModel,
-        );
-
-        result.sessions_processed++;
-        result.patterns_extracted += extraction.patternsCreated;
-
-        // Only mark as processed on definitive outcomes — NOT on transient failures.
-        // 'too few turns', 'insufficient content', 'no patterns found/array' = definitive, mark processed.
-        // 'extraction failed', 'no LLM available', 'empty LLM response' = transient, retry next tick.
-        const definitiveOutcomes = ['too few turns', 'insufficient content', 'no patterns found', 'no patterns array'];
-        const isDefinitive = extraction.patternsCreated > 0 || definitiveOutcomes.some(o => extraction.summary.includes(o));
-        if (isDefinitive && extraction.patternsCreated === 0) {
-          markSessionProcessed(ctx.db, session.session_id, session.project, extraction.summary);
-        }
-
-        // Phase 3: Domain classification for this session (Ollama only — trivial task)
         const domains = await classifySessionDomains(
           ctx.db,
           session.session_id,
