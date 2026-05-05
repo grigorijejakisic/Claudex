@@ -37,12 +37,12 @@ See: `.planning/PROJECT.md` (created 2026-05-04, reframed 2026-05-05)
 | 2 — Multi-modal index seeds + density-at-scale check | Build error-fingerprint index, measure recall improvement, validate density at our scale | empirical | SHIPPED 2026-05-04, KILL | IDX-01..04 (closed) |
 | 2.1 — Corpus-expansion rerun | Second + third bound measurements with strict and relaxed labelers | empirical | SHIPPED 2026-05-05, KILL × 2 | IDX-* (investigation closed) |
 | 3 — Multi-handle retrieval cutover | Rewrite hybrid-retrieval to fuse N indexes | engineering | **DROPPED 2026-05-05** | RET-01..05 (dropped) |
-| 4 — Angel reduction | Trace dependencies; delete extraction-time pattern creation; Angel becomes bind+index, not abstract | engineering | **NEXT** | AR-01..05 |
+| 4 — Angel reduction | Trace dependencies; delete extraction-time pattern creation; Angel becomes bind+index, not abstract | engineering | **SHIPPED 2026-05-05** | AR-01..05 |
 | 5 — Density-based abstraction | Cluster matching episodes; surface high-density clusters as inferred patterns at retrieval time | empirical | **DROPPED 2026-05-05** | ABS-01..04 (dropped) |
 | 6 — Crash-resilient episode boundary | fsnotify + heartbeat + idle-sweep + PID-liveness | engineering | **SHIPPED 2026-05-05** | EBD-01..06 |
 | 7 — v4 coexistence / migration / ship (narrowed) | Per-table decision (retire/re-derive/preserve); Vesna update; **v5.0.0 tag** | engineering | pending | MIG-01..05, VAL-01/02/03'/04/05/06 |
 
-**Coverage:** 4 surviving phases (1 shipped, 4/6/7 pending). Phases 2/2.1 closed with KILL. Phases 3/5 dropped.
+**Coverage:** 4 surviving phases (1, 4, 6 shipped; 7 pending). Phases 2/2.1 closed with KILL. Phases 3/5 dropped.
 
 ## Empirical methodology (v5 standard, promoted from Phase 2/2.1)
 
