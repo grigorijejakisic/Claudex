@@ -25,10 +25,10 @@
  *   1 — hard failure (DDL missing, runtime error)
  */
 
-import * as fs from 'node:fs';
 import { runBackfill } from './backfill.js';
 import { runFullPhase2Measurement } from './runner.js';
 import { runAudit } from './audit.js';
+import { runFullPhase21Measurement } from './runner-tiered.js';
 import { openDatabase, closeDatabase } from '../../core/storage.js';
 import { getDbPath } from '../../shared/paths.js';
 import type { LabelerTier } from './types.js';
@@ -185,20 +185,40 @@ async function runAuditCommand(flags: CliFlags): Promise<number> {
 }
 
 async function runMeasureTieredCommand(flags: CliFlags): Promise<number> {
-  // Plan 02.1-04 owns the implementation of this subcommand. Until that
-  // plan lands, this stub directs operators back to `measure` (Phase 2)
-  // and exits non-zero.
-  if (flags.seed != null) {
-    // Suppress the unused-arg warning until Plan 02.1-04 wires it.
-    void flags.seed;
+  const db = openDatabase(getDbPath());
+  try {
+    const summary = await runFullPhase21Measurement(db, { seed: flags.seed });
+    // eslint-disable-next-line no-console
+    console.log(
+      JSON.stringify(
+        {
+          strict_3frame: {
+            kind: summary.verdicts.strict_3frame.kind,
+            n: summary.verdicts.strict_3frame.criteria.criterion_1.observed,
+            reasoning: summary.verdicts.strict_3frame.reasoning,
+          },
+          relaxed_2frame: {
+            kind: summary.verdicts.relaxed_2frame.kind,
+            n: summary.verdicts.relaxed_2frame.criteria.criterion_1.observed,
+            reasoning: summary.verdicts.relaxed_2frame.reasoning,
+          },
+          aggregator_entries_appended: summary.aggregator_entries_appended,
+          results_md: summary.results_md_path,
+          results_json: summary.results_json_path,
+        },
+        null,
+        2,
+      ),
+    );
+    // KILL/SCOPE_DOWN/GREEN_LIGHT/BLOCKED — all empirical-phase-valid outcomes.
+    return 0;
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.error(`measure-tiered failed: ${(err as Error).message}`);
+    return 1;
+  } finally {
+    closeDatabase(db);
   }
-  // eslint-disable-next-line no-console
-  console.error(
-    'measure-tiered is implemented by Plan 02.1-04. If you are seeing this, the plan has not landed yet.',
-  );
-  // Touch fs to suppress unused-import warning on this branch.
-  void fs;
-  return 1;
 }
 
 async function main(): Promise<void> {

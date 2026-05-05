@@ -1,0 +1,169 @@
+{
+  "schema_version": 1,
+  "question": "does multi-handle retrieval (semantic + non-semantic) improve recall over semantic-only at our scale?",
+  "bound_experiences": [
+    {
+      "phase": "2",
+      "labeler": "strict_3frame",
+      "date": "2026-05-05",
+      "n": 20,
+      "verdict": "KILL",
+      "conditions": {
+        "corpus_size": {
+          "total": 136,
+          "phase1_organic": 7,
+          "v4_backfill": 129,
+          "projects": [
+            "big-balkan",
+            "big-mozzart-clean",
+            "big-mozzy-v2",
+            "claude-code-buildable-6deec3e5",
+            "claudex",
+            "claudex-v2",
+            "claudex-v3",
+            "daemon-9f9827ee",
+            "desktop-01dcc792",
+            "kompas-98604047",
+            "lacuna-betting-9f1d552c",
+            "nexus-app-56a23c73",
+            "nexus-app-f0158b12",
+            "nexus-e53c6c93",
+            "nexus-v2-7e3c3a02",
+            "openclaw-main",
+            "oracle-3951898e",
+            "projects-3892a6d8",
+            "vesna-6abb357b"
+          ]
+        },
+        "pair_set_total": 191,
+        "pair_set_test": 39,
+        "auto_labeler_precision": "pre-2.1: not stratified by corpus_origin (Phase 2 audit at 02-03-corpus-audit.md)",
+        "corpus_origin_scheme": "phase1_organic / v4_backfill (legacy two-tier)"
+      },
+      "metrics": {
+        "delta_precision_at_5": {
+          "delta": 0.09999999999999998,
+          "ci_lower": -0.1573605556210078,
+          "ci_upper": 0.37627210359950614
+        },
+        "delta_recall_at_10": {
+          "delta": -0.050000000000000044,
+          "ci_lower": -0.27348688811406024,
+          "ci_upper": 0.1724395288794631
+        },
+        "intra_project_share": 0.23430962343096234,
+        "p99_fused_over_p99_semantic": 0.8927593444193893
+      }
+    },
+    {
+      "phase": "2.1-strict",
+      "labeler": "strict_3frame",
+      "date": "2026-05-05",
+      "n": 20,
+      "verdict": "KILL",
+      "conditions": {
+        "corpus_size": {
+          "total": 137,
+          "v4_backfill": 132,
+          "phase1_organic_pre_phase2_close": 5,
+          "phase1_organic_post_phase2_close": 0,
+          "projects": [
+            "big-balkan",
+            "big-mozzart-clean",
+            "big-mozzy-v2",
+            "claude-code-buildable-6deec3e5",
+            "claudex",
+            "claudex-v2",
+            "claudex-v3",
+            "daemon-9f9827ee",
+            "desktop-01dcc792",
+            "kompas-98604047",
+            "lacuna-betting-9f1d552c",
+            "nexus-app-56a23c73",
+            "nexus-app-f0158b12",
+            "nexus-e53c6c93",
+            "nexus-v2-7e3c3a02",
+            "openclaw-main",
+            "oracle-3951898e",
+            "projects-3892a6d8",
+            "vesna-6abb357b"
+          ]
+        },
+        "pair_set_total": 191,
+        "pair_set_test": 39,
+        "seed": 42,
+        "auto_labeler_precision": "audit pending — re-render after audit completes",
+        "corpus_origin_scheme": "three-tier phase-anchored (v4_backfill / phase1_organic_pre_phase2_close / phase1_organic_post_phase2_close)"
+      },
+      "metrics": {
+        "delta_precision_at_5": {
+          "delta": 0.09999999999999998,
+          "ci_lower": -0.1573605556210078,
+          "ci_upper": 0.37627210359950614
+        },
+        "delta_recall_at_10": {
+          "delta": -0.050000000000000044,
+          "ci_lower": -0.27348688811406024,
+          "ci_upper": 0.1724395288794631
+        },
+        "intra_project_share": 0.24180327868852458,
+        "p99_fused_over_p99_semantic": 0.703311431512256
+      }
+    },
+    {
+      "phase": "2.1-relaxed",
+      "labeler": "relaxed_2frame",
+      "date": "2026-05-05",
+      "n": 19,
+      "verdict": "KILL",
+      "conditions": {
+        "corpus_size": {
+          "total": 137,
+          "v4_backfill": 132,
+          "phase1_organic_pre_phase2_close": 5,
+          "phase1_organic_post_phase2_close": 0,
+          "projects": [
+            "big-balkan",
+            "big-mozzart-clean",
+            "big-mozzy-v2",
+            "claude-code-buildable-6deec3e5",
+            "claudex",
+            "claudex-v2",
+            "claudex-v3",
+            "daemon-9f9827ee",
+            "desktop-01dcc792",
+            "kompas-98604047",
+            "lacuna-betting-9f1d552c",
+            "nexus-app-56a23c73",
+            "nexus-app-f0158b12",
+            "nexus-e53c6c93",
+            "nexus-v2-7e3c3a02",
+            "openclaw-main",
+            "oracle-3951898e",
+            "projects-3892a6d8",
+            "vesna-6abb357b"
+          ]
+        },
+        "pair_set_total": 192,
+        "pair_set_test": 39,
+        "seed": 42,
+        "auto_labeler_precision": "audit pending — re-render after audit completes",
+        "corpus_origin_scheme": "three-tier phase-anchored (v4_backfill / phase1_organic_pre_phase2_close / phase1_organic_post_phase2_close)"
+      },
+      "metrics": {
+        "delta_precision_at_5": {
+          "delta": 0.21052631578947367,
+          "ci_lower": -0.03333313751632108,
+          "ci_upper": 0.4911010985472369
+        },
+        "delta_recall_at_10": {
+          "delta": 0.052631578947368474,
+          "ci_lower": -0.14112415585258675,
+          "ci_upper": 0.22629036686800727
+        },
+        "intra_project_share": 0.24180327868852458,
+        "p99_fused_over_p99_semantic": 1.0930244013959503
+      }
+    }
+  ]
+}

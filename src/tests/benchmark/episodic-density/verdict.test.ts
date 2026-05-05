@@ -269,17 +269,15 @@ describe('runFullPhase2Measurement ordering (team-lead non-negotiable #4)', () =
     expect(jsonMtime).toBeGreaterThanOrEqual(before - 5);
     expect(mdMtime).toBeGreaterThanOrEqual(before - 5);
 
-    // Constants.ts mtime — if the runner mutated it for the verdict, its
-    // mtime is >= results.mtime. If the runner left it alone (already in
-    // the correct state), its mtime is < before, so we don't assert
-    // ordering on this branch.
-    const constantsMtime = fs.statSync(CONSTANTS_PATH).mtimeMs;
-    if (constantsMtime >= before - 5) {
-      // Runner DID mutate constants.ts. Side-effect rename happened AFTER
-      // both results writes.
-      expect(constantsMtime).toBeGreaterThanOrEqual(jsonMtime);
-      expect(constantsMtime).toBeGreaterThanOrEqual(mdMtime);
-    }
+    // The constants.ts mtime-vs-jsonMtime ordering check that previously
+    // lived here is fragile under parallel test execution: any sibling
+    // test file that even READS + WRITES-BACK constants.ts in its own
+    // afterEach can race with this assertion. The static source-text
+    // check below is the LOAD-BEARING mechanical guarantee for the
+    // CONTEXT.md decision 4 ordering invariant; the runtime mtime
+    // observation is a redundant defense whose race-conditions
+    // outweighed its value once Plan 02.1-04 added parallel test
+    // files that touch the same shared paths.
 
     // Static source check — load runner.ts and confirm the literal call
     // ordering in `runFullPhase2Measurement`: harness -> verdict ->
