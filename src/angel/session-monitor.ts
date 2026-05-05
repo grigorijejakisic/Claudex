@@ -62,6 +62,16 @@ export function getIdleSessions(
 /**
  * Find completed sessions that the Angel hasn't processed yet.
  * "Processed" = has an 'angel_processed' session_event.
+ *
+ * Phase 4 note: the original Site A caller (heartbeat's pattern-extraction
+ * loop) was deleted in Plan 04-02 along with its `markSessionProcessed`
+ * write. The surviving caller (heartbeat.ts:283) drives directive extraction
+ * + curated-context extraction, neither of which currently writes
+ * `angel_processed` — meaning the same sessions are returned every tick.
+ * Both downstream loops are idempotent (per-session dedup happens inside
+ * each subsystem), so the cost is bounded; if Phase 7 retirement removes
+ * the legacy table outright, this function and the
+ * angel_processed event_type both retire with it.
  */
 export function getUnprocessedSessions(
   db: Database,
@@ -93,26 +103,6 @@ export function getUnprocessedSessions(
     return sessions.filter(s => s.turn_count > 0);
   } catch {
     return [];
-  }
-}
-
-/**
- * Mark a session as processed by the Angel.
- * Records an 'angel_processed' session_event.
- */
-export function markSessionProcessed(
-  db: Database,
-  sessionId: string,
-  project: string,
-  detail?: string,
-): void {
-  try {
-    cachedPrepare(db,
-      `INSERT INTO session_events (session_id, project, event_type, entity, action, detail)
-       VALUES (?, ?, 'angel_processed', 'angel', 'processed', ?)`
-    ).run(sessionId, project, detail ?? null);
-  } catch {
-    // Non-throwing
   }
 }
 

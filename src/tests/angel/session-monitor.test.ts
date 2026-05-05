@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import Database from 'better-sqlite3';
 import { initializeSchema, runMigrations } from '../../core/migrations.js';
-import { getIdleSessions, getUnprocessedSessions, markSessionProcessed, hasIdleWarning } from '../../angel/session-monitor.js';
+import { getIdleSessions, getUnprocessedSessions, hasIdleWarning } from '../../angel/session-monitor.js';
 import { cachedPrepare } from '../../core/stmt-cache.js';
 
 function createTestDb(): Database.Database {
@@ -74,8 +74,12 @@ describe('Angel Session Monitor', () => {
       db.prepare(`INSERT INTO sessions (session_id, project, status, created_at_epoch, ended_at_epoch) VALUES (?, ?, 'completed', ?, ?)`).run('processed-1', 'test-proj', oneHourAgo, now);
       db.prepare(`INSERT INTO conversation_turns (session_id, project, turn_number, user_text) VALUES (?, ?, 1, 'hello')`).run('processed-1', 'test-proj');
 
-      // Mark as processed
-      markSessionProcessed(db, 'processed-1', 'test-proj');
+      // Mark as processed via raw INSERT (markSessionProcessed was deleted
+      // in Phase 4 Plan 09 — the helper had zero surviving production callers).
+      db.prepare(
+        `INSERT INTO session_events (session_id, project, event_type, entity, action, detail)
+         VALUES (?, ?, 'angel_processed', 'angel', 'processed', NULL)`,
+      ).run('processed-1', 'test-proj');
 
       const unprocessed = getUnprocessedSessions(db);
       expect(unprocessed.length).toBe(0);
