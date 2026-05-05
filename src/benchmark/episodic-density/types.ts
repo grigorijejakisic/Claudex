@@ -125,3 +125,28 @@ export const PHASE2_CLOSE_TS_EPOCH = 1777940002 as const;
 /** Floor: ≥50 fingerprinted episodes AND ≥3 projects (CONTEXT item 2). */
 export const FLOOR_FINGERPRINTED = 50 as const;
 export const FLOOR_PROJECTS = 3 as const;
+
+/**
+ * Phase 2.1 — the two labeler tiers run in parallel per CONTEXT.md
+ * decision 2a (two bound experiences > one).
+ *
+ *   - `strict_3frame`  — Phase 2's labeler verbatim: same outermost
+ *     exception type AND ≥3 frames overlap AND different session_id.
+ *     Conservative; high per-pair confidence; potentially small n.
+ *   - `relaxed_2frame` — same as strict but with the frame overlap
+ *     floor lowered from ≥3 to ≥2. Larger pair set (superset of
+ *     strict_3frame's by construction). Per-pair confidence is reduced;
+ *     the audit (Plan 02.1-03) measures auto-labeler precision per
+ *     tier descriptively (CONTEXT.md decision 3b — descriptive, not
+ *     gating).
+ *
+ * **CONTEXT.md decision 2b binding:** ≥2 is the hard floor; never go
+ * below. Adding a `relaxed_1frame` tier in a future revision requires
+ * CONTEXT.md amendment + user-approval gate.
+ */
+export type LabelerTier = 'strict_3frame' | 'relaxed_2frame';
+
+export const LABELER_TIER_FRAME_MIN: Record<LabelerTier, number> = {
+  strict_3frame: 3,
+  relaxed_2frame: 2,
+};

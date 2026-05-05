@@ -55,7 +55,12 @@ import {
   type DeltaMetrics,
   type PerQueryEval,
 } from './metrics.js';
-import { labelPairs, splitTrainTest, type LabeledPair } from './pair-labeling.js';
+import {
+  labelPairs,
+  labelPairsByTier,
+  splitTrainTest,
+  type LabeledPair,
+} from './pair-labeling.js';
 import { computeDensitySignal, type DensitySignal } from './density.js';
 import {
   FLOOR_FINGERPRINTED,
@@ -215,28 +220,115 @@ function originBucketFor(
 }
 
 /**
- * Top-level harness. Reads the V26 sidecar + episodic_events.metadata_json,
- * labels pairs, splits 80/20, runs A/B/C on the test set, aggregates with
- * Wilson + Newcombe CIs, and assembles `decision_rule_inputs` for Plan
- * 02-05's verdict module.
+ * Phase 2.1 — TieredHarnessResult shape (CONTEXT.md decision 2a + 4d).
  *
- * Read-only against the corpus. Throws if the corpus is below the 50/3
- * floor — the runner in 02-05 catches and emits a `BLOCKED` verdict.
+ * Two top-level keys: `strict_3frame` and `relaxed_2frame`. Each is a
+ * full HarnessRunResult — own pair set, own metric tables, own
+ * decision_rule_inputs. NO `combined`, `winning`, or `primary` key at
+ * this level — the verdict module is called exactly twice (once per
+ * tier) by Plan 02.1-04's runner; the schema test enforces this.
  */
-export async function runHarness(
+export interface TieredHarnessResult {
+  ts_epoch: number;
+  strict_3frame: HarnessRunResult;
+  relaxed_2frame: HarnessRunResult;
+}
+
+/**
+ * Build a HarnessRunResult shaped like a normal one but populated with
+ * zero-n Wilson sentinels everywhere. Used when a tier's labeled pair
+ * set is empty (CONTEXT.md decision 6: corpus-too-sparse is the
+ * primary outcome of that bound experience, not a problem to engineer
+ * around). The downstream verdict runner translates
+ * `decision_rule_inputs.held_out_test_n === 0` into BLOCKED for that
+ * tier.
+ */
+function emptyTierResult(
+  corpus: IndexedEvent[],
+  projectSet: Set<string>,
+  density: DensitySignal,
+  seed: number,
+): HarnessRunResult {
+  const zeroVariant = (variant: PerQueryEval['variant']): AggregateMetrics => ({
+    variant,
+    origin_split: 'pooled',
+    n: 0,
+    precision_at_5: { point: 0, lower: 0, upper: 0, n: 0 },
+    recall_at_10: { point: 0, lower: 0, upper: 0, n: 0 },
+    mrr: { mean: 0, ci_lower: 0, ci_upper: 0, n: 0 },
+    latency_ms: { p50: 0, p95: 0, p99: 0 },
+  });
+  const zeroSplit: PerSplitMetrics = {
+    A: zeroVariant('A_semantic'),
+    B: zeroVariant('B_fingerprint'),
+    C: zeroVariant('C_fused'),
+  };
+  const zeroDelta = { point: 0, lower: 0, upper: 0, n: 0 };
+  const zeroDeltas: PerSplitDeltas = {
+    B_vs_A: { baseline: 'A_semantic', variant: 'B_fingerprint', origin_split: 'pooled', delta_precision_at_5: zeroDelta, delta_recall_at_10: zeroDelta },
+    C_vs_A: { baseline: 'A_semantic', variant: 'C_fused', origin_split: 'pooled', delta_precision_at_5: zeroDelta, delta_recall_at_10: zeroDelta },
+  };
+  return {
+    ts_epoch: Math.floor(Date.now() / 1000),
+    corpus_size: {
+      total: corpus.length,
+      v4_backfill: corpus.filter(e => e.corpus_origin === 'v4_backfill').length,
+      phase1_organic_pre_phase2_close: corpus.filter(
+        e => e.corpus_origin === 'phase1_organic_pre_phase2_close',
+      ).length,
+      phase1_organic_post_phase2_close: corpus.filter(
+        e => e.corpus_origin === 'phase1_organic_post_phase2_close',
+      ).length,
+      projects: Array.from(projectSet).sort(),
+    },
+    pairs: { total: 0, train: 0, test: 0, seed },
+    metrics: {
+      pooled: zeroSplit,
+      v4_backfill: zeroSplit,
+      phase1_organic_pre_phase2_close: zeroSplit,
+      phase1_organic_post_phase2_close: zeroSplit,
+    },
+    deltas: {
+      pooled: zeroDeltas,
+      v4_backfill: zeroDeltas,
+      phase1_organic_pre_phase2_close: zeroDeltas,
+      phase1_organic_post_phase2_close: zeroDeltas,
+    },
+    density,
+    decision_rule_inputs: {
+      held_out_test_n: 0,
+      fused_p5_minus_semantic_p5: { delta: 0, ci_lower: 0, ci_upper: 0 },
+      fused_r10_minus_semantic_r10: { delta: 0, ci_lower: 0, ci_upper: 0 },
+      intra_project_share: density.intra_project_share,
+      p99_fused_over_p99_semantic: 0,
+    },
+  };
+}
+
+/**
+ * Inner harness body — given a (corpus, allPairs, density) tuple, run
+ * the A/B/C measurement pipeline and assemble a HarnessRunResult. Used
+ * by both `runHarness` (single-tier strict, Phase 2 backwards-compat)
+ * and `runHarnessTiered` (Phase 2.1 dual-tier).
+ *
+ * Pure given (corpus, allPairs, density). Reads from `db` for
+ * retrieval variant evaluation. Does NOT enforce the corpus floor —
+ * that's the caller's job.
+ */
+async function runHarnessForTier(
   db: Database,
-  opts?: { seed?: number },
+  corpus: IndexedEvent[],
+  projectSet: Set<string>,
+  allPairs: LabeledPair[],
+  density: DensitySignal,
+  seed: number,
 ): Promise<HarnessRunResult> {
-  const seed = opts?.seed ?? 42;
-  const corpus = buildCorpus(db);
-  const projectSet = new Set(corpus.map(e => e.project));
-  if (corpus.length < FLOOR_FINGERPRINTED || projectSet.size < FLOOR_PROJECTS) {
-    throw new Error(
-      `corpus floor not met — ${corpus.length} fingerprinted events across ${projectSet.size} projects (need >= ${FLOOR_FINGERPRINTED} and >= ${FLOOR_PROJECTS}). Run backfill first.`,
-    );
+  // CONTEXT.md decision 6: empty pair set is a non-throwing sentinel —
+  // verdict runner translates held_out_test_n=0 into BLOCKED.
+  if (allPairs.length === 0) {
+    return emptyTierResult(corpus, projectSet, density, seed);
   }
 
-  const allPairs = labelPairs(corpus);
   const split = splitTrainTest(allPairs, { seed, testFraction: 0.2 });
 
   const byId = new Map<number, IndexedEvent>();
@@ -282,8 +374,6 @@ export async function runHarness(
       C_vs_A: deltaCI(splitMetrics.A, splitMetrics.C),
     };
   }
-
-  const density = computeDensitySignal(corpus, { seed: 4242 });
 
   const cVsAPooled = deltaCI(pooled.A, pooled.C);
   const decision_rule_inputs: DecisionRuleInputs = {
@@ -333,5 +423,108 @@ export async function runHarness(
     },
     density,
     decision_rule_inputs,
+  };
+}
+
+/**
+ * Top-level harness. Reads the V26 sidecar + episodic_events.metadata_json,
+ * labels pairs at the strict (≥3 frame) tier, splits 80/20, runs A/B/C
+ * on the test set, aggregates with Wilson + Newcombe CIs, and assembles
+ * `decision_rule_inputs` for the verdict module.
+ *
+ * Read-only against the corpus. Throws if the corpus is below the 50/3
+ * floor — the runner catches and emits a `BLOCKED` verdict.
+ *
+ * Phase 2 backward-compat: this returns a SINGLE strict-tier result;
+ * Phase 2.1's dual-tier path goes through `runHarnessTiered`.
+ */
+export async function runHarness(
+  db: Database,
+  opts?: { seed?: number },
+): Promise<HarnessRunResult> {
+  const seed = opts?.seed ?? 42;
+  const corpus = buildCorpus(db);
+  const projectSet = new Set(corpus.map(e => e.project));
+  if (corpus.length < FLOOR_FINGERPRINTED || projectSet.size < FLOOR_PROJECTS) {
+    throw new Error(
+      `corpus floor not met — ${corpus.length} fingerprinted events across ${projectSet.size} projects (need >= ${FLOOR_FINGERPRINTED} and >= ${FLOOR_PROJECTS}). Run backfill first.`,
+    );
+  }
+
+  const allPairs = labelPairs(corpus);
+  const density = computeDensitySignal(corpus, { seed: 4242 });
+  return runHarnessForTier(db, corpus, projectSet, allPairs, density, seed);
+}
+
+/**
+ * Phase 2.1 — dual-tier harness (CONTEXT.md decision 2a + 2c).
+ *
+ * Loads the corpus once, then runs the full A/B/C measurement pipeline
+ * twice — once at the strict (≥3 frame) tier and once at the relaxed
+ * (≥2 frame) tier — sharing the corpus snapshot AND the density signal
+ * (corpus-wide, not pair-set-dependent) across tiers. Each tier
+ * produces its own pair list, train/test split, per-query evals, and
+ * decision_rule_inputs. The two HarnessRunResult objects are returned
+ * under {strict_3frame, relaxed_2frame}.
+ *
+ * **CONTEXT.md decision 2c binding:** both tiers ALWAYS run, regardless
+ * of strict's n. There is no early-exit branch.
+ *
+ * **CONTEXT.md decision 6 binding:** if a tier produces zero pairs
+ * (e.g. relaxed labeling at a small corpus), `runHarnessForTier`
+ * returns a zero-n sentinel HarnessRunResult — Plan 02.1-04's runner
+ * sees `held_out_test_n === 0` and emits BLOCKED for that tier
+ * specifically. The OTHER tier proceeds normally.
+ *
+ * **CONTEXT.md decision 2a verbatim:** "Two bound experiences > one.
+ * Not a fallback." There is NO combined/winning/primary verdict at
+ * this level; the schema test in Plan 02.1-04 enforces.
+ */
+export async function runHarnessTiered(
+  db: Database,
+  opts?: { seed?: number },
+): Promise<TieredHarnessResult> {
+  const seed = opts?.seed ?? 42;
+  const corpus = buildCorpus(db);
+  const projectSet = new Set(corpus.map(e => e.project));
+  if (corpus.length < FLOOR_FINGERPRINTED || projectSet.size < FLOOR_PROJECTS) {
+    throw new Error(
+      `corpus floor not met — ${corpus.length} fingerprinted events across ${projectSet.size} projects (need >= ${FLOOR_FINGERPRINTED} and >= ${FLOOR_PROJECTS}). Run backfill first.`,
+    );
+  }
+
+  // Density is corpus-wide; computed once and shared across tiers.
+  const density = computeDensitySignal(corpus, { seed: 4242 });
+
+  // CONTEXT.md decision 2c: both tiers always run.
+  const strictPairs = labelPairsByTier(corpus, 'strict_3frame');
+  const strictResult = await runHarnessForTier(
+    db,
+    corpus,
+    projectSet,
+    strictPairs,
+    density,
+    seed,
+  );
+
+  // Relaxed tier — uses SAME seed deliberately; per-tier pair lists are
+  // independent inputs to splitTrainTest, so each tier's test set is
+  // its own bound experience. The relaxed pair set is a strict
+  // superset of strict's by construction (frame_overlap >= 2 implied
+  // by >= 3).
+  const relaxedPairs = labelPairsByTier(corpus, 'relaxed_2frame');
+  const relaxedResult = await runHarnessForTier(
+    db,
+    corpus,
+    projectSet,
+    relaxedPairs,
+    density,
+    seed,
+  );
+
+  return {
+    ts_epoch: Math.floor(Date.now() / 1000),
+    strict_3frame: strictResult,
+    relaxed_2frame: relaxedResult,
   };
 }
