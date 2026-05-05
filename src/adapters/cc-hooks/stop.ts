@@ -354,9 +354,13 @@ const main = wrapHook('Stop', async (input, ctx) => {
     decayPatternConfidence(ctx.db, triggeredIds);
   }, ctx.db, input.session_id);
 
-  // Experience scoring — full feedback loop (extraction, topic-aware scoring, flag rotation).
-  // Runs AFTER pattern_verification (which reads injected_pattern_ids for current turn)
-  // because the finally block in applyExperienceFeedback rotates injected → awaiting.
+  // Experience scoring — score-feedback + flag-rotation (extraction step
+  // deleted in Phase 4 Plan 03). Runs AFTER pattern_verification (which
+  // reads injected_pattern_ids for current turn) because the finally block
+  // in applyExperienceFeedback rotates injected → awaiting.
+  // Reads experience_patterns (pre-Phase-4 legacy table). Phase 4 stopped
+  // new INSERTs (V28 trigger blocks them). Phase 7 owns retirement direction
+  // — drop / project / keep. See .planning/reframes/2026-05-05-multi-handle-kill.md.
   try {
     await applyExperienceFeedback(
       ctx.db,
