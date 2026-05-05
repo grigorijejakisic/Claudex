@@ -92,7 +92,23 @@
         "pair_set_total": 191,
         "pair_set_test": 39,
         "seed": 42,
-        "auto_labeler_precision": "audit pending — re-render after audit completes",
+        "auto_labeler_precision": {
+          "tier_total": "16/20",
+          "per_stratum": {
+            "v4_backfill": {
+              "valid": 16,
+              "sampled": 20
+            },
+            "phase1_organic_pre_phase2_close": {
+              "valid": 0,
+              "sampled": 0
+            },
+            "phase1_organic_post_phase2_close": {
+              "valid": 0,
+              "sampled": 0
+            }
+          }
+        },
         "corpus_origin_scheme": "three-tier phase-anchored (v4_backfill / phase1_organic_pre_phase2_close / phase1_organic_post_phase2_close)"
       },
       "metrics": {
@@ -107,7 +123,7 @@
           "ci_upper": 0.1724395288794631
         },
         "intra_project_share": 0.24180327868852458,
-        "p99_fused_over_p99_semantic": 0.703311431512256
+        "p99_fused_over_p99_semantic": 0.8325115426501424
       }
     },
     {
@@ -147,7 +163,23 @@
         "pair_set_total": 192,
         "pair_set_test": 39,
         "seed": 42,
-        "auto_labeler_precision": "audit pending — re-render after audit completes",
+        "auto_labeler_precision": {
+          "tier_total": "14/20",
+          "per_stratum": {
+            "v4_backfill": {
+              "valid": 14,
+              "sampled": 20
+            },
+            "phase1_organic_pre_phase2_close": {
+              "valid": 0,
+              "sampled": 0
+            },
+            "phase1_organic_post_phase2_close": {
+              "valid": 0,
+              "sampled": 0
+            }
+          }
+        },
         "corpus_origin_scheme": "three-tier phase-anchored (v4_backfill / phase1_organic_pre_phase2_close / phase1_organic_post_phase2_close)"
       },
       "metrics": {
@@ -162,7 +194,7 @@
           "ci_upper": 0.22629036686800727
         },
         "intra_project_share": 0.24180327868852458,
-        "p99_fused_over_p99_semantic": 1.0930244013959503
+        "p99_fused_over_p99_semantic": 1.3128161547969992
       }
     }
   ]

@@ -1,10 +1,10 @@
 {
   "schema_version": 1,
-  "generated_at_ts_epoch": 1777948563,
+  "generated_at_ts_epoch": 1777949189,
   "harness": {
-    "ts_epoch": 1777948563,
+    "ts_epoch": 1777949190,
     "strict_3frame": {
-      "ts_epoch": 1777948563,
+      "ts_epoch": 1777949189,
       "corpus_size": {
         "total": 137,
         "v4_backfill": 132,
@@ -63,9 +63,9 @@
               "n": 20
             },
             "latency_ms": {
-              "p50": 1.230099999999993,
-              "p95": 1.6687899999999993,
-              "p99": 2.647518
+              "p50": 1.2615499999999997,
+              "p95": 1.752665000000003,
+              "p99": 2.709733000000003
             }
           },
           "B": {
@@ -91,9 +91,9 @@
               "n": 20
             },
             "latency_ms": {
-              "p50": 0.1530000000000058,
-              "p95": 0.3071700000000037,
-              "p99": 0.4587140000000011
+              "p50": 0.17310000000000514,
+              "p95": 0.3199350000000004,
+              "p99": 0.4587869999999977
             }
           },
           "C": {
@@ -119,9 +119,9 @@
               "n": 20
             },
             "latency_ms": {
-              "p50": 1.3952499999999972,
-              "p95": 1.550345,
-              "p99": 2.035908999999999
+              "p50": 1.4204000000000008,
+              "p95": 1.9546199999999962,
+              "p99": 2.255884000000001
             }
           }
         },
@@ -149,9 +149,9 @@
               "n": 20
             },
             "latency_ms": {
-              "p50": 1.230099999999993,
-              "p95": 1.6687899999999993,
-              "p99": 2.647518
+              "p50": 1.2615499999999997,
+              "p95": 1.752665000000003,
+              "p99": 2.709733000000003
             }
           },
           "B": {
@@ -177,9 +177,9 @@
               "n": 20
             },
             "latency_ms": {
-              "p50": 0.1530000000000058,
-              "p95": 0.3071700000000037,
-              "p99": 0.4587140000000011
+              "p50": 0.17310000000000514,
+              "p95": 0.3199350000000004,
+              "p99": 0.4587869999999977
             }
           },
           "C": {
@@ -205,9 +205,9 @@
               "n": 20
             },
             "latency_ms": {
-              "p50": 1.3952499999999972,
-              "p95": 1.550345,
-              "p99": 2.035908999999999
+              "p50": 1.4204000000000008,
+              "p95": 1.9546199999999962,
+              "p99": 2.255884000000001
             }
           }
         },
@@ -555,11 +555,11 @@
           "ci_upper": 0.1724395288794631
         },
         "intra_project_share": 0.24180327868852458,
-        "p99_fused_over_p99_semantic": 0.7689877840301743
+        "p99_fused_over_p99_semantic": 0.8325115426501424
       }
     },
     "relaxed_2frame": {
-      "ts_epoch": 1777948563,
+      "ts_epoch": 1777949190,
       "corpus_size": {
         "total": 137,
         "v4_backfill": 132,
@@ -618,9 +618,9 @@
               "n": 19
             },
             "latency_ms": {
-              "p50": 1.2875000000000085,
-              "p95": 1.6443100000000128,
-              "p99": 1.694062000000007
+              "p50": 1.288899999999984,
+              "p95": 1.5415999999999908,
+              "p99": 1.6827199999999898
             }
           },
           "B": {
@@ -646,9 +646,9 @@
               "n": 19
             },
             "latency_ms": {
-              "p50": 0.15139999999999532,
-              "p95": 0.22005999999999945,
-              "p99": 0.22049200000000352
+              "p50": 0.14979999999999905,
+              "p95": 0.24324000000000384,
+              "p99": 0.42784800000000395
             }
           },
           "C": {
@@ -674,9 +674,9 @@
               "n": 19
             },
             "latency_ms": {
-              "p50": 1.428600000000003,
-              "p95": 1.710309999999987,
-              "p99": 1.7111019999999928
+              "p50": 1.4336000000000126,
+              "p95": 1.830309999999982,
+              "p99": 2.209101999999993
             }
           }
         },
@@ -704,9 +704,9 @@
               "n": 19
             },
             "latency_ms": {
-              "p50": 1.2875000000000085,
-              "p95": 1.6443100000000128,
-              "p99": 1.694062000000007
+              "p50": 1.288899999999984,
+              "p95": 1.5415999999999908,
+              "p99": 1.6827199999999898
             }
           },
           "B": {
@@ -732,9 +732,9 @@
               "n": 19
             },
             "latency_ms": {
-              "p50": 0.15139999999999532,
-              "p95": 0.22005999999999945,
-              "p99": 0.22049200000000352
+              "p50": 0.14979999999999905,
+              "p95": 0.24324000000000384,
+              "p99": 0.42784800000000395
             }
           },
           "C": {
@@ -760,9 +760,9 @@
               "n": 19
             },
             "latency_ms": {
-              "p50": 1.428600000000003,
-              "p95": 1.710309999999987,
-              "p99": 1.7111019999999928
+              "p50": 1.4336000000000126,
+              "p95": 1.830309999999982,
+              "p99": 2.209101999999993
             }
           }
         },
@@ -1110,7 +1110,7 @@
           "ci_upper": 0.22629036686800727
         },
         "intra_project_share": 0.24180327868852458,
-        "p99_fused_over_p99_semantic": 1.0100586637324878
+        "p99_fused_over_p99_semantic": 1.3128161547969992
       }
     }
   },
@@ -1137,14 +1137,14 @@
         "criterion_3": {
           "name": "criterion_3_latency_budget",
           "passed": true,
-          "observed": 0.7689877840301743,
+          "observed": 0.8325115426501424,
           "threshold": 2,
-          "evidence": "p99(C) / p99(A) = 0.7690 (threshold 2.0)",
+          "evidence": "p99(C) / p99(A) = 0.8325 (threshold 2.0)",
           "applies_to": "criterion_3"
         }
       },
-      "reasoning": "Criterion 1 FAILED (delta_p5=0.1000 (CI lower -0.1574); delta_r10=-0.0500 (CI lower -0.2735); n=20; CI-binding failed both metrics). Criterion 2 FAILED (intra_project_share=0.2418 (threshold 0.30)). Criterion 3 PASSED (p99(C) / p99(A) = 0.7690 (threshold 2.0)). Verdict: KILL — no measurable signal or density is noise; Phase 3 plan rewritten at user-approval gate.",
-      "computed_at_ts_epoch": 1777948563,
+      "reasoning": "Criterion 1 FAILED (delta_p5=0.1000 (CI lower -0.1574); delta_r10=-0.0500 (CI lower -0.2735); n=20; CI-binding failed both metrics). Criterion 2 FAILED (intra_project_share=0.2418 (threshold 0.30)). Criterion 3 PASSED (p99(C) / p99(A) = 0.8325 (threshold 2.0)). Verdict: KILL — no measurable signal or density is noise; Phase 3 plan rewritten at user-approval gate.",
+      "computed_at_ts_epoch": 1777949189,
       "decision_rule_quote": "## 5. Decision rule — locked BEFORE measurement runs\n\nEmpirical-phase discipline: this rule is committed to CONTEXT.md and PLAN.md before the harness is built. **No moving goalposts after we see results.**\n\n**GREEN-LIGHT Phase 3 — proceed with full multi-handle retrieval cutover:**\n\nALL three must hold on the **held-out test set**:\n1. RRF-fusion has measurable improvement over semantic-only — minimum **+5pp on either precision@5 OR recall@10**, AND the **Wilson 95% CI lower bound on the delta is ≥ 0** (i.e., the improvement is not statistically indistinguishable from zero at our sample size). The AND-CI-bound is the discipline that prevents green-lighting on noise — at n≈40-60 pairs, raw point-deltas of +5pp can be inside the CI of zero.\n2. Density at scale produces signal — ≥30% of high-similarity pairs (per #4) are intra-project recurrent.\n3. Latency p99 of fused retrieval < 2× semantic-only baseline. Cost discipline: a marginally-better signal that doubles tail latency is not worth shipping.\n\n**SCOPE-DOWN to advisory — Phase 3 ships, but lighter than originally planned:**\nImprovement exists on specific subsets (e.g. only Python stack traces, only one project) but not broadly. Phase 3 ships an **advisory-only surface** (\"you've hit a similar error before, see episode X\") without aggressive RRF fusion in the production retrieval path. Phase 5 density abstraction is de-scoped accordingly (advisory, not abstraction).\n\n**KILL — pivot or stop:**\nNo measurable improvement (criteria 1 fails on held-out CI bound) OR density is pure noise (criteria 2 fails). Phase 3 plan is rewritten or the multi-handle thesis is reconsidered at the milestone level."
     },
     "relaxed_2frame": {
@@ -1169,14 +1169,14 @@
         "criterion_3": {
           "name": "criterion_3_latency_budget",
           "passed": true,
-          "observed": 1.0100586637324878,
+          "observed": 1.3128161547969992,
           "threshold": 2,
-          "evidence": "p99(C) / p99(A) = 1.0101 (threshold 2.0)",
+          "evidence": "p99(C) / p99(A) = 1.3128 (threshold 2.0)",
           "applies_to": "criterion_3"
         }
       },
-      "reasoning": "Criterion 1 FAILED (delta_p5=0.2105 (CI lower -0.0333); delta_r10=0.0526 (CI lower -0.1411); n=19; CI-binding failed both metrics). Criterion 2 FAILED (intra_project_share=0.2418 (threshold 0.30)). Criterion 3 PASSED (p99(C) / p99(A) = 1.0101 (threshold 2.0)). Verdict: KILL — no measurable signal or density is noise; Phase 3 plan rewritten at user-approval gate.",
-      "computed_at_ts_epoch": 1777948563,
+      "reasoning": "Criterion 1 FAILED (delta_p5=0.2105 (CI lower -0.0333); delta_r10=0.0526 (CI lower -0.1411); n=19; CI-binding failed both metrics). Criterion 2 FAILED (intra_project_share=0.2418 (threshold 0.30)). Criterion 3 PASSED (p99(C) / p99(A) = 1.3128 (threshold 2.0)). Verdict: KILL — no measurable signal or density is noise; Phase 3 plan rewritten at user-approval gate.",
+      "computed_at_ts_epoch": 1777949189,
       "decision_rule_quote": "## 5. Decision rule — locked BEFORE measurement runs\n\nEmpirical-phase discipline: this rule is committed to CONTEXT.md and PLAN.md before the harness is built. **No moving goalposts after we see results.**\n\n**GREEN-LIGHT Phase 3 — proceed with full multi-handle retrieval cutover:**\n\nALL three must hold on the **held-out test set**:\n1. RRF-fusion has measurable improvement over semantic-only — minimum **+5pp on either precision@5 OR recall@10**, AND the **Wilson 95% CI lower bound on the delta is ≥ 0** (i.e., the improvement is not statistically indistinguishable from zero at our sample size). The AND-CI-bound is the discipline that prevents green-lighting on noise — at n≈40-60 pairs, raw point-deltas of +5pp can be inside the CI of zero.\n2. Density at scale produces signal — ≥30% of high-similarity pairs (per #4) are intra-project recurrent.\n3. Latency p99 of fused retrieval < 2× semantic-only baseline. Cost discipline: a marginally-better signal that doubles tail latency is not worth shipping.\n\n**SCOPE-DOWN to advisory — Phase 3 ships, but lighter than originally planned:**\nImprovement exists on specific subsets (e.g. only Python stack traces, only one project) but not broadly. Phase 3 ships an **advisory-only surface** (\"you've hit a similar error before, see episode X\") without aggressive RRF fusion in the production retrieval path. Phase 5 density abstraction is de-scoped accordingly (advisory, not abstraction).\n\n**KILL — pivot or stop:**\nNo measurable improvement (criteria 1 fails on held-out CI bound) OR density is pure noise (criteria 2 fails). Phase 3 plan is rewritten or the multi-handle thesis is reconsidered at the milestone level."
     }
   }
