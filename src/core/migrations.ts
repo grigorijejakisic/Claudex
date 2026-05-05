@@ -47,6 +47,7 @@ import {
   migrateV25toV26,
   migrateV26toV27,
   migrateV27toV28,
+  migrateV28toV29,
   migrateSchemaFixes,
   cleanupOrphanTables,
   upgradeV2SchemaInPlace,
@@ -96,7 +97,7 @@ export { migrateV14toV15 };
  * `claudex doctor` (DIAG-05) reads this to verify the on-disk DB is in sync.
  * Bumping a migration must bump this constant in lockstep.
  */
-export const TARGET_USER_VERSION = 28;
+export const TARGET_USER_VERSION = 29;
 
 export function runMigrations(db: Database): void {
   const row = db.pragma('user_version') as Array<{ user_version: number }>;
@@ -140,6 +141,7 @@ export function runMigrations(db: Database): void {
     [25, () => { migrateV25toV26(db); }],
     [26, () => { migrateV26toV27(db); }],
     [27, () => { migrateV27toV28(db); }],
+    [28, () => { migrateV28toV29(db); }],
   ];
 
   // Handle special cases for version 0 and 1
@@ -370,6 +372,16 @@ export function initializeSchema(db: Database): void {
   if (currentUv < 28) {
     migrateV27toV28(db);
     db.pragma('user_version = 28');
+  }
+  // V5 Phase 6 (EBD-05): episode_boundary_cursor table + sessions
+  // last_heartbeat_ts/last_jsonl_write_ts columns. Substrate for the
+  // crash-resilient boundary detector (fsnotify watcher + heartbeat tick +
+  // idle-sweep). Idempotent via existence checks. Fresh-DB path lands here
+  // (sessions table from SCHEMA_V3 already exists; columns get added);
+  // runMigrations step-table covers existing-DB upgrades from V28.
+  if (currentUv < 29) {
+    migrateV28toV29(db);
+    db.pragma('user_version = 29');
   }
 
   // Phase 4 (V28): per-connection sidecar + TEMP TRIGGER guarding writes

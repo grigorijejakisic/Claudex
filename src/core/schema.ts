@@ -118,12 +118,31 @@ CREATE TABLE IF NOT EXISTS sessions (
   session_summary TEXT,
   name TEXT,
   transferred_to TEXT,
-  extraction_cursor INTEGER
+  extraction_cursor INTEGER,
+  last_heartbeat_ts INTEGER,
+  last_jsonl_write_ts INTEGER
 );
 
 -- getActiveSession: WHERE status='active' AND project=? ORDER BY created_at_epoch DESC
 CREATE INDEX IF NOT EXISTS idx_sessions_active
   ON sessions(status, project, created_at_epoch DESC);
+
+-- V5 Phase 6 (EBD-05): per-(project, session_id) crash-replay cursor for
+-- the boundary detector. last_processed_jsonl_offset advances as the
+-- watcher consumes JSONL appends; last_close_event_id is the soft FK
+-- back into episodic_events when a close has been emitted.
+CREATE TABLE IF NOT EXISTS episode_boundary_cursor (
+  project                       TEXT    NOT NULL,
+  session_id                    TEXT    NOT NULL,
+  last_processed_jsonl_offset   INTEGER NOT NULL DEFAULT 0,
+  last_processed_event_ts_epoch INTEGER NOT NULL DEFAULT 0,
+  last_close_event_id           INTEGER,
+  PRIMARY KEY (project, session_id)
+);
+CREATE INDEX IF NOT EXISTS idx_ebc_session
+  ON episode_boundary_cursor(session_id);
+CREATE INDEX IF NOT EXISTS idx_ebc_close_event
+  ON episode_boundary_cursor(last_close_event_id) WHERE last_close_event_id IS NOT NULL;
 
 -- pressure_scores
 CREATE TABLE IF NOT EXISTS pressure_scores (
