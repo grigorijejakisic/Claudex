@@ -145,7 +145,13 @@ interface CorpusRow {
   metadata_json: string;
 }
 
-function buildCorpus(db: Database): IndexedEvent[] {
+/**
+ * Build the in-memory corpus from `episodic_events` + the V26/V27
+ * sidecar. Exposed so non-harness consumers (Plan 02.1-03's audit, Plan
+ * 02.1-04's runner-tiered.ts smoke output) can reuse the same loader
+ * without duplicating the SQL.
+ */
+export function buildCorpus(db: Database): IndexedEvent[] {
   const originByEvent = new Map<number, CorpusOrigin>();
   for (const row of db.prepare(SIDECAR_ORIGIN_LOOKUP).all() as Array<{
     episode_event_id: number;

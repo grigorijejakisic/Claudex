@@ -1,0 +1,495 @@
+{
+  "tier": "relaxed_2frame",
+  "total_pairs": 192,
+  "sampled_total": 20,
+  "seed": 4321,
+  "target": 20,
+  "generated_at_iso": "2026-05-05T02:15:14.352Z",
+  "strata": [
+    {
+      "origin": "v4_backfill",
+      "population": 192,
+      "allocation": 20,
+      "sampled": [
+        {
+          "pair": {
+            "a": 591,
+            "b": 668,
+            "outer_exception": "Error",
+            "overlap_frame_count": 4,
+            "same_project": false,
+            "origin_a": "v4_backfill",
+            "origin_b": "v4_backfill"
+          },
+          "event_a": {
+            "content": "node:internal/modules/cjs/loader:1386\r\n  throw err;\r\n  ^\r\n\r\nError: Cannot find module 'C:\\Users\\Grigorije\\Desktop\\Projects\\Kompas'\r\n    at Function._resolveFilename (node:internal/modules/cjs/loader:1383:15)\r\n    at defaultResolveImpl (node:internal/modules/cjs/loader:1025:19)\r\n    at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1030:22)\r\n    at Function._load (node:internal/modules/cjs/loader:1192:37)\r\n    at TracingChannel.traceSync (node:diagnostics_channel:328:14)\r\n    at wrapMod...",
+            "project": "kompas-98604047",
+            "ts_epoch": 1777939997,
+            "outer_exception": "Error"
+          },
+          "event_b": {
+            "content": "node:internal/modules/cjs/loader:1386\r\n  throw err;\r\n  ^\r\n\r\nError: Cannot find module 'C:\\Users\\Grigorije\\.claudex\\dist\\cli\\projects-touched.cjs'\r\n    at Function._resolveFilename (node:internal/modules/cjs/loader:1383:15)\r\n    at defaultResolveImpl (node:internal/modules/cjs/loader:1025:19)\r\n    at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1030:22)\r\n    at Function._load (node:internal/modules/cjs/loader:1192:37)\r\n    at TracingChannel.traceSync (node:diagnostics_channel:328:14)\r...",
+            "project": "desktop-01dcc792",
+            "ts_epoch": 1777939997,
+            "outer_exception": "Error"
+          }
+        },
+        {
+          "pair": {
+            "a": 585,
+            "b": 632,
+            "outer_exception": "Error",
+            "overlap_frame_count": 4,
+            "same_project": false,
+            "origin_a": "v4_backfill",
+            "origin_b": "v4_backfill"
+          },
+          "event_a": {
+            "content": "node:internal/modules/cjs/loader:1386\r\n  throw err;\r\n  ^\r\n\r\nError: Cannot find module 'C:\\Users\\Grigorije\\.claudex\\dist\\cli\\update-recall.cjs'\r\n    at Function._resolveFilename (node:internal/modules/cjs/loader:1383:15)\r\n    at defaultResolveImpl (node:internal/modules/cjs/loader:1025:19)\r\n    at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1030:22)\r\n    at Function._load (node:internal/modules/cjs/loader:1192:37)\r\n    at TracingChannel.traceSync (node:diagnostics_channel:328:14)\r\n  ...",
+            "project": "nexus-e53c6c93",
+            "ts_epoch": 1777939997,
+            "outer_exception": "Error"
+          },
+          "event_b": {
+            "content": "node:internal/modules/cjs/loader:1386\r\n  throw err;\r\n  ^\r\n\r\nError: Cannot find module 'C:\\Users\\Grigorije\\.claudex\\dist\\cli\\projects-touched.cjs'\r\n    at Function._resolveFilename (node:internal/modules/cjs/loader:1383:15)\r\n    at defaultResolveImpl (node:internal/modules/cjs/loader:1025:19)\r\n    at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1030:22)\r\n    at Function._load (node:internal/modules/cjs/loader:1192:37)\r\n    at TracingChannel.traceSync (node:diagnostics_channel:328:14)\r...",
+            "project": "big-mozzart-clean",
+            "ts_epoch": 1777939997,
+            "outer_exception": "Error"
+          }
+        },
+        {
+          "pair": {
+            "a": 622,
+            "b": 635,
+            "outer_exception": "Error",
+            "overlap_frame_count": 4,
+            "same_project": false,
+            "origin_a": "v4_backfill",
+            "origin_b": "v4_backfill"
+          },
+          "event_a": {
+            "content": "node:internal/modules/cjs/loader:1386\r\n  throw err;\r\n  ^\r\n\r\nError: Cannot find module 'C:\\Users\\Grigorije\\.claudex\\dist\\cli\\update-recall.cjs'\r\n    at Function._resolveFilename (node:internal/modules/cjs/loader:1383:15)\r\n    at defaultResolveImpl (node:internal/modules/cjs/loader:1025:19)\r\n    at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1030:22)\r\n    at Function._load (node:internal/modules/cjs/loader:1192:37)\r\n    at TracingChannel.traceSync (node:diagnostics_channel:328:14)",
+            "project": "lacuna-betting-9f1d552c",
+            "ts_epoch": 1777939997,
+            "outer_exception": "Error"
+          },
+          "event_b": {
+            "content": "node:internal/modules/cjs/loader:1386\r\n  throw err;\r\n  ^\r\n\r\nError: Cannot find module [REDACTED]\r\n    at Function._resolveFilename (node:internal/modules/cjs/loader:1383:15)\r\n    at defaultResolveImpl (node:internal/modules/cjs/loader:1025:19)\r\n    at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1030:22)\r\n    at Function._load (node:internal/modules/cjs/loader:1192:37)\r\n    at TracingChannel.traceSync (node:diagnostics...",
+            "project": "claudex-v3",
+            "ts_epoch": 1777939997,
+            "outer_exception": "Error"
+          }
+        },
+        {
+          "pair": {
+            "a": 595,
+            "b": 668,
+            "outer_exception": "Error",
+            "overlap_frame_count": 4,
+            "same_project": false,
+            "origin_a": "v4_backfill",
+            "origin_b": "v4_backfill"
+          },
+          "event_a": {
+            "content": "node:internal/modules/cjs/loader:1386\r\n  throw err;\r\n  ^\r\n\r\nError: Cannot find module 'C:\\Users\\Grigorije\\AppData\\Roaming\\npm\\node_modules\\@claudex\\cli\\dist\\cli\\update-recall.cjs'\r\n    at Function._resolveFilename (node:internal/modules/cjs/loader:1383:15)\r\n    at defaultResolveImpl (node:internal/modules/cjs/loader:1025:19)\r\n    at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1030:22)\r\n    at Function._load (node:internal/modules/cjs/loader:1192:37)\r\n    at TracingChannel.traceSync ...",
+            "project": "lacuna-betting-9f1d552c",
+            "ts_epoch": 1777939997,
+            "outer_exception": "Error"
+          },
+          "event_b": {
+            "content": "node:internal/modules/cjs/loader:1386\r\n  throw err;\r\n  ^\r\n\r\nError: Cannot find module 'C:\\Users\\Grigorije\\.claudex\\dist\\cli\\projects-touched.cjs'\r\n    at Function._resolveFilename (node:internal/modules/cjs/loader:1383:15)\r\n    at defaultResolveImpl (node:internal/modules/cjs/loader:1025:19)\r\n    at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1030:22)\r\n    at Function._load (node:internal/modules/cjs/loader:1192:37)\r\n    at TracingChannel.traceSync (node:diagnostics_channel:328:14)\r...",
+            "project": "desktop-01dcc792",
+            "ts_epoch": 1777939997,
+            "outer_exception": "Error"
+          }
+        },
+        {
+          "pair": {
+            "a": 560,
+            "b": 668,
+            "outer_exception": "Error",
+            "overlap_frame_count": 4,
+            "same_project": false,
+            "origin_a": "v4_backfill",
+            "origin_b": "v4_backfill"
+          },
+          "event_a": {
+            "content": "node:internal/modules/cjs/loader:1386\r\n  throw err;\r\n  ^\r\n\r\nError: Cannot find module 'C:\\Users\\Grigorije\\.claudex\\dist\\cli\\update-recall.cjs'\r\n    at Function._resolveFilename (node:internal/modules/cjs/loader:1383:15)\r\n    at defaultResolveImpl (node:internal/modules/cjs/loader:1025:19)\r\n    at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1030:22)\r\n    at Function._load (node:internal/modules/cjs/loader:1192:37)\r\n    at TracingChannel.traceSync (node:diagnostics_channel:328:14)\r\n  ...",
+            "project": "nexus-app-f0158b12",
+            "ts_epoch": 1777939997,
+            "outer_exception": "Error"
+          },
+          "event_b": {
+            "content": "node:internal/modules/cjs/loader:1386\r\n  throw err;\r\n  ^\r\n\r\nError: Cannot find module 'C:\\Users\\Grigorije\\.claudex\\dist\\cli\\projects-touched.cjs'\r\n    at Function._resolveFilename (node:internal/modules/cjs/loader:1383:15)\r\n    at defaultResolveImpl (node:internal/modules/cjs/loader:1025:19)\r\n    at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1030:22)\r\n    at Function._load (node:internal/modules/cjs/loader:1192:37)\r\n    at TracingChannel.traceSync (node:diagnostics_channel:328:14)\r...",
+            "project": "desktop-01dcc792",
+            "ts_epoch": 1777939997,
+            "outer_exception": "Error"
+          }
+        },
+        {
+          "pair": {
+            "a": 630,
+            "b": 668,
+            "outer_exception": "Error",
+            "overlap_frame_count": 4,
+            "same_project": false,
+            "origin_a": "v4_backfill",
+            "origin_b": "v4_backfill"
+          },
+          "event_a": {
+            "content": "node:internal/modules/cjs/loader:1386\r\n  throw err;\r\n  ^\r\n\r\nError: Cannot find module 'C:\\Users\\Grigorije\\.claudex\\dist\\cli\\update-recall.cjs'\r\n    at Function._resolveFilename (node:internal/modules/cjs/loader:1383:15)\r\n    at defaultResolveImpl (node:internal/modules/cjs/loader:1025:19)\r\n    at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1030:22)\r\n    at Function._load (node:internal/modules/cjs/loader:1192:37)\r\n    at TracingChannel.traceSync (node:diagnostics_channel:328:14)",
+            "project": "lacuna-betting-9f1d552c",
+            "ts_epoch": 1777939997,
+            "outer_exception": "Error"
+          },
+          "event_b": {
+            "content": "node:internal/modules/cjs/loader:1386\r\n  throw err;\r\n  ^\r\n\r\nError: Cannot find module 'C:\\Users\\Grigorije\\.claudex\\dist\\cli\\projects-touched.cjs'\r\n    at Function._resolveFilename (node:internal/modules/cjs/loader:1383:15)\r\n    at defaultResolveImpl (node:internal/modules/cjs/loader:1025:19)\r\n    at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1030:22)\r\n    at Function._load (node:internal/modules/cjs/loader:1192:37)\r\n    at TracingChannel.traceSync (node:diagnostics_channel:328:14)\r...",
+            "project": "desktop-01dcc792",
+            "ts_epoch": 1777939997,
+            "outer_exception": "Error"
+          }
+        },
+        {
+          "pair": {
+            "a": 632,
+            "b": 668,
+            "outer_exception": "Error",
+            "overlap_frame_count": 4,
+            "same_project": false,
+            "origin_a": "v4_backfill",
+            "origin_b": "v4_backfill"
+          },
+          "event_a": {
+            "content": "node:internal/modules/cjs/loader:1386\r\n  throw err;\r\n  ^\r\n\r\nError: Cannot find module 'C:\\Users\\Grigorije\\.claudex\\dist\\cli\\projects-touched.cjs'\r\n    at Function._resolveFilename (node:internal/modules/cjs/loader:1383:15)\r\n    at defaultResolveImpl (node:internal/modules/cjs/loader:1025:19)\r\n    at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1030:22)\r\n    at Function._load (node:internal/modules/cjs/loader:1192:37)\r\n    at TracingChannel.traceSync (node:diagnostics_channel:328:14)\r...",
+            "project": "big-mozzart-clean",
+            "ts_epoch": 1777939997,
+            "outer_exception": "Error"
+          },
+          "event_b": {
+            "content": "node:internal/modules/cjs/loader:1386\r\n  throw err;\r\n  ^\r\n\r\nError: Cannot find module 'C:\\Users\\Grigorije\\.claudex\\dist\\cli\\projects-touched.cjs'\r\n    at Function._resolveFilename (node:internal/modules/cjs/loader:1383:15)\r\n    at defaultResolveImpl (node:internal/modules/cjs/loader:1025:19)\r\n    at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1030:22)\r\n    at Function._load (node:internal/modules/cjs/loader:1192:37)\r\n    at TracingChannel.traceSync (node:diagnostics_channel:328:14)\r...",
+            "project": "desktop-01dcc792",
+            "ts_epoch": 1777939997,
+            "outer_exception": "Error"
+          }
+        },
+        {
+          "pair": {
+            "a": 621,
+            "b": 658,
+            "outer_exception": "Error",
+            "overlap_frame_count": 4,
+            "same_project": false,
+            "origin_a": "v4_backfill",
+            "origin_b": "v4_backfill"
+          },
+          "event_a": {
+            "content": "node:internal/modules/cjs/loader:1386\r\n  throw err;\r\n  ^\r\n\r\nError: Cannot find module 'C:\\Users\\Grigorije\\.claudex\\dist\\cli\\projects-touched.cjs'\r\n    at Function._resolveFilename (node:internal/modules/cjs/loader:1383:15)\r\n    at defaultResolveImpl (node:internal/modules/cjs/loader:1025:19)\r\n    at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1030:22)\r\n    at Function._load (node:internal/modules/cjs/loader:1192:37)\r\n    at TracingChannel.traceSync (node:diagnostics_channel:328:14)\r...",
+            "project": "claudex-v2",
+            "ts_epoch": 1777939997,
+            "outer_exception": "Error"
+          },
+          "event_b": {
+            "content": "node:internal/modules/cjs/loader:1386\r\n  throw err;\r\n  ^\r\n\r\nError: Cannot find module 'C:\\Users\\Grigorije\\.claudex\\dist\\cli\\projects-touched.cjs'\r\n    at Function._resolveFilename (node:internal/modules/cjs/loader:1383:15)\r\n    at defaultResolveImpl (node:internal/modules/cjs/loader:1025:19)\r\n    at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1030:22)\r\n    at Function._load (node:internal/modules/cjs/loader:1192:37)\r\n    at TracingChannel.traceSync (node:diagnostics_channel:328:14)\r...",
+            "project": "big-mozzy-v2",
+            "ts_epoch": 1777939997,
+            "outer_exception": "Error"
+          }
+        },
+        {
+          "pair": {
+            "a": 591,
+            "b": 624,
+            "outer_exception": "Error",
+            "overlap_frame_count": 5,
+            "same_project": true,
+            "origin_a": "v4_backfill",
+            "origin_b": "v4_backfill"
+          },
+          "event_a": {
+            "content": "node:internal/modules/cjs/loader:1386\r\n  throw err;\r\n  ^\r\n\r\nError: Cannot find module 'C:\\Users\\Grigorije\\Desktop\\Projects\\Kompas'\r\n    at Function._resolveFilename (node:internal/modules/cjs/loader:1383:15)\r\n    at defaultResolveImpl (node:internal/modules/cjs/loader:1025:19)\r\n    at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1030:22)\r\n    at Function._load (node:internal/modules/cjs/loader:1192:37)\r\n    at TracingChannel.traceSync (node:diagnostics_channel:328:14)\r\n    at wrapMod...",
+            "project": "kompas-98604047",
+            "ts_epoch": 1777939997,
+            "outer_exception": "Error"
+          },
+          "event_b": {
+            "content": "node:internal/modules/cjs/loader:1386\r\n  throw err;\r\n  ^\r\n\r\nError: Cannot find module 'C:\\Users\\Grigorije\\.claudex\\dist\\cli\\projects-touched.cjs'\r\n    at Function._resolveFilename (node:internal/modules/cjs/loader:1383:15)\r\n    at defaultResolveImpl (node:internal/modules/cjs/loader:1025:19)\r\n    at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1030:22)\r\n    at Function._load (node:internal/modules/cjs/loader:1192:37)\r\n    at TracingChannel.traceSync (node:diagnostics_channel:328:14)",
+            "project": "kompas-98604047",
+            "ts_epoch": 1777939997,
+            "outer_exception": "Error"
+          }
+        },
+        {
+          "pair": {
+            "a": 601,
+            "b": 658,
+            "outer_exception": "Error",
+            "overlap_frame_count": 4,
+            "same_project": false,
+            "origin_a": "v4_backfill",
+            "origin_b": "v4_backfill"
+          },
+          "event_a": {
+            "content": "node:internal/modules/cjs/loader:1386\r\n  throw err;\r\n  ^\r\n\r\nError: Cannot find module 'C:\\Users\\Grigorije\\.claudex\\dist\\cli\\projects-touched.cjs'\r\n    at Function._resolveFilename (node:internal/modules/cjs/loader:1383:15)\r\n    at defaultResolveImpl (node:internal/modules/cjs/loader:1025:19)\r\n    at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1030:22)\r\n    at Function._load (node:internal/modules/cjs/loader:1192:37)\r\n    at TracingChannel.traceSync (node:diagnostics_channel:328:14)\r...",
+            "project": "lacuna-betting-9f1d552c",
+            "ts_epoch": 1777939997,
+            "outer_exception": "Error"
+          },
+          "event_b": {
+            "content": "node:internal/modules/cjs/loader:1386\r\n  throw err;\r\n  ^\r\n\r\nError: Cannot find module 'C:\\Users\\Grigorije\\.claudex\\dist\\cli\\projects-touched.cjs'\r\n    at Function._resolveFilename (node:internal/modules/cjs/loader:1383:15)\r\n    at defaultResolveImpl (node:internal/modules/cjs/loader:1025:19)\r\n    at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1030:22)\r\n    at Function._load (node:internal/modules/cjs/loader:1192:37)\r\n    at TracingChannel.traceSync (node:diagnostics_channel:328:14)\r...",
+            "project": "big-mozzy-v2",
+            "ts_epoch": 1777939997,
+            "outer_exception": "Error"
+          }
+        },
+        {
+          "pair": {
+            "a": 641,
+            "b": 669,
+            "outer_exception": "Error",
+            "overlap_frame_count": 2,
+            "same_project": false,
+            "origin_a": "v4_backfill",
+            "origin_b": "v4_backfill"
+          },
+          "event_a": {
+            "content": "node:fs:441\r\n    return binding.readFileUtf8(path, stringToFlags(options.flag));\r\n                   ^\r\n\r\nError: ENOENT: no such file or directory, open 'C:\\tmp\\tabs.json'\r\n    at Object.readFileSync (node:fs:441:20)\r\n    at [eval]:3:25\r\n    at runScriptInThisContext (node:internal/vm:209:10)\r\n    at node:internal/process/execution:446:12\r\n    at [eval]-wrapper:6:24\r\n    at runScriptInContext (node:internal/process/execution:444:60)\r\n    at evalFunction (node:internal/process/execution:279:30)\r\n...",
+            "project": "big-mozzy-v2",
+            "ts_epoch": 1777939997,
+            "outer_exception": "Error"
+          },
+          "event_b": {
+            "content": "node:fs:441\r\n    return binding.readFileUtf8(path, stringToFlags(options.flag));\r\n                   ^\r\n\r\nError: ENOENT: no such file or directory, open [REDACTED]\tool-resultsmcp-claudex-recall-claudex_curated_context-1777852654306.txt'\r\n    at Object.readFileSync (node:fs:441:20)\r\n    at [eval]:3:26\r\n    at runScriptInThisContext (node:internal/vm:209:10)\r\n    a...",
+            "project": "desktop-01dcc792",
+            "ts_epoch": 1777939997,
+            "outer_exception": "Error"
+          }
+        },
+        {
+          "pair": {
+            "a": 616,
+            "b": 632,
+            "outer_exception": "Error",
+            "overlap_frame_count": 4,
+            "same_project": false,
+            "origin_a": "v4_backfill",
+            "origin_b": "v4_backfill"
+          },
+          "event_a": {
+            "content": "node:internal/modules/cjs/loader:1386\r\n  throw err;\r\n  ^\r\n\r\nError: Cannot find module 'C:\\Users\\Grigorije\\Desktop\\Projects\\Kompas\\dist\\cli\\update-recall.cjs'\r\n    at Function._resolveFilename (node:internal/modules/cjs/loader:1383:15)\r\n    at defaultResolveImpl (node:internal/modules/cjs/loader:1025:19)\r\n    at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1030:22)\r\n    at Function._load (node:internal/modules/cjs/loader:1192:37)\r\n    at TracingChannel.traceSync (node:diagnostics_chan...",
+            "project": "kompas-98604047",
+            "ts_epoch": 1777939997,
+            "outer_exception": "Error"
+          },
+          "event_b": {
+            "content": "node:internal/modules/cjs/loader:1386\r\n  throw err;\r\n  ^\r\n\r\nError: Cannot find module 'C:\\Users\\Grigorije\\.claudex\\dist\\cli\\projects-touched.cjs'\r\n    at Function._resolveFilename (node:internal/modules/cjs/loader:1383:15)\r\n    at defaultResolveImpl (node:internal/modules/cjs/loader:1025:19)\r\n    at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1030:22)\r\n    at Function._load (node:internal/modules/cjs/loader:1192:37)\r\n    at TracingChannel.traceSync (node:diagnostics_channel:328:14)\r...",
+            "project": "big-mozzart-clean",
+            "ts_epoch": 1777939997,
+            "outer_exception": "Error"
+          }
+        },
+        {
+          "pair": {
+            "a": 591,
+            "b": 647,
+            "outer_exception": "Error",
+            "overlap_frame_count": 4,
+            "same_project": false,
+            "origin_a": "v4_backfill",
+            "origin_b": "v4_backfill"
+          },
+          "event_a": {
+            "content": "node:internal/modules/cjs/loader:1386\r\n  throw err;\r\n  ^\r\n\r\nError: Cannot find module 'C:\\Users\\Grigorije\\Desktop\\Projects\\Kompas'\r\n    at Function._resolveFilename (node:internal/modules/cjs/loader:1383:15)\r\n    at defaultResolveImpl (node:internal/modules/cjs/loader:1025:19)\r\n    at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1030:22)\r\n    at Function._load (node:internal/modules/cjs/loader:1192:37)\r\n    at TracingChannel.traceSync (node:diagnostics_channel:328:14)\r\n    at wrapMod...",
+            "project": "kompas-98604047",
+            "ts_epoch": 1777939997,
+            "outer_exception": "Error"
+          },
+          "event_b": {
+            "content": "node:internal/modules/cjs/loader:1386\r\n  throw err;\r\n  ^\r\n\r\nError: Cannot find module 'C:\\Users\\Grigorije\\.claudex\\dist\\cli\\projects-touched.cjs'\r\n    at Function._resolveFilename (node:internal/modules/cjs/loader:1383:15)\r\n    at defaultResolveImpl (node:internal/modules/cjs/loader:1025:19)\r\n    at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1030:22)\r\n    at Function._load (node:internal/modules/cjs/loader:1192:37)\r\n    at TracingChannel.traceSync (node:diagnostics_channel:328:14)\r...",
+            "project": "big-mozzy-v2",
+            "ts_epoch": 1777939997,
+            "outer_exception": "Error"
+          }
+        },
+        {
+          "pair": {
+            "a": 622,
+            "b": 624,
+            "outer_exception": "Error",
+            "overlap_frame_count": 5,
+            "same_project": false,
+            "origin_a": "v4_backfill",
+            "origin_b": "v4_backfill"
+          },
+          "event_a": {
+            "content": "node:internal/modules/cjs/loader:1386\r\n  throw err;\r\n  ^\r\n\r\nError: Cannot find module 'C:\\Users\\Grigorije\\.claudex\\dist\\cli\\update-recall.cjs'\r\n    at Function._resolveFilename (node:internal/modules/cjs/loader:1383:15)\r\n    at defaultResolveImpl (node:internal/modules/cjs/loader:1025:19)\r\n    at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1030:22)\r\n    at Function._load (node:internal/modules/cjs/loader:1192:37)\r\n    at TracingChannel.traceSync (node:diagnostics_channel:328:14)",
+            "project": "lacuna-betting-9f1d552c",
+            "ts_epoch": 1777939997,
+            "outer_exception": "Error"
+          },
+          "event_b": {
+            "content": "node:internal/modules/cjs/loader:1386\r\n  throw err;\r\n  ^\r\n\r\nError: Cannot find module 'C:\\Users\\Grigorije\\.claudex\\dist\\cli\\projects-touched.cjs'\r\n    at Function._resolveFilename (node:internal/modules/cjs/loader:1383:15)\r\n    at defaultResolveImpl (node:internal/modules/cjs/loader:1025:19)\r\n    at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1030:22)\r\n    at Function._load (node:internal/modules/cjs/loader:1192:37)\r\n    at TracingChannel.traceSync (node:diagnostics_channel:328:14)",
+            "project": "kompas-98604047",
+            "ts_epoch": 1777939997,
+            "outer_exception": "Error"
+          }
+        },
+        {
+          "pair": {
+            "a": 624,
+            "b": 662,
+            "outer_exception": "Error",
+            "overlap_frame_count": 4,
+            "same_project": false,
+            "origin_a": "v4_backfill",
+            "origin_b": "v4_backfill"
+          },
+          "event_a": {
+            "content": "node:internal/modules/cjs/loader:1386\r\n  throw err;\r\n  ^\r\n\r\nError: Cannot find module 'C:\\Users\\Grigorije\\.claudex\\dist\\cli\\projects-touched.cjs'\r\n    at Function._resolveFilename (node:internal/modules/cjs/loader:1383:15)\r\n    at defaultResolveImpl (node:internal/modules/cjs/loader:1025:19)\r\n    at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1030:22)\r\n    at Function._load (node:internal/modules/cjs/loader:1192:37)\r\n    at TracingChannel.traceSync (node:diagnostics_channel:328:14)",
+            "project": "kompas-98604047",
+            "ts_epoch": 1777939997,
+            "outer_exception": "Error"
+          },
+          "event_b": {
+            "content": "node:internal/modules/cjs/loader:1386\r\n  throw err;\r\n  ^\r\n\r\nError: Cannot find module 'C:\\Users\\Grigorije\\.claudex\\dist\\cli\\projects-touched.cjs'\r\n    at Function._resolveFilename (node:internal/modules/cjs/loader:1383:15)\r\n    at defaultResolveImpl (node:internal/modules/cjs/loader:1025:19)\r\n    at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1030:22)\r\n    at Function._load (node:internal/modules/cjs/loader:1192:37)\r\n    at TracingChannel.traceSync (node:diagnostics_channel:328:14)\r...",
+            "project": "big-mozzy-v2",
+            "ts_epoch": 1777939997,
+            "outer_exception": "Error"
+          }
+        },
+        {
+          "pair": {
+            "a": 595,
+            "b": 662,
+            "outer_exception": "Error",
+            "overlap_frame_count": 4,
+            "same_project": false,
+            "origin_a": "v4_backfill",
+            "origin_b": "v4_backfill"
+          },
+          "event_a": {
+            "content": "node:internal/modules/cjs/loader:1386\r\n  throw err;\r\n  ^\r\n\r\nError: Cannot find module 'C:\\Users\\Grigorije\\AppData\\Roaming\\npm\\node_modules\\@claudex\\cli\\dist\\cli\\update-recall.cjs'\r\n    at Function._resolveFilename (node:internal/modules/cjs/loader:1383:15)\r\n    at defaultResolveImpl (node:internal/modules/cjs/loader:1025:19)\r\n    at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1030:22)\r\n    at Function._load (node:internal/modules/cjs/loader:1192:37)\r\n    at TracingChannel.traceSync ...",
+            "project": "lacuna-betting-9f1d552c",
+            "ts_epoch": 1777939997,
+            "outer_exception": "Error"
+          },
+          "event_b": {
+            "content": "node:internal/modules/cjs/loader:1386\r\n  throw err;\r\n  ^\r\n\r\nError: Cannot find module 'C:\\Users\\Grigorije\\.claudex\\dist\\cli\\projects-touched.cjs'\r\n    at Function._resolveFilename (node:internal/modules/cjs/loader:1383:15)\r\n    at defaultResolveImpl (node:internal/modules/cjs/loader:1025:19)\r\n    at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1030:22)\r\n    at Function._load (node:internal/modules/cjs/loader:1192:37)\r\n    at TracingChannel.traceSync (node:diagnostics_channel:328:14)\r...",
+            "project": "big-mozzy-v2",
+            "ts_epoch": 1777939997,
+            "outer_exception": "Error"
+          }
+        },
+        {
+          "pair": {
+            "a": 662,
+            "b": 667,
+            "outer_exception": "Error",
+            "overlap_frame_count": 4,
+            "same_project": false,
+            "origin_a": "v4_backfill",
+            "origin_b": "v4_backfill"
+          },
+          "event_a": {
+            "content": "node:internal/modules/cjs/loader:1386\r\n  throw err;\r\n  ^\r\n\r\nError: Cannot find module 'C:\\Users\\Grigorije\\.claudex\\dist\\cli\\projects-touched.cjs'\r\n    at Function._resolveFilename (node:internal/modules/cjs/loader:1383:15)\r\n    at defaultResolveImpl (node:internal/modules/cjs/loader:1025:19)\r\n    at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1030:22)\r\n    at Function._load (node:internal/modules/cjs/loader:1192:37)\r\n    at TracingChannel.traceSync (node:diagnostics_channel:328:14)\r...",
+            "project": "big-mozzy-v2",
+            "ts_epoch": 1777939997,
+            "outer_exception": "Error"
+          },
+          "event_b": {
+            "content": "node:internal/modules/cjs/loader:1386\r\n  throw err;\r\n  ^\r\n\r\nError: Cannot find module 'C:\\Users\\Grigorije\\.claudex\\dist\\cli\\projects-touched.cjs'\r\n    at Function._resolveFilename (node:internal/modules/cjs/loader:1383:15)\r\n    at defaultResolveImpl (node:internal/modules/cjs/loader:1025:19)\r\n    at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1030:22)\r\n    at Function._load (node:internal/modules/cjs/loader:1192:37)\r\n    at TracingChannel.traceSync (node:diagnostics_channel:328:14)\r...",
+            "project": "desktop-01dcc792",
+            "ts_epoch": 1777939997,
+            "outer_exception": "Error"
+          }
+        },
+        {
+          "pair": {
+            "a": 560,
+            "b": 667,
+            "outer_exception": "Error",
+            "overlap_frame_count": 4,
+            "same_project": false,
+            "origin_a": "v4_backfill",
+            "origin_b": "v4_backfill"
+          },
+          "event_a": {
+            "content": "node:internal/modules/cjs/loader:1386\r\n  throw err;\r\n  ^\r\n\r\nError: Cannot find module 'C:\\Users\\Grigorije\\.claudex\\dist\\cli\\update-recall.cjs'\r\n    at Function._resolveFilename (node:internal/modules/cjs/loader:1383:15)\r\n    at defaultResolveImpl (node:internal/modules/cjs/loader:1025:19)\r\n    at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1030:22)\r\n    at Function._load (node:internal/modules/cjs/loader:1192:37)\r\n    at TracingChannel.traceSync (node:diagnostics_channel:328:14)\r\n  ...",
+            "project": "nexus-app-f0158b12",
+            "ts_epoch": 1777939997,
+            "outer_exception": "Error"
+          },
+          "event_b": {
+            "content": "node:internal/modules/cjs/loader:1386\r\n  throw err;\r\n  ^\r\n\r\nError: Cannot find module 'C:\\Users\\Grigorije\\.claudex\\dist\\cli\\projects-touched.cjs'\r\n    at Function._resolveFilename (node:internal/modules/cjs/loader:1383:15)\r\n    at defaultResolveImpl (node:internal/modules/cjs/loader:1025:19)\r\n    at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1030:22)\r\n    at Function._load (node:internal/modules/cjs/loader:1192:37)\r\n    at TracingChannel.traceSync (node:diagnostics_channel:328:14)\r...",
+            "project": "desktop-01dcc792",
+            "ts_epoch": 1777939997,
+            "outer_exception": "Error"
+          }
+        },
+        {
+          "pair": {
+            "a": 585,
+            "b": 595,
+            "outer_exception": "Error",
+            "overlap_frame_count": 4,
+            "same_project": false,
+            "origin_a": "v4_backfill",
+            "origin_b": "v4_backfill"
+          },
+          "event_a": {
+            "content": "node:internal/modules/cjs/loader:1386\r\n  throw err;\r\n  ^\r\n\r\nError: Cannot find module 'C:\\Users\\Grigorije\\.claudex\\dist\\cli\\update-recall.cjs'\r\n    at Function._resolveFilename (node:internal/modules/cjs/loader:1383:15)\r\n    at defaultResolveImpl (node:internal/modules/cjs/loader:1025:19)\r\n    at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1030:22)\r\n    at Function._load (node:internal/modules/cjs/loader:1192:37)\r\n    at TracingChannel.traceSync (node:diagnostics_channel:328:14)\r\n  ...",
+            "project": "nexus-e53c6c93",
+            "ts_epoch": 1777939997,
+            "outer_exception": "Error"
+          },
+          "event_b": {
+            "content": "node:internal/modules/cjs/loader:1386\r\n  throw err;\r\n  ^\r\n\r\nError: Cannot find module 'C:\\Users\\Grigorije\\AppData\\Roaming\\npm\\node_modules\\@claudex\\cli\\dist\\cli\\update-recall.cjs'\r\n    at Function._resolveFilename (node:internal/modules/cjs/loader:1383:15)\r\n    at defaultResolveImpl (node:internal/modules/cjs/loader:1025:19)\r\n    at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1030:22)\r\n    at Function._load (node:internal/modules/cjs/loader:1192:37)\r\n    at TracingChannel.traceSync ...",
+            "project": "lacuna-betting-9f1d552c",
+            "ts_epoch": 1777939997,
+            "outer_exception": "Error"
+          }
+        },
+        {
+          "pair": {
+            "a": 624,
+            "b": 668,
+            "outer_exception": "Error",
+            "overlap_frame_count": 4,
+            "same_project": false,
+            "origin_a": "v4_backfill",
+            "origin_b": "v4_backfill"
+          },
+          "event_a": {
+            "content": "node:internal/modules/cjs/loader:1386\r\n  throw err;\r\n  ^\r\n\r\nError: Cannot find module 'C:\\Users\\Grigorije\\.claudex\\dist\\cli\\projects-touched.cjs'\r\n    at Function._resolveFilename (node:internal/modules/cjs/loader:1383:15)\r\n    at defaultResolveImpl (node:internal/modules/cjs/loader:1025:19)\r\n    at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1030:22)\r\n    at Function._load (node:internal/modules/cjs/loader:1192:37)\r\n    at TracingChannel.traceSync (node:diagnostics_channel:328:14)",
+            "project": "kompas-98604047",
+            "ts_epoch": 1777939997,
+            "outer_exception": "Error"
+          },
+          "event_b": {
+            "content": "node:internal/modules/cjs/loader:1386\r\n  throw err;\r\n  ^\r\n\r\nError: Cannot find module 'C:\\Users\\Grigorije\\.claudex\\dist\\cli\\projects-touched.cjs'\r\n    at Function._resolveFilename (node:internal/modules/cjs/loader:1383:15)\r\n    at defaultResolveImpl (node:internal/modules/cjs/loader:1025:19)\r\n    at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1030:22)\r\n    at Function._load (node:internal/modules/cjs/loader:1192:37)\r\n    at TracingChannel.traceSync (node:diagnostics_channel:328:14)\r...",
+            "project": "desktop-01dcc792",
+            "ts_epoch": 1777939997,
+            "outer_exception": "Error"
+          }
+        }
+      ]
+    },
+    {
+      "origin": "phase1_organic_pre_phase2_close",
+      "population": 0,
+      "allocation": 0,
+      "sampled": []
+    },
+    {
+      "origin": "phase1_organic_post_phase2_close",
+      "population": 0,
+      "allocation": 0,
+      "sampled": []
+    },
+    {
+      "origin": "mixed",
+      "population": 0,
+      "allocation": 0,
+      "sampled": []
+    }
+  ]
+}

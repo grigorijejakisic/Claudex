@@ -1,34 +1,46 @@
 /**
- * Phase 2 IDX-01 — episodic-density CLI.
+ * Phase 2 / 2.1 IDX-01/02 — episodic-density CLI.
  *
  * Subcommands:
  *
  *   bun run src/benchmark/episodic-density/cli.ts backfill [--dry-run]
  *     Walks Phase 1 organic tool_result rows + v4 artifact observations,
  *     populates episodic_events.metadata_json.error_fingerprint and the
- *     V26 sidecar episodic_index_error_fingerprint. --dry-run reports
- *     counts but performs no writes.
+ *     V26/V27 sidecar episodic_index_error_fingerprint with three-tier
+ *     corpus_origin classification (Phase 2.1 Plan 02.1-01).
  *
  *   bun run src/benchmark/episodic-density/cli.ts measure [--seed N]
- *     Wired by Plan 02-05. Runs the harness, computes the verdict, writes
- *     02-RESULTS.md / 02-results.json, applies side effects.
+ *     Phase 2 strict-only entrypoint. Wired by Plan 02-05.
+ *
+ *   bun run src/benchmark/episodic-density/cli.ts audit [--tier strict_3frame|relaxed_2frame|both] [--seed N]
+ *     Phase 2.1 Plan 02.1-03 stratified spot-check audit.
+ *
+ *   bun run src/benchmark/episodic-density/cli.ts measure-tiered [--seed N]
+ *     Phase 2.1 Plan 02.1-04 dual-tier dual-verdict runner.
  *
  * Exit codes:
  *   0 — success-with-floor-met (or dry-run that would have hit floor) /
- *       any KILL/SCOPE_DOWN/GREEN_LIGHT verdict (negative result is success)
+ *       any KILL/SCOPE_DOWN/GREEN_LIGHT/BLOCKED-tier-but-other-tier-ok
  *   2 — floor not met (corpus too small for measurement)
- *   1 — hard failure (DDL missing, runtime error, BLOCKED verdict)
+ *   1 — hard failure (DDL missing, runtime error)
  */
 
+import * as fs from 'node:fs';
 import { runBackfill } from './backfill.js';
 import { runFullPhase2Measurement } from './runner.js';
+import { runAudit } from './audit.js';
 import { openDatabase, closeDatabase } from '../../core/storage.js';
 import { getDbPath } from '../../shared/paths.js';
+import type { LabelerTier } from './types.js';
+import type { Database } from 'better-sqlite3';
+
+type AuditTier = LabelerTier | 'both';
 
 interface CliFlags {
-  command: 'backfill' | 'measure' | 'help';
+  command: 'backfill' | 'measure' | 'audit' | 'measure-tiered' | 'help';
   dryRun: boolean;
   seed?: number;
+  auditTier: AuditTier;
 }
 
 function parseArgs(argv: string[]): CliFlags {
@@ -36,8 +48,14 @@ function parseArgs(argv: string[]): CliFlags {
   const flags: CliFlags = {
     command: 'help',
     dryRun: false,
+    auditTier: 'both',
   };
-  if (cmd === 'backfill' || cmd === 'measure') {
+  if (
+    cmd === 'backfill' ||
+    cmd === 'measure' ||
+    cmd === 'audit' ||
+    cmd === 'measure-tiered'
+  ) {
     flags.command = cmd;
   }
   for (let i = 1; i < argv.length; i++) {
@@ -47,6 +65,11 @@ function parseArgs(argv: string[]): CliFlags {
       const next = argv[++i];
       const n = Number.parseInt(next, 10);
       if (Number.isFinite(n)) flags.seed = n;
+    } else if (arg === '--tier') {
+      const next = argv[++i];
+      if (next === 'strict_3frame' || next === 'relaxed_2frame' || next === 'both') {
+        flags.auditTier = next;
+      }
     }
   }
   return flags;
@@ -54,16 +77,18 @@ function parseArgs(argv: string[]): CliFlags {
 
 function printHelp(): void {
   // eslint-disable-next-line no-console
-  console.log(`Episodic-density harness CLI (Phase 2 IDX-01)
+  console.log(`Episodic-density harness CLI
 
 Usage:
   bun run src/benchmark/episodic-density/cli.ts backfill [--dry-run]
-  bun run src/benchmark/episodic-density/cli.ts measure [--seed N]
+  bun run src/benchmark/episodic-density/cli.ts measure [--seed N]                           (Phase 2 strict-only)
+  bun run src/benchmark/episodic-density/cli.ts audit [--tier strict_3frame|relaxed_2frame|both] [--seed N]
+  bun run src/benchmark/episodic-density/cli.ts measure-tiered [--seed N]                    (Phase 2.1 dual-tier)
 
 Backfill exit codes:
   0  success, corpus floor met (>=50 fingerprinted, >=3 projects)
-  2  floor not met (operator should ingest more sessions, then re-run)
-  1  hard failure (V26 migration not applied, runtime error)
+  2  floor not met
+  1  hard failure
 `);
 }
 
@@ -114,12 +139,76 @@ async function runMeasureCommand(flags: CliFlags): Promise<number> {
   }
 }
 
+async function runAuditForTier(db: Database, tier: LabelerTier, seed: number | undefined): Promise<{ tier: LabelerTier; sampleSize: number; allocations: Record<string, number>; markdownPath: string; jsonPath: string }> {
+  const { buildCorpus } = await import('./harness.js');
+  const corpus = buildCorpus(db);
+  const result = await runAudit(db, corpus, tier, { seed });
+  const allocations: Record<string, number> = {};
+  for (const stratum of result.plan.strata) {
+    allocations[stratum.origin] = stratum.allocation;
+  }
+  return {
+    tier,
+    sampleSize: result.plan.sampled_total,
+    allocations,
+    markdownPath: result.markdownPath,
+    jsonPath: result.jsonPath,
+  };
+}
+
+async function runAuditCommand(flags: CliFlags): Promise<number> {
+  const db = openDatabase(getDbPath());
+  try {
+    const tiers: LabelerTier[] =
+      flags.auditTier === 'both'
+        ? ['strict_3frame', 'relaxed_2frame']
+        : [flags.auditTier];
+    // CONTEXT.md decision 3d: audit and verdict run in parallel; --tier
+    // both runs the two tiers concurrently via Promise.all.
+    const summaries = await Promise.all(
+      tiers.map(tier => runAuditForTier(db, tier, flags.seed)),
+    );
+    for (const s of summaries) {
+      // eslint-disable-next-line no-console
+      console.log(
+        `[audit:${s.tier}] sample_size=${s.sampleSize} allocations=${JSON.stringify(s.allocations)} -> md=${s.markdownPath} json=${s.jsonPath}`,
+      );
+    }
+    return 0;
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.error(`audit failed: ${(err as Error).message}`);
+    return 1;
+  } finally {
+    closeDatabase(db);
+  }
+}
+
+async function runMeasureTieredCommand(flags: CliFlags): Promise<number> {
+  // Plan 02.1-04 owns the implementation of this subcommand. Until that
+  // plan lands, this stub directs operators back to `measure` (Phase 2)
+  // and exits non-zero.
+  if (flags.seed != null) {
+    // Suppress the unused-arg warning until Plan 02.1-04 wires it.
+    void flags.seed;
+  }
+  // eslint-disable-next-line no-console
+  console.error(
+    'measure-tiered is implemented by Plan 02.1-04. If you are seeing this, the plan has not landed yet.',
+  );
+  // Touch fs to suppress unused-import warning on this branch.
+  void fs;
+  return 1;
+}
+
 async function main(): Promise<void> {
   const argv = process.argv.slice(2);
   const flags = parseArgs(argv);
   let code = 1;
   if (flags.command === 'backfill') code = await runBackfillCommand(flags);
   else if (flags.command === 'measure') code = await runMeasureCommand(flags);
+  else if (flags.command === 'audit') code = await runAuditCommand(flags);
+  else if (flags.command === 'measure-tiered') code = await runMeasureTieredCommand(flags);
   else printHelp();
   process.exit(code);
 }
