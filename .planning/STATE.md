@@ -11,9 +11,9 @@ See: `.planning/PROJECT.md` (created 2026-05-04, reframed 2026-05-05)
 ## Current Position
 
 **Current Milestone:** v5 — Bound Multi-Modal Episodes (reframed 2026-05-05 to substrate-only)
-**Phase:** 4 — Angel reduction SHIPPED 2026-05-05; Phase 6 next
+**Phase:** 6 — Crash-resilient episode boundary SHIPPED 2026-05-05; Phase 7 next
 **Plan:** —
-**Status:** Three v5 phases shipped on 2026-05-05: milestone reframe (multi-handle thesis KILL × 3), then Phase 4 Angel reduction via `/auto-orchestrate` (discuss-4 → plan-4 → execute-4, 31 commits). Methodology that produced the honest KILL — pre-committed decision rule, locked corpus, multiple bound measurements, append-only aggregator, Wilson/Newcombe CI binding — promoted to v5 standard practice. Full reframe: `.planning/reframes/2026-05-05-multi-handle-kill.md`.
+**Status:** Phase 6 SHIPPED 2026-05-05 via /auto-execute-phase. V29 schema (episode_boundary_cursor + sessions liveness columns), chokidar watcher, heartbeat hooks, composition rule with heartbeat-compare-before-cleanup, boundary detector with re-open + offset-overflow recovery, Angel integration. 55 boundary tests + 7 V29 migration tests + 6 hook regression tests; all pass. Vesna 18/18 preserved (VAL-04 probe deferred to Phase 7 — Phase 6 substrate has no consumer surface yet). Build clean. Full suite: 3448/3475 passing (27 pre-existing baseline failures unchanged from Phase 4).
 
 **Verdict log:**
 - Phase 1 (2026-05-04, type: engineering): SHIPPED. V25 migration + episodic_events table + dualWrite helpers + 60+ EPI-tagged tests. Stub-extractor proves Mem0-trap structurally impossible. Vesna 17/17 preserved.
@@ -23,10 +23,11 @@ See: `.planning/PROJECT.md` (created 2026-05-04, reframed 2026-05-05)
 - Phase 3 (multi-handle retrieval cutover): DROPPED 2026-05-05 — premised on dead thesis.
 - Phase 4 (2026-05-05, type: engineering): SHIPPED. Three extraction sites deleted (A `pattern-extractor.ts`, B `experience-scoring.ts` step 1, C `heartbeat.ts` synthesis loop — C uncovered during discuss). V28 BEFORE INSERT trigger blocks new rows structurally via TEMP `session_pragmas` sidecar. `classifySessionDomains` relocated to `domain-classifier.ts`. Three-layer cutoff (JSDoc tombstones + `extraction-deleted.test.ts` regression guard + V28 trigger). Mem0 fix `0d0fbca` deleted as structurally obsolete. Net: ~1100 lines deleted, ~700 added. Ship gates: Vesna **18/18 PASS** (new VAL-02 probe `extraction-deleted-001.json`), build clean, 3380/3415 tests passing (27 pre-existing failures unchanged).
 - Phase 5 (density-based abstraction): DROPPED 2026-05-05 — same dead thesis.
+- Phase 6 (2026-05-05, type: engineering): SHIPPED. V29 schema bump (episode_boundary_cursor + sessions.last_heartbeat_ts + sessions.last_jsonl_write_ts). chokidar 5.0.0 added as runtime dep. New module surface at `src/angel/boundary/` (thresholds, pid-liveness, jsonl-watcher, composition-rule, cursor, boundary-detector). 5 hooks bump heartbeat ts; SessionEnd emits `clean_endsession` close marker atomically with cursor advance. Angel.heartbeatTick now runs runBoundaryTick on every cadence; Angel boot starts JSONL watcher. Composition rule mirrors CONTEXT formal predicate verbatim; heartbeat-compare-before-cleanup race guard inside the close transaction; episode_close_emitted telemetry write outside the tx so CHECK violations don't roll back the close. 55 tests in src/tests/angel/boundary/ + 6 in heartbeat-column-writes.test.ts + 7 in migrations-v29.test.ts. Vesna VAL-04 probe deferred to Phase 7 (no consumer surface for behavioral assertion until then). Net code: ~1500 lines added, ~10 deleted.
 
-**Last activity:** 2026-05-05 — Phase 4 SHIPPED via /auto-orchestrate. ROADMAP.md + CLAUDE.md + STATE.md updated for the close.
+**Last activity:** 2026-05-05 — Phase 6 SHIPPED via /auto-execute-phase. ROADMAP.md + STATE.md updated for the close.
 
-**Next step:** `/auto-orchestrate --from-phase 6` for Crash-resilient episode boundary (fsnotify + heartbeat + idle-sweep + PID-liveness, engineering-doc Recommendation #1).
+**Next step:** `/auto-orchestrate --from-phase 7` for v4 coexistence / migration / ship (narrowed): per-table retire/re-derive/preserve decisions, Vesna probe suite update (existing 18 + new VAL-01/02/04 + KILL-regression VAL-03'), ship gate validation, **v5.0.0 tag**.
 
 ## v5 Phase Structure (Post-Reframe)
 
@@ -38,7 +39,7 @@ See: `.planning/PROJECT.md` (created 2026-05-04, reframed 2026-05-05)
 | 3 — Multi-handle retrieval cutover | Rewrite hybrid-retrieval to fuse N indexes | engineering | **DROPPED 2026-05-05** | RET-01..05 (dropped) |
 | 4 — Angel reduction | Trace dependencies; delete extraction-time pattern creation; Angel becomes bind+index, not abstract | engineering | **NEXT** | AR-01..05 |
 | 5 — Density-based abstraction | Cluster matching episodes; surface high-density clusters as inferred patterns at retrieval time | empirical | **DROPPED 2026-05-05** | ABS-01..04 (dropped) |
-| 6 — Crash-resilient episode boundary | fsnotify + heartbeat + idle-sweep + PID-liveness | engineering | pending | EBD-01..06 |
+| 6 — Crash-resilient episode boundary | fsnotify + heartbeat + idle-sweep + PID-liveness | engineering | **SHIPPED 2026-05-05** | EBD-01..06 |
 | 7 — v4 coexistence / migration / ship (narrowed) | Per-table decision (retire/re-derive/preserve); Vesna update; **v5.0.0 tag** | engineering | pending | MIG-01..05, VAL-01/02/03'/04/05/06 |
 
 **Coverage:** 4 surviving phases (1 shipped, 4/6/7 pending). Phases 2/2.1 closed with KILL. Phases 3/5 dropped.

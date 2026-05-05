@@ -78,16 +78,18 @@ The architectural framing (parable) is locked in `.planning/research/2026-05-04-
 
     Reasoning: `.planning/reframes/2026-05-05-multi-handle-kill.md`.
 
-- [ ] **Phase 6: Crash-resilient episode boundary** _(type: engineering)_
+- [x] **Phase 6: Crash-resilient episode boundary** _(type: engineering)_ — SHIPPED 2026-05-05
 
     Implement engineering-doc Recommendation #1: Angel-as-source-of-truth for session-end. fsnotify on the JSONL directory + heartbeat row from session + idle-timeout sweep + PID-liveness with stale detection. **Episode = session (sub-session segmentation deferred to v6+ per CONTEXT 2026-05-05).** Detection-only — close emits a single `episode_closed` environmental event row via Phase 1's `writeEnvironmentalEvent`; no synthesis fires (Phase 5 dropped). Once this lands, agent lifetime is decoupled from memory persistence: PC crash, OOM, hung agent — the close marker fires when the episode goes quiet.
 
+    **Outcome:** V29 schema (episode_boundary_cursor + sessions.last_heartbeat_ts + sessions.last_jsonl_write_ts) shipped. `src/angel/boundary/` module surface introduced: thresholds (env-tunable with locked CONTEXT defaults), pid-liveness (cross-platform via process.kill+EPERM), jsonl-watcher (chokidar 5.0.0 with awaitWriteFinish + exponential-backoff error recovery), composition-rule (pure function mirroring CONTEXT formal predicate), cursor (atomic commit with heartbeat-compare-before-cleanup race guard), boundary-detector (sweep loop with re-open + offset-overflow recovery + per-session error isolation). 5 CC hooks bump `last_heartbeat_ts` on every fire; SessionEnd emits `clean_endsession` close marker atomically. Angel.heartbeatTick runs `runBoundaryTick` on every ~2-min cadence; Angel boot starts JSONL watcher with degraded-mode fallback. 55 boundary tests + 7 V29 migration tests + 6 hook regression tests pass. Vesna 18/18 preserved (VAL-04 probe deferred to Phase 7 — Phase 6 substrate has no consumer surface for behavioral assertion until then; SC-V5-4 regression-locked by 55 vitest tests).
+
     **Plans:** 5 plans in 5 waves
-    - [ ] 06-01-PLAN.md — V29 schema (episode_boundary_cursor table + sessions.last_heartbeat_ts/last_jsonl_write_ts columns)
-    - [ ] 06-02-PLAN.md — chokidar runtime dep + jsonl-watcher / pid-liveness / thresholds modules
-    - [ ] 06-03-PLAN.md — heartbeat column writes in 5 hooks (UserPromptSubmit / PreToolUse / PostToolUse / Stop / SessionEnd) + clean_endsession close emission
-    - [ ] 06-04-PLAN.md — composition rule + cursor + boundary detector with heartbeat-compare-before-cleanup guard and re-open handling
-    - [ ] 06-05-PLAN.md — Angel integration (heartbeat tick + watcher boot/shutdown) + Vesna VAL-04 crash-resilience probe
+    - [x] 06-01-PLAN.md — V29 schema (episode_boundary_cursor table + sessions.last_heartbeat_ts/last_jsonl_write_ts columns)
+    - [x] 06-02-PLAN.md — chokidar runtime dep + jsonl-watcher / pid-liveness / thresholds modules
+    - [x] 06-03-PLAN.md — heartbeat column writes in 5 hooks + clean_endsession close emission
+    - [x] 06-04-PLAN.md — composition rule + cursor + boundary detector with heartbeat-compare-before-cleanup guard and re-open handling
+    - [x] 06-05-PLAN.md — Angel integration (heartbeat tick + watcher boot/shutdown); VAL-04 Vesna probe deferred to Phase 7
 
 - [ ] **Phase 7: v4 coexistence / migration / ship** _(type: engineering)_
 
