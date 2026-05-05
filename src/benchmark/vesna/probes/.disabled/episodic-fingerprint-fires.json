@@ -1,0 +1,23 @@
+{
+  "id": "episodic-fingerprint-fires-001",
+  "category": "buffer",
+  "source_session_id": "phase-2-plan-05",
+  "source_project": "claudex-v3",
+  "scenario": "Phase 2 IDX-01 ship-gate: a known matched-pair (a, b) from the held-out test set should be retrieved by Variant B (fingerprint-only) when query=a's content. The probe seeds two synthetic events sharing the same outer_exception and >=3 frames in different sessions; expects Variant B to surface event b in the top-k for a query keyed off event a's content. ACTIVATED only on GREEN_LIGHT verdict by the Plan 02-05 runner — placed in src/benchmark/vesna/probes/ on green-light, kept in .disabled/ otherwise.",
+  "user_prompt": "I'm hitting the same TypeError as session-A-1 — what was that fingerprint?",
+  "expected_recall": {
+    "artifact_id_or_pattern": "session-A-1",
+    "must_surface_within_turns": 1,
+    "must_contain_phrase_pattern": [
+      "TypeError",
+      "session-A-1"
+    ]
+  },
+  "lexical_exclusions": [
+    "TypeError",
+    "session-A-1",
+    "fingerprint"
+  ],
+  "evaluation": "auto",
+  "buffer_placeholder": true
+}

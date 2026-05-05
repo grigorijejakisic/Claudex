@@ -21,6 +21,7 @@
  */
 
 import { runBackfill } from './backfill.js';
+import { runFullPhase2Measurement } from './runner.js';
 import { openDatabase, closeDatabase } from '../../core/storage.js';
 import { getDbPath } from '../../shared/paths.js';
 
@@ -89,14 +90,28 @@ async function runBackfillCommand(flags: CliFlags): Promise<number> {
   }
 }
 
-async function runMeasureCommand(_flags: CliFlags): Promise<number> {
-  // Plan 02-05 wires this branch by importing runFullPhase2Measurement.
-  // Until then, this is a graceful "not implemented yet" signal.
-  // eslint-disable-next-line no-console
-  console.error(
-    `measure: not yet implemented at this commit — Plan 02-05 lands the runner. Try 'backfill' or wait for the verdict runner.`,
-  );
-  return 1;
+async function runMeasureCommand(flags: CliFlags): Promise<number> {
+  const db = openDatabase(getDbPath());
+  try {
+    const summary = await runFullPhase2Measurement(db, { seed: flags.seed });
+    // eslint-disable-next-line no-console
+    console.log(JSON.stringify({
+      verdict_kind: summary.verdict.kind,
+      vesna_probe_state: summary.vesna_probe_state,
+      flag_state: summary.flag_state,
+      results_md: summary.results_md_path,
+      results_json: summary.results_json_path,
+      reasoning: summary.verdict.reasoning,
+    }, null, 2));
+    if (summary.verdict.kind === 'BLOCKED') return 1;
+    return 0; // GREEN_LIGHT, SCOPE_DOWN, KILL all exit 0 — empirical-phase discipline
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.error(`measure failed: ${(err as Error).message}`);
+    return 1;
+  } finally {
+    closeDatabase(db);
+  }
 }
 
 async function main(): Promise<void> {

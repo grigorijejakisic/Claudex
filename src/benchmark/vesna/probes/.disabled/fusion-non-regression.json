@@ -1,0 +1,21 @@
+{
+  "id": "fusion-non-regression-001",
+  "category": "buffer",
+  "source_session_id": "phase-2-plan-05",
+  "source_project": "claudex-v3",
+  "scenario": "Phase 2 IDX-02 ship-gate: RRF-fused recall@10 must not be measurably worse than semantic-only recall@10 on a small synthetic corpus. The probe seeds a corpus where semantic retrieval already finds the right answer at rank-1; the assertion is that fusion does not push the right answer below rank-10. ACTIVATED only on GREEN_LIGHT verdict by the Plan 02-05 runner — placed in src/benchmark/vesna/probes/ on green-light, kept in .disabled/ otherwise.",
+  "user_prompt": "Where did we fix the same JSON-parse race-condition before?",
+  "expected_recall": {
+    "artifact_id_or_pattern": "json-parse-race-fix",
+    "must_surface_within_turns": 1,
+    "must_contain_phrase_pattern": [
+      "json-parse-race"
+    ]
+  },
+  "lexical_exclusions": [
+    "json-parse-race",
+    "race-condition"
+  ],
+  "evaluation": "auto",
+  "buffer_placeholder": true
+}
