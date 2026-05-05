@@ -90,7 +90,7 @@ export const DEFAULT_CONFIG = {
   },
   features: {
     fts5_search: true,
-    error_fingerprint: true,
+    error_fingerprint: false,
   },
 } as const;
 
