@@ -1,58 +1,73 @@
 ---
 status: active
-phase: "4.1"
-summary: Discuss Phase 4.1 design conversationally with user. Don't agent-flow it. Don't write the CONTEXT.md until points are locked. Order propo...
-topic: 2026-04-27-phase-4-1
-created_at_epoch_ms: 1777502266678
+phase: "7"
+summary: Phase 7 (v4 coexistence/migration/ship) discuss complete. CONTEXT.md committed cleanly. Team pre-cleaned. Spawn plan-7 immediately.
+topic: 2026-05-06-phase-7
+created_at_epoch_ms: 1778029260000
 ---
-# 2026-04-29 — 2026-04-27-phase-4-1
+# 2026-05-06 — Phase 7 mid-cycle (v5.0.0 ship phase)
 
-**What we found:** End of session 4844c48c. v4 trajectory audit closed and committed (`e3f0cc5`). The full 5-file planning rewrite landed: STATE.md, ROADMAP.md, PROJECT.md, REQUIREMENTS.md, CLAUDEX_V4_SCOPE.md (corrigendum). The rebind is locked — 16 phases, SC#1-#4 gates, benchmarks dropped entirely.
+**Where we are:** Phase 7 discuss-phase complete. CONTEXT.md on disk at `.planning/phases/07-v4-coexistence-migration-ship/07-CONTEXT.md` (19KB, 4 locked areas) and committed cleanly at `55f84b3` (recovered from earlier malformed `886595c` via reset --soft + resplit). plan-phase + execute-phase + v5.0.0 tag remain.
 
-Conversational design discussion for Phase 4.1 just opened. We agreed on a hybrid workflow: **discuss conversationally → I synthesize CONTEXT.md → `/gsd:plan-phase 4.1` → `/gsd:execute-phase 4.1`**. The user explicitly chose this over the agent-driven `/gsd:discuss-phase` flow.
+**Standing user directive (also in curated context as preference):** "no need to stop between phases, keep going" — autonomous through Phase 7 → v5.0.0 tag. NO AskUserQuestion gates between phases. Only escalate for genuine uncertainty.
 
-I laid out 9 design points and proposed starting with #1 (task-pattern taxonomy) because Phase 6.5 cross-project matching depends on it. **The user has not yet picked the starting point.** Next turn picks up exactly here.
+## First 5 Minutes — Resume Script
 
-Phase 5 gates can't measure Phase 5: LongMemEval uses bespoke `retrieveContext`, doesn't read `assembler.ts`; LoCoMo bypasses `assembleFullContext` and session-start. BENCH-09 is doubly contaminated: writer (`retrieval_events`) is the deletion target, AND threshold (`≥10 user_framing/session`) is mathematically impossible because cap is 3. Phase 4 shipped MEMORY.md with visible regressions (`entity:-`, `entity:--2--1`, 50% threads as session-IDs, duplicate USER EDITABLE markers, writer reach 2/5 projects pre 04-08 fix) while reporting PASS on benchmarks that don't read MEMORY.md.
+Execute in order. No interpretation needed.
 
-**The diagnosis under all that:** benchmarks slipped from instruments into product values. Nobody caught the drift because green numbers feel like progress. The user's reframe (verbatim 2026-04-27): *"benchmarking is not a goal, it never was."* And the sharper goal: *"Not feel organic, WORK organic with Claude Code! Agent should USE Claudex organically."* — verb-centered tool-use behavior, not vibe.
+1. **Verify clean state** (read-only, ~10 sec):
+   ```bash
+   git log --oneline -5     # HEAD should be at session-end commit; 55f84b3 (docs(07)) two back
+   git status --short       # only context/checkpoints/latest.yaml + node_modules noise allowed
+   ls .planning/phases/07-v4-coexistence-migration-ship/  # 07-CONTEXT.md must exist
+   ```
+   If anything looks wrong, surface it — don't proceed.
 
-The canonical example for organic recall (memorize this, it's the unit test for everything): last session we found *"60 HTTP polls to backend X = 15-min IP shadowban"*; next session user says *"investigate another backend for intel gathering"*; agent should automatically (1) recognize it's rate-limit-research-shaped, (2) recall shadowban finding, (3) apply to scoping — without user saying "use claudex."
+2. **Spawn plan-7 immediately** via `/auto-orchestrate --from-phase 7`. The pipeline detects existing CONTEXT.md, skips discuss, lands on plan-phase. Team `auto-gsd-pipeline` was pre-deleted at session 59 close, so TeamCreate succeeds first try.
 
-Live evidence of the failure mode (sister session 2026-04-27): *"Apologies for raising that as a constraint earlier — should have checked Claudex."* The "should have" is the v3 tell. v4 is built so the agent doesn't apologize after — it surfaces during framing.
+3. **Handle plan-7 SendMessage questions** per the orchestrator skill answer_questions step — check 07-CONTEXT.md first (it's exhaustive), then PROJECT.md/ROADMAP.md/REQUIREMENTS.md, then escalate only for genuine UX/scope-naming uncertainty. The locked decisions in CONTEXT.md should answer 90%+ of plan-7's questions.
 
-**What we decided:** 16-phase rebind. 5 new upgrade phases (4.1, 5.5, 6.5, 7.5, 8.5). Vesna promoted to Phase 10 as central validation (~20 probes, CI-gated). Phase 3+10 merged: directive detector ships with PreToolUse consumer + lifecycle as one unit (writers ship with consumers — Phase 3's 2-rows-zero-consumers was the canonical anti-pattern). Phase 4 marked `[~]` corrective-pending; Phase 4.1 supersedes its acceptance.
+4. **After plan-7 lands PLAN.md files** → spawn execute-7 → run through to completion → close-out commit (ROADMAP/STATE final updates) → tag v5.0.0 with annotation in 07-CONTEXT.md.
 
-**Benchmarks DROPPED entirely.** Not gates, not floors, not sanity. LongMemEval/LoCoMo/BENCH-09 — none of them. Harness on disk; runnable on demand; one-shot at v4 ship for archival record only. Re-introducing benchmark gates is the failure mode replaying — *reject and point at `feedback_benchmarks_are_sanity_not_gates.md`*.
+That's the whole script. ~1.5h wall time per Phase 4/6 pacing.
 
-Replaced by: **SC#1 Vesna ≥80%** (behavioral, primary), **SC#2 ≤500 token cache-stable** (structural, hard), **SC#3 MEMORY.md content-quality ≥80%** (mechanical, every PR), **SC#4 one-turn handoff pickup** (continuity).
+## What's Left To Do (per locked Phase 7 scope)
 
-MEMORY.md schema redesign: drop `## Entities` (frequency-extraction noise), drop `## Recent Threads` (50% session-IDs as topics), **add `## Lessons`** (curated, task-pattern indexed — the surface organic recall reaches when framing similar work), promote `## User Notes`. The user's manual pointer-indexes in Lacuna/Oracle/Nexus are the gold standard; auto-curator helps, never replaces.
+1. **V30 schema migration** — add `provenance` column to `learnings` with `organic | injected | tool_result | environmental` CHECK constraint; backfill 191 existing rows to `organic`.
+2. **Write-path filter** in `src/adapters/shared/lifecycle.ts:755 captureInsightsAsLearnings` — skip lines matching INJECTED_BLOCK_TAGS pre-promotion.
+3. **9 reader-site comment downgrades** (mechanical: "TODO Phase 7" → steady-state docs) at the 9 reader sites Phase 4 added uniform comments to.
+4. **3 new Vesna probes**: `episodic-recall-001` (parable canonical regression), `episodic-recall-002` (generic episodic-recall), `learnings-injected-guard-001` (mirrors extraction-deleted-001).
+5. **3 new vitest integration tests**: `phase-7-learnings-provenance.test.ts`, `phase-2-1-kill-regression.test.ts`, `phase-6-crash-resilience.test.ts`.
+6. **CHANGELOG.md v5.0.0 entry** — Keep-a-Changelog format with Added/Removed/Changed/Coverage. Content drafted by plan/execute teammates against final shape of what shipped.
+7. **Final ROADMAP/STATE/REQUIREMENTS docs update** — Phase 7 marked SHIPPED, surviving phases all complete, milestone closed.
+8. **Tag v5.0.0** on master with annotation in 07-CONTEXT.md (annotation leads with the kill, doesn't bury it).
 
-Cross-project recall default-ON. Per user: *"between you and me there are no secrets ... methodology and knowledge are not [secret]."* Phase 6.5 implements task-pattern fingerprint matching across projects.
+**7 must-pass ship gates before tag** (full table in CONTEXT.md):
+- Vesna 21/21 PASS at 100%
+- 3 new vitest integration tests PASS
+- `bun run build` clean
+- `bun run test` no NEW regressions vs Phase-7-immediate-post-merge baseline (each plan rebases via SUMMARY.md baseline-record discipline; 27 pre-existing failures persist as v4-debt)
+- `bun run sc3` ≥80% MEMORY.md content quality
+- Handoff-pickup 3/3 (active/paused/archived — already in suite)
+- Bundle smoke 7/7 (inherited v4.1.2 gate)
+- Plus `bun run doctor` exit 0 (substrate health)
 
-Handoff format = hybrid YAML status header (`status:`, `phase:`) + ADR body. This file is the second instance; Phase 7.5 locks the writer.
+## Context That Won't Be Obvious
 
-Phase ordering: 4.1 → 3 merged → 5.0 hardening → 5 tier-deletion → 10 (Vesna) → 5.5 → 6+6.5 → 7+7.5 → 8 → 8.5 → 9 → 11. Phase 9 schedulable parallel after 5 (T6 verified all consumers in `assembler.ts` which 5 deletes — dead-infrastructure cleanup).
+- **Team `auto-gsd-pipeline` was pre-deleted at end of session 59.** TeamCreate will succeed first try. If it doesn't (e.g., stale config recreated by another process), `rm -rf ~/.claude/teams/auto-gsd-pipeline ~/.claude/tasks/auto-gsd-pipeline` and retry.
 
-**What's next:** Discuss Phase 4.1 design conversationally with user. Don't agent-flow it. Don't write the CONTEXT.md until points are locked. Order proposed (user can re-order):
+- **`learnings` is the 4th Mem0-trap surface** — discuss-7's code trace surfaced this. NOT a frozen v4 archive: `promoteLearnings` is a live writer called from `lifecycle.ts:1151` (Stop hook) and `:1319` (bridge) via `captureInsightsAsLearnings`. Lacks the provenance discipline Phase 1 installed for `episodic_events`. Closing it via V30 + write-path filter completes the parable's "no extraction-time pattern creation" principle uniformly across all extraction surfaces. Same uniform-application pattern as Phase 4's Sites B+C discovery.
 
-1. **Task-pattern taxonomy** — open vocabulary (LLM tags freely + dedup) vs fixed list (~20 categories) vs hierarchical (`scraping/rate-limits`, `auth/oauth`). Affects Phase 6.5 cross-project matching mechanics.
-2. **Lessons section schema** — pointer line format, max entries, salience length cap.
-3. **Lessons vs User Notes distinction** — same section structurally? Different? When does a pointer migrate?
-4. **Curation flow UX** — when Angel proposes, how prompt looks, declined-suggestion lifecycle, manual user override.
-5. **Reach mechanism** — heartbeat sweep frequency + trigger, "active project" definition, migration policy for projects with existing user-authored MEMORY.md (Lacuna/Oracle/Nexus — preserve verbatim into User Notes, prepend auto-managed sections, NEVER stomp).
-6. **Mixed-precision `created_at_epoch`** — ms vs s vs ISO8601, backfill vs read-time normalize. T3 found `mental_model` stores 13-digit ms, `transcript_chunk` stores 10-digit s.
-7. **transcript_chunk low-reach root cause** — investigate before designing (T3 found 20 chunks total in DB; might be heartbeat condition, project-resolution like 04-08, or something else).
-8. **Writer state-machine duplicate-marker bug** — investigate before designing (visible at MEMORY.md line 42 of CLAUDEXv3 right now).
-9. **Live-fire gate definition** — CONT-01 score ≥80% only? Plus user smoke-check on at least one project? Plus Vesna entity-recall probe pass?
+- **`decisions` (126 rows) is preserve-as-legacy WITHOUT provenance work.** Structural defenses (fingerprint dedup + INSERT OR IGNORE + Tier 4 explicit-marker requirement + redaction) make Mem0-trap structurally low-risk. Don't add provenance "for symmetry" — it's schema bloat for diminishing returns.
 
-Synthesize all 9 lock-states into `.planning/phases/04.1-memory-md-content-redesign/04.1-CONTEXT.md`. Then `/gsd:plan-phase 4.1`.
+- **Pass-count baseline rebases per plan.** Phase 7's "no NEW regressions" gate compares against the post-each-plan-merge baseline, NOT against Phase-7-pre-merge baseline. Each plan's SUMMARY.md records the new baseline. Same convention Phase 4 used (04-01-SUMMARY.md:79 explicitly cites the post-fixture-patch baseline).
 
-Open with: *"Picking up where we left off. We agreed to discuss Phase 4.1 design conversationally — 9 points listed, you were going to pick the starting one. I'd recommended #1 (task-pattern taxonomy) because Phase 6.5 cross-project matching depends on it. Want to start there, or pick a different one?"*
+- **Aggregator non-determinism is a known noise pattern at gate-close.** When committing the Phase 7 close-out, expect `.planning/aggregates/multi-handle.md` to show mutated latency p99 ratios + `02-RESULTS.md`/`02-results.json` to show as deleted in working tree. Revert both as known noise (same as Phase 4 + Phase 6 close-out commits did). The aggregator bug is deferred to v5.1.
 
-Don't re-summarize the audit (it's done, committed, in two persistent memories). Don't re-derive the rebind (every Q1-Q12 decision is in PROJECT.md). Don't read the 470-line proposal end-to-end unless asked. **Trust the rebind. Spend the session on design discussion.**
+- **Phase rename "v4 coexistence / migration / ship" is technically misleading post-locking** (preserve-as-legacy means no schema migration of v4 data). Same call as Phase 4's "Angel reduction" name surviving Site B/C scope expansion: keep the name, CONTEXT carries the explanation. User-approval gate at v5.0.0 tag time can retroactively rename if desired; not blocking.
 
-The user is methodical, systematic, thorough — does NOT want overachievement. Propose ideas, never implement silently. Concise responses; quality over quantity. Disagree when necessary — that's what they need. When they correct, acknowledge and pivot, don't defend.
+- **27 pre-existing test failures (llama-server-supervisor, llama-client, phase-5-full-gate per Phase 4 baseline) are release-tolerated.** Phase 7 doesn't fix v4 test debt. Document in CHANGELOG.md as "known pre-existing failures, scheduled for v5.1+ cleanup."
 
-**Where to look:** STATE.md, ROADMAP.md, PROJECT.md, REQUIREMENTS.md, CLAUDEX_V4_SCOPE.md, CONTEXT.md, assembler.ts, MEMORY.md
+- **The malformed `886595c` commit was cleaned up at session 59 close** via `git reset --soft HEAD~2` + `git restore --staged` of ablation files + clean re-commit as `55f84b3 docs(07): capture phase context`. The 10 Phase-6-multiplier-ablation JSON files are back to untracked stray (unchanged from session start; v4-final/phases/06-p5-... has the canonical runs). Decide their final fate during Phase 7 cleanup or defer indefinitely.
+
+**Where to look:** `.planning/phases/07-v4-coexistence-migration-ship/07-CONTEXT.md`, `.planning/reframes/2026-05-05-multi-handle-kill.md`, `.planning/ROADMAP.md`, `.planning/REQUIREMENTS.md`, `.planning/STATE.md`, `CHANGELOG.md` (existing, Keep-a-Changelog format with `[Unreleased]` placeholder).
