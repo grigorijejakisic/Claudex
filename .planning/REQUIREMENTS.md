@@ -1,84 +1,146 @@
-# Requirements: Claudex v5 — Bound Multi-Modal Episodes
+# Requirements: Claudex
 
-**Defined:** 2026-05-04 (v5 milestone seed)
-**Reframed:** 2026-05-05 — multi-handle thesis KILL after 3 consistent KILL bound experiences in Phases 2 and 2.1. RET-* and ABS-* dropped; IDX-* closed as investigation; v5 narrows to substrate-only milestone. See `.planning/reframes/2026-05-05-multi-handle-kill.md`.
+**Defined:** 2026-05-08 (v6 milestone)
+**Active milestone:** v6 — Deliberation Surfacing
+**Core Value:** v5 closed *lying-memory* (no fabricated patterns); v6 closes *lazy-memory* (no generic restatement of summaries). Surface the moments that produced decisions and lessons, not the summaries about them.
+**Source spec:** `.planning/research/2026-05-08-v6-deliberation-surfacing.md` (committed `8d0477b`)
 
-**Core Value (post-reframe):** Claudex stores bound multi-modal episodes with provenance; recall remains v4's hybrid-retrieval (semantic + FTS + reranker) unchanged in v5; abstraction-from-density is empirically rejected at our scale and is not a v5 deliverable.
+> **v4 requirements** (STOR / EXTR / INJ / RETR / CUR / FRAM / LIFE / DIR / HAND / TOK / CACH / OBS / ABL / VESN / LIC / DOC / PLAT / INST / DIAG / VER / REL) shipped at v4.0.0 (2026-04-30) and v4.1.0 (2026-05-02). Roll-up preserved at `.planning/v4-final/REQUIREMENTS.md`.
+>
+> **v5 requirements** (EPI / AR / EBD / MIG / VAL) shipped at v5.0.0 + v5.0.1 (2026-05-08). Categories closed without ship: IDX (KILL × 3), RET (dropped), ABS (dropped). Roll-up at the bottom of this file under "v5 Validated."
 
-> **v4 requirements** (STOR / EXTR / INJ / RETR / CUR / FRAM / LIFE / DIR / HAND / TOK / CACH / OBS / ABL / VESN / LIC / DOC / PLAT / INST / DIAG / VER / REL) shipped at v4.0.0 (2026-04-30) and v4.1.0 (2026-05-02). Their roll-up is preserved in `.planning/v4-final/REQUIREMENTS.md`. v4.2+ deferred items are also archived there.
+## v6 Requirements
 
-## v5 Requirements (Post-Reframe Scope)
+Requirements for v6.0.0. Each maps to roadmap phases. Conditional outcomes pre-committed: bound-positive on engagement metric ships full v6.0.0; bound-negative ships substrate alone with KILL receipt (Phase 2 shape); inconclusive triggers corpus-expansion rerun (Phase 2.1 shape).
 
-EPI-* shipped with Phase 1. IDX-* closed as Phase 2/2.1 investigation (verdict KILL × 3). RET-* and ABS-* dropped with the multi-handle thesis. AR-*, EBD-*, MIG-*, VAL-* survive (with VAL-03 transformed). Categories map to surviving roadmap phases (1 shipped, 4, 6, 7).
+### Transcript Substrate (TRX)
 
-### Episode Substrate (EPI) — SHIPPED 2026-05-04 (Phase 1)
+Foundation layer. Ingestion + chunking + embedding. Hooks into Phase 6's `clean_endsession` close marker so substrate work piggybacks on shipped boundary detection.
 
-- [x] **EPI-01**: `episodic_events` table with structured row schema (V25 migration)
-- [x] **EPI-02**: Provenance enum: `organic | injected | tool_result | environmental` (closed-enum CHECK constraint)
-- [x] **EPI-03**: Dual-write helpers (`dualWriteUserPrompt`, `dualWriteAssistantMessage`, `writeToolResult`, `writeEnvironmentalEvent`) populate `episodic_events` parallel to `conversation_turns`
-- [x] **EPI-04**: Hook-injected wrapper blocks write as separate `provenance='injected'` event rows (Mem0-trap structurally impossible — proven by stub-extractor test EPI-07)
-- [x] **EPI-05**: Tool results write with `provenance='tool_result'` and typed source identifier
-- [x] **EPI-06**: V25 forward-only migration; legacy `conversation_turns` remain readable
-- [x] **EPI-07**: Stub-extractor test asserts injected `<experience-data>` blocks produce single `provenance='injected'` rows, not organic user turn fragments (60+ EPI-tagged tests passing)
+- [ ] **TRX-01**: System ingests full session JSONL into a transcript-chunk store at the moment Phase 6 emits `clean_endsession`. Crash-killed sessions ingested via the same idle-sweep path Phase 6 already implements; no new boundary logic.
+- [ ] **TRX-02**: System chunks ingested transcripts on natural boundaries (turn-level by default — one chunk per user/assistant turn — investigated against tool-call-level + fixed-token-window during P8 validation). Chunk metadata includes `session_id`, `project_id`, `turn_index`, `role`, `created_at_epoch_ms`, `provenance` (closed enum matching V25).
+- [ ] **TRX-03**: System embeds each chunk via the existing arctic-embed2 path (Ollama) and lands the vector in a vec0-backed virtual table. Embeddings backfill from existing JSONL archive on first ingestion (scope decided during P8 planning — last 30d / per-project / full archive).
+- [ ] **TRX-04**: System redacts wrapper-tagged content (`<system-reminder>`, `<experience-data>`, `<file-content>`, `<command-message>` etc.) at ingestion via Phase 1's `parseWrappers` source-of-truth. Mem0-trap stays structurally closed at the new write surface — no extraction-time abstraction, only redaction.
+- [ ] **TRX-05**: System schema bumped to V32 with the transcript-chunk table promoted from the V17-preserved `transcript_chunk` slot (or an equivalent vec0-backed virtual table if the V17 slot is unsuitable). Idempotent migration; no-op on already-V32 DBs; respects both base-table and V17-collapsed shapes per the v5.0.1 lesson.
 
-### Multi-Modal Indexes (IDX) — INVESTIGATION CLOSED 2026-05-05 (Phase 2/2.1, verdict KILL × 3)
+### Artifact-to-Transcript Routing (ROU)
 
-- [x] **IDX-01**: Error-fingerprint index built (V26 sidecar `episodic_index_error_fingerprint` + pure fingerprinter + idempotent backfill: 135 fingerprints / 19 projects / 10,678 sidecar rows)
-- [-] **IDX-02**: Error-fingerprint recall does NOT measurably improve over semantic-only at our scale. Phase 2 (n=20) and Phase 2.1 strict (n=20) and relaxed (n=19) all failed CI-binding on Δp@5 and Δr@10. Three KILL bound experiences in `.planning/aggregates/multi-handle.json`.
-- [-] **IDX-03**: Additional non-semantic indexes NOT pursued. Multi-handle thesis dropped before second index investigated.
-- [-] **IDX-04**: Density at our scale does NOT produce fire patterns distinguishable from noise. Intra-project share measured at 0.2418 in both 2.1 tiers (threshold 0.30). Repeatability across labelers confirms it's the corpus's actual density floor.
+The retrieval-time leverage point. Artifacts (CONTEXT.md decisions, SUMMARY.md outcomes, learnings, experience patterns) become *indexes* that point at *transcript spans*.
 
-### Multi-Handle Retrieval (RET) — DROPPED 2026-05-05 (multi-handle thesis KILL)
+- [ ] **ROU-01**: When retrieval surfaces an artifact reference (decision / learning / experience pattern / mental model / directive rule / critical rule), the system optionally fans out to the transcript chunks that informed that artifact — joined by `session_id` + time window from the artifact's creation timestamp. Fan-out is opt-in per assembly site; not every retrieval surfaces transcripts.
+- [ ] **ROU-02**: Reranking of fanned-out transcript spans uses the existing BGE-reranker-v2-m3 service (port 7439) — no new ranking algorithm. Bi-encoder fallback (arctic-embed2 cosine) on reranker unavailable, same degraded-mode pattern Phase 1 established for episodic_events.
+- [ ] **ROU-03**: Routing budget caps prevent token bloat — top-K transcript spans per artifact reference, max-K-per-query budget across all referenced artifacts, configurable per assembly site. Defaults locked during P8 substrate validation.
 
-- [-] **RET-01..05**: Dropped. v4's `hybrid-retrieval.ts` (semantic + FTS + reranker) stays in production unchanged. No RRF cutover ships in v5. `experience_warning_triggers` continues firing from `experience_patterns` legacy rows. Provenance-aware extraction is achieved structurally by EPI-02..04 (not by RET-02 retrieval-side filtering). Reasoning: `.planning/reframes/2026-05-05-multi-handle-kill.md`.
+### Assembly Integration (ASM)
 
-### Density-Based Abstraction (ABS) — DROPPED 2026-05-05 (density thesis KILL)
+Surface the moments to the agent at prompt-build time alongside the existing summaries.
 
-- [-] **ABS-01..04**: Dropped. No retrieval-time clustering as inferred patterns ships in v5. `experience_patterns` legacy reads remain live; no replacement. Reasoning: `.planning/reframes/2026-05-05-multi-handle-kill.md`.
+- [ ] **ASM-01**: Assembly pipeline includes surfaced transcript spans in the prompt, formatted as labeled citations alongside their source artifact (e.g., "From session X turn 47, where Phase 2.1 KILL was decided: …"). Spans render with their `session_id` + `turn_index` so the agent can cite specifically.
+- [ ] **ASM-02**: Assembly emits an advisory-narration line ("## Deliberation Surfaced — N spans from M sessions") consistent with the Phase 7 "When You Recall — Narrate" discipline. Visible to the agent; not a blocking gate.
+- [ ] **ASM-03**: Token budget per assembly turn caps total transcript-span content as a percentage of the assembly window (default locked during P8). Bi-encoder-only retrieval surfaces lower-confidence spans with a smaller budget; reranker-confirmed spans get the full budget.
 
-### Angel Reduction (AR)
+### Engagement Measurement (ENG)
 
-- [ ] **AR-01**: Code trace produced: every reader of `experience_patterns`, `directive_rule` (the extraction-driven flavor), and `pattern-extractor.ts` outputs catalogued
-- [ ] **AR-02**: Each reader either re-pointed at episode-based retrieval, or marked legacy with explicit follow-up
-- [ ] **AR-03**: Extraction-time pattern creation deleted from `pattern-extractor.ts`; the Angel's role becomes binding + indexing, not abstraction
-- [ ] **AR-04**: The Mem0 stripping defense from commit `0d0fbca` becomes structurally obsolete (provenance tags do the job); confirm before deletion
-- [ ] **AR-05**: LLM use moves to query-time fusion (or eliminated entirely if embedding-only path proves sufficient — phase 5 informs)
+The empirical phase. Pre-committed decision rule before any A/B run. Same shape as Phase 2/2.1.
 
-### Episode Boundary Detection (EBD)
+- [ ] **ENG-01**: P9 CONTEXT.md pre-commits the engagement metric and decision rule before measurement begins. Primary candidate: drift-detection probes (synthetic cases where current state differs from the conditions that produced a past decision; summaries fail, transcripts pass). Decision rule: lower-CI of Δ(transcript − summary) > 0 across N probes via Wilson/Newcombe binding.
+- [ ] **ENG-02**: P9 builds the engagement probe suite (drift-detection probes are mandatory; citation-density and specificity-contrast as secondary signals if time permits). Synthetic drift fixtures cover at least 5 distinct kinds of condition-shift (sample-size shift, scope expansion, dependency change, etc.).
+- [ ] **ENG-03**: P9 locks the corpus + harness across replications (same code, same data, same probe-set). Replication runs append to `.planning/aggregates/deliberation-surfacing.{md,json}` per the v5 standard practice.
+- [ ] **ENG-04**: P9 produces multiple bound measurements (≥2 replications minimum, more if first run is inconclusive). Wilson CI binding required for any milestone-level claim. Negative results trigger Phase-2-shape KILL receipt; substrate ships alone in P10.
 
-- [ ] **EBD-01**: Angel observes session activity via fsnotify on the JSONL directory (engineering-doc Recommendation #1.1)
-- [ ] **EBD-02**: Heartbeat row written by every UserPromptSubmit / PreToolUse / PostToolUse hook (Recommendation #1.2)
-- [ ] **EBD-03**: Idle-timeout sweep: sessions with no JSONL writes for >T → marked dormant → terminated after grace (Recommendation #1.3 — survives PC reboot, OOM, hard ctrl-c, segfault)
-- [ ] **EBD-04**: PID liveness with heartbeat-compare-before-cleanup (Recommendation #1.4-5 — avoids "Session Amnesia" failure)
-- [ ] **EBD-05**: Episode boundary unit decided: per-thread, per-intent-shift, per-task-completion — investigated during phase 6 discuss (engineering-doc open question #2)
-- [ ] **EBD-06**: Synthesis (binding+indexing finalization) fires when episode closes by ANY of: clean `/endsession`, idle timeout, JSONL write absent for T
+### Live-Wiring Ship Gate (WIR)
 
-### v4 Coexistence / Migration (MIG)
+Promoted from v5.0.0 silent-fail lesson. Mandatory gate for every v6 engineering phase, not a separate phase.
 
-- [ ] **MIG-01**: Per-table decision: retire / re-derive / preserve — for `experience_patterns`, `learning`, `decision`, `mental_model`, `angel_opinion`, `directive_rule`, `critical_rule`, `transcript_chunk`
-- [ ] **MIG-02**: For tables decided "re-derive": projection script that reads raw episodes (after EPI-03 backfill) and produces equivalent rows in modern shape
-- [ ] **MIG-03**: For tables decided "preserve": no-op, but tagged with provenance so downstream readers know
-- [ ] **MIG-04**: For tables decided "retire": deprecation surface + read-only mode + post-v5 deletion plan
-- [ ] **MIG-05**: 88 inflated experience_patterns from v4 are NOT re-derived (they're noise); replaced by Phase 5 density abstraction
+- [ ] **WIR-01**: Every v6 engineering phase ships a production-shape integration test that runs the actual production code path against fixtures matching every DB shape currently in the wild — V17-collapsed at minimum, plus base-table fresh-DB. Tests must run the *exported* function (e.g., `upsertChunk`, `routeFromArtifact`) against the fixture shape, not a mocked database.
+- [ ] **WIR-02**: P8 substrate ship gates include WIR-01 alongside the existing 8 ship gates (Vesna, vitest integration, build, full suite, sc3, handoff pickup, bundle smoke, doctor). Wire-test failure blocks ship; same severity as Vesna failure.
 
-### Validation (VAL)
+## v7+ Requirements (deferred)
 
-- [ ] **VAL-01** (= SC-V5-1): Episodic recall probe — keyword/concept from session N-1 fires the relevant episode in session N. Probe corpus draws from real session history (including the 2026-05-04 parable failure as a regression test). Recall surface is v4's hybrid-retrieval (unchanged in v5); the probe asserts that Phase 1's substrate makes the relevant episode *retrievable*, not that retrieval mechanics themselves changed.
-- [ ] **VAL-02** (= SC-V5-2): No-re-extraction-inflation probe — inject an `<experience-data>` block, run a session, assert no new `experience_pattern`-equivalent row was created from that span. Validated against post-Phase-4 codepath (extraction-time pattern creation deleted).
-- [ ] **VAL-03'** (= SC-V5-3' KILL-regression): Replay the Phase 2.1 harness (locked corpus + locked decision rule) and assert KILL verdict reproduces. Future accidental restoration of the dead multi-handle thesis fails this probe. Replaces the original VAL-03 density-at-scale probe (which presupposed density was real).
-- [~] **VAL-04** (= SC-V5-4): Crash-resilience probe. **Phase 6 (2026-05-05) shipped the substrate** (composition rule + boundary detector + JSONL watcher + V29 schema) plus **55 vitest regression tests** at `src/tests/angel/boundary/` covering composition truth table, heartbeat-compare race, cursor replay, re-open branches, end-to-end integration. **Vesna probe form deferred to Phase 7** — Vesna's behavioral schema asserts on `agent_text`, which requires a consumer surface reading the close marker; Phase 7 wires that surface during v4 coexistence/migration. Until then, SC-V5-4 is regression-locked at unit level. Phase 7 adds the Vesna probe alongside VAL-01/03'.
-- [ ] **VAL-05**: Vesna suite update — existing 17 probes pass against v5 substrate; new probes added for VAL-01/02/03'/04.
-- [ ] **VAL-06**: One-turn handoff pickup probe (v4's SC#4) still passes — episodes carry handoff content; v4 recall surface delivers it.
+Acknowledged but not in v6 scope. Re-examined at v6 close.
 
-## Out of Scope for v5
+### Retention Policy (RET-NEW)
 
-- Multi-harness support (Cursor/Zed/etc) — separate future milestone
-- Hosted/SaaS variant — separate future milestone
-- Privacy/PII redaction infrastructure (engineering-doc Rec #5) — captured as MIG/EBD-adjacent but the v5 scope is **substrate**, not the privacy layer; if privacy work proves larger than expected during phase planning, split into a v5.1 milestone
-- Real-time PII redaction at write time — same; deferred unless phase planning escalates it
+- **RET-NEW-01**: Salience-weighted forgetting curve over transcript chunks (correlates with the "no selective-memory" gap surfaced in v6 spec)
+- **RET-NEW-02**: Storage-cost trajectory management (transcript volume grows unbounded; retention layer required at ~10x current scale)
 
-## v4 Deferrals Carried Forward
+### Cross-Harness Transcript Sources (XHN)
 
-The 8 HITL-pending v4.1 items (PLAT-06/07/08 fresh-VM installs, VER-04/05 onboarding fixtures, REL-04/05/07 GitHub UI clicks) remain in `v4-final/` archive. Operator can close them on their own timeline; they do not block v5.
+- **XHN-01**: Ingest Codex / Aider / Gemini-CLI transcripts with the same vectoring substrate (cross-agent-session indexing already exists in Angel's `cross-agent-sessions`; extend to deliberation surfacing)
 
-The v4 deferrals from REQUIREMENTS.md (STOR-09 task-pattern fingerprint, EXTR-04/06 partials, LIFE-01..04, DIR-CONSUMER-01..02, FRAM-05 A/B verdict) — under v5's binding substrate, several of these (notably STOR-09 task-pattern fingerprint, DIR-CONSUMER-01..02) are subsumed by IDX/RET requirements above. Phase 1 discuss should explicitly check each carry-forward item against v5 scope and either close-as-subsumed or carry to v5.1.
+### Multi-Modal Surfaces (MMS)
+
+- **MMS-01**: Surface non-text modalities (tool-call sequences, file diffs, screenshots) alongside transcript spans — extends the parable's "any modality fires the whole memory" intuition without reviving the killed multi-handle-fusion thesis
+
+## Out of Scope (v6)
+
+Explicit exclusions. Documented to prevent scope creep.
+
+| Feature | Reason |
+|---------|--------|
+| Multi-handle recall (any-modality-fires-whole-memory at retrieval) | KILLED in v5 by 3 KILL bound measurements at our scale. Not revived in v6. |
+| Density-based abstraction (offline cluster-emergent patterns) | KILLED in v5. Not revived in v6. |
+| Extraction-time pattern creation from transcripts | Mem0-trap re-opening. Phase 4 + V28 + V31 disciplines stay closed. v6 stores raw transcripts; never abstracts at write time. |
+| New retrieval algorithm (vector ranking, fusion math, query rewriting) | v6 uses conventional v4 hybrid-retrieval applied to a different corpus. The bet is the *substrate shift*, not the ranking. |
+| Multi-harness adapters (Cursor, Zed) | Separate future milestone — substrate must work for CC first. |
+| Hosted/SaaS variant | Separate future milestone. |
+| Full retention-policy / forgetting-curve layer | v7+ (deferred). v6 is append-only; growth manageable through v6.x lifecycle. |
+| Privacy/PII redaction beyond wrapper-tag stripping | v6 inherits Phase 1 redaction discipline. Full PII layer is a v7+ scope question. |
+
+## Traceability
+
+Filled by roadmapper during step 10. Updated through phase execution.
+
+| Requirement | Phase | Status |
+|-------------|-------|--------|
+| TRX-01 | Phase 8 | Pending |
+| TRX-02 | Phase 8 | Pending |
+| TRX-03 | Phase 8 | Pending |
+| TRX-04 | Phase 8 | Pending |
+| TRX-05 | Phase 8 | Pending |
+| ROU-01 | Phase 10 | Pending |
+| ROU-02 | Phase 10 | Pending |
+| ROU-03 | Phase 10 | Pending |
+| ASM-01 | Phase 10 | Pending |
+| ASM-02 | Phase 10 | Pending |
+| ASM-03 | Phase 10 | Pending |
+| ENG-01 | Phase 9 | Pending |
+| ENG-02 | Phase 9 | Pending |
+| ENG-03 | Phase 9 | Pending |
+| ENG-04 | Phase 9 | Pending |
+| WIR-01 | Phase 8 + Phase 10 | Pending |
+| WIR-02 | Phase 8 | Pending |
+
+**Coverage:**
+- v6 requirements: 17 total
+- Mapped to phases: 17
+- Unmapped: 0 ✓
+
+## v5 Validated (closed 2026-05-08)
+
+For historical reference. v5 milestone CLOSED.
+
+### EPI — Episode substrate (Phase 1)
+- ✓ V25 episodic_events table, structured rows, provenance enum, dual-write helpers, V28 BEFORE INSERT trigger blocking new experience_patterns rows
+
+### AR — Angel reduction (Phase 4)
+- ✓ Extraction-time pattern creation deleted across 3 sites, V28 trigger structural, classifySessionDomains relocated, three-layer cutoff
+
+### EBD — Episode-boundary detection (Phase 6)
+- ✓ V29 schema (episode_boundary_cursor + sessions liveness), chokidar JSONL watcher, heartbeat hooks, atomic clean_endsession close marker, boundary detector with re-open + offset-overflow recovery
+
+### MIG — v4 coexistence / migration (Phase 7)
+- ✓ V30 learnings.provenance, parseWrappers write-path filter, 10 reader-comment downgrades, CHANGELOG v5.0.0 entry, V31 view-mode hot-fix in v5.0.1
+
+### VAL — Validation (Phase 7)
+- ✓ Vesna 21/21 (3 new probes: episodic-recall-001/002, learnings-injected-guard-001) + 3 vitest integration tests + 8 ship gates
+
+### Closed without ship
+
+- ~~IDX-01..04~~ — Multi-modal indexes — investigation closed Phase 2/2.1, KILL × 3
+- ~~RET-01..05~~ — Multi-handle retrieval — Phase 3 dropped 2026-05-05
+- ~~ABS-01..04~~ — Density-based abstraction — Phase 5 dropped 2026-05-05
+
+---
+*Requirements defined: 2026-05-04 for v5 (now closed); 2026-05-08 for v6.*
+*Last updated: 2026-05-08 after v6 milestone kickoff.*
