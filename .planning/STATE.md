@@ -5,16 +5,16 @@
 See: `.planning/PROJECT.md` (updated 2026-05-08 after v5 closure + v6 milestone kickoff)
 
 **Core value:** v5 closed the *lying-memory* surface; v6 closes the *lazy-memory* surface. Surface the moments that produced decisions and lessons, not summaries about them.
-**Current focus:** v6 — Deliberation Surfacing (defining requirements + roadmap).
+**Current focus:** v6 — Deliberation Surfacing (roadmap authored, Phase 8 ready for plan-phase).
 
 ## Current Position
 
 **Current Milestone:** v6 — Deliberation Surfacing
-**Phase:** Not started (defining requirements + roadmap)
+**Phase:** Phase 8 — Transcript ingestion substrate (not started)
 **Plan:** —
-**Status:** v6 milestone kicked off 2026-05-08. Spec at `.planning/research/2026-05-08-v6-deliberation-surfacing.md` (committed `8d0477b`) is the requirements input. PROJECT.md flipped from v5-active to v5-validated + v6-active. Research stage SKIPPED — spec is research-grade and represents user-locked thesis (Critical Reminders Layer-1-proven, Layers 2 + 3 are v6).
+**Status:** v6 ROADMAP.md authored 2026-05-08. 17 v6 requirements (TRX × 5, ROU × 3, ASM × 3, ENG × 4, WIR × 2) mapped to three phases (8/9/10) with 100% coverage. Spec at `.planning/research/2026-05-08-v6-deliberation-surfacing.md` (committed `8d0477b`). Research stage SKIPPED — spec is research-grade and represents user-locked thesis (Critical Reminders Layer-1-proven, Layers 2 + 3 are v6).
 
-**Last activity:** 2026-05-08 — v5 milestone CLOSED + v5.0.0 + v5.0.1 published to origin + v6 milestone kicked off.
+**Last activity:** 2026-05-08 — v6 ROADMAP.md authored after v5.0.0 + v5.0.1 publication.
 
 ## v5 Verdict Log (CLOSED 2026-05-08)
 
@@ -29,13 +29,15 @@ See: `.planning/PROJECT.md` (updated 2026-05-08 after v5 closure + v6 milestone 
 - Phase 7 (2026-05-08, type: engineering): SHIPPED. V30 schema bump (`learnings.provenance` closed-enum CHECK). `captureInsightsAsLearnings` calls `parseWrappers` from production code path. Vesna 18 → 21 functional probes. 3 new vitest integration tests. CHANGELOG.md `[5.0.0]` entry. v5.0.0 local annotated tag created and pushed to origin.
 - v5.0.1 hot-fix (2026-05-08): V31 view-mode learnings.provenance close + shape-agnostic upsertLearning (SELECT-then-INSERT-or-UPDATE) + live-wiring regression test against V17-collapsed fixture + 191-row backfill to 'organic'. Closes the silent-fail discovered in post-ship audit.
 
-## v6 Phase Structure (planned, ROADMAP.md authoritative when written)
+## v6 Phase Structure (ROADMAP.md authoritative)
 
 | Phase | Goal | Type | Status | Requirements |
 |-------|------|------|--------|--------------|
-| 8 — Transcript ingestion substrate | V32 schema (transcript_chunk promotion + vec0 binding); JSONL watcher hook into Phase 6 boundary close; redaction-at-ingestion; chunking strategy locked | engineering | pending | TRX-* + WIR-* |
-| 9 — Empirical measurement | Lock corpus + harness; pre-commit decision rule; build engagement probes; A/B with-transcript vs. without; multiple bound runs; Wilson CI; aggregate to `.planning/aggregates/deliberation-surfacing.{md,json}` | empirical | pending | ENG-* |
-| 10 — Conditional ship | Bound positive: assembly integration + artifact-to-transcript routing + Vesna probe extension + ship gate validation + v6.0.0 tag. Bound negative: KILL receipt + substrate-alone ship + v6.0.0 tag with kill leading | engineering OR documentation | pending | ROU-* + ASM-* |
+| 8 — Transcript ingestion substrate | V32 schema (transcript_chunk promotion + vec0 binding); JSONL watcher hook into Phase 6 boundary close; redaction-at-ingestion via parseWrappers; chunking strategy locked; backfill scope locked; live-wiring ship gate against V17-collapsed + base-table | engineering | not started | TRX-01..05 + WIR-01 + WIR-02 |
+| 9 — Empirical measurement | Pre-commit decision rule in CONTEXT.md; lock corpus + harness; build drift-detection probe suite (≥5 condition-shift kinds); A/B with-transcript vs. summary-only baseline; ≥2 bound replications; Wilson/Newcombe CI binding; aggregate to `.planning/aggregates/deliberation-surfacing.{md,json}` | empirical | not started | ENG-01..04 |
+| 10 — Conditional ship | Bound positive: routing (BGE-reranker fan-out from artifact references) + assembly (transcript span citations + advisory narration + budget caps) + Vesna probe extension to 24+ + ship gate validation + v6.0.0 tag. Bound negative: KILL receipt (Phase 2 shape) + substrate-alone ship + v6.0.0 tag with kill leading | engineering OR documentation | not started | ROU-01..03 + ASM-01..03 (engineering branch); WIR-01 inherited via WIR-02 phase coupling |
+
+**v6 coverage:** 17/17 requirements mapped, 0 unmapped.
 
 ## Empirical Methodology (v5 standard, mandatory in v6)
 
@@ -50,7 +52,7 @@ Promoted to standard practice 2026-05-05. Mandatory for v6 P9 empirical phase an
 
 ## New Mandatory Ship Gate (promoted from v5.0.0 silent-fail)
 
-**Live-wiring smoke against every production DB shape currently in the wild.** Every v6 engineering phase must include this as a ship gate alongside unit/integration tests. V17-collapsed shape at minimum. See WIR-* category in REQUIREMENTS.md.
+**Live-wiring smoke against every production DB shape currently in the wild.** Every v6 engineering phase must include this as a ship gate alongside unit/integration tests. V17-collapsed shape at minimum, plus base-table fresh-DB. Anchored to Phase 8 in REQUIREMENTS.md traceability (WIR-01 + WIR-02); P10 engineering branch inherits the gate via WIR-02's "ship gates include WIR-01" phase coupling. See WIR-* category in REQUIREMENTS.md.
 
 ## Notes for the Operator
 
@@ -60,3 +62,4 @@ Promoted to standard practice 2026-05-05. Mandatory for v6 P9 empirical phase an
 - 27 pre-existing test failures (llama-server-supervisor, llama-client, phase-5-full-gate) carry forward as v4-debt; not blocking v6.
 - Standing user directive 2026-05-08: autonomous through v6 milestone end; operator-confirms public push at v6.0.0 tag (same pattern as v5).
 - If `/auto-orchestrate` is interrupted, resume via `--from-phase 8`. The disk is the state machine.
+- v6 P10 type-of-phase resolves only after P9 verdict — engineering branch (bound positive) lands routing + assembly; documentation branch (bound negative) lands KILL receipt + substrate-alone ship. Both end at v6.0.0 tag.
