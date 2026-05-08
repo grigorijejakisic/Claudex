@@ -2,9 +2,9 @@
 
 ## What This Is
 
-Claudex is a persistent memory system for LLM coding agents. **v4.0.0 SHIPPED 2026-04-30, v4.1.0 SHIPPED 2026-05-02** — internal infrastructure now distributed publicly on `github.com/grigorijejakisic/Claudex`. Built on SQLite + sqlite-vec + Ollama embeddings + BGE-reranker-v2-m3. v4 archived at `.planning/v4-final/`.
+Claudex is a persistent memory system for LLM coding agents. **v4.0.0 SHIPPED 2026-04-30, v4.1.0 SHIPPED 2026-05-02, v5.0.0 + v5.0.1 SHIPPED 2026-05-08** — internal infrastructure now distributed publicly on `github.com/grigorijejakisic/Claudex`. Built on SQLite + sqlite-vec + Ollama embeddings + BGE-reranker-v2-m3. v4 archived at `.planning/v4-final/`.
 
-**Current milestone: v5 — Bound Multi-Modal Episodes (substrate-only after 2026-05-05 reframe).** The cognitive layer Claudex was missing — stop storing extracted rules, start storing bound experiences with provenance. The original thesis had three load-bearing legs (substrate + multi-handle recall + density abstraction). Phase 2/2.1 produced 3 consistent KILL bound experiences against legs 2 and 3 at our scale; the locked decision rule fired and those legs were dropped 2026-05-05. Leg 1 (substrate with provenance, shipped in Phase 1) survives. Recall in v5 stays on v4's hybrid-retrieval pipeline. Reframe: `.planning/reframes/2026-05-05-multi-handle-kill.md`.
+**Current milestone: v6 — Deliberation Surfacing.** v5 closed the *lying-memory* surface (no fabricated patterns, structurally impossible Mem0 trap on every preserved write surface). v6 closes the *lazy-memory* surface (retrieval surfaces summaries; agents apply them generically; the agent doesn't *think*, it *restates*). Surface the **moment** at retrieval time (the transcript span where a decision was forged, where a lesson was learned) instead of the summary about the moment. Spec: `.planning/research/2026-05-08-v6-deliberation-surfacing.md`.
 
 ## The Parable (Cognitive Frame)
 
@@ -12,77 +12,115 @@ A small child sees a stove for the first time, approaches, feels heat (warmth = 
 
 Source: session `b3e10b98-262b-4a56-814d-fae32726be60` turn 14 (verbatim user statement); turn 15 synthesis confirmed both ways. Locked here on 2026-05-04 after the previous "lock as CONTEXT.md framing" intent (turn 18) was lost between sessions — exactly the cross-session continuity failure v5 is designed to prevent.
 
-Full framing: `.planning/research/2026-05-04-v5-bound-episodes-framing.md`. Engineering substrate: `.planning/research/2026-04-30-v5-episodic-memory.md`.
+**v6 framing of the parable:** the child doesn't apply a stored rule when seeing a new stove — they relive the moment of burning, and *that* governs behavior. Experiential recall beats propositional recall. v5 shipped *storing* the experience (Phase 1 episodic_events). v5 did **not** ship *recalling* the experience for *deliberation* and *lessons*. Layer 1 (rules) was solved by Critical Reminders (Session 44, decisions `106`/`110`) — proven in production. Layers 2 (decisions) and 3 (lessons) are v6.
 
-## Core Value (post-reframe 2026-05-05)
+Full framing: `.planning/research/2026-05-04-v5-bound-episodes-framing.md`. Engineering substrate: `.planning/research/2026-04-30-v5-episodic-memory.md`. v6 spec: `.planning/research/2026-05-08-v6-deliberation-surfacing.md`.
 
-**v5 = Claudex stores bound multi-modal episodes with provenance.** That's the surviving thesis. Recall by any modality and abstraction-from-density were empirically rejected at our scale (3 consistent KILL bound experiences in `.planning/aggregates/multi-handle.json`); v5 keeps v4's hybrid-retrieval pipeline unchanged. Future milestones may revisit retrieval theses on Phase 1's substrate, under the methodology Phase 2/2.1 proved.
+## Core Value
 
-**Canonical example (still relevant):** when the agent was asked about the "child and stove parable" it took 5 turns of `claudex_search` archaeology because the parable was stored only as a synthesized abstract, not as a bound episode. Phase 1's provenance-tagged substrate makes the parable retrievable by direct key (session, project, topic). Whether *better* retrieval mechanics surface it more reliably is a question for future milestones — not v5.
+**v5 = Claudex stores bound multi-modal episodes with provenance** (the substrate). **v6 = Claudex surfaces the moments that produced decisions and lessons, not just the summaries about them** (the engagement). Recall by any modality and abstraction-from-density were empirically rejected at our scale by 3 KILL bound experiences in `.planning/aggregates/multi-handle.json`; v5 keeps v4's hybrid-retrieval pipeline unchanged. v6 uses conventional v4 hybrid-retrieval (semantic + FTS + reranker) applied to a different corpus (transcript chunks) — no new retrieval theses; the bet is the *substrate shift*, not the ranking algorithm.
 
-## Current Milestone: v5 — Bound Multi-Modal Episodes
+**Two failure modes Claudex closes:**
 
-**Goal:** Replace v4's extract-and-store-rules architecture with bind-and-store-episodes, retrievable by multi-modal handles, with abstraction emerging from clusters at recall time rather than from upfront LLM extraction.
+| Surface | Closed by | Status |
+|---|---|---|
+| **Lying memory** — fabricated patterns from sparse signal (Mem0 trap) | v5: provenance enum + Phase 4 extraction-time deletion + V28/V31 structural triggers | SHIPPED 2026-05-08 |
+| **Lazy memory** — generic restatement of summaries instead of engagement with moments | v6: transcript-as-substrate + artifact-vectored retrieval | ACTIVE |
 
-**Locked claims (post-reframe 2026-05-05):**
+## Current Milestone: v6 — Deliberation Surfacing
 
-1. **Episode substrate is structured-by-modality** with provenance — SHIPPED Phase 1. Every event row carries `{type, ts, source, content, provenance}` minimum. Provenance tag (`organic | injected | tool_result | environmental`) is non-negotiable and structurally prevents the Mem0 feedback loop tactically patched in commit `0d0fbca`.
-2. ~~**Recall is multi-handle.**~~ — **REJECTED 2026-05-05** by 3 consistent KILL bound experiences. v4's hybrid-retrieval (semantic + FTS + reranker) stays in production unchanged in v5.
-3. ~~**Abstraction is density-driven, not extraction-driven.**~~ — **REJECTED 2026-05-05** by same 3 KILLs. Density at our scale measured at 0.2418 (threshold 0.30), repeatable across labelers — not noise, just below threshold. `experience_patterns` legacy reads stay live; no replacement abstraction in v5.
-4. **Extraction-time pattern creation is dead under v5.** Phase 4 deletes it from `src/angel/pattern-extractor.ts`. The mechanism *itself* violates the parable (abstracts from N=1 experience), independent of whether multi-handle retrieval ever ships. The Mem0 fix from `0d0fbca` becomes structurally obsolete.
-5. **The 2026-04-30 engineering research doc** remains valid as engineering reference for the substrate. The 2026-05-04 framing doc remains valid as the cognitive frame (the parable). Both docs are now annotated by the reframe — the parable's *epistemic discipline* is what we keep; the parable's *retrieval thesis at our scale* is what the data rejected.
+**Goal:** Make the agent *touch the stove, not be told about it* — extend the Critical Reminders principle (Layer 1, shipped) from rules to deliberation (Layer 2) and lessons (Layer 3). Surface the verbatim moments that produced decisions and crystallized lessons at retrieval time, not the summaries about them.
 
-**Target capability (post-reframe scope):**
+**Locked claims (from v6 spec):**
 
-- ✓ Event-log table (`episodic_events`) with provenance-tagged structured rows; coexists with `conversation_turns` (Phase 1 SHIPPED)
-- ✗ Multi-modal indexes beyond semantic+FTS — error-fingerprint built and tested, KILL verdict; no further indexes pursued in v5
-- ✗ Multi-handle retrieval / RRF fusion — dropped (thesis KILL)
-- Angel reduction: delete extraction-time pattern creation (Phase 4 — surviving and sharpened)
-- ✗ Density-based abstraction — dropped (thesis KILL)
-- Crash-resilient episode boundary: Angel-as-source-of-truth for session-end via fsnotify + heartbeat + idle-sweep + PID liveness (Phase 6, engineering-doc Recommendation #1)
-- v4 coexistence / migration plan: per-table decision (Phase 7 — narrowed: no multi-handle retrieval to migrate)
+1. **v6 is not a new bet.** Critical Reminders proved the parable at Layer 1 in production (Session 44 → decisions `106`/`110` → learning `aee9461`). v6 extends a proven principle to two more layers. Risk asymmetric.
+2. **v5 KILLs are honored.** v6 does NOT revive multi-handle recall (KILLED) or density-based abstraction (KILLED). Conventional v4 hybrid-retrieval applied to a different corpus.
+3. **No extraction-time abstraction.** Mem0-trap stays structurally closed. parseWrappers + V28 + V31 disciplines apply at the new ingestion surface — redaction at the boundary, no fabricated structure.
+4. **Empirical methodology promoted from v5 applies.** Pre-committed decision rule, locked corpus, Wilson CI binding for any v6 retrieval claim. Negative results valid outputs.
+5. **New mandatory ship gate.** Live-wiring smoke against every production DB shape currently in the wild — learned from v5.0.0 silent-fail on V17-collapsed DBs.
 
-**Out of scope for v5:**
+**Target capability:**
+
+- Transcript ingestion pipeline hooked into Phase 6's `clean_endsession` close marker; chunk on natural boundaries (turn / tool-call); embed via existing arctic-embed2; land in vec0 + FTS5
+- Artifact → transcript routing: when retrieval surfaces a CONTEXT.md decision, SUMMARY.md outcome, learning, or experience pattern, optionally fan out to the transcript chunks that informed it
+- Assembly integration: surface transcript spans alongside summaries with budget management
+- Engagement measurement methodology: drift-detection probes (primary binding signal), with citation-density / specificity-contrast as secondary signals
+- Conditional ship: bound-positive ships full v6.0.0; bound-negative ships substrate alone with KILL receipt (Phase 2 shape)
+
+**Out of scope for v6:**
 
 - Multi-harness support (Cursor/Zed adapters) — separate future milestone
 - Hosted/SaaS variant — separate future milestone
-- Privacy/PII redaction infrastructure (engineering-doc Recommendation #5) — captured as a sub-phase but the milestone-level lift is *the substrate*, not the privacy layer; revisit scope during phase 9 planning if it's larger than expected
+- Full retention-policy / forgetting-curve layer (open question #6 in spec) — defer to v7+
+- Reviving any killed v5 thesis (multi-handle, density abstraction)
+- Offline pattern extraction from transcripts (Mem0-trap re-opening)
+
+## Previous Milestone: v5 — Bound Multi-Modal Episodes (substrate-only)
+
+**SHIPPED 2026-05-08.** v5.0.0 + v5.0.1 tagged on origin.
+
+- Phase 1 (V25 episodic_events with provenance) SHIPPED 2026-05-04
+- Phase 2 + 2.1 (multi-handle index seeds + density-at-scale): KILL × 3 (decision rule fired honestly)
+- Phase 3 (multi-handle retrieval cutover): DROPPED 2026-05-05
+- Phase 4 (Angel reduction — extraction-time pattern deletion + V28 structural trigger): SHIPPED 2026-05-05
+- Phase 5 (density-based abstraction): DROPPED 2026-05-05
+- Phase 6 (V29 crash-resilient episode boundary + chokidar watcher + heartbeat hooks + atomic close marker): SHIPPED 2026-05-05
+- Phase 7 (V30 learnings.provenance + parseWrappers write-path filter + 10 reader-comment downgrades + 3 Vesna probes + 3 vitest integration tests + CHANGELOG): SHIPPED 2026-05-08
+- v5.0.1 hot-fix (V31 view-mode learnings.provenance + shape-agnostic upsertLearning + live-wiring regression test): SHIPPED 2026-05-08
+
+Reframe artifact: `.planning/reframes/2026-05-05-multi-handle-kill.md`. Aggregator: `.planning/aggregates/multi-handle.json`.
 
 ## Requirements
 
-See `REQUIREMENTS.md` for the requirements graph. Categories (post-reframe scope):
+See `REQUIREMENTS.md` for the requirements graph. Categories:
 
-- **EPI** — Episode substrate (schema, write path, provenance tags) — **SHIPPED Phase 1**
-- ~~**IDX**~~ — Multi-modal indexes — **investigation closed Phase 2/2.1, KILL × 3**
-- ~~**RET**~~ — Multi-handle retrieval — **dropped 2026-05-05**
-- ~~**ABS**~~ — Density-based abstraction — **dropped 2026-05-05**
-- **AR** — Angel reduction (extraction-time pattern creation deletion) — Phase 4 NEXT
-- **EBD** — Episode-boundary detection (crash-resilient session-end) — Phase 6
-- **MIG** — v4 coexistence / migration — Phase 7 (narrowed)
-- **VAL** — Validation (Vesna probes; VAL-03 transformed to KILL-regression probe) — Phase 7
+### v6 Active (this milestone)
 
-## Empirical Methodology — v5 Standard Practice (promoted from Phase 2/2.1)
+- **TRX** — Transcript substrate (ingestion, chunking, embedding, table promotion)
+- **ROU** — Artifact-to-transcript routing (retrieval-time fan-out from artifact references to informing transcript chunks)
+- **ASM** — Assembly integration (surfacing transcript spans + budget management + advisory narration)
+- **ENG** — Engagement measurement (drift-detection probes; pre-committed decision rule; locked corpus)
+- **WIR** — Live-wiring ship gate (production-shape integration test against every DB shape in the wild)
 
-The Phase 2/2.1 discipline produced the honest KILL that drove the reframe. It is now the v5 standard for any future empirical phase:
+### v5 Validated (shipped 2026-05-08)
+
+- **EPI** — Episode substrate (schema + write path + provenance tags) — Phase 1
+- **AR** — Angel reduction — Phase 4
+- **EBD** — Episode-boundary detection — Phase 6
+- **MIG** — v4 coexistence / migration — Phase 7
+- **VAL** — Validation (Vesna 21/21) — Phase 7
+
+### Closed without ship (v5)
+
+- ~~**IDX**~~ — Multi-modal indexes — investigation closed Phase 2/2.1, KILL × 3
+- ~~**RET**~~ — Multi-handle retrieval — dropped 2026-05-05
+- ~~**ABS**~~ — Density-based abstraction — dropped 2026-05-05
+
+## Empirical Methodology — v5 Standard Practice (mandatory in v6)
+
+The Phase 2/2.1 discipline produced the honest KILL that drove the v5 reframe. It is now mandatory for any v6 empirical phase:
 
 1. **Pre-commit the decision rule** in CONTEXT.md before measurement runs. No goalpost shifts after seeing results.
 2. **Lock the corpus and harness.** Same code, same data, same pair-set across replications.
-3. **Multiple bound measurements before milestone-level claims** — append-only aggregator at `.planning/aggregates/{topic}.{md,json}`. One experience is not abstraction. The parable applies to ourselves.
+3. **Multiple bound measurements before milestone-level claims** — append-only aggregator at `.planning/aggregates/{topic}.{md,json}`. One experience is not abstraction.
 4. **Wilson/Newcombe CI binding for noise rejection.** At small n, point-deltas of +5pp can be inside the CI of zero. Require the lower bound to bind.
 5. **Descriptive-not-gating audits.** Agent autonomy on audit work; precision/recall metrics reported, not used as gates.
 6. **Negative results are valid outputs.** "This didn't work, here's what we learned" is a successful empirical-phase outcome.
 
-## Honest Uncertainties (post-reframe)
+## New Mandatory Ship Gate (promoted from v5.0.0 silent-fail lesson)
 
-Resolved by Phase 2/2.1:
+**Live-wiring smoke against every production DB shape currently in the wild.** v5.0.0 shipped a Phase 7 contribution (learnings.provenance discipline) that silently failed on V17-collapsed DBs because the integration test ran against a fresh `:memory:` DB shape, not the production shape. v5.0.1 closed the bug (V31 + shape-agnostic upsertLearning + V17-fixture regression test). v6 promotes the lesson: every engineering phase must include "production-shape integration test against every DB shape currently in the wild" alongside unit/integration tests. V17-collapsed at minimum.
 
-- ✗ ~~Density at our scale~~ — answered NO empirically (intra_project_share 0.2418 < 0.30 threshold, repeatable across labelers).
-- ✗ ~~Multi-modal "any handle fires episode" at scale~~ — moot, multi-handle thesis dropped.
-- ✗ ~~Query-time LLM cost~~ — moot, no query-time fusion in v5.
-- ✗ ~~Whether the parable holds at engineering-scale~~ — answered partially: the *epistemic discipline* (density across measurements before abstraction) holds and was validated by being applied to ourselves. The *retrieval claim* (multi-modal handles + density-driven abstraction beat semantic-only) does not hold at our scale on this corpus.
+## Honest Uncertainties (v6)
 
-Surviving for phase 4/6/7 execution:
+Open questions before any v6 phase plan:
 
-1. **Angel reduction depends on a code trace** — `experience_patterns` reads scattered across `intelligence/`, `assembly/`, dashboard CLI. Trace before deletion (Phase 4 prerequisite).
-2. **Episode boundary unit** — per-thread, per-intent-shift, per-task-completion — investigated during Phase 6 discuss.
-3. **Per-table migration decisions** — `experience_patterns`, `learning`, `decision`, `mental_model`, `directive_rule`, `critical_rule`, `transcript_chunk`. Phase 7 discuss.
+1. **Engagement metric operationalization.** Drift-detection probes (strongest case, requires synthetic drift fixtures) is the primary candidate. Citation density and specificity contrast are secondary signals. Decision rule must lock at P2 CONTEXT.md before measurement runs.
+2. **Chunk granularity** — turn boundaries, tool-call boundaries, or fixed token windows. Each has different retrieval/specificity tradeoffs. Investigated during P1 substrate validation.
+3. **Backfill scope** — full historical JSONL archive (~1000 sessions) or scoped (last 30d / per-project). Cost vs. coverage; settled during P1 planning.
+4. **Reranker fitness** — BGE-v2-m3 trained on web/document corpora; transcript chunks are different distribution. Measure as part of P1 substrate validation, not P2 empirical.
+5. **Citation narration** — when surfacing transcript spans, indicate "citing turn N of session X." Connects to the Phase 7 advisory-narration discipline.
+6. **Storage cost trajectory + retention** — ~1GB plain text + embeddings unbounded growth. v6 may need a retention-policy layer; defer to v7+.
+
+---
+*Last updated: 2026-05-08 after v5 closure + v6 milestone kickoff.*
