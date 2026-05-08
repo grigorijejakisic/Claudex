@@ -39,6 +39,12 @@ export function promoteLearnings(params: {
       const match = findDuplicate(learning, existing);
 
       if (match) {
+        // Phase 7 (MIG-02): all callers of promoteLearnings reach here via
+        // captureInsightsAsLearnings, which strips wrapper-tagged content
+        // upstream (lifecycle.ts via parseWrappers). Every insight is
+        // therefore organic by construction — upsertLearning's default
+        // provenance='organic' is correct. Future non-organic-derived callers
+        // must set provenance explicitly at THEIR site, not here.
         // Promote existing — upsert with existing fingerprint triggers ON CONFLICT increment
         upsertLearning(db, {
           project,

@@ -30,6 +30,7 @@ import { emitErrorTelemetry } from '../../observability/error-telemetry.js';
 import { addJournalEntry, getJournalBySession, getSessionMilestones } from '../../core/journal.js';
 import type { RecallMetadata } from '../../core/journal.js';
 import { dualWriteUserPrompt, dualWriteAssistantMessage } from '../../core/episodic-events.js';
+import { parseWrappers } from '../../extraction/wrapper-parser.js';
 
 function sha256(s: string): string {
   return createHash('sha256').update(s, 'utf8').digest('hex');
@@ -759,8 +760,19 @@ export async function captureInsightsAsLearnings(
   assistantText: string,
 ): Promise<void> {
   try {
+    // Phase 7 (MIG-02 / VAL-02 extension): strip wrapper-tagged content from
+    // assistant text before extracting insights. Phase 1's parseWrappers is
+    // the single source-of-truth for the KNOWN_WRAPPER_TAGS list. This makes
+    // the Mem0-trap vector structurally impossible for the learnings surface
+    // — same discipline episodic_events.provenance enforces via EPI-04.
+    // Insights are never extracted from <system-reminder>, <experience-data>,
+    // <file-content>, etc.; learnings.provenance is therefore always 'organic'
+    // by construction.
+    const { organic } = parseWrappers(assistantText);
+    if (!organic) return;
+
     // Combined: regex (floor) + semantic embedding (boost) when Ollama available
-    let insights = await extractInsightsCombined(assistantText, 5).catch(() => extractInsights(assistantText, 5));
+    let insights = await extractInsightsCombined(organic, 5).catch(() => extractInsights(organic, 5));
     if (insights.length === 0) return;
 
     // Quality gate: filter insights through isPromotableContent before promotion.
