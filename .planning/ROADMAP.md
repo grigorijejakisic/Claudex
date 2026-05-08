@@ -72,7 +72,12 @@ Reframe artifact: `.planning/reframes/2026-05-05-multi-handle-kill.md`. Aggregat
   3. V32 schema migration runs idempotently on both base-table fresh-DB and V17-collapsed shapes per the v5.0.1 lesson; chunks land in a vec0-backed virtual table with embeddings produced by the existing arctic-embed2 Ollama path; backfill scope (last 30d / per-project / full archive) is locked during P8 planning.
   4. **Live-wiring ship gate (WIR-01):** the production-shape integration test runs the *exported* ingestion function (e.g., `upsertChunk`) against fixtures for every DB shape currently in the wild — V17-collapsed at minimum, plus base-table fresh-DB — not against a mocked or `:memory:` DB. Test failure blocks ship at the same severity as Vesna failure (WIR-02 ship-gate coupling).
   5. Vesna 21/21 baseline preserved; existing v4 hybrid-retrieval pipeline unchanged; no retrieval-side surface visible to the agent yet (substrate-only — engagement is P9's question).
-**Plans**: TBD (locked at plan-phase time)
+**Plans** (5 plans across 5 sequential waves — locked 2026-05-08):
+- [ ] 08-01-PLAN.md — V32 schema migration + fresh vec0 table (TRX-05) [wave 1]
+- [ ] 08-02-PLAN.md — chunkTranscript + upsertChunk (TRX-02, TRX-04) [wave 2]
+- [ ] 08-03-PLAN.md — Ingestion hook + Angel heartbeat drain (TRX-01, TRX-03) [wave 3]
+- [ ] 08-04-PLAN.md — Full-archive backfill CLI + reranker fitness CLI (TRX-03) [wave 4]
+- [ ] 08-05-PLAN.md — WIR-01 live-wiring + Mem0-trap closure + Phase 8 ship close-out (WIR-01, WIR-02) [wave 5]
 
 ### Phase 9: Empirical measurement
 **Goal**: Bind whether next-session task performance improves when the agent has access to verbatim historical deliberation vs. summary-only baseline. Same methodology shape as v5 Phase 2/2.1 — pre-committed decision rule before any A/B run, locked corpus + harness across replications, drift-detection probes as the primary binding signal, Wilson/Newcombe CI binding for noise rejection at small n. Negative result is a valid output.
@@ -140,10 +145,10 @@ Phase 8 (substrate) → Phase 9 (empirical) → Phase 10 (conditional ship). Dec
 | 5. Density-based abstraction | v5.0 | — | Dropped | 2026-05-05 |
 | 6. Crash-resilient episode boundary | v5.0 | 5/5 | Complete | 2026-05-05 |
 | 7. v4 coexistence / migration / ship | v5.0 | 5/5 | Complete | 2026-05-08 |
-| 8. Transcript ingestion substrate | v6.0 | 0/TBD | Not started | - |
+| 8. Transcript ingestion substrate | v6.0 | 0/5 | Planned | - |
 | 9. Empirical measurement | v6.0 | 0/TBD | Not started | - |
 | 10. Conditional ship | v6.0 | 0/TBD | Not started | - |
 
 ---
 
-*Roadmap last updated: 2026-05-08 after v6 milestone kickoff.*
+*Roadmap last updated: 2026-05-08 — Phase 8 plans authored (5 plans, 4 waves).*
