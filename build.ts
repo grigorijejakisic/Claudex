@@ -28,6 +28,7 @@ const requiredEntryPoints = [
   'src/cli/backfill-transcripts.ts',
   'src/cli/reranker-fitness.ts',
   'src/cli/benchmark-deliberation-surfacing.ts',
+  'src/cli/import-synthetic-probes.ts',
 ];
 
 /** Optional/scaffolding entry points — warn-and-skip if missing. */
