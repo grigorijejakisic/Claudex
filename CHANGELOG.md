@@ -7,9 +7,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Added
+### Added (v6 Phase 8 — Transcript ingestion substrate)
 
-- _Nothing yet._ Track v5.1+ milestone planning at `.planning/STATE.md` once it kicks off.
+- **V32 schema migration: `transcript_chunk_v6` metadata table + `vec_transcript_chunks_v6` vec0 virtual table.** Idempotent on base-table fresh-DB and V17-collapsed shapes; legacy artifact-kernel `transcript_chunk` slot left untouched. Closed-enum CHECK on `role` and `provenance` matches V25 episodic_events + V30/V31 learnings.
+- **Transcript ingestion pipeline (Phase 8 — v6 substrate).** Pure-function `chunkTranscript` (turn-boundary primary, sentence-boundary sub-chunk on >1500-token turns) + redaction-at-ingestion via `parseWrappers` (Mem0-trap structurally closed at the new write surface). `upsertChunk` exported write surface used by hooks + tests against real DB shapes — never `:memory:`-with-default-schema.
+- **CC SessionEnd hook + Angel heartbeat drain.** Hook fires `enqueueSessionIngestion` on every `clean_endsession` close-marker (single `session_events` INSERT, no LLM/embedding work in the hook). Angel heartbeat drains the queue at LIMIT 5 sessions per tick — JSONL parse → chunkTranscript → arctic-embed2 embed → upsertChunk + `vec_transcript_chunks_v6` INSERT. Per-session try/catch; embedding failures degrade to metadata-only rows.
+- **`bun run backfill:transcripts`** — operator-invoked full-archive backfill CLI. Walks `~/.claude/projects/**/*.jsonl`, mtime-ordered, idempotent re-runs (skips sessions with at least one `transcript_chunk_v6` row). `--dry-run` prints summary.
+- **`bun run reranker:fitness`** — operator-invoked BGE-v2-m3 vs arctic-embed2 top-3 overlap check on a 50-chunk sample. Writes markdown report under `context/measurements/{date}-reranker-fitness.md`. Informational only — never a ship blocker. Below-threshold sets P9's reranker default to bi-encoder-only baseline per CONTEXT decision 4.
+- **`'transcript_ingestion_pending'` event type** added to the `EventType` enum.
+
+### Changed
+
+- **`TARGET_USER_VERSION` bumped 31 → 32.** `migrations.ts` dispatch + initializeSchema fresh-DB convergence both updated; pre-existing migrations-v31 tests relaxed from `toBe(31)` to `toBeGreaterThanOrEqual(31)` (V29/V30 already used the version-ceiling pattern).
+
+### Ship gates
+
+- **WIR-01 promoted to ninth-gate severity per the v5.0.1 silent-fail lesson.** Every v6 engineering phase runs the EXPORTED production write surface (`upsertChunk`, `ingestSession`) against V17-collapsed + base-table fresh-DB fixtures — never mocks, never test-only wrappers. Phase 8 wire-test at `src/tests/integration/phase-8-wire-test.test.ts` is the gate.
+- **Mem0-trap closure asserted at the v6 write surface.** Every `KNOWN_WRAPPER_TAGS` variant round-trips through `chunkTranscript` + `upsertChunk` and is structurally absent from the persisted body. Pairs with V28's BEFORE-INSERT trigger on `experience_patterns` (Phase 4) and V31's view-mode learnings.provenance enum (Phase 7) — three structural closures across three write surfaces.
+- **Substrate ship gates (8 of 9 PASS, 1 carry-forward):** Vesna 21/21, Phase 8 vitest 76/76, build clean, full suite no NEW regressions vs Phase-7-immediate-post-merge baseline (27 pre-existing v4-debt failures persist), sc3 88.3% aggregate **but big-mozzy-v2 remains at 70% pre-existing project-content gap** (verified pre-P8 via git-stash test — not a substrate regression), handoff-pickup 5/5, bundle-smoke 7/7, doctor exit 0 + user_version=32, WIR-01 wire test V17-collapsed + base-table fresh-DB both PASS.
+
+### Coverage
+
+- 76 new tests for the v6 substrate: V32 migration (13), chunker (11), upsertChunk (10), ingest-session (10), backfill (10), reranker fitness (10), Phase 8 ingestion-hook integration (4), WIR-01 wire test (5), Mem0-trap closure (3).
+- No retrieval-side surface in P8 — substrate is reusable regardless of P9 verdict (P10's job, conditional on empirical phase verdict).
 
 ## [5.0.1] — 2026-05-08
 

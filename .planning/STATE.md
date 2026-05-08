@@ -5,16 +5,16 @@
 See: `.planning/PROJECT.md` (updated 2026-05-08 after v5 closure + v6 milestone kickoff)
 
 **Core value:** v5 closed the *lying-memory* surface; v6 closes the *lazy-memory* surface. Surface the moments that produced decisions and lessons, not summaries about them.
-**Current focus:** v6 — Deliberation Surfacing (roadmap authored, Phase 8 ready for plan-phase).
+**Current focus:** v6 — Deliberation Surfacing (Phase 8 SHIPPED 2026-05-08; Phase 9 empirical measurement ready to start).
 
 ## Current Position
 
 **Current Milestone:** v6 — Deliberation Surfacing
-**Phase:** Phase 8 — Transcript ingestion substrate (not started)
+**Phase:** Phase 9 — Empirical measurement (not started)
 **Plan:** —
-**Status:** v6 ROADMAP.md authored 2026-05-08. 17 v6 requirements (TRX × 5, ROU × 3, ASM × 3, ENG × 4, WIR × 2) mapped to three phases (8/9/10) with 100% coverage. Spec at `.planning/research/2026-05-08-v6-deliberation-surfacing.md` (committed `8d0477b`). Research stage SKIPPED — spec is research-grade and represents user-locked thesis (Critical Reminders Layer-1-proven, Layers 2 + 3 are v6).
+**Status:** Phase 8 (transcript ingestion substrate) SHIPPED 2026-05-08. V32 migration + ingestion pipeline + WIR-01 ship gate landed. 76 new tests pass; 8 of 9 ship gates PASS, 1 (sc3 big-mozzy-v2) carry-forward pre-existing project-content gap verified pre-P8 via git-stash test. Vesna 21/21 preserved.
 
-**Last activity:** 2026-05-08 — v6 ROADMAP.md authored after v5.0.0 + v5.0.1 publication.
+**Last activity:** 2026-05-08 — Phase 8 close-out commit; CHANGELOG `[Unreleased]` populated with v6 substrate landing; STATE.md + ROADMAP.md flipped.
 
 ## v5 Verdict Log (CLOSED 2026-05-08)
 
@@ -33,9 +33,13 @@ See: `.planning/PROJECT.md` (updated 2026-05-08 after v5 closure + v6 milestone 
 
 | Phase | Goal | Type | Status | Requirements |
 |-------|------|------|--------|--------------|
-| 8 — Transcript ingestion substrate | V32 schema (transcript_chunk promotion + vec0 binding); JSONL watcher hook into Phase 6 boundary close; redaction-at-ingestion via parseWrappers; chunking strategy locked; backfill scope locked; live-wiring ship gate against V17-collapsed + base-table | engineering | not started | TRX-01..05 + WIR-01 + WIR-02 |
+| 8 — Transcript ingestion substrate | V32 schema (transcript_chunk promotion + vec0 binding); JSONL watcher hook into Phase 6 boundary close; redaction-at-ingestion via parseWrappers; chunking strategy locked; backfill scope locked; live-wiring ship gate against V17-collapsed + base-table | engineering | **SHIPPED 2026-05-08** | TRX-01..05 + WIR-01 + WIR-02 |
 | 9 — Empirical measurement | Pre-commit decision rule in CONTEXT.md; lock corpus + harness; build drift-detection probe suite (≥5 condition-shift kinds); A/B with-transcript vs. summary-only baseline; ≥2 bound replications; Wilson/Newcombe CI binding; aggregate to `.planning/aggregates/deliberation-surfacing.{md,json}` | empirical | not started | ENG-01..04 |
 | 10 — Conditional ship | Bound positive: routing (BGE-reranker fan-out from artifact references) + assembly (transcript span citations + advisory narration + budget caps) + Vesna probe extension to 24+ + ship gate validation + v6.0.0 tag. Bound negative: KILL receipt (Phase 2 shape) + substrate-alone ship + v6.0.0 tag with kill leading | engineering OR documentation | not started | ROU-01..03 + ASM-01..03 (engineering branch); WIR-01 inherited via WIR-02 phase coupling |
+
+## v6 Phase Verdict Log
+
+- **Phase 8 (2026-05-08, type: engineering): SHIPPED.** V32 schema (transcript_chunk_v6 + vec_transcript_chunks_v6) + ingestion pipeline (chunkTranscript + upsertChunk + parseWrappers redaction) + SessionEnd hook enqueue + Angel heartbeat drain + backfill CLI + reranker-fitness CLI. WIR-01 wire test against V17-collapsed + base-table fresh-DB fixtures lands at ninth-gate severity. 76 new tests; Vesna 21/21 preserved. 8 of 9 ship gates PASS (sc3 big-mozzy-v2 at 70% is pre-existing project-content gap verified pre-P8). Boundary-detector enqueue path deferred to v6.x — see 08-03 SUMMARY Rule 4 deferral. NO v6.0.0 tag — that is P10's job after P9's empirical verdict.
 
 **v6 coverage:** 17/17 requirements mapped, 0 unmapped.
 
