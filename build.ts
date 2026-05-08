@@ -25,6 +25,8 @@ const requiredEntryPoints = [
   'src/cli/session-token-cost.ts',
   'src/cli/why.ts',
   'src/cli/doctor.ts',
+  'src/cli/backfill-transcripts.ts',
+  'src/cli/reranker-fitness.ts',
 ];
 
 /** Optional/scaffolding entry points — warn-and-skip if missing. */
