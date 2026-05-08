@@ -1172,8 +1172,81 @@ export async function heartbeatTick(ctx: HeartbeatContext): Promise<TickResult> 
     } catch { /* last-resort */ }
   }
 
+  // Phase 8 TRX-03: drain transcript ingestion queue. SessionEnd hook + Angel
+  // boundary-detector enqueue 'transcript_ingestion_pending' rows; this tick
+  // phase consumes them at LIMIT 5 per tick (matches memory_curation drain
+  // budget). Per-session try/catch — one bad session never blocks others.
+  try {
+    const pending = cachedPrepare(ctx.db,
+      `SELECT id, session_id, project, detail
+         FROM session_events
+        WHERE event_type = 'transcript_ingestion_pending'
+          AND (json_extract(detail, '$.processed') IS NULL
+               OR json_extract(detail, '$.processed') != json('true'))
+        ORDER BY id ASC
+        LIMIT 5`
+    ).all() as Array<{ id: number; session_id: string; project: string; detail: string }>;
+
+    for (const row of pending) {
+      try {
+        const detail = JSON.parse(row.detail ?? '{}') as { jsonl_path?: string | null };
+        const jsonlPath = detail.jsonl_path ?? resolveJsonlPath(row.session_id, row.project);
+        if (!jsonlPath) {
+          // No JSONL on disk — mark processed to stop retrying. Phase 6's
+          // idle-sweep does not synthesize the JSONL; we cannot ingest a
+          // session whose transcript is gone.
+          cachedPrepare(ctx.db,
+            `UPDATE session_events
+                SET detail = json_set(COALESCE(detail, '{}'), '$.processed', json('true'),
+                                      '$.skip_reason', 'no_jsonl_path')
+              WHERE id = ?`
+          ).run(row.id);
+          continue;
+        }
+        const { ingestSession } = await import('../ingestion/ingest-session.js');
+        const ir = await ingestSession(ctx.db, row.session_id, row.project, jsonlPath);
+        cachedPrepare(ctx.db,
+          `UPDATE session_events
+              SET detail = json_set(COALESCE(detail, '{}'), '$.processed', json('true'),
+                                    '$.chunks_written', ?,
+                                    '$.embeddings_written', ?,
+                                    '$.errors', ?)
+            WHERE id = ?`
+        ).run(ir.chunksWritten, ir.embeddingsWritten, ir.errors, row.id);
+      } catch (perSessionErr) {
+        try {
+          const message = perSessionErr instanceof Error
+            ? perSessionErr.message
+            : String(perSessionErr);
+          cachedPrepare(ctx.db,
+            `INSERT INTO telemetry (session_id, event_kind, detail, adapter)
+             VALUES (?, 'episodic_write_failure',
+                     json_object('phase8','ingestSession','error_message',?),
+                     'angel-heartbeat')`
+          ).run(row.session_id, message.slice(0, 500));
+        } catch { /* swallow */ }
+      }
+    }
+  } catch { /* drain failure non-critical */ }
+
   result.duration_ms = Date.now() - start;
   return result;
+}
+
+/**
+ * Resolve the JSONL path for a (sessionId, project) pair. Mirrors the path
+ * shape jsonl-watcher.ts:parseSessionIdFromPath understands. Returns null
+ * if the file doesn't exist on disk.
+ */
+function resolveJsonlPath(sessionId: string, project: string): string | null {
+  try {
+    const root = path.join(os.homedir(), '.claude', 'projects');
+    const candidate = path.join(root, project, `${sessionId}.jsonl`);
+    if (fs.existsSync(candidate)) return candidate;
+    return null;
+  } catch {
+    return null;
+  }
 }
 
 // ---------------------------------------------------------------------------

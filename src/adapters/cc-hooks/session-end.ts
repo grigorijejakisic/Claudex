@@ -15,6 +15,7 @@ import { clearSessionSignals, sweepExpiredSignals } from '../../core/session-sig
 import { recordEvent } from '../../core/session-events.js';
 import { writeEnvironmentalEvent } from '../../core/episodic-events.js';
 import { emitCleanEndsessionClose } from './session-end-close-marker.js';
+import { enqueueSessionIngestion } from '../../ingestion/ingest-session.js';
 
 const main = wrapHook('SessionEnd', async (input, ctx) => {
   const gauge = getTokenGauge({
@@ -82,6 +83,20 @@ const main = wrapHook('SessionEnd', async (input, ctx) => {
   // Helper extracted to session-end-close-marker.ts so tests can
   // exercise the same code path without triggering this file's main().
   emitCleanEndsessionClose(ctx.db, input.session_id, ctx.project);
+
+  // Phase 8 TRX-01: enqueue transcript ingestion. Cheap — single
+  // session_events INSERT, no LLM/embedding work in the hook. Angel's
+  // heartbeat drains the queue out-of-band.
+  try {
+    enqueueSessionIngestion(
+      ctx.db,
+      input.session_id,
+      ctx.project,
+      getTranscriptPath(input),
+    );
+  } catch (e) {
+    emitErrorTelemetry(ctx.db, input.session_id, 'session_end/transcript_ingestion_enqueue', e);
+  }
 
   return {};
 });
