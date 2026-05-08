@@ -1,0 +1,18 @@
+{
+  "id": "drift-d-06",
+  "kind": "d",
+  "source": "synthetic",
+  "prompt": "Our 2023 React state-management decision picked Redux Toolkit over Zustand. Should that decision still hold given the team's TanStack Query adoption?",
+  "past_artifact_ref": ["synthetic-redux-vs-zustand-2023"],
+  "transcript_anchor": {
+    "session_id": "synthetic-drift-d-06",
+    "turn_index_range": [0, 9],
+    "description": "Synthetic deliberation: Redux Toolkit was picked because team needed normalized server-state caching that Zustand didn't provide cleanly at the time. TanStack Query now handles server-state, so the original 'we need server-state caching' premise no longer requires Redux Toolkit specifically."
+  },
+  "condition_shift": {
+    "past_state": "Redux picked because Zustand didn't handle server-state caching ergonomically",
+    "current_state": "TanStack Query owns server-state; client-state needs are simpler and Zustand handles them well",
+    "delta": "The dependency that drove the choice (server-state caching gap in Zustand) was filled by a different library. Re-evaluation is warranted."
+  },
+  "pass_criterion": "Agent must surface that the original choice was driven by Zustand's server-state caching gap, identify TanStack Query as filling that gap, and recommend re-evaluating the state-management choice given the new dependency landscape."
+}

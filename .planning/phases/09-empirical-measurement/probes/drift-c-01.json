@@ -1,0 +1,18 @@
+{
+  "id": "drift-c-01",
+  "kind": "c",
+  "source": "real",
+  "prompt": "v5 P7 view-mode hot-fix scope was V17-collapsed only — does that decision generalize to a v6 P10 routing+assembly cutover?",
+  "past_artifact_ref": [".planning/STATE.md#v5-verdict-log", ".planning/phases/07-mem0-trap/07-SUMMARY.md"],
+  "transcript_anchor": {
+    "session_id": "8f8ef0c7-10b3-4e48-a567-25368959c73c",
+    "turn_index_range": [0, 0],
+    "description": "v5.0.1 hot-fix deliberation — view-mode learnings.provenance silent-fail discovered post-ship; scope was scoped explicitly to V17-collapsed shape because that's where the regression manifested. Decision did NOT generalize past the collapsed view."
+  },
+  "condition_shift": {
+    "past_state": "v5 P7 view-mode hot-fix scope = V17-collapsed only (narrow)",
+    "current_state": "v6 P10 engineering branch (conditional positive bind) introduces new write/read surfaces (transcript_chunk_v6, vec_transcript_chunks_v6) that didn't exist in v5 P7 scope",
+    "delta": "Scope expanded from view-mode-only to entire transcript-substrate retrieval surface; v5 P7 reasoning doesn't transfer mechanically"
+  },
+  "pass_criterion": "Agent must explicitly note the v5 P7 hot-fix's V17-collapsed-only scope, identify v6 P10's expanded write/read surface (transcript_chunk_v6 etc.), and recommend re-evaluating coverage and rollout decisions against the new scope rather than applying P7's choices."
+}

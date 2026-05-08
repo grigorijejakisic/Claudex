@@ -1,0 +1,18 @@
+{
+  "id": "drift-a-03",
+  "kind": "a",
+  "source": "real",
+  "prompt": "LongMemEval Oracle reported 90.6% — is that a clean ship-gate signal for v4?",
+  "past_artifact_ref": ["CLAUDE.md#Benchmarks", ".planning/v4-final/phases/longmemeval-oracle-results.md"],
+  "transcript_anchor": {
+    "session_id": "154a331a-8f36-49a2-910d-7721bb3c6d94",
+    "turn_index_range": [0, 0],
+    "description": "Oracle 90.6% (426/470) measurement deliberation. Note: Oracle mode = only evidence sessions ingested, not full 500-session haystack. The number is competitive with Hindsight 89.0–91.4% but Oracle mode obscures retrieval-quality signal."
+  },
+  "condition_shift": {
+    "past_state": "LongMemEval Oracle 90.6% reported as headline ship metric for v4",
+    "current_state": "v4 audit (2026-04-27) demoted these benchmarks to 'archival, NOT ship gates'; Vesna probe suite + four success criteria are the canonical ship gate now",
+    "delta": "The benchmark's role flipped from ship-gate to archival reference — relying on the 90.6% as a forward-looking gate is methodology drift"
+  },
+  "pass_criterion": "Agent must surface that Oracle mode constrains the measurement (only evidence sessions ingested), name the v4 audit reframe demoting these benchmarks to archival, and recommend Vesna + the four success criteria as the actual ship gate."
+}

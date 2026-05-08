@@ -1,0 +1,18 @@
+{
+  "id": "drift-a-05",
+  "kind": "a",
+  "source": "real",
+  "prompt": "Vesna 18/18 PASS at 100% — that's a green light for shipping any v6 phase, right?",
+  "past_artifact_ref": [".planning/STATE.md#v6-phase-verdict-log", "CLAUDE.md#vesna"],
+  "transcript_anchor": {
+    "session_id": "8f8ef0c7-10b3-4e48-a567-25368959c73c",
+    "turn_index_range": [0, 0],
+    "description": "Vesna probe deliberation — original probe count was 18 (P4); grew to 21 in P7 (V30 schema bump + provenance enum closure); P10 engineering branch will extend 21→24+ if P9 binds positive. Each Vesna count corresponds to a specific schema/feature surface."
+  },
+  "condition_shift": {
+    "past_state": "Vesna 18/18 was the v5 P4 surface count",
+    "current_state": "Vesna grew to 21 functional probes in P7 (V30 schema bump, learnings.provenance closed-enum); P10 engineering branch (conditional on P9 positive bind) will grow to 24+",
+    "delta": "Vesna count is feature-coupled: 18 ≠ 21 ≠ 24+ in coverage; reading '18/18' as universal green-light skips the coverage-vs-shipped-feature mismatch"
+  },
+  "pass_criterion": "Agent must note that Vesna probe counts are tied to feature/schema surfaces (18 → 21 → 24+ map to specific milestones), name the current count (21 from P7), and recommend checking which Vesna surface applies before treating any green signal as universally binding."
+}

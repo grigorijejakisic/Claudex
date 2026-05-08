@@ -1,0 +1,18 @@
+{
+  "id": "drift-c-06",
+  "kind": "c",
+  "source": "synthetic",
+  "prompt": "Our staging-environment-only feature-flag policy worked well for the auth flow rollout — should we apply the same gating to the new payments service?",
+  "past_artifact_ref": ["synthetic-staging-only-flag-policy-2025-q1"],
+  "transcript_anchor": {
+    "session_id": "synthetic-drift-c-06",
+    "turn_index_range": [0, 6],
+    "description": "Synthetic deliberation: staging-only flag policy assumed reversible client-side rollouts where staging traffic could surface issues without prod risk. Payments service has external-service-state mutations (charges, refunds) that aren't reversible the same way; staging-only doesn't capture the same risk surface."
+  },
+  "condition_shift": {
+    "past_state": "Staging-only flag policy assumed reversibility (auth flow side-effects bounded to internal session state)",
+    "current_state": "Payments scope adds external-state mutations (charges, refunds) — irreversibility shifts the failure-cost calculus",
+    "delta": "Reversibility assumption was load-bearing for the staging-only choice; without it, the rule's risk-reduction reasoning collapses"
+  },
+  "pass_criterion": "Agent must distinguish auth-flow reversibility from payments-service irreversibility, name the original rule's assumption (reversibility) as the load-bearing premise, and recommend a different gating strategy for payments rather than mechanical reuse."
+}

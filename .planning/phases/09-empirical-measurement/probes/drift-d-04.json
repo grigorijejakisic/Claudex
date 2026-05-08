@@ -1,0 +1,18 @@
+{
+  "id": "drift-d-04",
+  "kind": "d",
+  "source": "real",
+  "prompt": "Ollama version drift could affect deterministic temperature=0 inference. Should we pin a specific Ollama version for P9 binding replications?",
+  "past_artifact_ref": ["CLAUDE.md#critical-safety-rules", ".planning/phases/09-empirical-measurement/09-CONTEXT.md"],
+  "transcript_anchor": {
+    "session_id": "3bc0a8cb-1cc6-48ea-9ed9-84e989a9c101",
+    "turn_index_range": [0, 0],
+    "description": "Ollama version drift consideration — past deliberations on judge determinism assumed temperature=0 plus a stable Ollama version. Ollama updates have been known to alter sampling kernels even at temperature=0."
+  },
+  "condition_shift": {
+    "past_state": "Past inference work assumed Ollama version stability across measurements",
+    "current_state": "Ollama gets routine updates (version drift between R1 and R2 of P9 is plausible if measurement runs span weeks)",
+    "delta": "Determinism guarantee depends on more than the model + temperature; the Ollama runtime version is part of the locked-harness reproducibility surface"
+  },
+  "pass_criterion": "Agent must surface that determinism = model + temperature + runtime version, recognize Ollama version drift as a locked-harness threat, and recommend pinning the runtime version as part of the methodology gate."
+}

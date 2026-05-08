@@ -1,0 +1,18 @@
+{
+  "id": "drift-a-06",
+  "kind": "a",
+  "source": "real",
+  "prompt": "Should we accept 'tests passing on n=5 unit tests' as evidence the V32 transcript ingestion is production-ready?",
+  "past_artifact_ref": [".planning/phases/08-transcript-ingestion-substrate/08-02-SUMMARY.md", "CLAUDE.md#WIR-01"],
+  "transcript_anchor": {
+    "session_id": "3bc0a8cb-1cc6-48ea-9ed9-84e989a9c101",
+    "turn_index_range": [0, 0],
+    "description": "P8 plan 08-02 deliberation about test coverage for V32 ingestion. The decision promoted 'live-wiring smoke against every production DB shape currently in the wild' to a mandatory ship gate (WIR-01) precisely because v5.0.0 silent-fail proved unit tests at small n could pass while production was dead."
+  },
+  "condition_shift": {
+    "past_state": "Earlier in v5, n=5 unit tests was treated as adequate coverage for similar surface area",
+    "current_state": "v5.0.0 silent-fail proved that test-coverage-at-small-n can mask production-shape regressions; WIR-01 promoted live-wiring smoke to ship-gate status — 76 new tests in P8 reflects the new coverage standard",
+    "delta": "n=5 unit tests is NOT the current coverage bar; WIR-01 + V17-collapsed fixture + base-table fresh-DB live-wiring is mandatory now"
+  },
+  "pass_criterion": "Agent must reference the v5.0.0 silent-fail incident, name the WIR-01 live-wiring ship gate, and recommend coverage at the V17-collapsed + base-table shape minimums before accepting any new ingestion surface as production-ready."
+}

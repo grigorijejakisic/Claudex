@@ -1,0 +1,18 @@
+{
+  "id": "drift-e-02",
+  "kind": "e",
+  "source": "real",
+  "prompt": "Critical Reminders are injected at session-start. Doesn't that mean turn-1 is when the agent learns the rules?",
+  "past_artifact_ref": ["CLAUDE.md#critical-reminders", ".planning/sessions/session-44-critical-reminders.md"],
+  "transcript_anchor": {
+    "session_id": "3754a932-c7f4-4a0d-851d-ccb5f2f9c089",
+    "turn_index_range": [0, 0],
+    "description": "Session 44 deliberation — the assumption 'Critical Reminders only need to fire at turn 1' was falsified when extended sessions drifted from the rules. Critical Reminders crystallized as a mid-session refresh mechanism, not a turn-1-only injection."
+  },
+  "condition_shift": {
+    "past_state": "Assumption: turn-1 injection of Critical Reminders is sufficient",
+    "current_state": "Session 44 falsified — long sessions need recurring refresh; turn-1 alone is not enough",
+    "delta": "Assumption falsified directly by observed drift mid-session; the engineering response was to add mid-session refresh"
+  },
+  "pass_criterion": "Agent must reference Session 44's falsification of the turn-1-only assumption, name the recurring-refresh response, and recommend NOT designing future memory-injection mechanisms on the falsified turn-1-only assumption."
+}

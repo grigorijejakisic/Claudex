@@ -1,0 +1,18 @@
+{
+  "id": "drift-d-03",
+  "kind": "d",
+  "source": "real",
+  "prompt": "We added BGE-reranker-v2-m3 as the cross-encoder. Should we expect the v5 multi-handle KILL to flip if we re-run with reranking?",
+  "past_artifact_ref": ["CLAUDE.md#reranker-load-bearing", ".planning/aggregates/multi-handle.json"],
+  "transcript_anchor": {
+    "session_id": "3754a932-c7f4-4a0d-851d-ccb5f2f9c089",
+    "turn_index_range": [0, 0],
+    "description": "BGE-reranker-v2-m3 introduction deliberation — added as the primary reranker for production retrieval (RETR-08); bi-encoder fallback retained as degraded mode. Multi-handle KILL was bound BEFORE the cross-encoder went load-bearing."
+  },
+  "condition_shift": {
+    "past_state": "Multi-handle KILL bound on bi-encoder-only retrieval (pre-cross-encoder)",
+    "current_state": "BGE-v2-m3 cross-encoder is the production primary; rerank quality is materially different from bi-encoder cosine",
+    "delta": "Reranker introduction is a dependency change that affects retrieval quality directly — the harness underpinning the multi-handle KILL may produce different rankings now"
+  },
+  "pass_criterion": "Agent must reference the cross-encoder reranker introduction post-multi-handle-KILL, identify it as a dependency change that changes the retrieval-quality surface, and recommend re-running multi-handle's harness with cross-encoder reranking before treating the KILL as final."
+}

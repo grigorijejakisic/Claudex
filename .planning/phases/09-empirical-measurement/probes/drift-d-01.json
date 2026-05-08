@@ -1,0 +1,18 @@
+{
+  "id": "drift-d-01",
+  "kind": "d",
+  "source": "real",
+  "prompt": "We picked Qdrant for vector search in early v4. Should we revisit the multi-handle thesis now that we removed Qdrant?",
+  "past_artifact_ref": ["context/specs/SQLITE_VEC_MIGRATION.md", "CLAUDE.md#single-store-design"],
+  "transcript_anchor": {
+    "session_id": "028505c5-fd28-49d4-b2f8-3a0aeda6e250",
+    "turn_index_range": [0, 0],
+    "description": "Qdrant removal session 47 deliberation — Qdrant was removed in favor of sqlite-vec embedded in the same DB. Multi-handle thesis was originally formed on Qdrant assumptions (separate vector store with different rerank latencies, network-hop costs, partitioning model)."
+  },
+  "condition_shift": {
+    "past_state": "Multi-handle reasoning conditioned on Qdrant as separate vector store",
+    "current_state": "sqlite-vec lives in same DB file as relational data; latency, partitioning, joins all collapse",
+    "delta": "The dependency-change collapses several premises of the multi-handle thesis (separate-handle latency, partitioning) — Phase 2 KILL was bound on a Qdrant-aware harness; the new substrate may behave differently"
+  },
+  "pass_criterion": "Agent must surface the Qdrant → sqlite-vec migration as a dependency change that affects multi-handle premises, name which premises (latency, partitioning) are affected, and recommend re-pooling on the sqlite-vec substrate before treating the Qdrant-era KILL as final."
+}

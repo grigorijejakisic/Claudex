@@ -1,0 +1,18 @@
+{
+  "id": "drift-b-04",
+  "kind": "b",
+  "source": "real",
+  "prompt": "We retain the K=5 top-K span budget for B-arm transcript injection — should that be the production routing default if P9 binds positive?",
+  "past_artifact_ref": [".planning/phases/09-empirical-measurement/09-CONTEXT.md#decisions"],
+  "transcript_anchor": {
+    "session_id": "3bc0a8cb-1cc6-48ea-9ed9-84e989a9c101",
+    "turn_index_range": [0, 0],
+    "description": "P9 CONTEXT discretion section: K=5 picked as starter for B-arm injection, 'matches P10's anticipated routing default, pending P10 plan-phase'. The threshold is explicitly tunable on token-budget pressure."
+  },
+  "condition_shift": {
+    "past_state": "K=5 picked for P9 measurement-time injection without empirical backing on routing-time tradeoffs",
+    "current_state": "P10 routing has different constraints (production token budget, latency budget, multi-context blending); the measurement-time K may not transfer",
+    "delta": "Production-routing K must be tuned against latency + token-budget pressure independently of the measurement-time choice"
+  },
+  "pass_criterion": "Agent must note that K=5 was a measurement-time pick with explicit acknowledgement of tunability, distinguish measurement-time from routing-time constraints, and recommend an independent tuning pass against production budget pressure before adopting K=5 as the routing default."
+}

@@ -1,0 +1,18 @@
+{
+  "id": "drift-e-06",
+  "kind": "e",
+  "source": "real",
+  "prompt": "We assume the cross-encoder reranker (BGE-v2-m3 on port 7439) is generally available. Is that safe to design retrieval flows around?",
+  "past_artifact_ref": ["CLAUDE.md#reranker-load-bearing", "src/core/hybrid-retrieval.ts"],
+  "transcript_anchor": {
+    "session_id": "8f8ef0c7-10b3-4e48-a567-25368959c73c",
+    "turn_index_range": [0, 0],
+    "description": "Reranker availability deliberation — original assumption was that the reranker would be 'generally up'. Operations experience produced enough fallback events to require explicit telemetry (`event_kind='reranker_fallback'`) and a session-start health surface. The assumption was partially falsified."
+  },
+  "condition_shift": {
+    "past_state": "Assumption: cross-encoder reranker generally available; bi-encoder fallback was a soft escape hatch",
+    "current_state": "Operations experience showed enough fallback events to need telemetry + health-line surfacing; bi-encoder fallback is officially a 'degraded mode', not a transparent default",
+    "delta": "Assumption partially falsified — availability is real but not bulletproof; designs that assume reliable reranker availability without explicit fallback handling are unsafe"
+  },
+  "pass_criterion": "Agent must surface the partial falsification, name the fallback-as-degraded-mode reframe, and recommend explicit fallback handling rather than designing flows that silently assume reranker availability."
+}

@@ -1,0 +1,18 @@
+{
+  "id": "drift-c-05",
+  "kind": "c",
+  "source": "synthetic",
+  "prompt": "Our 2025-Q2 decision applied the 'no PR over 1000 LoC' rule to feature work — should that rule extend to migration work?",
+  "past_artifact_ref": ["synthetic-pr-size-policy-2025-q2"],
+  "transcript_anchor": {
+    "session_id": "synthetic-drift-c-05",
+    "turn_index_range": [0, 7],
+    "description": "Synthetic deliberation: PR-size cap of 1000 LoC was scoped to feature work to keep review tractable. Applying mechanically to migration work (which often involves bulk renames, schema bumps with proportional touch) would create false-positive policy hits without fixing the underlying review-tractability concern."
+  },
+  "condition_shift": {
+    "past_state": "PR-size cap scope = feature work (review-tractability hypothesis)",
+    "current_state": "Migration work expanding scope — rule's reasoning about cognitive load doesn't transfer cleanly to mechanical-renames PRs",
+    "delta": "Scope expansion misses the rule's intent — review-tractability framework would categorize migration PRs differently, not subject them to the same cap"
+  },
+  "pass_criterion": "Agent must surface that the original cap was scoped to feature work for review-tractability reasons, distinguish mechanical/migration PRs from feature PRs, and recommend a category-specific scope rather than mechanical extension."
+}

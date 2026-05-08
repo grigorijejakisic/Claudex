@@ -1,0 +1,18 @@
+{
+  "id": "drift-e-01",
+  "kind": "e",
+  "source": "real",
+  "prompt": "We assumed that if a `pattern-extractor.ts` extraction site runs cleanly in tests, no Mem0-style hallucination loop is possible. Is that assumption still safe?",
+  "past_artifact_ref": [".planning/v4-final/phases/04-extraction-deletion/04-SUMMARY.md", ".planning/v4-final/phases/01-redaction-substrate/01-SUMMARY.md"],
+  "transcript_anchor": {
+    "session_id": "028505c5-fd28-49d4-b2f8-3a0aeda6e250",
+    "turn_index_range": [0, 0],
+    "description": "Mem0-trap closure deliberation — V28 BEFORE INSERT trigger blocks new rows structurally. Phase 4 deleted three extraction sites; V31 closed view-mode silent-fail. The assumption 'tests passing means no hallucination loop' was falsified by v5.0.0 silent-fail."
+  },
+  "condition_shift": {
+    "past_state": "Assumption: passing tests on extraction = no Mem0-trap risk",
+    "current_state": "v5.0.0 silent-fail proved the assumption false; the structural trigger is the actual safeguard",
+    "delta": "Assumption falsified — the safeguard is structural (trigger), not test-coverage. Reasoning that depends on the old assumption is unsafe."
+  },
+  "pass_criterion": "Agent must surface the V28 trigger as the structural safeguard, reference the v5.0.0 silent-fail as the falsifying incident, and recommend relying on structural mechanisms rather than test coverage as the Mem0-trap closure proof."
+}

@@ -1,0 +1,18 @@
+{
+  "id": "drift-a-01",
+  "kind": "a",
+  "source": "real",
+  "prompt": "Should we still treat the n=20 KILL verdict on multi-handle retrieval as binding for current routing decisions?",
+  "past_artifact_ref": [".planning/aggregates/multi-handle.json#bound_experiences[0]", ".planning/v4-final/phases/02-multi-modal-index-seeds-density-check/02-SUMMARY.md"],
+  "transcript_anchor": {
+    "session_id": "3754a932-c7f4-4a0d-851d-ccb5f2f9c089",
+    "turn_index_range": [0, 0],
+    "description": "Phase 2 closeout deliberation — Wilson lower -0.157 at n=20 → KILL verdict. The original deliberation discussing the small-sample boundary lives in this CLAUDEXv3 session."
+  },
+  "condition_shift": {
+    "past_state": "n=20 with Wilson lower bound -0.157, KILL at small-sample resolution",
+    "current_state": "Phase 2.1 ran at n=60 (still KILL) and LongMemEval Oracle measured a different metric at n=470; total claudex-v3 deliberation corpus has grown ~23x since the Phase 2 KILL was bound",
+    "delta": "Sample size grew ≥3x within multi-handle replications; total corpus grew ~23x. Original deliberation's n=20 sample-size constraint no longer reflects current corpus reality."
+  },
+  "pass_criterion": "Agent must explicitly note the original n=20 sample size and the subsequent corpus growth, and recommend re-pooling at the current corpus size BEFORE re-applying the KILL verdict to a new routing decision."
+}

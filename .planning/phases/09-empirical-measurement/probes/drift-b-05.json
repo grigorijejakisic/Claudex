@@ -1,0 +1,18 @@
+{
+  "id": "drift-b-05",
+  "kind": "b",
+  "source": "real",
+  "prompt": "We use the 24h reranker_fallback count as the session-start health surface. Is the 'show line when count > 0' threshold the right ergonomic choice?",
+  "past_artifact_ref": ["CLAUDE.md#reranker-load-bearing", "src/adapters/cc-hooks/session-start.cjs"],
+  "transcript_anchor": {
+    "session_id": "3754a932-c7f4-4a0d-851d-ccb5f2f9c089",
+    "turn_index_range": [0, 0],
+    "description": "Reranker health line threshold deliberation — original decision in CLAUDE.md was 'when 24h count is non-zero'. Picked because any fallback writes to telemetry, but the threshold doesn't distinguish 'one transient blip' from 'the service is dead'."
+  },
+  "condition_shift": {
+    "past_state": "Threshold is 'any non-zero' — every fallback fires the visibility surface",
+    "current_state": "After many sessions of operation, transient blips (network jitter, brief Ollama saturation) probably exceed 'service down' incidents 10:1 — the threshold drifts towards alerting fatigue",
+    "delta": "Threshold's reasoning ('catch any degradation') is not invalidated, but a tiered threshold (>0 yellow, >5 red) would better separate transient noise from real outage signal"
+  },
+  "pass_criterion": "Agent must surface that the original threshold reasoning was conservative ('catch any fallback') and acknowledge alerting fatigue concerns. Recommend evaluating tiered thresholds before keeping the binary one as-is."
+}

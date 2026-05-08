@@ -1,0 +1,18 @@
+{
+  "id": "drift-a-02",
+  "kind": "a",
+  "source": "real",
+  "prompt": "Phase 2.1 ran at n=60 and was still KILL — does that close the door on multi-handle retrieval permanently?",
+  "past_artifact_ref": [".planning/aggregates/multi-handle.json#bound_experiences[1]", ".planning/v4-final/phases/02.1-multi-handle-strict-relaxed/02.1-SUMMARY.md"],
+  "transcript_anchor": {
+    "session_id": "3bc0a8cb-1cc6-48ea-9ed9-84e989a9c101",
+    "turn_index_range": [0, 0],
+    "description": "Phase 2.1 strict + relaxed tier closeout — Δp@5 +0.10 [-0.157, +0.376] (strict), Δp@5 +0.21 [-0.033, +0.491] (relaxed). Both KILL via Wilson lower-bound but the relaxed tier was visibly closer to binding. Deliberation about whether to re-pool at higher n lives in this session."
+  },
+  "condition_shift": {
+    "past_state": "n=60 strict + n=19 relaxed both KILL but relaxed tier had Wilson lower -0.033 (very close to binding)",
+    "current_state": "If a P9.1-style corpus expansion were applied to multi-handle, the same delta could bind at n≥150 via tighter CI",
+    "delta": "Relaxed-tier deliberation explicitly noted the bind was within reach at higher n; revisiting requires re-pool, not re-KILL"
+  },
+  "pass_criterion": "Agent must distinguish the strict and relaxed tier results, name the relaxed-tier proximity to binding (-0.033 lower), and recommend evaluating whether a corpus-expansion replication could bind before treating the KILL as final."
+}

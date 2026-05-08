@@ -1,0 +1,18 @@
+{
+  "id": "drift-b-01",
+  "kind": "b",
+  "source": "real",
+  "prompt": "The Phase 2.1 density floor is 0.30 — should that threshold continue to gate density-based abstraction work?",
+  "past_artifact_ref": [".planning/v4-final/phases/02.1-multi-handle-strict-relaxed/02.1-CONTEXT.md", ".planning/aggregates/multi-handle.json"],
+  "transcript_anchor": {
+    "session_id": "8f8ef0c7-10b3-4e48-a567-25368959c73c",
+    "turn_index_range": [0, 0],
+    "description": "Density-floor 0.30 deliberation — floor was picked specifically to bound 'multi-source intra-project density' under a hypothesis that abstraction quality scaled monotonically with density. Phase 5 (density-based abstraction) was DROPPED 2026-05-05 explicitly because the underlying thesis was dead — the threshold's reasoning is not standalone."
+  },
+  "condition_shift": {
+    "past_state": "0.30 density floor picked under the multi-handle abstraction thesis (Phase 5)",
+    "current_state": "Phase 5 dropped 2026-05-05 — thesis dead; the threshold has no live use case it gates",
+    "delta": "The threshold's underlying decision rationale (multi-handle abstraction) was killed; carrying the threshold forward is rule-without-reason"
+  },
+  "pass_criterion": "Agent must surface that the 0.30 floor was tied specifically to the dead Phase 5 abstraction thesis, name that thesis as dropped, and recommend retiring the threshold rather than re-applying it without its underlying rationale."
+}

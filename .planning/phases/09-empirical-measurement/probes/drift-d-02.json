@@ -1,0 +1,18 @@
+{
+  "id": "drift-d-02",
+  "kind": "d",
+  "source": "real",
+  "prompt": "We standardized on snowflake-arctic-embed2 (1024d). Does the LongMemEval Oracle 90.6% number transfer to a deepseek-coder-v2:16b deliberation harness?",
+  "past_artifact_ref": ["CLAUDE.md#single-store-design", "CLAUDE.md#Benchmarks"],
+  "transcript_anchor": {
+    "session_id": "154a331a-8f36-49a2-910d-7721bb3c6d94",
+    "turn_index_range": [0, 0],
+    "description": "Embedder/judge model deliberation — arctic-embed2 was picked for retrieval; deepseek-coder-v2:16b for judging at LongMemEval Oracle measurement time. The 90.6% combines retrieval+judge model performance; transferring it to a different judge or different distribution is non-trivial."
+  },
+  "condition_shift": {
+    "past_state": "90.6% measured under arctic-embed2 retrieval + deepseek-coder-v2:16b judge on LongMemEval Oracle distribution",
+    "current_state": "P9 deliberation harness uses same embedder + judge but different distribution (claudex-v3 deliberation moments, not LongMemEval-style episodic recall)",
+    "delta": "Distribution shift is the relevant change; embedder/judge held constant. Number doesn't predict P9 measurement directly because the task surface differs"
+  },
+  "pass_criterion": "Agent must distinguish what's held constant (embedder, judge) from what's shifted (distribution: episodic recall vs deliberation surfacing), and recommend NOT transferring the 90.6% as predictive of P9 outcomes."
+}

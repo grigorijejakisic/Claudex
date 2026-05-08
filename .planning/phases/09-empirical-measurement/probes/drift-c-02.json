@@ -1,0 +1,18 @@
+{
+  "id": "drift-c-02",
+  "kind": "c",
+  "source": "real",
+  "prompt": "parseWrappers redaction was scoped to outbound learnings in P1; does that scope decision still apply to P8 ingestion?",
+  "past_artifact_ref": [".planning/v4-final/phases/01-redaction-substrate/01-SUMMARY.md", ".planning/phases/08-transcript-ingestion-substrate/08-02-SUMMARY.md"],
+  "transcript_anchor": {
+    "session_id": "3bc0a8cb-1cc6-48ea-9ed9-84e989a9c101",
+    "turn_index_range": [0, 0],
+    "description": "Redaction-scope deliberation — parseWrappers originally scoped at the learnings-write boundary in v5 P1. P8 plan 08-02 explicitly extended the scope to the ingestion path so transcript chunks get the same redaction discipline before they hit the vec0 index."
+  },
+  "condition_shift": {
+    "past_state": "parseWrappers redaction scope = learnings-write boundary (v5 P1)",
+    "current_state": "P8 plan 08-02 extended scope to transcript ingestion path; redaction now fires before vec_transcript_chunks_v6 binding",
+    "delta": "Scope expansion is intentional and documented; v5 P1 reasoning about 'where to redact' was scoped narrowly enough that it doesn't anticipate the ingestion-time redaction surface"
+  },
+  "pass_criterion": "Agent must distinguish v5 P1's narrow learnings-boundary scope from P8 plan 08-02's expanded ingestion-time scope, identify both as intentional and complementary, and recommend evaluating whether further scope expansions (e.g., embedding-time? rendering-time?) require the same parseWrappers discipline."
+}

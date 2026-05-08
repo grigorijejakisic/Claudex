@@ -1,0 +1,18 @@
+{
+  "id": "drift-e-03",
+  "kind": "e",
+  "source": "real",
+  "prompt": "v5.0.0 had high test coverage on the learnings write path. Doesn't that mean the production write path is safe?",
+  "past_artifact_ref": [".planning/STATE.md#v5-verdict-log", "CLAUDE.md#WIR"],
+  "transcript_anchor": {
+    "session_id": "3bc0a8cb-1cc6-48ea-9ed9-84e989a9c101",
+    "turn_index_range": [0, 0],
+    "description": "v5.0.0 silent-fail post-ship audit deliberation — view-mode learnings.provenance was being silently dropped on V17-collapsed DB shapes. The unit tests passed because they ran against base-table fresh-DB, not the collapsed view shape that production used."
+  },
+  "condition_shift": {
+    "past_state": "Assumption: high test coverage = production write path safe",
+    "current_state": "v5.0.0 silent-fail falsified — coverage was on a non-production schema shape; live-wiring smoke is the actual bar",
+    "delta": "Assumption falsified — WIR-01 ship gate was promoted specifically to close this gap. Test-coverage-without-live-wiring is no longer acceptable."
+  },
+  "pass_criterion": "Agent must reference the v5.0.0 silent-fail incident, name WIR-01 as the structural response (live-wiring smoke as ship gate), and recommend NOT treating test coverage as sufficient evidence of write-path safety."
+}

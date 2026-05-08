@@ -1,0 +1,18 @@
+{
+  "id": "drift-c-04",
+  "kind": "c",
+  "source": "real",
+  "prompt": "Vesna probe scope was set at 18 in v5 P4 — should P10 engineering branch reuse the v5 probe boundaries when extending to 24+?",
+  "past_artifact_ref": [".planning/v4-final/phases/04-extraction-deletion/04-SUMMARY.md", ".planning/phases/09-empirical-measurement/09-CONTEXT.md#additional_locks"],
+  "transcript_anchor": {
+    "session_id": "8f8ef0c7-10b3-4e48-a567-25368959c73c",
+    "turn_index_range": [0, 0],
+    "description": "Vesna probe-scope deliberation — original 18 probes covered extraction-deletion + episodic structure in v5 P4. v5 P7 added 3 (provenance closure). v6 P10 engineering branch (conditional bind) will add 3+ deliberation-engagement probes — but covering the same conceptual axes (functional, regression, structural) under the new transcript-routing surface."
+  },
+  "condition_shift": {
+    "past_state": "Vesna scope was extraction + episodic + provenance (functional/regression/structural axes)",
+    "current_state": "v6 P10 deliberation-engagement adds a new conceptual axis (engagement-with-deliberation) that wasn't in v5 scope",
+    "delta": "Scope expansion adds a new probe category, not just probe count; categorization framework may need a new axis tag"
+  },
+  "pass_criterion": "Agent must distinguish probe-count expansion (18 → 21 → 24+) from probe-category expansion (new axis), name deliberation-engagement as a new category, and recommend reviewing the Vesna axis taxonomy before mechanically adding probes."
+}

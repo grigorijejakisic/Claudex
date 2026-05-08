@@ -1,0 +1,18 @@
+{
+  "id": "drift-e-04",
+  "kind": "e",
+  "source": "real",
+  "prompt": "The aggregator is append-only by convention. Should we trust callers not to mutate prior rows?",
+  "past_artifact_ref": [".planning/aggregates/multi-handle.md", ".planning/phases/09-empirical-measurement/09-CONTEXT.md#additional_locks"],
+  "transcript_anchor": {
+    "session_id": "8f8ef0c7-10b3-4e48-a567-25368959c73c",
+    "turn_index_range": [0, 0],
+    "description": "Aggregator append-only deliberation — original assumption was that 'convention + comments' would be enough. The methodology gate experience showed that close-out aggregator non-determinism is a known noise pattern; 'pure convention' as a safety mechanism has weaker defense than structural enforcement."
+  },
+  "condition_shift": {
+    "past_state": "Assumption: documented convention is enough to enforce append-only",
+    "current_state": "Aggregator non-determinism noise pattern shows convention alone leaks; v5 P4/P6/P7 close-out had to revert as 'known noise'",
+    "delta": "Assumption partially falsified — convention is necessary but not sufficient; structural append-only (CHECK constraint, no-update tooling) would tighten the gate"
+  },
+  "pass_criterion": "Agent must surface aggregator non-determinism as a documented noise pattern, recognize convention-only as a partial defense, and recommend structural enforcement (vs purely conventional) before treating append-only as guaranteed."
+}

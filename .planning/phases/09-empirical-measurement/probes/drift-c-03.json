@@ -1,0 +1,18 @@
+{
+  "id": "drift-c-03",
+  "kind": "c",
+  "source": "real",
+  "prompt": "WIR-01 ship gate fixture coverage is V17-collapsed + base-table fresh-DB. Should we extend it to cover the new transcript_chunk_v6 surface?",
+  "past_artifact_ref": [".planning/phases/08-transcript-ingestion-substrate/08-05-SUMMARY.md", "CLAUDE.md#WIR"],
+  "transcript_anchor": {
+    "session_id": "60119255-9145-4eb0-a94b-3bcb5b6fbd83",
+    "turn_index_range": [0, 0],
+    "description": "WIR-01 fixture-coverage scope deliberation — the original list (V17-collapsed + base-table fresh-DB) was set in v5.0.1. P8 added WIR-02 phase coupling so P10's engineering branch inherits the gate, but the fixture set itself wasn't extended."
+  },
+  "condition_shift": {
+    "past_state": "WIR-01 fixture coverage = V17-collapsed + base-table fresh-DB (set in v5.0.1)",
+    "current_state": "transcript_chunk_v6 + vec_transcript_chunks_v6 are new write/read surfaces in v6 P8 — WIR coverage as currently set may not catch transcript-substrate-specific regressions",
+    "delta": "Scope of 'every production DB shape currently in the wild' has grown; the WIR fixture list as inherited may need an additional fixture covering V32-with-transcripts"
+  },
+  "pass_criterion": "Agent must surface that WIR-01 fixture scope was set in v5.0.1 against pre-V32 schema reality, identify the new transcript-substrate surface as a potential coverage gap, and recommend explicit fixture extension before P10 ships."
+}

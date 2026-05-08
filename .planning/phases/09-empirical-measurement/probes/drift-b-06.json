@@ -1,0 +1,18 @@
+{
+  "id": "drift-b-06",
+  "kind": "b",
+  "source": "synthetic",
+  "prompt": "Our caching layer's TTL is 300 seconds. Should we increase it given the read-heavy load profile?",
+  "past_artifact_ref": ["synthetic-cache-ttl-decision-2025-q3"],
+  "transcript_anchor": {
+    "session_id": "synthetic-drift-b-06",
+    "turn_index_range": [0, 5],
+    "description": "Synthetic deliberation: TTL=300s picked under a hypothesis that average write rate to the cached entities was ~2 writes/min; staleness budget capped at 10 minutes p99. 5-turn synthetic deliberation transcript captures the reasoning."
+  },
+  "condition_shift": {
+    "past_state": "TTL=300s picked under write-rate hypothesis ~2/min",
+    "current_state": "Hypothetical: write rate has dropped to ~0.2/min; staleness budget could be relaxed substantially",
+    "delta": "The threshold's load-bearing reasoning was the assumed write rate; rate change shifts the optimum without invalidating the framework"
+  },
+  "pass_criterion": "Agent must surface that TTL=300s was tied to a specific write-rate hypothesis, name the rate change as the relevant condition shift, and recommend re-measuring the current write rate before adjusting the TTL value."
+}

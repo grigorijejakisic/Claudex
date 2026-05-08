@@ -1,0 +1,18 @@
+{
+  "id": "drift-b-02",
+  "kind": "b",
+  "source": "real",
+  "prompt": "The P8 reranker-fitness threshold is top-3 overlap ≥0.60 — should we continue using that for the v6 retrieval baseline gate?",
+  "past_artifact_ref": [".planning/phases/08-transcript-ingestion-substrate/08-CONTEXT.md", ".planning/phases/08-transcript-ingestion-substrate/08-04-SUMMARY.md"],
+  "transcript_anchor": {
+    "session_id": "4844c48c-37c6-4f20-ac9b-935b529c3951",
+    "turn_index_range": [0, 0],
+    "description": "P8 CONTEXT decision 4 picked the 0.60 overlap threshold as a fitness sniff-test on web-trained BGE-v2-m3 against the conversation distribution. Specifically informational (not a ship blocker) — a threshold whose role is 'pick the baseline branch for P9' not 'gate the substrate'."
+  },
+  "condition_shift": {
+    "past_state": "0.60 overlap was picked at substrate validation time when transcript_chunk_v6 was empty (zero chunks)",
+    "current_state": "P9 must re-run reranker-fitness AFTER backfill completes; the threshold's relevance is for P9 baseline branching, not for treating <0.60 as a hard fail",
+    "delta": "Threshold's role is informational/branch-selecting; treating it as a binary kill-or-bind gate misuses its design intent"
+  },
+  "pass_criterion": "Agent must reference the P8 CONTEXT decision 4 framing of 0.60 as informational/branch-selecting rather than ship-blocking, note the post-backfill re-run requirement, and recommend re-measurement before applying the threshold to a new gating context."
+}

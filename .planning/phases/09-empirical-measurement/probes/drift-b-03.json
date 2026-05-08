@@ -1,0 +1,18 @@
+{
+  "id": "drift-b-03",
+  "kind": "b",
+  "source": "real",
+  "prompt": "Should the V17-collapsed schema cutover threshold (which DBs ship with V17 vs base-table) carry forward as the WIR fixture-coverage gate?",
+  "past_artifact_ref": ["CLAUDE.md#critical-safety-rules", ".planning/phases/08-transcript-ingestion-substrate/08-05-SUMMARY.md"],
+  "transcript_anchor": {
+    "session_id": "60119255-9145-4eb0-a94b-3bcb5b6fbd83",
+    "turn_index_range": [0, 0],
+    "description": "V17 collapse cutover deliberation — the threshold for which DB shapes count as 'in the wild' was picked under the v5.0.1 hot-fix's discovery that view-mode learnings.provenance was being silently dropped. WIR-01 ship gate codifies the cutover."
+  },
+  "condition_shift": {
+    "past_state": "V17-collapsed + base-table fresh-DB was the minimum-coverage bar in v5.0.1 hot-fix scope",
+    "current_state": "v6 P10 engineering branch will ship a routing+assembly surface that may interact with new schema shapes (transcript_chunk_v6, vec_transcript_chunks_v6) — the WIR fixture coverage may need extension",
+    "delta": "Coverage threshold may be necessary but no longer sufficient if new write surfaces land in P10 engineering branch; rebase the threshold to current schema reality"
+  },
+  "pass_criterion": "Agent must explicitly note that the V17-collapsed + base-table threshold was set under v5.0.1 hot-fix scope, recognize that v6 P10 may introduce new write surfaces, and recommend re-evaluating the coverage threshold against the current schema reality before treating the v5 threshold as authoritative."
+}

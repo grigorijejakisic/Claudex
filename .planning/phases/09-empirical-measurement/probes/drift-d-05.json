@@ -1,0 +1,18 @@
+{
+  "id": "drift-d-05",
+  "kind": "d",
+  "source": "synthetic",
+  "prompt": "We picked PostgreSQL 14 for the analytics service in 2024. Should our query-optimization rules carry forward to PostgreSQL 16?",
+  "past_artifact_ref": ["synthetic-pg14-query-rules-2024"],
+  "transcript_anchor": {
+    "session_id": "synthetic-drift-d-05",
+    "turn_index_range": [0, 8],
+    "description": "Synthetic deliberation: PG14 query rules included specific advice about avoiding LATERAL JOIN with parallel workers, since PG14's parallelism support for that pattern was incomplete. PG16 added much better parallel LATERAL handling — the rule is now obsolete and counterproductive."
+  },
+  "condition_shift": {
+    "past_state": "Rule set tied to PG14 parallel-LATERAL limitations",
+    "current_state": "PG16 fixed the limitations the rule was working around",
+    "delta": "Rule's underlying constraint (PG14 parallel-LATERAL bug/limitation) was the reason for the rule — and that constraint no longer exists. Rule is now noise."
+  },
+  "pass_criterion": "Agent must surface that the rule was tied to a specific PG14 limitation, name PG16's improvement as the relevant condition shift, and recommend retiring the rule rather than carrying it forward."
+}

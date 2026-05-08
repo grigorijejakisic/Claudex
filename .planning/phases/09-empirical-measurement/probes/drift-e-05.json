@@ -1,0 +1,18 @@
+{
+  "id": "drift-e-05",
+  "kind": "e",
+  "source": "real",
+  "prompt": "We assumed that pre-extraction patterns (Phase 4 sites A/B/C) were producing high-quality experience patterns. Was that assumption ever empirically validated?",
+  "past_artifact_ref": [".planning/v4-final/phases/04-extraction-deletion/04-SUMMARY.md", ".planning/v4-final/phases/05-density-based-abstraction/05-DROPPED.md"],
+  "transcript_anchor": {
+    "session_id": "028505c5-fd28-49d4-b2f8-3a0aeda6e250",
+    "turn_index_range": [0, 0],
+    "description": "Phase 4 deletion deliberation — the three extraction sites (A pattern-extractor.ts, B experience-scoring.ts step 1, C heartbeat.ts synthesis loop) were deleted because the extracted patterns were not load-bearing. The 'extraction produces high-quality patterns' assumption was held without empirical validation; ~1100 lines deleted vs ~700 added when the assumption was tested."
+  },
+  "condition_shift": {
+    "past_state": "Assumption: extraction-site patterns are valuable, drives architectural complexity",
+    "current_state": "Phase 4 falsified — sites deleted as not-load-bearing; the value premise wasn't empirically validated",
+    "delta": "Assumption was load-bearing for years of architectural decisions; falsification cascaded into a code-deletion phase. Future similar 'this is producing value' assumptions need empirical anchors."
+  },
+  "pass_criterion": "Agent must reference Phase 4's falsification of the extraction-value assumption, name the architectural cost paid before validation, and recommend empirically validating value claims before similar architectural complexity is accepted."
+}

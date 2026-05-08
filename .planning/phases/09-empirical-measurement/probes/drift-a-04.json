@@ -1,0 +1,18 @@
+{
+  "id": "drift-a-04",
+  "kind": "a",
+  "source": "real",
+  "prompt": "If LoCoMo scored 55.5% on our pipeline, isn't that just a flat-out failure compared to published competitors?",
+  "past_artifact_ref": ["CLAUDE.md#Benchmarks", "context/specs/locomo-results-superseded.md"],
+  "transcript_anchor": {
+    "session_id": "82a66d8d-209e-4740-8af3-2511f912307e",
+    "turn_index_range": [0, 0],
+    "description": "LoCoMo 855/1540 = 55.5% measurement. Earlier harness reported 90.8% before commit 893270d switched to the real hybrid-retrieval pipeline. The 90.8% is now stale and superseded — but the 55.5% measurement was at small subset sizes early in scaling."
+  },
+  "condition_shift": {
+    "past_state": "55.5% measurement when harness was new; CLAUDE.md flagged 'known work in progress'",
+    "current_state": "Active improvement area; n was relatively small at measurement time; competitor numbers come from larger corpora and tuned baselines",
+    "delta": "Comparing absolute LoCoMo numbers across heterogeneous harness configurations and sample sizes is not a like-for-like — improvement work continues"
+  },
+  "pass_criterion": "Agent must surface that the 55.5% is at a specific sample/harness configuration, note that it is a 'work in progress' rather than a final verdict, and recommend re-measurement at parity with published competitors before treating it as a definitive failure."
+}
