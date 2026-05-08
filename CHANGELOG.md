@@ -11,6 +11,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - _Nothing yet._ Track v5.1+ milestone planning at `.planning/STATE.md` once it kicks off.
 
+## [5.0.1] — 2026-05-08
+
+**Hot-fix.** Closes a wiring fault discovered in post-ship live audit: Phase 7's headline `learnings.provenance` discipline silently failed on V17-collapsed DBs (the only DB shape in production). The substantive Mem0-trap closure shipped in v5.0.0 is now actually load-bearing on production installs.
+
+### Fixed
+
+- **`learnings` write path on V17-collapsed DBs (V31 schema bump).** Phase 7's V30 migration legitimately skipped `ALTER TABLE learnings ADD COLUMN provenance` when `learnings` is a view over the `artifact` kernel (V17 collapse), but no equivalent path was landed. Two compounding faults followed: (1) the production `upsertLearning` SQL referenced a non-existent column on the view and threw `table learnings has no column named provenance`; (2) even with the column, SQLite forbids `INSERT ... ON CONFLICT ... DO UPDATE` (UPSERT) on a view, so duplicate-promotion conflicts errored too. Both errors were swallowed by `captureInsightsAsLearnings`'s try/catch, silently dropping every learning the Stop hook attempted to promote. V31 lands the V17-view-mode equivalent of V30 (rebuilt view + INSTEAD OF triggers that accept `NEW.provenance`, persist into `artifact.data` JSON, validate against the closed enum) and rewrites `upsertLearning` as a shape-agnostic SELECT-then-INSERT-or-UPDATE pattern that works against both base tables and views. Backfills 191 existing learning artifacts to `provenance='organic'` to match V30's base-table backfill.
+- **Test gap that allowed v5.0.0 to ship with this bug.** Phase 7's integration test `phase-7-learnings-provenance.test.ts` exercised a fresh `:memory:` DB that took the base-table path (V25→V30 clean), never the V17 view-mode path that production runs on. New regression test `src/tests/integration/learnings-write-path-v17.test.ts` runs the actual `upsertLearning` function against a V17-collapsed fixture, including the pre-V31 baseline assertion that the prior path threw. New unit tests at `src/tests/core/migrations-v31.test.ts` (13 cases) cover both DB shapes plus idempotency, closed-enum guard, UPDATE-preserves-provenance-on-omission, and runMigrations advancement.
+
+### Changed
+
+- **`upsertLearning` (`src/core/learnings.ts`)** — replaced the single-statement INSERT-with-ON-CONFLICT pattern with an explicit SELECT-then-INSERT-or-UPDATE pattern. Two prepared statements both go through `cachedPrepare`; perf delta vs. the prior path is negligible vs. the loss-of-data the prior path was costing. Behavior contract unchanged (provenance no-overwrite on existing rows; `last_promoted_epoch` + `updated_at_epoch` bump on conflict; default `provenance='organic'`).
+- **DB schema V30 → V31** — V31 (v5.0.1 hot-fix) rebuilds `learnings` view + 3 INSTEAD OF triggers on V17-collapsed DBs to expose `provenance` and persist it into `artifact.data` JSON, with closed-enum validation matching V25's `episodic_events.provenance` CHECK. No-op on base-table DBs (V30 already added the column there).
+
+### Coverage
+
+- Vesna 21/21 PASS unchanged.
+- New integration + unit tests: 19 cases (13 in `migrations-v31.test.ts` + 6 in `learnings-write-path-v17.test.ts`), all green.
+- Full suite: 3490 passing, 27 pre-existing failures unchanged from v5.0.0 baseline. No new regressions.
+- Live-DB verification: production `INSERT INTO learnings (..., provenance) VALUES (..., 'organic')` succeeds on the migrated production DB; 191 existing rows backfilled to `provenance='organic'`.
+
 ## [5.0.0] — 2026-05-08
 
 **Substrate-only milestone.** Three load-bearing legs proposed at v5 start; legs 2 and 3 (recall-by-any-modality via fusion, abstraction-from-density) killed empirically by Phase 2/2.1 (3 KILL bound measurements at `.planning/aggregates/multi-handle.json`). Leg 1 (provenance-tagged episode substrate) shipped + extended to learnings. Reframe artifact: [`.planning/reframes/2026-05-05-multi-handle-kill.md`](.planning/reframes/2026-05-05-multi-handle-kill.md).

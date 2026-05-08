@@ -26,13 +26,21 @@ export interface LearningRow {
  * Defaults: project='__global__', agent_id='default', provenance='organic'.
  *
  * Phase 7 (V30 / MIG-02): provenance is the V25 episodic_events closed-enum
- * matched byte-for-byte. The ON CONFLICT branch does NOT overwrite
- * provenance on existing rows — duplicate detection promotes existing
- * entries (increments promotion_count); the existing row's provenance
- * stays whatever it was. Because Plan 07-03's upstream parseWrappers
- * filter ensures only organic content reaches this function, in practice
- * every row's provenance is 'organic' and the no-overwrite rule is
- * conservative.
+ * matched byte-for-byte. The promotion path does NOT overwrite provenance on
+ * existing rows — duplicate detection bumps `promotion_count`; the existing
+ * row's provenance stays whatever it was. Because Plan 07-03's upstream
+ * parseWrappers filter ensures only organic content reaches this function,
+ * in practice every row's provenance is 'organic' and the no-overwrite rule
+ * is conservative.
+ *
+ * v5.0.1 hot-fix: shape-agnostic upsert. SQLite forbids
+ * `INSERT ... ON CONFLICT ... DO UPDATE` on views (V17-collapsed DBs make
+ * `learnings` a view over the `artifact` kernel) — the prior single-statement
+ * UPSERT silently failed on every conflict (and after V30 added the
+ * `provenance` column to the INSERT, on every row). Manual SELECT →
+ * conditional INSERT or UPDATE works against both base-table and view-mode
+ * shapes. Two prepared statements both go through stmt-cache; the perf
+ * delta is negligible vs the loss-of-data the prior path was costing.
  */
 export function upsertLearning(
   db: Database,
@@ -44,20 +52,31 @@ export function upsertLearning(
     provenance?: LearningProvenance;
   }
 ): void {
+  const project = learning.project ?? '__global__';
+  const agent_id = learning.agent_id ?? 'default';
+  const provenance = learning.provenance ?? 'organic';
+
+  const existing = cachedPrepare(db,
+    `SELECT id FROM learnings
+     WHERE project = ? AND agent_id = ? AND fingerprint = ?
+     LIMIT 1`
+  ).get(project, agent_id, learning.fingerprint) as { id: number } | undefined;
+
+  if (existing) {
+    cachedPrepare(db,
+      `UPDATE learnings SET
+         promotion_count = promotion_count + 1,
+         last_promoted_epoch = unixepoch(),
+         updated_at_epoch = unixepoch()
+       WHERE id = ?`
+    ).run(existing.id);
+    return;
+  }
+
   cachedPrepare(db,
     `INSERT INTO learnings (project, agent_id, fingerprint, content, provenance)
-     VALUES (?, ?, ?, ?, ?)
-     ON CONFLICT(project, agent_id, fingerprint) DO UPDATE SET
-       promotion_count = promotion_count + 1,
-       last_promoted_epoch = unixepoch(),
-       updated_at_epoch = unixepoch()`
-  ).run(
-    learning.project ?? '__global__',
-    learning.agent_id ?? 'default',
-    learning.fingerprint,
-    learning.content,
-    learning.provenance ?? 'organic'
-  );
+     VALUES (?, ?, ?, ?, ?)`
+  ).run(project, agent_id, learning.fingerprint, learning.content, provenance);
 }
 
 /**

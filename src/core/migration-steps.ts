@@ -2066,3 +2066,176 @@ export function migrateV29toV30(db: Database): boolean {
 
   return true;
 }
+
+/**
+ * V30→V31 (v5.0.1 hot-fix — close the V17 view-mode learnings.provenance gap).
+ *
+ * Phase 7 MIG-02 added `learnings.provenance` via ALTER TABLE in V30, but
+ * skipped the column on V17 view-mode DBs (where `learnings` is a view over
+ * the `artifact` kernel; ALTER on a view fails). The skip was correct in
+ * isolation but the equivalent column-projection-via-data-JSON path was
+ * never landed, so the production code path
+ * (`upsertLearning` writes provenance) silently fails on V17-collapsed DBs:
+ *   `INSERT INTO learnings (..., provenance) VALUES (..., 'organic')`
+ *   → `table learnings has no column named provenance`
+ * The error is swallowed by `captureInsightsAsLearnings`'s try/catch, so the
+ * production write path silently drops every learning. Discovered post-ship
+ * via live-wiring audit; phase-7-learnings-provenance.test.ts passed because
+ * its `:memory:` DB took the base-table path, not the V17 view path.
+ *
+ * V31 lands the V17-view-mode equivalent of V30:
+ *   - Rebuilds the `learnings` view to project `provenance` from
+ *     `artifact.data->>'$.provenance'`, defaulting to 'organic' on read.
+ *   - Rebuilds the INSTEAD OF INSERT/UPDATE triggers to accept and persist
+ *     `NEW.provenance` into `artifact.data` JSON, with a closed-enum guard
+ *     equivalent to V25's `episodic_events.provenance` CHECK.
+ *   - Backfills all `artifact` rows of `kind='learning'` with provenance
+ *     'organic' where the JSON field is absent (matches V30's backfill
+ *     for the base-table case).
+ *
+ * Idempotent: detects whether the view already exposes a `provenance` column
+ * and returns false if so. No-op on base-table DBs (V30 already added the
+ * column there).
+ */
+export function migrateV30toV31(db: Database): boolean {
+  const learningsMeta = db.prepare(
+    "SELECT type, sql FROM sqlite_master WHERE name='learnings' AND type IN ('table','view')"
+  ).get() as { type: string; sql?: string } | undefined;
+  if (!learningsMeta) return false;
+  // Base-table case: V30 already added the column. No work for V31.
+  if (learningsMeta.type === 'table') return false;
+
+  const viewSql = learningsMeta.sql ?? '';
+  // Idempotent guard: the rebuilt view exposes a `provenance` column.
+  if (/\bprovenance\b/i.test(viewSql)) return false;
+
+  // Drop existing triggers + view (must drop triggers before the view
+  // they depend on).
+  db.exec(`
+    DROP TRIGGER IF EXISTS learnings_instead_insert;
+    DROP TRIGGER IF EXISTS learnings_instead_update;
+    DROP TRIGGER IF EXISTS learnings_instead_delete;
+    DROP VIEW IF EXISTS learnings;
+  `);
+
+  // Recreate view with provenance column projected from artifact.data JSON.
+  // COALESCE to 'organic' so existing rows that have no provenance JSON
+  // field still satisfy NOT NULL semantics from the consumer's perspective.
+  // The actual backfill below populates the JSON for those rows.
+  db.exec(`
+    CREATE VIEW learnings AS
+    SELECT
+      CAST((SELECT m.legacy_id FROM legacy_id_map m WHERE m.legacy_table = 'learnings' AND m.new_uuid = artifact.id) AS INTEGER) AS id,
+      CAST(artifact.project_id AS TEXT) AS project,
+      CAST(json_extract(artifact.data, '$.agent_id') AS TEXT) AS agent_id,
+      CAST(json_extract(artifact.data, '$.fingerprint') AS TEXT) AS fingerprint,
+      artifact.body AS content,
+      CAST(json_extract(artifact.data, '$.promotion_count') AS INTEGER) AS promotion_count,
+      CAST(json_extract(artifact.data, '$.first_seen_epoch') AS INTEGER) AS first_seen_epoch,
+      CAST(json_extract(artifact.data, '$.last_promoted_epoch') AS INTEGER) AS last_promoted_epoch,
+      CAST(artifact.updated_at_epoch / 1000 AS INTEGER) AS updated_at_epoch,
+      COALESCE(CAST(json_extract(artifact.data, '$.provenance') AS TEXT), 'organic') AS provenance
+    FROM artifact
+    WHERE kind = 'learning'
+    ORDER BY created_at_epoch
+  `);
+
+  // INSTEAD OF INSERT — accepts NEW.provenance, validates against closed
+  // enum (matches V25 episodic_events.provenance and V30 base-table CHECK),
+  // persists into artifact.data JSON.
+  db.exec(`
+    CREATE TRIGGER learnings_instead_insert INSTEAD OF INSERT ON learnings
+    BEGIN
+      SELECT CASE
+        WHEN NEW.provenance IS NOT NULL
+         AND NEW.provenance NOT IN ('organic','injected','tool_result','environmental')
+        THEN RAISE(ABORT, 'CHECK constraint failed: learnings.provenance')
+      END;
+      INSERT INTO artifact(
+        id, kind, title, body, scope, status, confidence,
+        created_at_epoch, updated_at_epoch, session_id, project_id, data
+      ) VALUES (
+        lower(hex(randomblob(16))),
+        'learning',
+        substr(NEW.content, 1, 80),
+        NEW.content,
+        'project',
+        'active',
+        NULL,
+        COALESCE(NEW.first_seen_epoch * 1000, unixepoch() * 1000),
+        COALESCE(NEW.updated_at_epoch * 1000, unixepoch() * 1000),
+        NULL,
+        NEW.project,
+        json_object(
+          'agent_id', NEW.agent_id,
+          'fingerprint', NEW.fingerprint,
+          'promotion_count', COALESCE(NEW.promotion_count, 1),
+          'first_seen_epoch', COALESCE(NEW.first_seen_epoch, unixepoch()),
+          'last_promoted_epoch', COALESCE(NEW.last_promoted_epoch, unixepoch()),
+          'provenance', COALESCE(NEW.provenance, 'organic')
+        )
+      );
+      INSERT INTO legacy_id_map(legacy_table, legacy_id, new_uuid)
+      VALUES (
+        'learnings',
+        COALESCE(
+          NEW.id,
+          (SELECT COALESCE(MAX(legacy_id), 0) + 1 FROM legacy_id_map WHERE legacy_table = 'learnings')
+        ),
+        (SELECT id FROM artifact WHERE rowid = last_insert_rowid())
+      );
+    END
+  `);
+
+  // INSTEAD OF UPDATE — preserves existing provenance if NEW.provenance is
+  // null (UPDATEs that don't touch provenance must not clobber it).
+  // Validates against closed enum when set.
+  db.exec(`
+    CREATE TRIGGER learnings_instead_update INSTEAD OF UPDATE ON learnings
+    BEGIN
+      SELECT CASE
+        WHEN NEW.provenance IS NOT NULL
+         AND NEW.provenance NOT IN ('organic','injected','tool_result','environmental')
+        THEN RAISE(ABORT, 'CHECK constraint failed: learnings.provenance')
+      END;
+      UPDATE artifact SET
+        project_id = NEW.project,
+        body = NEW.content,
+        data = json_set(json_set(json_set(json_set(json_set(json_set(data,
+          '$.agent_id', NEW.agent_id),
+          '$.fingerprint', NEW.fingerprint),
+          '$.promotion_count', NEW.promotion_count),
+          '$.first_seen_epoch', NEW.first_seen_epoch),
+          '$.last_promoted_epoch', NEW.last_promoted_epoch),
+          '$.provenance', COALESCE(NEW.provenance, json_extract(data, '$.provenance'), 'organic')
+        ),
+        updated_at_epoch = unixepoch() * 1000
+      WHERE id = (SELECT new_uuid FROM legacy_id_map WHERE legacy_table = 'learnings' AND legacy_id = OLD.id);
+    END
+  `);
+
+  // INSTEAD OF DELETE — unchanged from V17 (no provenance dependency).
+  db.exec(`
+    CREATE TRIGGER learnings_instead_delete INSTEAD OF DELETE ON learnings
+    BEGIN
+      DELETE FROM artifact
+        WHERE id = (SELECT new_uuid FROM legacy_id_map WHERE legacy_table = 'learnings' AND legacy_id = OLD.id)
+          AND kind = 'learning';
+      DELETE FROM legacy_id_map
+        WHERE legacy_table = 'learnings' AND legacy_id = OLD.id;
+    END
+  `);
+
+  // Backfill: existing learning artifacts have no $.provenance in their
+  // data JSON (V30 ALTER + DEFAULT was skipped on view-mode DBs). Set
+  // provenance to 'organic' for all rows where it's absent. Mirrors V30's
+  // baseline-organic backfill for the base-table case.
+  db.exec(`
+    UPDATE artifact
+    SET data = json_set(data, '$.provenance', 'organic')
+    WHERE kind = 'learning'
+      AND json_extract(data, '$.provenance') IS NULL
+  `);
+
+  return true;
+}

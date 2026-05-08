@@ -49,6 +49,7 @@ import {
   migrateV27toV28,
   migrateV28toV29,
   migrateV29toV30,
+  migrateV30toV31,
   migrateSchemaFixes,
   cleanupOrphanTables,
   upgradeV2SchemaInPlace,
@@ -98,7 +99,7 @@ export { migrateV14toV15 };
  * `claudex doctor` (DIAG-05) reads this to verify the on-disk DB is in sync.
  * Bumping a migration must bump this constant in lockstep.
  */
-export const TARGET_USER_VERSION = 30;
+export const TARGET_USER_VERSION = 31;
 
 export function runMigrations(db: Database): void {
   const row = db.pragma('user_version') as Array<{ user_version: number }>;
@@ -144,6 +145,7 @@ export function runMigrations(db: Database): void {
     [27, () => { migrateV27toV28(db); }],
     [28, () => { migrateV28toV29(db); }],
     [29, () => { migrateV29toV30(db); }],
+    [30, () => { migrateV30toV31(db); }],
   ];
 
   // Handle special cases for version 0 and 1
@@ -393,6 +395,15 @@ export function initializeSchema(db: Database): void {
   if (currentUv < 30) {
     migrateV29toV30(db);
     db.pragma('user_version = 30');
+  }
+  // v5.0.1 hot-fix (MIG-02 V17 view-mode close): rebuild the `learnings` view
+  // and INSTEAD OF triggers to carry `provenance` through to artifact.data
+  // JSON on V17-collapsed DBs. V30 added the column on base-table DBs but
+  // skipped view-mode DBs, breaking the production write path silently.
+  // Idempotent on already-V31 DBs and no-op on base-table DBs (V30 sufficed).
+  if (currentUv < 31) {
+    migrateV30toV31(db);
+    db.pragma('user_version = 31');
   }
 
   // Phase 4 (V28): per-connection sidecar + TEMP TRIGGER guarding writes
