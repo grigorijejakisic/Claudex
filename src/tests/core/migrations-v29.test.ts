@@ -25,8 +25,11 @@ describe('V28→V29 migration', () => {
   beforeEach(() => { db = new Database(':memory:'); });
   afterEach(() => { db.close(); });
 
-  it('TARGET_USER_VERSION is 29', () => {
-    expect(TARGET_USER_VERSION).toBe(29);
+  it('TARGET_USER_VERSION is at least 29', () => {
+    // Phase 7 (V30) advanced TARGET_USER_VERSION; V29-specific behavior is
+    // tested by the structural assertions below regardless of the global
+    // target version.
+    expect(TARGET_USER_VERSION).toBeGreaterThanOrEqual(29);
   });
 
   it('initializeSchema on fresh DB creates episode_boundary_cursor', () => {
@@ -45,10 +48,10 @@ describe('V28→V29 migration', () => {
     expect(names).toContain('last_jsonl_write_ts');
   });
 
-  it('runMigrations advances PRAGMA user_version to 29', () => {
+  it('runMigrations advances PRAGMA user_version past 28 (V29 lands)', () => {
     initializeSchema(db);
     const row = db.pragma('user_version') as Array<{ user_version: number }>;
-    expect(row[0]?.user_version).toBe(29);
+    expect(row[0]?.user_version).toBeGreaterThanOrEqual(29);
   });
 
   it('runMigrations is idempotent — second call is a no-op', () => {

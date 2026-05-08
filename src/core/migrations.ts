@@ -48,6 +48,7 @@ import {
   migrateV26toV27,
   migrateV27toV28,
   migrateV28toV29,
+  migrateV29toV30,
   migrateSchemaFixes,
   cleanupOrphanTables,
   upgradeV2SchemaInPlace,
@@ -97,7 +98,7 @@ export { migrateV14toV15 };
  * `claudex doctor` (DIAG-05) reads this to verify the on-disk DB is in sync.
  * Bumping a migration must bump this constant in lockstep.
  */
-export const TARGET_USER_VERSION = 29;
+export const TARGET_USER_VERSION = 30;
 
 export function runMigrations(db: Database): void {
   const row = db.pragma('user_version') as Array<{ user_version: number }>;
@@ -142,6 +143,7 @@ export function runMigrations(db: Database): void {
     [26, () => { migrateV26toV27(db); }],
     [27, () => { migrateV27toV28(db); }],
     [28, () => { migrateV28toV29(db); }],
+    [29, () => { migrateV29toV30(db); }],
   ];
 
   // Handle special cases for version 0 and 1
@@ -382,6 +384,15 @@ export function initializeSchema(db: Database): void {
   if (currentUv < 29) {
     migrateV28toV29(db);
     db.pragma('user_version = 29');
+  }
+  // V5 Phase 7 (MIG-01/02): learnings.provenance column with closed-enum
+  // CHECK matching episodic_events. Plan 07-03 lands the write-path filter
+  // that ensures the column is structurally always 'organic' from the
+  // production codepath. Idempotent via DDL substring scan. Fresh-DB path
+  // lands here; runMigrations step-table covers existing-DB upgrades from V29.
+  if (currentUv < 30) {
+    migrateV29toV30(db);
+    db.pragma('user_version = 30');
   }
 
   // Phase 4 (V28): per-connection sidecar + TEMP TRIGGER guarding writes

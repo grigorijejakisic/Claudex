@@ -2011,3 +2011,47 @@ export function migrateV28toV29(db: Database): boolean {
 
   return true;
 }
+
+/**
+ * V29→V30 (Phase 7 MIG-01/02 — learnings provenance discipline).
+ *
+ * `learnings` is the only v4 storage category where preserve-as-legacy framing
+ * is wrong. `captureInsightsAsLearnings` is live and useful — what's missing is
+ * Phase 1's provenance-tag discipline. V30 lands the column; Plan 07-03 lands
+ * the write-path filter that skips insights extracted from injected blocks.
+ *
+ * Adds `learnings.provenance TEXT NOT NULL DEFAULT 'organic'` with a closed-enum
+ * CHECK that mirrors `episodic_events.provenance` exactly (V25 migration):
+ * `('organic','injected','tool_result','environmental')`. Backfills existing
+ * rows to `'organic'` per CONTEXT decision 1 (default-on-existing baseline).
+ *
+ * Idempotent via column-name substring scan of the `learnings` DDL. SQLite has
+ * no IF NOT EXISTS for ALTER TABLE ADD COLUMN — same pattern as V28→V29.
+ * Re-running on a V30 DB is a no-op (returns false).
+ */
+export function migrateV29toV30(db: Database): boolean {
+  const learningsRow = db.prepare(
+    "SELECT sql FROM sqlite_master WHERE type='table' AND name='learnings'"
+  ).get() as { sql?: string } | undefined;
+  const learningsSql = learningsRow?.sql ?? '';
+  const hasProvenanceCol = learningsSql.includes('provenance');
+  if (hasProvenanceCol) return false;
+
+  // SQLite ALTER TABLE ADD COLUMN supports DEFAULT and CHECK — same shape
+  // used for episodic_events.provenance in V25. The CHECK fires on every
+  // INSERT and on UPDATEs that touch the column.
+  db.exec(
+    `ALTER TABLE learnings
+       ADD COLUMN provenance TEXT NOT NULL DEFAULT 'organic'
+         CHECK (provenance IN ('organic','injected','tool_result','environmental'))`
+  );
+
+  // Backfill existing rows. ALTER TABLE ... ADD COLUMN with DEFAULT already
+  // populates existing rows with the DEFAULT value, but we explicitly UPDATE
+  // any NULL row as a defensive no-op so the migration is correct on engine
+  // variants that interpret ADD COLUMN DEFAULT differently. On modern SQLite
+  // (better-sqlite3 ships 3.46+) this UPDATE matches zero rows.
+  db.exec(`UPDATE learnings SET provenance = 'organic' WHERE provenance IS NULL`);
+
+  return true;
+}

@@ -171,6 +171,8 @@ CREATE TABLE IF NOT EXISTS learnings (
   first_seen_epoch INTEGER NOT NULL DEFAULT (unixepoch()),
   last_promoted_epoch INTEGER NOT NULL DEFAULT (unixepoch()),
   updated_at_epoch INTEGER NOT NULL DEFAULT (unixepoch()),
+  provenance TEXT NOT NULL DEFAULT 'organic'
+    CHECK (provenance IN ('organic','injected','tool_result','environmental')),
   UNIQUE(project, agent_id, fingerprint)
 );
 
