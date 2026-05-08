@@ -1,0 +1,96 @@
+{
+  "flags": {},
+  "perProbe": [
+    {
+      "probeId": "lesson-shadowban-canonical",
+      "flavor": "lesson",
+      "passed": true,
+      "targetRank": 0
+    },
+    {
+      "probeId": "lesson-shadowban-paraphrase",
+      "flavor": "lesson",
+      "passed": true,
+      "targetRank": 0
+    },
+    {
+      "probeId": "lesson-mock-prod-divergence",
+      "flavor": "lesson",
+      "passed": true,
+      "targetRank": 0
+    },
+    {
+      "probeId": "lesson-summary-trailing",
+      "flavor": "lesson",
+      "passed": true,
+      "targetRank": 1
+    },
+    {
+      "probeId": "entity-vesna-probe",
+      "flavor": "entity",
+      "passed": true,
+      "targetRank": 0
+    },
+    {
+      "probeId": "entity-angel-process",
+      "flavor": "entity",
+      "passed": true,
+      "targetRank": 0
+    },
+    {
+      "probeId": "entity-claudex-db",
+      "flavor": "entity",
+      "passed": true,
+      "targetRank": 1
+    },
+    {
+      "probeId": "constraint-no-mock-db",
+      "flavor": "constraint",
+      "passed": true,
+      "targetRank": 0
+    },
+    {
+      "probeId": "constraint-no-hook-cli-call",
+      "flavor": "constraint",
+      "passed": true,
+      "targetRank": 0
+    },
+    {
+      "probeId": "handoff-phase-4-1",
+      "flavor": "handoff",
+      "passed": true,
+      "targetRank": 0
+    },
+    {
+      "probeId": "handoff-phase-5",
+      "flavor": "handoff",
+      "passed": true,
+      "targetRank": 0
+    }
+  ],
+  "passRate": 1,
+  "passCount": 11,
+  "total": 11,
+  "perCategoryPassRate": {
+    "lesson": {
+      "passed": 4,
+      "total": 4,
+      "rate": 1
+    },
+    "entity": {
+      "passed": 3,
+      "total": 3,
+      "rate": 1
+    },
+    "constraint": {
+      "passed": 2,
+      "total": 2,
+      "rate": 1
+    },
+    "handoff": {
+      "passed": 2,
+      "total": 2,
+      "rate": 1
+    }
+  }
+}
