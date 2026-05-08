@@ -144,6 +144,30 @@ CREATE INDEX IF NOT EXISTS idx_ebc_session
 CREATE INDEX IF NOT EXISTS idx_ebc_close_event
   ON episode_boundary_cursor(last_close_event_id) WHERE last_close_event_id IS NOT NULL;
 
+-- v6 Phase 8 (TRX-05): transcript_chunk_v6 metadata table — paired with the
+-- vec_transcript_chunks_v6 vec0 virtual table created by migrateV31toV32.
+-- One row per ingested transcript chunk; sub_index disambiguates
+-- sentence-boundary sub-chunks of long turns. Closed-enum CHECKs match
+-- V25 episodic_events.provenance + V30/V31 learnings.provenance.
+CREATE TABLE IF NOT EXISTS transcript_chunk_v6 (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  session_id TEXT NOT NULL,
+  project_id TEXT NOT NULL,
+  turn_index INTEGER NOT NULL,
+  sub_index INTEGER NOT NULL DEFAULT 0,
+  role TEXT NOT NULL CHECK (role IN ('user','assistant','tool','system')),
+  provenance TEXT NOT NULL CHECK (provenance IN ('organic','injected','tool_result','environmental')),
+  body TEXT NOT NULL,
+  created_at_epoch_ms INTEGER NOT NULL,
+  wrapper_redacted INTEGER NOT NULL DEFAULT 0
+);
+CREATE INDEX IF NOT EXISTS idx_transcript_chunk_v6_session_turn
+  ON transcript_chunk_v6(session_id, turn_index);
+CREATE INDEX IF NOT EXISTS idx_transcript_chunk_v6_project_created
+  ON transcript_chunk_v6(project_id, created_at_epoch_ms);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_transcript_chunk_v6_session_turn_role_sub
+  ON transcript_chunk_v6(session_id, turn_index, role, sub_index);
+
 -- pressure_scores
 CREATE TABLE IF NOT EXISTS pressure_scores (
   file_path TEXT NOT NULL,

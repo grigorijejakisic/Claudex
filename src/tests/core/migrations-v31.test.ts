@@ -136,11 +136,13 @@ describe('V30→V31 migration (V17 view-mode learnings.provenance close)', () =>
   beforeEach(() => { db = new Database(':memory:'); });
   afterEach(() => { db.close(); });
 
-  it('TARGET_USER_VERSION is 31', () => {
-    expect(TARGET_USER_VERSION).toBe(31);
+  it('TARGET_USER_VERSION is at least 31 (V31 ceiling reached)', () => {
+    // V31 closed the v5.0.1 hot-fix ceiling. Future migrations push it
+    // higher; this test only guards that the V31 migration is reachable.
+    expect(TARGET_USER_VERSION).toBeGreaterThanOrEqual(31);
   });
 
-  it('fresh-DB initialization (base-table path) still has provenance + UV=31', () => {
+  it('fresh-DB initialization (base-table path) still has provenance + UV>=31', () => {
     initializeSchema(db);
     const meta = db.prepare(
       "SELECT type FROM sqlite_master WHERE name='learnings'"
@@ -149,7 +151,7 @@ describe('V30→V31 migration (V17 view-mode learnings.provenance close)', () =>
     const cols = db.prepare(`PRAGMA table_info(learnings)`).all() as Array<{ name: string }>;
     expect(cols.find(c => c.name === 'provenance')).toBeDefined();
     const uv = (db.pragma('user_version') as Array<{ user_version: number }>)[0].user_version;
-    expect(uv).toBe(31);
+    expect(uv).toBeGreaterThanOrEqual(31);
   });
 
   it('migrateV30toV31 is no-op on base-table DBs (returns false)', () => {
@@ -290,12 +292,14 @@ describe('V30→V31 migration (V17 view-mode learnings.provenance close)', () =>
     expect(row.content).toBe('updated content');
   });
 
-  it('runMigrations on existing-V30-view DB advances to UV=31', () => {
+  it('runMigrations on existing-V30-view DB advances past V31 (UV>=31)', () => {
     buildV17ViewModeFixture(db);
     db.pragma('user_version = 30');
     runMigrations(db);
     const uv = (db.pragma('user_version') as Array<{ user_version: number }>)[0].user_version;
-    expect(uv).toBe(31);
+    // Was UV=31; subsequent migrations (V32 et seq.) raise the ceiling.
+    // The V31 step itself is verified by the provenance column assertion below.
+    expect(uv).toBeGreaterThanOrEqual(31);
     const cols = db.prepare(`PRAGMA table_info(learnings)`).all() as Array<{ name: string }>;
     expect(cols.find(c => c.name === 'provenance')).toBeDefined();
   });

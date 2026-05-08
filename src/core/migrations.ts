@@ -50,6 +50,7 @@ import {
   migrateV28toV29,
   migrateV29toV30,
   migrateV30toV31,
+  migrateV31toV32,
   migrateSchemaFixes,
   cleanupOrphanTables,
   upgradeV2SchemaInPlace,
@@ -84,7 +85,15 @@ export { migrateV14toV15 };
  *        +'cross_project_ambiguous' +'cross_project_query_expansion'
  *   22 — Phase 8.5: retrieval_log + session_flag tables (recall observability)
  *   23 — Phase 9.8: drop policy_weights + artifacts.q_value (RL stack delete)
- *   24 — current (Phase 11 STOR-04: drop legacy `*_old` tables from V17)
+ *   24 — Phase 11 STOR-04: drop legacy `*_old` tables from V17
+ *   25 — v5 Phase 1 (EPI-01): episodic_events + closed-enum provenance
+ *   26 — v5 Phase 2 (IDX-01): error-fingerprint sidecar
+ *   27 — v5 Phase 2.1 (IDX-04): widen corpus_origin CHECK constraint
+ *   28 — v5 Phase 4 (AR-03): experience_patterns insert guard
+ *   29 — v5 Phase 6 (EBD-05): episode_boundary_cursor + sessions liveness cols
+ *   30 — v5 Phase 7 (MIG-01): learnings.provenance ALTER (base-table)
+ *   31 — v5.0.1 hot-fix (MIG-02): learnings.provenance view rebuild (V17 view-mode)
+ *   32 — v6 Phase 8: transcript_chunk_v6 + vec_transcript_chunks_v6 (TRX-05)
  *
  * Dual version tracking:
  * Both `PRAGMA user_version` and `schema_versions` table are needed:
@@ -99,7 +108,7 @@ export { migrateV14toV15 };
  * `claudex doctor` (DIAG-05) reads this to verify the on-disk DB is in sync.
  * Bumping a migration must bump this constant in lockstep.
  */
-export const TARGET_USER_VERSION = 31;
+export const TARGET_USER_VERSION = 32;
 
 export function runMigrations(db: Database): void {
   const row = db.pragma('user_version') as Array<{ user_version: number }>;
@@ -146,6 +155,7 @@ export function runMigrations(db: Database): void {
     [28, () => { migrateV28toV29(db); }],
     [29, () => { migrateV29toV30(db); }],
     [30, () => { migrateV30toV31(db); }],
+    [31, () => { migrateV31toV32(db); }],
   ];
 
   // Handle special cases for version 0 and 1
@@ -404,6 +414,15 @@ export function initializeSchema(db: Database): void {
   if (currentUv < 31) {
     migrateV30toV31(db);
     db.pragma('user_version = 31');
+  }
+  // v6 Phase 8 (TRX-05): transcript_chunk_v6 metadata table + paired
+  // vec_transcript_chunks_v6 vec0 virtual table. Purely additive — no
+  // existing table/view/trigger touched. Idempotent on already-V32 DBs.
+  // Fresh-DB path lands here; runMigrations step-table covers existing-DB
+  // upgrades from V31.
+  if (currentUv < 32) {
+    migrateV31toV32(db);
+    db.pragma('user_version = 32');
   }
 
   // Phase 4 (V28): per-connection sidecar + TEMP TRIGGER guarding writes

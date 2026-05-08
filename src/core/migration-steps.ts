@@ -1359,6 +1359,7 @@ export function migrateV14toV15(db: Database): void {
     'vec_threads',
     'vec_journal',
     'vec_conversations',
+    'vec_transcript_chunks_v6',
   ];
   for (const table of tables) {
     try {
@@ -2236,6 +2237,75 @@ export function migrateV30toV31(db: Database): boolean {
     WHERE kind = 'learning'
       AND json_extract(data, '$.provenance') IS NULL
   `);
+
+  return true;
+}
+
+/**
+ * V31→V32 (Phase 8 — v6 transcript ingestion substrate).
+ *
+ * Adds two new objects, purely additive, no existing table/view/trigger
+ * touched:
+ *
+ *   - `transcript_chunk_v6` (regular table) — metadata for each ingested
+ *     transcript chunk: session/project/turn keys, role + closed-enum
+ *     `provenance` CHECK matching V25 episodic_events / V30 learnings,
+ *     body, created_at_epoch_ms, sub_index for sentence-boundary
+ *     sub-chunks of long turns, and a wrapper_redacted flag set by the
+ *     ingestion pipeline when parseWrappers stripped at least one
+ *     wrapper-tagged span from the source turn.
+ *   - `vec_transcript_chunks_v6` (vec0 virtual table) — 1024-dim float
+ *     embeddings keyed by transcript_chunk_v6.id, populated by Phase 8's
+ *     ingestion pipeline via the existing arctic-embed2 path.
+ *
+ * Idempotency: if `transcript_chunk_v6` already exists, returns false.
+ * Migration runs identically on base-table fresh-DBs and V17-collapsed
+ * shapes — both shapes have the schema-versions / artifact / legacy-id-map
+ * foundation that the new tables sit alongside; the legacy
+ * `artifact(kind='transcript_chunk')` slot stays untouched per Phase 7
+ * CONTEXT decision 1 + Phase 8 CONTEXT decision 3.
+ *
+ * vec0 virtual table creation follows migrateV14toV15's silent-skip
+ * pattern — wrapped in try/catch so DBs without sqlite-vec still advance
+ * to UV=32 functionally (only the bi-encoder path degrades).
+ */
+export function migrateV31toV32(db: Database): boolean {
+  const exists = db.prepare(
+    "SELECT 1 FROM sqlite_master WHERE type='table' AND name='transcript_chunk_v6'"
+  ).get() as { 1: number } | undefined;
+  if (exists) return false;
+
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS transcript_chunk_v6 (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      session_id TEXT NOT NULL,
+      project_id TEXT NOT NULL,
+      turn_index INTEGER NOT NULL,
+      sub_index INTEGER NOT NULL DEFAULT 0,
+      role TEXT NOT NULL CHECK (role IN ('user','assistant','tool','system')),
+      provenance TEXT NOT NULL CHECK (provenance IN ('organic','injected','tool_result','environmental')),
+      body TEXT NOT NULL,
+      created_at_epoch_ms INTEGER NOT NULL,
+      wrapper_redacted INTEGER NOT NULL DEFAULT 0
+    );
+    CREATE INDEX IF NOT EXISTS idx_transcript_chunk_v6_session_turn
+      ON transcript_chunk_v6(session_id, turn_index);
+    CREATE INDEX IF NOT EXISTS idx_transcript_chunk_v6_project_created
+      ON transcript_chunk_v6(project_id, created_at_epoch_ms);
+    CREATE UNIQUE INDEX IF NOT EXISTS uq_transcript_chunk_v6_session_turn_role_sub
+      ON transcript_chunk_v6(session_id, turn_index, role, sub_index);
+  `);
+
+  // vec0 virtual table — silent-skip if sqlite-vec unavailable, mirroring
+  // migrateV14toV15 (the existing five vec_* tables follow the same shape).
+  const loaded = loadSqliteVec(db);
+  if (loaded) {
+    try {
+      db.exec(`CREATE VIRTUAL TABLE IF NOT EXISTS vec_transcript_chunks_v6 USING vec0(embedding float[1024])`);
+    } catch {
+      // Non-fatal — failed create surfaces at first query time.
+    }
+  }
 
   return true;
 }
