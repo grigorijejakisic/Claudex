@@ -2025,15 +2025,26 @@ export function migrateV28toV29(db: Database): boolean {
  * `('organic','injected','tool_result','environmental')`. Backfills existing
  * rows to `'organic'` per CONTEXT decision 1 (default-on-existing baseline).
  *
+ * V17 view-mode DBs: `learnings` is a VIEW over `artifact` (kind='learning')
+ * and SQLite forbids ALTER on a view. In that environment, provenance
+ * discipline lives in the JSON `data` column on the artifact kernel; the
+ * write-path filter (Plan 07-03) operates upstream of the view's INSTEAD OF
+ * trigger and is sufficient for the Mem0-trap closure. We detect the view
+ * shape and skip — same pattern Phase 4 schema work used to coexist with V17.
+ *
  * Idempotent via column-name substring scan of the `learnings` DDL. SQLite has
  * no IF NOT EXISTS for ALTER TABLE ADD COLUMN — same pattern as V28→V29.
  * Re-running on a V30 DB is a no-op (returns false).
  */
 export function migrateV29toV30(db: Database): boolean {
-  const learningsRow = db.prepare(
-    "SELECT sql FROM sqlite_master WHERE type='table' AND name='learnings'"
-  ).get() as { sql?: string } | undefined;
-  const learningsSql = learningsRow?.sql ?? '';
+  const learningsMeta = db.prepare(
+    "SELECT type, sql FROM sqlite_master WHERE name='learnings' AND type IN ('table','view')"
+  ).get() as { type: string; sql?: string } | undefined;
+  if (!learningsMeta) return false;
+  // V17 view-mode: provenance lives in artifact.data JSON; ALTER would fail.
+  if (learningsMeta.type === 'view') return false;
+
+  const learningsSql = learningsMeta.sql ?? '';
   const hasProvenanceCol = learningsSql.includes('provenance');
   if (hasProvenanceCol) return false;
 
