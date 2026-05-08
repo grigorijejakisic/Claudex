@@ -108,9 +108,9 @@ export function matchTriggers(
     }
 
     // 2. Match experience_patterns by trigger_glob and trigger_command
-    // Reads experience_patterns (pre-Phase-4 legacy table). Phase 4 stopped
-    // new INSERTs (V28 trigger blocks them). Phase 7 owns retirement direction
-    // — drop / project / keep. See .planning/reframes/2026-05-05-multi-handle-kill.md.
+    // reads pre-Phase-4 experience_patterns table — write surface deleted, no
+    // new INSERTs (V28 trigger blocks them). Rows persist for as long as their
+    // content is useful. See .planning/reframes/2026-05-05-multi-handle-kill.md.
     if (filePath || command) {
       try {
         const patterns = cachedPrepare(db,

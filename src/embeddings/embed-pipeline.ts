@@ -203,9 +203,9 @@ export async function embedPattern(
     if (!embedding) return false;
 
     // 1. Store BLOB in SQLite
-    // Reads experience_patterns (pre-Phase-4 legacy table). Phase 4 stopped
-    // new INSERTs (V28 trigger blocks them). Phase 7 owns retirement direction
-    // — drop / project / keep. See .planning/reframes/2026-05-05-multi-handle-kill.md.
+    // reads pre-Phase-4 experience_patterns table — write surface deleted, no
+    // new INSERTs (V28 trigger blocks them). Rows persist for as long as their
+    // content is useful. See .planning/reframes/2026-05-05-multi-handle-kill.md.
     try {
       const blob = Buffer.from(new Float32Array(embedding).buffer);
       db.prepare('UPDATE experience_patterns SET embedding = ? WHERE id = ?').run(blob, patternId);

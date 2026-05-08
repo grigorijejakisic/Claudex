@@ -378,9 +378,9 @@ export async function heartbeatTick(ctx: HeartbeatContext): Promise<TickResult> 
       }
 
       // 4b: Prune low-quality patterns (harmful > helpful after 5+ triggers)
-      // Reads experience_patterns (pre-Phase-4 legacy table). Phase 4 stopped
-      // new INSERTs (V28 trigger blocks them). Phase 7 owns retirement direction
-      // — drop / project / keep. See .planning/reframes/2026-05-05-multi-handle-kill.md.
+      // reads pre-Phase-4 experience_patterns table — write surface deleted, no
+      // new INSERTs (V28 trigger blocks them). Rows persist for as long as their
+      // content is useful. See .planning/reframes/2026-05-05-multi-handle-kill.md.
       const badPatterns = cachedPrepare(ctx.db,
         `SELECT id FROM experience_patterns
          WHERE times_triggered >= 5 AND harmful_count > helpful_count`
@@ -1031,9 +1031,9 @@ export async function heartbeatTick(ctx: HeartbeatContext): Promise<TickResult> 
         // Graduate saturated always-inject patterns to CLAUDE.md rules
         // Patterns triggered 100+ times with 90%+ helpful rate are fully proven —
         // they belong in permanent rules, not the dynamic injection budget.
-        // Reads experience_patterns (pre-Phase-4 legacy table). Phase 4 stopped
-        // new INSERTs (V28 trigger blocks them). Phase 7 owns retirement direction
-        // — drop / project / keep. See .planning/reframes/2026-05-05-multi-handle-kill.md.
+        // reads pre-Phase-4 experience_patterns table — write surface deleted, no
+        // new INSERTs (V28 trigger blocks them). Rows persist for as long as their
+        // content is useful. See .planning/reframes/2026-05-05-multi-handle-kill.md.
         const MAX_ALWAYS_PATTERNS = 5;
         const saturated = cachedPrepare(ctx.db,
           `SELECT id, trigger_context, lesson, times_triggered, helpful_count, harmful_count
