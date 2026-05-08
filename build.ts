@@ -27,6 +27,7 @@ const requiredEntryPoints = [
   'src/cli/doctor.ts',
   'src/cli/backfill-transcripts.ts',
   'src/cli/reranker-fitness.ts',
+  'src/cli/drain-transcripts.ts',
   'src/cli/benchmark-deliberation-surfacing.ts',
   'src/cli/import-synthetic-probes.ts',
 ];

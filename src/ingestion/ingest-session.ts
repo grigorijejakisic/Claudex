@@ -255,9 +255,22 @@ export async function ingestSession(
 
       try {
         const vec = encodeVector(vector);
+        // vec0 specifics (matched against src/embeddings/sqlite-vec-backend.ts:188):
+        //   1. Rowid binding requires BigInt — better-sqlite3 returns plain JS
+        //      numbers from SELECT, which vec0 rejects with "Only integers are
+        //      allowed for primary key values".
+        //   2. vec0 does NOT honor INSERT OR REPLACE semantics for rowid
+        //      conflicts — it raises UNIQUE constraint failed instead. Upsert
+        //      must be DELETE-then-INSERT (the v5 pattern). Discovered live
+        //      during v6 P9 backfill drain when re-runs against partially-
+        //      ingested sessions silently failed every vec insert.
+        const rowid = BigInt(idRow.id);
         cachedPrepare(db,
-          `INSERT OR REPLACE INTO vec_transcript_chunks_v6 (rowid, embedding) VALUES (?, ?)`,
-        ).run(idRow.id, vec);
+          `DELETE FROM vec_transcript_chunks_v6 WHERE rowid = ?`,
+        ).run(rowid);
+        cachedPrepare(db,
+          `INSERT INTO vec_transcript_chunks_v6 (rowid, embedding) VALUES (?, ?)`,
+        ).run(rowid, vec);
         result.embeddingsWritten += 1;
       } catch {
         // vec0 insert failure (extension load issue, dimension mismatch, etc.)

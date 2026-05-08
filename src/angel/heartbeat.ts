@@ -1182,7 +1182,7 @@ export async function heartbeatTick(ctx: HeartbeatContext): Promise<TickResult> 
          FROM session_events
         WHERE event_type = 'transcript_ingestion_pending'
           AND (json_extract(detail, '$.processed') IS NULL
-               OR json_extract(detail, '$.processed') != json('true'))
+               OR json_extract(detail, '$.processed') = 0)
         ORDER BY id ASC
         LIMIT 5`
     ).all() as Array<{ id: number; session_id: string; project: string; detail: string }>;
