@@ -37,7 +37,8 @@
     "vesna": "node dist/benchmark/vesna/cli.cjs",
     "sc3": "node dist/benchmark/memory-quality/cli.cjs",
     "backfill:transcripts": "node dist/cli/backfill-transcripts.cjs",
-    "reranker:fitness": "node dist/cli/reranker-fitness.cjs"
+    "reranker:fitness": "node dist/cli/reranker-fitness.cjs",
+    "benchmark:deliberation-surfacing": "node dist/cli/benchmark-deliberation-surfacing.cjs"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.27.1",

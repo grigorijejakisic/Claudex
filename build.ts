@@ -27,6 +27,7 @@ const requiredEntryPoints = [
   'src/cli/doctor.ts',
   'src/cli/backfill-transcripts.ts',
   'src/cli/reranker-fitness.ts',
+  'src/cli/benchmark-deliberation-surfacing.ts',
 ];
 
 /** Optional/scaffolding entry points — warn-and-skip if missing. */
