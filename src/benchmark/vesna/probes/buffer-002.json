@@ -1,16 +1,38 @@
 {
-  "id": "buffer-002",
-  "category": "buffer",
-  "source_session_id": "phase-10-design",
+  "id": "episodic-recall-002",
+  "category": "entity-recall",
+  "source_session_id": "phase-7-design",
   "source_project": "claudex-v3",
-  "scenario": "Unallocated buffer slot. A downstream phase claims this slot when authoring its own probes. To claim: replace this file's contents with a real probe of any category, set buffer_placeholder: false (or remove the field), update id to <category>-NNN convention.",
-  "user_prompt": "[unallocated]",
+  "scenario": "Generic SC-V5-1 episodic recall on the V28 BEFORE INSERT trigger episode (Phase 4 plan 04-04). The substrate stores the V28 trigger discussion as an episodic_events row; v4 hybrid-retrieval surfaces it on a semantically related but lexically distinct prompt.",
+  "user_prompt": "How did we structurally prevent new experience_patterns rows from being created after the cutoff?",
   "expected_recall": {
-    "artifact_id_or_pattern": "[unallocated]",
-    "must_surface_within_turns": 1,
-    "must_contain_phrase_pattern": []
+    "artifact_id_or_pattern": "v28-trigger-001",
+    "must_surface_within_turns": 2,
+    "must_contain_phrase_pattern": [
+      "V28|BEFORE INSERT|session_pragmas|TEMP trigger|trigger blocks|RAISE\\s*\\(\\s*ABORT|allowLegacyPatternInsert"
+    ]
   },
-  "lexical_exclusions": [],
+  "lexical_exclusions": [
+    "structural cutoff",
+    "BEFORE INSERT trigger",
+    "TEMP session_pragmas",
+    "trigger fires"
+  ],
   "evaluation": "auto",
-  "buffer_placeholder": true
+  "setup_steps": [
+    {
+      "kind": "narration_directive",
+      "payload": { "silent": false }
+    },
+    {
+      "kind": "artifact",
+      "payload": {
+        "kind": "decision",
+        "summary": "Phase 4 V28 BEFORE INSERT TRIGGER on experience_patterns blocks new INSERTs structurally. Implemented as a TEMP trigger with a per-connection temp.session_pragmas sidecar override for fixtures and migrations. The trigger fires on every INSERT and RAISE(ABORT) unless the per-connection allowLegacyPatternInsert sidecar admits the row.",
+        "content": "V28 cutoff implementation: TEMP trigger + session_pragmas sidecar (Phase 4 plan 04-04).",
+        "project": "claudex-v3",
+        "tags": ["phase-4", "schema", "trigger"]
+      }
+    }
+  ]
 }

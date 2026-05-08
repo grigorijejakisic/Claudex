@@ -1,16 +1,38 @@
 {
-  "id": "buffer-001",
-  "category": "buffer",
-  "source_session_id": "phase-10-design",
+  "id": "episodic-recall-001",
+  "category": "entity-recall",
+  "source_session_id": "phase-7-design",
   "source_project": "claudex-v3",
-  "scenario": "Unallocated buffer slot. A downstream phase claims this slot when authoring its own probes. To claim: replace this file's contents with a real probe of any category, set buffer_placeholder: false (or remove the field), update id to <category>-NNN convention.",
-  "user_prompt": "[unallocated]",
+  "scenario": "Parable canonical regression for SC-V5-1. The 2026-05-04 parable failure session (.planning/reframes/2026-05-05-multi-handle-kill.md) is the regression target — a previously-discussed conceptual frame ('one experience is not yet an abstraction; multiple bound measurements before milestone-level claims') could not be recalled in the next session. With Phase 1 substrate (V25 episodic_events) shipped, the relevant episode IS retrievable through v4's hybrid-retrieval surface. This probe asserts the recall surface delivers the distinctive phrasing without the prompt leaking the distinctive tokens.",
+  "user_prompt": "What was our discipline on counting evidence before milestone-level conclusions?",
   "expected_recall": {
-    "artifact_id_or_pattern": "[unallocated]",
-    "must_surface_within_turns": 1,
-    "must_contain_phrase_pattern": []
+    "artifact_id_or_pattern": "parable-canonical-001",
+    "must_surface_within_turns": 2,
+    "must_contain_phrase_pattern": [
+      "bound measurement|multiple bound|append-only aggregator|Wilson|CI binding|locked decision rule|three (KILL )?bound|repeated measurement"
+    ]
   },
-  "lexical_exclusions": [],
+  "lexical_exclusions": [
+    "parable",
+    "single experience",
+    "abstraction",
+    "one experience"
+  ],
   "evaluation": "auto",
-  "buffer_placeholder": true
+  "setup_steps": [
+    {
+      "kind": "narration_directive",
+      "payload": { "silent": false }
+    },
+    {
+      "kind": "artifact",
+      "payload": {
+        "kind": "observation",
+        "summary": "Empirical-phase methodology, locked at 2026-05-05 milestone reframe: pre-committed decision rule, locked corpus, MULTIPLE BOUND MEASUREMENTS before milestone-level claims, append-only aggregator at .planning/aggregates/, Wilson/Newcombe CI binding for noise rejection. Three KILL bound experiences against the multi-handle/density-fusion thesis fired the reframe. The parable: a single experience is not yet an abstraction.",
+        "content": "Empirical phase methodology — repeated measurements before claims; CI-binding rejects noise.",
+        "project": "claudex-v3",
+        "tags": ["methodology", "v5-reframe", "parable"]
+      }
+    }
+  ]
 }
