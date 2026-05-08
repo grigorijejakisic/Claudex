@@ -91,17 +91,26 @@ The architectural framing (parable) is locked in `.planning/research/2026-05-04-
     - [x] 06-04-PLAN.md — composition rule + cursor + boundary detector with heartbeat-compare-before-cleanup guard and re-open handling
     - [x] 06-05-PLAN.md — Angel integration (heartbeat tick + watcher boot/shutdown); VAL-04 Vesna probe deferred to Phase 7
 
-- [ ] **Phase 7: v4 coexistence / migration / ship** _(type: engineering)_
+- [x] **Phase 7: v4 coexistence / migration / ship** _(type: engineering)_ — SHIPPED 2026-05-08
 
-    **Narrowed 2026-05-05** — no multi-handle retrieval to migrate. Decide per-category what happens to v4 storage:
-    - `experience_patterns` (88 rows, inflated): retire — Phase 4 stops new instances; reads stay live during deprecation. NOT replaced by density abstraction (Phase 5 dropped); v4's `experience_warning_triggers` continues reading these rows in legacy mode until a future milestone replaces the surface.
-    - `learning` (191 rows): re-derive as projections from raw episodes? Or preserve as legacy "synthesized fact" surface?
-    - `decision` (126 rows): same question
-    - `mental_model` (659 rows): probably keep — these are user-/agent-confirmed long-term, not extraction artifacts
-    - `directive_rule`, `critical_rule`: likely keep — explicit rules that earned their status
-    - `transcript_chunk`: superseded by Phase 1 substrate
+    **Narrowed 2026-05-05** — no multi-handle retrieval to migrate. Per-category verdict locked at CONTEXT time: `experience_patterns` preserve-as-legacy (no delete; reads continue), `learnings` keep writer + V30 provenance column + write-path filter, `decisions` / `mental_model` / `directive_rule` / `critical_rule` preserve-as-legacy, `transcript_chunk` preserve-as-legacy with comment downgrade.
 
-    Then: Vesna probe suite update (existing 17 + new VAL-01/02/04 + KILL-regression VAL-03'), ship gate validation, **v5.0.0 tag**.
+    **Outcome:** V30 schema migration adds `learnings.provenance` column with closed-enum CHECK matching `episodic_events` (`organic | injected | tool_result | environmental`). `captureInsightsAsLearnings` filters wrapper-tagged content via Phase 1's `parseWrappers` source-of-truth — Mem0-trap closed structurally for the surviving extraction surface. 10 reader-site comments downgraded from forward-TODO to steady-state legacy (forever-legacy reads with no fade). Vesna grows 18 → 21 functional probes (`episodic-recall-001`, `episodic-recall-002`, `learnings-injected-guard-001`). Three new vitest integration tests (`phase-7-learnings-provenance`, `phase-2-1-kill-regression`, `phase-6-crash-resilience`) cover the four v5 SC gates at substrate level. CHANGELOG.md `[5.0.0]` entry shipped. Local annotated `v5.0.0` tag created.
+
+    **Ship gates verified:**
+    - `bun run vesna`: **21/21 GATED PASS at 100%** (entity-recall 5/5, constraint-recall 3/3, handoff-pickup 3/3, cross-project 3/3, lesson-application 3/3, self-instrumented 4/4)
+    - `bun run test`: **3471 passing**, 27 pre-existing failures unchanged (`llama-client`, `llama-server-supervisor`, `phase-5-full-gate`)
+    - `bun run build`: clean
+    - `bun run sc3`: aggregate 91.7%, GATED PASS — all 6 active projects ≥80%
+    - `bun run doctor`: exit 0 (Bun, DB schema V30, Ollama, reranker:7439, hooks 25/25, Angel)
+    - CLI bundle smoke: 7/7 PASS
+
+    **Plans:** 5 plans in 4 waves
+    - [x] 07-01-PLAN.md — V30 schema bump + migrateV29toV30 + regression test (V17 view-mode skip during execution)
+    - [x] 07-02-PLAN.md — 10 reader-comment downgrades to steady-state across 9 files
+    - [x] 07-03-PLAN.md — parseWrappers filter in captureInsightsAsLearnings + upsertLearning provenance + DB-state contract test
+    - [x] 07-04-PLAN.md — 3 Vesna probes (claim buffer-001/002/003) + 2 vitest integration tests (phase-2-1 + phase-6)
+    - [x] 07-05-PLAN.md — 8 ship gates run + CHANGELOG.md v5.0.0 + STATE.md/ROADMAP.md flips + local v5.0.0 annotated tag (push deferred to operator)
 
 ## Phase typing rationale
 

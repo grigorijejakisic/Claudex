@@ -10,10 +10,10 @@ See: `.planning/PROJECT.md` (created 2026-05-04, reframed 2026-05-05)
 
 ## Current Position
 
-**Current Milestone:** v5 — Bound Multi-Modal Episodes (reframed 2026-05-05 to substrate-only)
-**Phase:** 6 — Crash-resilient episode boundary SHIPPED 2026-05-05; Phase 7 next
+**Current Milestone:** v5 — Bound Multi-Modal Episodes (substrate-only) — **CLOSED 2026-05-08**
+**Phase:** 7 — v4 coexistence / migration / ship SHIPPED 2026-05-08; v5 milestone closed
 **Plan:** —
-**Status:** Phase 6 SHIPPED 2026-05-05 via /auto-execute-phase. V29 schema (episode_boundary_cursor + sessions liveness columns), chokidar watcher, heartbeat hooks, composition rule with heartbeat-compare-before-cleanup, boundary detector with re-open + offset-overflow recovery, Angel integration. 55 boundary tests + 7 V29 migration tests + 6 hook regression tests; all pass. Vesna 18/18 preserved (VAL-04 probe deferred to Phase 7 — Phase 6 substrate has no consumer surface yet). Build clean. Full suite: 3448/3475 passing (27 pre-existing baseline failures unchanged from Phase 4).
+**Status:** v5.0.0 substrate-only milestone CLOSED 2026-05-08 via /auto-execute-phase. Phase 7 (V30 learnings.provenance + write-path parseWrappers filter + 10 reader-comment downgrades + 3 Vesna probes + 3 vitest integration tests + CHANGELOG.md v5.0.0 entry + ROADMAP/STATE flips + local annotated v5.0.0 tag) shipped across 5 plans in 4 waves. Ship gates verified: Vesna 21/21 GATED PASS at 100%, full suite 3471 passing / 27 pre-existing failures unchanged, build clean, sc3 aggregate 91.7%, doctor exit 0, CLI bundle smoke 7/7. Local annotated `v5.0.0` tag created on master; `git push origin master --tags` is the operator-confirm step (autonomous: false on Plan 07-05).
 
 **Verdict log:**
 - Phase 1 (2026-05-04, type: engineering): SHIPPED. V25 migration + episodic_events table + dualWrite helpers + 60+ EPI-tagged tests. Stub-extractor proves Mem0-trap structurally impossible. Vesna 17/17 preserved.
@@ -24,10 +24,11 @@ See: `.planning/PROJECT.md` (created 2026-05-04, reframed 2026-05-05)
 - Phase 4 (2026-05-05, type: engineering): SHIPPED. Three extraction sites deleted (A `pattern-extractor.ts`, B `experience-scoring.ts` step 1, C `heartbeat.ts` synthesis loop — C uncovered during discuss). V28 BEFORE INSERT trigger blocks new rows structurally via TEMP `session_pragmas` sidecar. `classifySessionDomains` relocated to `domain-classifier.ts`. Three-layer cutoff (JSDoc tombstones + `extraction-deleted.test.ts` regression guard + V28 trigger). Mem0 fix `0d0fbca` deleted as structurally obsolete. Net: ~1100 lines deleted, ~700 added. Ship gates: Vesna **18/18 PASS** (new VAL-02 probe `extraction-deleted-001.json`), build clean, 3380/3415 tests passing (27 pre-existing failures unchanged).
 - Phase 5 (density-based abstraction): DROPPED 2026-05-05 — same dead thesis.
 - Phase 6 (2026-05-05, type: engineering): SHIPPED. V29 schema bump (episode_boundary_cursor + sessions.last_heartbeat_ts + sessions.last_jsonl_write_ts). chokidar 5.0.0 added as runtime dep. New module surface at `src/angel/boundary/` (thresholds, pid-liveness, jsonl-watcher, composition-rule, cursor, boundary-detector). 5 hooks bump heartbeat ts; SessionEnd emits `clean_endsession` close marker atomically with cursor advance. Angel.heartbeatTick now runs runBoundaryTick on every cadence; Angel boot starts JSONL watcher. Composition rule mirrors CONTEXT formal predicate verbatim; heartbeat-compare-before-cleanup race guard inside the close transaction; episode_close_emitted telemetry write outside the tx so CHECK violations don't roll back the close. 55 tests in src/tests/angel/boundary/ + 6 in heartbeat-column-writes.test.ts + 7 in migrations-v29.test.ts. Vesna VAL-04 probe deferred to Phase 7 (no consumer surface for behavioral assertion until then). Net code: ~1500 lines added, ~10 deleted.
+- Phase 7 (2026-05-08, type: engineering): SHIPPED. V30 schema bump adds `learnings.provenance` column with closed-enum CHECK matching `episodic_events`. `migrateV29toV30` skips when `learnings` is a V17 view (Rule 3 deviation discovered in execution — V17 collapsed legacy tables into views over the artifact kernel; ALTER on a view fails). `captureInsightsAsLearnings` strips wrapper-tagged content via Phase 1's `parseWrappers` source-of-truth — Mem0-trap closed structurally for the surviving extraction surface. `upsertLearning` accepts optional provenance defaulting to 'organic'. 10 reader-site comments across 9 files downgraded from forward-TODO to steady-state legacy ("Rows persist for as long as their content is useful"). Vesna grows 18 → 21 functional probes (claim buffer-001/002/003 → episodic-recall-001/002 + learnings-injected-guard-001). 3 new vitest integration tests: phase-7-learnings-provenance (4 cases — DB-state contract for VAL-02), phase-2-1-kill-regression (7 cases — locked aggregator verdict for VAL-03'), phase-6-crash-resilience (4 cases — kill -9 substrate gate for VAL-04). CHANGELOG.md `[5.0.0]` entry shipped in Keep-a-Changelog format with Added/Removed/Changed/Coverage; reframe artifact callout at top. Ship gates: Vesna 21/21 GATED PASS at 100%; full suite 3471 passing / 27 pre-existing failures unchanged; build clean; sc3 aggregate 91.7% GATED PASS; doctor exit 0; CLI bundle smoke 7/7. Local annotated `v5.0.0` tag created on master with the CONTEXT-locked annotation message that LEADS with the kill. `git push origin master --tags` deferred to operator-confirm step (Plan 07-05 autonomous: false).
 
-**Last activity:** 2026-05-05 — Phase 6 SHIPPED via /auto-execute-phase. ROADMAP.md + STATE.md updated for the close.
+**Last activity:** 2026-05-08 — Phase 7 SHIPPED via /auto-execute-phase. v5 milestone CLOSED. CHANGELOG.md, STATE.md, ROADMAP.md flipped; local annotated `v5.0.0` tag created.
 
-**Next step:** `/auto-orchestrate --from-phase 7` for v4 coexistence / migration / ship (narrowed): per-table retire/re-derive/preserve decisions, Vesna probe suite update (existing 18 + new VAL-01/02/04 + KILL-regression VAL-03'), ship gate validation, **v5.0.0 tag**.
+**Next step:** Operator confirms `git push origin master --tags` to ship v5.0.0 publicly. After that: `/gsd:complete-milestone` to archive v5 and prepare v5.1+ planning, or revisit deferred items (27 pre-existing test failures, retroactive ROADMAP rename of Phase 7 "migration" → accurate post-lock name, VAL-04 Vesna probe when consumer surface lands in v6+).
 
 ## v5 Phase Structure (Post-Reframe)
 
@@ -40,9 +41,9 @@ See: `.planning/PROJECT.md` (created 2026-05-04, reframed 2026-05-05)
 | 4 — Angel reduction | Trace dependencies; delete extraction-time pattern creation; Angel becomes bind+index, not abstract | engineering | **SHIPPED 2026-05-05** | AR-01..05 |
 | 5 — Density-based abstraction | Cluster matching episodes; surface high-density clusters as inferred patterns at retrieval time | empirical | **DROPPED 2026-05-05** | ABS-01..04 (dropped) |
 | 6 — Crash-resilient episode boundary | fsnotify + heartbeat + idle-sweep + PID-liveness | engineering | **SHIPPED 2026-05-05** | EBD-01..06 |
-| 7 — v4 coexistence / migration / ship (narrowed) | Per-table decision (retire/re-derive/preserve); Vesna update; **v5.0.0 tag** | engineering | pending | MIG-01..05, VAL-01/02/03'/04/05/06 |
+| 7 — v4 coexistence / migration / ship (narrowed) | Per-table decision (retire/re-derive/preserve); Vesna update; **v5.0.0 tag** | engineering | **SHIPPED 2026-05-08** | MIG-01..05, VAL-01/02/03'/04/05/06 |
 
-**Coverage:** 4 surviving phases (1, 4, 6 shipped; 7 pending). Phases 2/2.1 closed with KILL. Phases 3/5 dropped.
+**Coverage:** 4 surviving phases (1, 4, 6, 7 ALL SHIPPED). Phases 2/2.1 closed with KILL. Phases 3/5 dropped. **v5 milestone CLOSED.**
 
 ## Empirical methodology (v5 standard, promoted from Phase 2/2.1)
 

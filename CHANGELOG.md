@@ -9,7 +9,42 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- _Nothing yet._ Track v4.2 milestone planning at `.planning/STATE.md` once it kicks off.
+- _Nothing yet._ Track v5.1+ milestone planning at `.planning/STATE.md` once it kicks off.
+
+## [5.0.0] — 2026-05-08
+
+**Substrate-only milestone.** Three load-bearing legs proposed at v5 start; legs 2 and 3 (recall-by-any-modality via fusion, abstraction-from-density) killed empirically by Phase 2/2.1 (3 KILL bound measurements at `.planning/aggregates/multi-handle.json`). Leg 1 (provenance-tagged episode substrate) shipped + extended to learnings. Reframe artifact: [`.planning/reframes/2026-05-05-multi-handle-kill.md`](.planning/reframes/2026-05-05-multi-handle-kill.md).
+
+Methodology promoted to v5 standard practice: pre-committed decision rule, locked corpus, multiple bound measurements, append-only aggregator, Wilson/Newcombe CI binding.
+
+Not delivered: improved retrieval. v4 `hybrid-retrieval.ts` is unchanged in production; future milestones may revisit on the substrate this milestone built.
+
+### Added
+
+- **Phase 1 — Episode substrate (V25):** new `episodic_events` table with structured row schema and provenance enum (`organic | injected | tool_result | environmental`), dual-write helpers from CC hooks, V25 forward-only migration, 60+ EPI-tagged tests including a stub-extractor proof of EPI-07 Mem0-trap-impossibility. Operator README + environmental audit at `.planning/phases/01-episode-substrate/`.
+- **Phase 4 — Angel reduction (V28):** three extraction-time-pattern-creation sites deleted (`pattern-extractor.ts`, `experience-scoring.ts` step 1, `heartbeat.ts` synthesis loop). V28 BEFORE INSERT trigger blocks new `experience_patterns` rows structurally via TEMP `session_pragmas` sidecar. Three-layer cutoff: JSDoc tombstones + `extraction-deleted.test.ts` regression guard + V28 trigger. `classifySessionDomains` relocated to `domain-classifier.ts`. ~1100 lines deleted, ~700 added — pure shrinkage on production path.
+- **Phase 6 — Crash-resilient episode boundary (V29):** `episode_boundary_cursor` table + `sessions.last_heartbeat_ts` + `sessions.last_jsonl_write_ts`. New `src/angel/boundary/` module surface (thresholds, pid-liveness, jsonl-watcher, composition-rule, cursor, boundary-detector). chokidar 5.0.0 runtime dep. 5 CC hooks bump heartbeat ts; SessionEnd emits `clean_endsession` close marker atomically with cursor advance. Angel.heartbeatTick runs `runBoundaryTick` on every cadence; Angel boot starts JSONL watcher with degraded-mode fallback. 55 boundary tests + 7 V29 migration tests + 6 hook regression tests.
+- **Phase 7 — v4 coexistence + Vesna update + ship (V30):** `learnings.provenance` column with closed-enum CHECK matching `episodic_events`; `captureInsightsAsLearnings` filters wrapper-tagged content via Phase 1's `parseWrappers` (KNOWN_WRAPPER_TAGS source-of-truth at `src/extraction/wrapper-parser.ts`). 10 reader-site comments downgraded from forward-looking TODOs to steady-state legacy documentation. Vesna grows 18 → 21 functional probes (`episodic-recall-001`, `episodic-recall-002`, `learnings-injected-guard-001`). Three new vitest integration tests (`phase-7-learnings-provenance`, `phase-2-1-kill-regression`, `phase-6-crash-resilience`) cover the four v5 SC gates at substrate level.
+
+### Removed
+
+- **Phase 3 — Multi-handle retrieval cutover** — DROPPED 2026-05-05. Premised on the multi-handle/density-fusion thesis killed by Phase 2/2.1. v4's `hybrid-retrieval.ts` (semantic + FTS + reranker) stays in production unchanged.
+- **Phase 5 — Density-based abstraction** — DROPPED 2026-05-05. Same dead thesis. Intra-project density measured at 0.2418 across both Phase 2.1 tiers (threshold 0.30).
+- **Requirements RET-01..05 + ABS-01..04** — closed with the dropped phases.
+- **Mem0 fix from commit `0d0fbca`** — deleted as structurally obsolete (Phase 4 deletes the upstream extraction sites that fed it).
+
+### Changed
+
+- **Multi-handle thesis status** — empirically rejected at our scale. The thesis is dead; the methodology that killed it is alive and standard.
+- **Phase 4 reader-site comments** — 10 occurrences (across 9 files) downgraded from "Phase 7 owns retirement direction — drop / project / keep" to steady-state legacy documentation: "Rows persist for as long as their content is useful." Forever-legacy reads with no fade.
+- **DB schema V24 → V30** — V25 (Phase 1 episodic_events), V26 (Phase 2 error-fingerprint sidecar), V27 (Phase 2.1 corpus_origin enum widen), V28 (Phase 4 trigger marker), V29 (Phase 6 boundary cursor + sessions liveness columns), V30 (Phase 7 learnings provenance).
+
+### Coverage
+
+- `bun run vesna` 21/21 GATED PASS at 100% (entity-recall 5/5, constraint-recall 3/3, handoff-pickup 3/3, cross-project 3/3, lesson-application 3/3, self-instrumented 4/4)
+- `bun run test` 3471 passing, +260 over v4.1.2's 3211 baseline; 27 pre-existing failures unchanged (`llama-client`, `llama-server-supervisor`, `phase-5-full-gate`)
+- `bun run sc3` aggregate 91.7%, GATED PASS — all 6 active projects ≥80% MEMORY.md content quality
+- `bun run doctor` exit 0 (Bun, DB schema V30, Ollama, reranker:7439, hooks 25/25, Angel)
 
 ## [4.1.2] — 2026-05-02
 
