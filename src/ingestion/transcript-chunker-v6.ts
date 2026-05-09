@@ -128,42 +128,66 @@ function splitAtSentences(body: string): string[] {
   // Step 1: offset-tracking sentence boundaries (format-preserving).
   const boundaries = sentenceBoundaries(body);
   // Step 2: force-split any boundary whose width exceeds HARD_CHAR_CAP.
-  const safeBoundaries: Array<{ start: number; end: number }> = [];
+  // Mark force-split slices so greedy-pack does NOT merge them — each
+  // force-split slice is already at the upper char bound; merging would
+  // violate the HARD_CHAR_CAP that was the entire reason for the split.
+  const safeBoundaries: Array<{ start: number; end: number; force: boolean }> = [];
   for (const b of boundaries) {
     const width = b.end - b.start;
     if (width <= HARD_CHAR_CAP) {
-      safeBoundaries.push(b);
+      safeBoundaries.push({ ...b, force: false });
       continue;
     }
     // Force-split on char boundaries; a sub-window is at most HARD_CHAR_CAP chars.
     for (let pos = b.start; pos < b.end; pos += HARD_CHAR_CAP) {
-      safeBoundaries.push({ start: pos, end: Math.min(pos + HARD_CHAR_CAP, b.end) });
+      safeBoundaries.push({
+        start: pos,
+        end: Math.min(pos + HARD_CHAR_CAP, b.end),
+        force: true,
+      });
     }
   }
 
   // Step 3: greedy-pack safe boundaries into sub-chunks of <= SOFT_TOKEN_LIMIT
-  // tokens, sliced from the original body to preserve formatting.
+  // tokens, sliced from the original body to preserve formatting. Force-split
+  // slices break out of any pack-in-progress and are emitted directly so the
+  // HARD_CHAR_CAP bound is held.
   const subChunks: string[] = [];
   let currentStart = -1;
   let currentEnd = -1;
   let currentTokens = 0;
+  let currentChars = 0;
   for (const b of safeBoundaries) {
     const slice = body.slice(b.start, b.end);
     const sliceTokens = approxTokenCount(slice);
+    const sliceChars = b.end - b.start;
+    if (b.force) {
+      // Flush any pack-in-progress and emit this force-split slice directly.
+      if (currentStart !== -1) {
+        subChunks.push(body.slice(currentStart, currentEnd));
+        currentStart = -1; currentEnd = -1; currentTokens = 0; currentChars = 0;
+      }
+      subChunks.push(slice);
+      continue;
+    }
     if (currentStart === -1) {
       currentStart = b.start;
       currentEnd = b.end;
       currentTokens = sliceTokens;
+      currentChars = sliceChars;
       continue;
     }
-    if (currentTokens + sliceTokens > SOFT_TOKEN_LIMIT) {
+    if (currentTokens + sliceTokens > SOFT_TOKEN_LIMIT
+        || currentChars + sliceChars > HARD_CHAR_CAP) {
       subChunks.push(body.slice(currentStart, currentEnd));
       currentStart = b.start;
       currentEnd = b.end;
       currentTokens = sliceTokens;
+      currentChars = sliceChars;
     } else {
       currentEnd = b.end;
       currentTokens += sliceTokens;
+      currentChars += sliceChars;
     }
   }
   if (currentStart !== -1) subChunks.push(body.slice(currentStart, currentEnd));

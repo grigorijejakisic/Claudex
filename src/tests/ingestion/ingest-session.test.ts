@@ -165,10 +165,18 @@ describe('ingestSession', () => {
     expect(r.errors).toBeGreaterThanOrEqual(1);
   });
 
-  it('non-existent JSONL path → 0 chunks', async () => {
+  it('non-existent JSONL path → errors=-1 sentinel + transcript_ingest_missing_file telemetry (POLISH-03 Finding #4)', async () => {
     const r = await ingestSession(db, 'sess-missing', 'proj', '/nonexistent/path.jsonl', new MockEmbeddingProvider());
     expect(r.chunksWritten).toBe(0);
     expect(r.embeddingsWritten).toBe(0);
+    // POLISH-03 — visible-failure sentinel replaces the silent-success that
+    // the v5.0.1 lesson promoted as a critical anti-pattern.
+    expect(r.errors).toBe(-1);
+    const telemetry = db.prepare(
+      `SELECT COUNT(*) AS cnt FROM session_events
+       WHERE session_id = ? AND event_type = 'transcript_ingest_missing_file'`,
+    ).get('sess-missing') as { cnt: number };
+    expect(telemetry.cnt).toBe(1);
   });
 
   it('persists wrapper_redacted=true when JSONL contains wrapper-tagged spans', async () => {
@@ -182,5 +190,66 @@ describe('ingestSession', () => {
     expect(row.wrapper_redacted).toBe(1);
     expect(row.body).not.toContain('<system-reminder>');
     expect(row.body).not.toContain('nope');
+  });
+
+  // -------------------------------------------------------------------------
+  // POLISH-03 — Gemini Ingestion Finding #1 — re-ingest rewrites metadata
+  // -------------------------------------------------------------------------
+
+  it('re-ingest with changed body rewrites metadata (no metadata-vector drift)', async () => {
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'p11-rewrite-'));
+    const file = path.join(tmpDir, 'session.jsonl');
+    // First pass: write with body 'original'.
+    fs.writeFileSync(file, JSON.stringify({
+      type: 'user', message: { content: 'original body' }, timestamp: new Date(1700000000000).toISOString(),
+    }));
+    await ingestSession(db, 'sess-rewrite', 'proj', file, new MockEmbeddingProvider());
+    const before = db.prepare(
+      `SELECT body FROM transcript_chunk_v6 WHERE session_id = ?`
+    ).get('sess-rewrite') as { body: string };
+    expect(before.body).toContain('original body');
+
+    // Second pass: rewrite the same turn with different body. With ON CONFLICT
+    // DO NOTHING (the bug), `before.body` would persist; with DO UPDATE the new
+    // body lands.
+    fs.writeFileSync(file, JSON.stringify({
+      type: 'user', message: { content: 'updated body' }, timestamp: new Date(1700000000000).toISOString(),
+    }));
+    await ingestSession(db, 'sess-rewrite', 'proj', file, new MockEmbeddingProvider());
+    const after = db.prepare(
+      `SELECT body FROM transcript_chunk_v6 WHERE session_id = ?`
+    ).get('sess-rewrite') as { body: string };
+    expect(after.body).toContain('updated body');
+    expect(after.body).not.toContain('original');
+  });
+
+  // -------------------------------------------------------------------------
+  // POLISH-03 — Gemini Ingestion Finding #2 — ghost-row cleanup on re-ingest
+  // -------------------------------------------------------------------------
+
+  it('re-ingest with fewer chunks does not leave ghost rows from prior pass', async () => {
+    // First pass: 3 turns → 3 chunks.
+    const file3 = writeFakeJsonl([
+      { type: 'user', body: 'one.' },
+      { type: 'assistant', body: 'two.' },
+      { type: 'user', body: 'three.' },
+    ]);
+    await ingestSession(db, 'sess-ghost', 'proj', file3, new MockEmbeddingProvider());
+    const before = (db.prepare(
+      `SELECT COUNT(*) AS cnt FROM transcript_chunk_v6 WHERE session_id = ?`
+    ).get('sess-ghost') as { cnt: number }).cnt;
+    expect(before).toBe(3);
+
+    // Second pass: 2 turns. Without session-scoped DELETE, the third turn's
+    // chunk would survive as a ghost.
+    const file2 = writeFakeJsonl([
+      { type: 'user', body: 'one.' },
+      { type: 'assistant', body: 'two.' },
+    ]);
+    await ingestSession(db, 'sess-ghost', 'proj', file2, new MockEmbeddingProvider());
+    const after = (db.prepare(
+      `SELECT COUNT(*) AS cnt FROM transcript_chunk_v6 WHERE session_id = ?`
+    ).get('sess-ghost') as { cnt: number }).cnt;
+    expect(after).toBe(2); // not 3 — no ghost
   });
 });

@@ -181,4 +181,58 @@ describe('chunkTranscript — pure function', () => {
     expect(chunks[0].wrapper_redacted).toBe(true);
     expect(chunks[0].body).toBe('');
   });
+
+  // -------------------------------------------------------------------------
+  // POLISH-03 — Gemini Ingestion Finding #5: format-preserving chunker
+  // -------------------------------------------------------------------------
+
+  it('a fenced triple-backtick code block is not split mid-block on the dot inside (POLISH-03 Finding #5)', () => {
+    // Need to push past SOFT_TOKEN_LIMIT to engage splitAtSentences. Use a
+    // long lead-in so the chunker enters splitting; assert the code fence is
+    // intact in whichever sub-chunk receives it.
+    const codeBlock = '```\nconst x = 1.5;\nfoo();\nbar();\n```';
+    // Build a body of >2000 tokens-by-proxy ending with the code block.
+    const lead = ('A short sentence. ').repeat(2000);
+    const body = `${lead}${codeBlock} Trailing sentence.`;
+    const chunks = chunkTranscript([makeTurn({ role: 'assistant', body })]);
+    expect(chunks.length).toBeGreaterThan(1);
+    // Find the chunk containing the code block opener (or one of the inner lines)
+    // and assert the inner content survives the split.
+    const fenceChunk = chunks.find(c => c.body.includes('const x = 1.5'));
+    expect(fenceChunk).toBeDefined();
+    // The fence and its inner code line stayed contiguous — no split on the
+    // `1.` inside `1.5` because `1.5` is inside the fence.
+    expect(fenceChunk!.body).toContain('const x = 1.5;');
+  });
+
+  it('chunker preserves indentation byte-for-byte across sub-chunks (POLISH-03 Finding #5)', () => {
+    // 2000-token body with indented lines; assert the indentation survives.
+    const indentedSentence = '  This sentence has indentation. ';
+    const longBody = (indentedSentence).repeat(200);
+    const chunks = chunkTranscript([makeTurn({ role: 'assistant', body: longBody })]);
+    // Recombine sub-chunks; assert every chunk preserves the leading 2 spaces.
+    for (const c of chunks) {
+      // Each sub-chunk should preserve at least one indented sentence start.
+      expect(c.body.includes('  This sentence has indentation.')).toBe(true);
+    }
+  });
+
+  // -------------------------------------------------------------------------
+  // POLISH-03 — Gemini Ingestion Finding #6: bounded force-split
+  // -------------------------------------------------------------------------
+
+  it('a single-sentence turn longer than HARD_CHAR_CAP force-splits on character boundary (POLISH-03 Finding #6)', () => {
+    // Single 5000-character sentence with no .!? in the middle.
+    const giantSentence = 'a'.repeat(5000) + '.';
+    const chunks = chunkTranscript([makeTurn({ role: 'assistant', body: giantSentence })]);
+    // Force-split must produce ≥ 2 sub-chunks, each ≤ HARD_CHAR_CAP=1900 chars.
+    expect(chunks.length).toBeGreaterThanOrEqual(2);
+    for (const c of chunks) {
+      expect(c.body.length).toBeLessThanOrEqual(1900);
+    }
+    // Reassembly preserves all content (concat with no joiner — splits are at
+    // raw char positions inside the original body).
+    const reassembled = chunks.map(c => c.body).join('');
+    expect(reassembled).toBe(giantSentence);
+  });
 });

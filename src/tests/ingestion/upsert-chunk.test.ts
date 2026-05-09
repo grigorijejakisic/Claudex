@@ -47,7 +47,7 @@ describe('upsertChunk against V32 DB', () => {
     expect(row.wrapper_redacted as unknown as number).toBe(0);
   });
 
-  it('inserting the same chunk twice is idempotent (ON CONFLICT DO NOTHING)', () => {
+  it('inserting the same chunk twice keeps a single row (ON CONFLICT DO UPDATE preserves idempotency)', () => {
     const c = baseChunk();
     upsertChunk(db, c);
     upsertChunk(db, c);
@@ -55,6 +55,34 @@ describe('upsertChunk against V32 DB', () => {
       `SELECT COUNT(*) AS cnt FROM transcript_chunk_v6 WHERE session_id = ?`
     ).get('sess-1') as { cnt: number }).cnt;
     expect(count).toBe(1);
+  });
+
+  // POLISH-03 — Gemini Ingestion Finding #1: ON CONFLICT DO UPDATE rewrites
+  // body+provenance+timestamp+wrapper_redacted on re-upsert so the metadata
+  // tracks the freshly-computed embedding instead of drifting away from it.
+  it('re-upserting the same key with a different body rewrites the body (POLISH-03 Finding #1)', () => {
+    upsertChunk(db, baseChunk({ body: 'original body' }));
+    upsertChunk(db, baseChunk({ body: 'rewritten body' }));
+    const row = db.prepare(
+      `SELECT body FROM transcript_chunk_v6 WHERE session_id = ?`
+    ).get('sess-1') as { body: string };
+    expect(row.body).toBe('rewritten body');
+  });
+
+  it('re-upserting rewrites wrapper_redacted + provenance + created_at on conflict (POLISH-03 Finding #1)', () => {
+    upsertChunk(db, baseChunk({
+      body: 'b', wrapper_redacted: false, provenance: 'organic', created_at_epoch_ms: 1700000000000,
+    }));
+    upsertChunk(db, baseChunk({
+      body: 'b2', wrapper_redacted: true, provenance: 'injected', created_at_epoch_ms: 1700000999000,
+    }));
+    const row = db.prepare(
+      `SELECT body, wrapper_redacted, provenance, created_at_epoch_ms FROM transcript_chunk_v6 WHERE session_id = ?`
+    ).get('sess-1') as { body: string; wrapper_redacted: number; provenance: string; created_at_epoch_ms: number };
+    expect(row.body).toBe('b2');
+    expect(row.wrapper_redacted).toBe(1);
+    expect(row.provenance).toBe('injected');
+    expect(row.created_at_epoch_ms).toBe(1700000999000);
   });
 
   it('two chunks with same (session_id, turn_index, role) but different sub_index both persist', () => {
