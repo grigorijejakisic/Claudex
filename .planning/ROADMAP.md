@@ -131,7 +131,17 @@ Reframe artifact: `.planning/reframes/2026-05-05-multi-handle-kill.md`. Aggregat
 
 3. **W3 — Re-bind + conditional ship** _(empirical OR documentation)_ — Run Q1 (within-corpus paired McNemar, locked 30-probe set) → if positive, run Q2 (disjoint-probe rebind on 60 fresh probes) → if positive, run Q3 (cross-corpus generalization on big-mozzy-v2 session log corpus). Author 11-RESULTS.md with verdict reflecting actual data. Tag v6.0.0 locally with annotation matching the verdict (positive bind / kill receipt / inconclusive triggers P11.1 corpus expansion + no tag). Operator-confirmed public push.
 
-**Plans**: TBD by `/auto-plan-phase 11` — likely 7-10 plans across the 3 waves.
+**Plans**: 8 plans across 3 waves (planned 2026-05-09 by `/auto-plan-phase 11`).
+
+**Plans:**
+- [ ] 11-01-PLAN.md — Routing fixes (3 Gemini findings: null-body coalesce, telemetry-bypass isolation, time-distance ordering) + regression tests [W1, POLISH-01]
+- [ ] 11-02-PLAN.md — Assembly fixes (4 Gemini findings: payload-spread for commitEffects, native-async, bi-encoder fallback annotation, token-budget pre-deduct) + regression tests [W1, POLISH-02]
+- [ ] 11-03-PLAN.md — Ingestion fixes (6 Gemini findings) + test rewrites + test-discipline lint + sanitized production-shape snapshot + WIR-promoted integration test [W1, POLISH-03..06]
+- [ ] 11-04-PLAN.md — Methodology fix: harness B-arm via routeFromArtifact + A-arm metadata parity + paired-McNemar verdict + 4-judge ensemble + P9 a/c parametric-knowledge audit [W2, POLISH-07..11]
+- [ ] 11-05-PLAN.md — External-review-gate skill modification (auto-orchestrate + auto-execute-phase) + scripts/external-review-gate.cjs orchestrator [W2, POLISH-12]
+- [ ] 11-06-PLAN.md — Q1: within-corpus paired-McNemar bind on locked 30 probes [W3, POLISH-13]
+- [ ] 11-07-PLAN.md — Q2 (conditional on Q1 BIND_POSITIVE): disjoint-probe rebind on 60 fresh probes [W3, POLISH-14]
+- [ ] 11-08-PLAN.md — Q3 (conditional on Q1+Q2 BIND_POSITIVE): cross-corpus on big-mozzy-v2 + 11-RESULTS.md authoring + v6.0.0 retag (operator-confirmed) + STATE/ROADMAP/REQUIREMENTS update [W3, POLISH-15..16]
 
 **Spec**: `.planning/research/2026-05-09-v6-polish.md` (committed `a9fa77e`) — exhaustive with 6 locked decisions, pre-committed conditional outcomes, methodology gates promoted from this polish, and complete must-fix list mapping each Gemini finding to a wave/task.
 
@@ -182,7 +192,7 @@ Phase 8 (substrate) → Phase 9 (empirical) → Phase 10 (conditional ship). Dec
 | 8. Transcript ingestion substrate | v6.0 | 5/5 | Complete | 2026-05-08 |
 | 9. Empirical measurement | v6.0 | 4/4 | Complete (verdict invalidated post-hoc; see P11) | 2026-05-09 |
 | 10. Conditional ship | v6.0 | 4/4 | Complete (regressions found post-hoc; see P11) | 2026-05-09 |
-| 11. Polish — land v6 properly | v6.0 | 0/N | In progress | started 2026-05-09 |
+| 11. Polish — land v6 properly | v6.0 | 0/8 | In progress (planned 2026-05-09) | started 2026-05-09 |
 
 ---
 

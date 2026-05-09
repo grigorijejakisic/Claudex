@@ -55,6 +55,35 @@ Promoted from v5.0.0 silent-fail lesson. Mandatory gate for every v6 engineering
 - [ ] **WIR-01**: Every v6 engineering phase ships a production-shape integration test that runs the actual production code path against fixtures matching every DB shape currently in the wild — V17-collapsed at minimum, plus base-table fresh-DB. Tests must run the *exported* function (e.g., `upsertChunk`, `routeFromArtifact`) against the fixture shape, not a mocked database.
 - [ ] **WIR-02**: P8 substrate ship gates include WIR-01 alongside the existing 8 ship gates (Vesna, vitest integration, build, full suite, sc3, handoff pickup, bundle smoke, doctor). Wire-test failure blocks ship; same severity as Vesna failure.
 
+### Polish — land v6 properly (POLISH)
+
+Phase 11 — close v6.0.0 *once* with a corrected, defensible verdict. The autonomous v6.0.0 tag from 2026-05-09 ~03:46 didn't survive pre-push review (4 of 5 Gemini reviews returned grade F; 3 independent reasons the +0.0038 bind is structurally invalid; 13+ critical code regressions). Source: `.planning/research/2026-05-09-v6-polish.md` (commit `a9fa77e`); audit trail: `.planning/audits/2026-05-09-v6-gemini-reviews/`.
+
+**W1 — Code regressions (engineering)**
+
+- [ ] **POLISH-01**: Routing fixes in `transcript-routing.ts` — null-body coalescing, telemetry-bypass try/catch isolation, time-window absolute-distance ordering. Addresses Gemini Routing #1, #2, #3.
+- [ ] **POLISH-02**: Assembly fixes in `deliberation-surface.ts` + assembler integration — preserve `commitEffects` via payload spread, native-async `assembleFullContext`, surface `bi_encoder_budget_applied` as `## Deliberation Surfaced (low-confidence retrieval)` header annotation, pre-deduct header + separator overhead from token budget. Addresses Gemini Assembly #1, #2, #3, #4.
+- [ ] **POLISH-03**: Ingestion fixes in `ingest-session.ts` + chunker + `upsertChunk` — `INSERT ... ON CONFLICT DO UPDATE` metadata, session-level cleanup before re-ingest, vec0 DELETE before empty-body skip, explicit missing-file telemetry + `result.errors = -1` sentinel, format-preserving sub-chunker tracking offsets, hard-cap sub-chunks at embedder token limit. Addresses Gemini Ingestion #1–6.
+- [ ] **POLISH-04**: Test rewrites + test-discipline lint — rewrite ingestion / routing / assembly tests to assert visible failures (not `not.toThrow()` on missing dependencies); ship a CI-integrated lint that flags `expect(...).not.toThrow()` patterns on missing-dependency tests. Lands in same wave as POLISH-01..03.
+- [ ] **POLISH-05**: Production-shape integration test gate (WIR-promoted) — sanitized snapshot of live DB committed to `.planning/fixtures/`; integration tests against actual code paths (`upsertChunk`, `routeFromArtifact`, `appendDeliberationSurfaceToPayload`) against the snapshot; gate added alongside Vesna / sc3 / WIR-01 in ship-gates.
+- [ ] **POLISH-06**: Vesna preserved ≥ 26/26 throughout W1 (≥ not =; W1 may add probes, never lower count).
+
+**W2 — Methodology fix + skill update (engineering)**
+
+- [ ] **POLISH-07**: Harness B-arm replaced with direct call to production `routeFromArtifact`. Fixes Gemini Harness #2 (B-arm dense-KNN ≠ production temporal SQL hard-join).
+- [ ] **POLISH-08**: Prong-2 metadata-starvation fixed — give A-arm the same `session_id` + `turn_index` metadata access as B-arm, OR remove the metadata-citation requirement from the prong-2 rubric. Fixes Gemini Harness #1.
+- [ ] **POLISH-09**: Pooling replaced with paired-McNemar exact test on 30-probe paired pass/fail patterns; minimum-discordant-pair threshold (≥5) pre-committed (INCONCLUSIVE if <5 regardless of p-value). Fixes Gemini Harness #4 + Architecture #5.
+- [ ] **POLISH-10**: 4-judge ensemble wired across families (Gemini-3-Flash via Ollama paid cloud passthrough, Claude Opus 4.7 via OAuth, GLM-5.1, Kimi-K2.6); 3-of-4 majority with pre-committed 3-of-3 fallback if any judge errors >10% of probes. Fixes Gemini Harness #6 + Architecture #2.
+- [ ] **POLISH-11**: P9 probes a/c parametric-knowledge audit — examine kinds a/c against the parametric-knowledge confound finding; document findings in 11-RESULTS.md; do NOT rewrite the original 30 probes (audit-trail integrity). Fixes Gemini Harness #5.
+- [ ] **POLISH-12**: External-review gate skill modification — `/auto-orchestrate` and `auto-execute-phase` skills gain a phase close-out hook that spawns external-reviewer pass (Gemini ensemble; Codex when reachable, optional/skippable when unavailable); findings classify as signoff / block / log; mandatory default. Standalone plan in W2. Fixes Gemini Architecture #7.
+
+**W3 — Re-bind + conditional ship (empirical OR documentation)**
+
+- [ ] **POLISH-13**: Q1 within-corpus paired-McNemar bind — r1 fresh seed + r2 fresh seed on locked 30-probe set; production routing path; A-arm given metadata; 4-judge ensemble. Pass: McNemar exact p < 0.05 on paired pass/fail (with ≥5 discordant pairs).
+- [ ] **POLISH-14**: Q2 disjoint-probe rebind (CONDITIONAL: runs only if Q1 BIND POSITIVE) — author 60 fresh probes (30 per replication, no overlap with P9 locked set) with parametric-knowledge confound structurally avoided by design. Pass: Wilson lower bound > 0 on pooled n=60.
+- [ ] **POLISH-15**: Q3 cross-corpus generalization on big-mozzy-v2 (CONDITIONAL: runs only if Q1 + Q2 BIND POSITIVE) — 30-probe drift fixtures sampled from big-mozzy-v2 history; user-pair authoring (planner flags as checkpoint); same harness, same judge ensemble. Pass: Wilson lower bound > 0 on n=30 (or paired McNemar p < 0.05). Lacuna-betting-9f1d552c is stretch-goal if budget permits.
+- [ ] **POLISH-16**: 11-RESULTS.md authoring + v6.0.0 retag — verdict reflecting actual rebound data per the spec's pre-committed conditional outcomes table; delete local v6.0.0 tag; re-tag with annotation matching verdict (positive bind / KILL receipt / inconclusive triggers P11.1 corpus expansion + no tag). Operator-confirmed public push (NOT autonomous).
+
 ## v7+ Requirements (deferred)
 
 Acknowledged but not in v6 scope. Re-examined at v6 close.
@@ -110,10 +139,26 @@ Filled by roadmapper during step 10. Updated through phase execution.
 | ENG-04 | Phase 9 | Pending |
 | WIR-01 | Phase 8 + Phase 10 | Pending |
 | WIR-02 | Phase 8 | Pending |
+| POLISH-01 | Phase 11 (W1) | Pending |
+| POLISH-02 | Phase 11 (W1) | Pending |
+| POLISH-03 | Phase 11 (W1) | Pending |
+| POLISH-04 | Phase 11 (W1) | Pending |
+| POLISH-05 | Phase 11 (W1) | Pending |
+| POLISH-06 | Phase 11 (W1) | Pending |
+| POLISH-07 | Phase 11 (W2) | Pending |
+| POLISH-08 | Phase 11 (W2) | Pending |
+| POLISH-09 | Phase 11 (W2) | Pending |
+| POLISH-10 | Phase 11 (W2) | Pending |
+| POLISH-11 | Phase 11 (W2) | Pending |
+| POLISH-12 | Phase 11 (W2) | Pending |
+| POLISH-13 | Phase 11 (W3) | Pending |
+| POLISH-14 | Phase 11 (W3) | Pending |
+| POLISH-15 | Phase 11 (W3) | Pending |
+| POLISH-16 | Phase 11 (W3) | Pending |
 
 **Coverage:**
-- v6 requirements: 17 total
-- Mapped to phases: 17
+- v6 requirements: 33 total (17 v6 core + 16 POLISH)
+- Mapped to phases: 33
 - Unmapped: 0 ✓
 
 ## v5 Validated (closed 2026-05-08)
