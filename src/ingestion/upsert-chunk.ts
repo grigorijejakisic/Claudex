@@ -7,7 +7,12 @@
  * silent-fail lesson promoted live-wiring to ship-gate severity.
  *
  * Idempotent on the V32 UNIQUE(session_id, turn_index, role, sub_index)
- * constraint via ON CONFLICT DO NOTHING.
+ * constraint via ON CONFLICT DO UPDATE — the body, timestamp, provenance,
+ * and wrapper_redacted columns are updated to match the latest call (so
+ * re-ingest after a redaction-rule or chunker change rewrites the metadata
+ * to stay in sync with the freshly-computed embedding). POLISH-03 / Gemini
+ * Ingestion Finding #1 closes the metadata-vector drift the previous
+ * `DO NOTHING` semantics produced.
  *
  * The closed-enum CHECK constraints on `role` and `provenance` are
  * structural (V32 schema). Bad values throw — caller treats throws as
@@ -22,12 +27,22 @@ import type { Database } from 'better-sqlite3';
 import { cachedPrepare } from '../core/stmt-cache.js';
 import type { ChunkV6 } from './transcript-chunker-v6.js';
 
+// POLISH-03 — Gemini Ingestion Finding #1: ON CONFLICT DO UPDATE replaces
+// DO NOTHING so re-ingest after redaction-rule / chunker / parseWrappers
+// changes rewrites the metadata to match the freshly-computed embedding.
+// session_id/turn_index/role/sub_index are part of the conflict key — already
+// equal on a conflict — so omit them from SET to avoid no-op rewrites.
 const UPSERT_SQL = `
 INSERT INTO transcript_chunk_v6 (
   session_id, project_id, turn_index, sub_index, role, provenance,
   body, created_at_epoch_ms, wrapper_redacted
 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-ON CONFLICT(session_id, turn_index, role, sub_index) DO NOTHING
+ON CONFLICT(session_id, turn_index, role, sub_index) DO UPDATE SET
+  project_id = excluded.project_id,
+  provenance = excluded.provenance,
+  body = excluded.body,
+  created_at_epoch_ms = excluded.created_at_epoch_ms,
+  wrapper_redacted = excluded.wrapper_redacted
 `;
 
 export function upsertChunk(db: Database, chunk: ChunkV6): void {
