@@ -152,4 +152,38 @@ describe('loadConfig', () => {
     const config = loadConfig();
     expect(config.embeddings.provider).toBe('提供者');
   });
+
+  // v6.routing — Phase 10 CONTEXT decision 3 (five locked first-principles defaults)
+  it('exposes v6.routing block with five locked defaults', () => {
+    mockReadJsonFile.mockReturnValue(null);
+    const config = loadConfig();
+    expect(config.v6.routing.top_k_per_artifact).toBe(3);
+    expect(config.v6.routing.max_k_per_query).toBe(12);
+    expect(config.v6.routing.token_pct_cap).toBe(15);
+    expect(config.v6.routing.bi_encoder_budget_pct).toBe(50);
+    expect(config.v6.routing.reranker_mode).toBe('bi_encoder_primary');
+  });
+
+  it('coerces v6.routing fields with wrong types back to defaults', () => {
+    mockReadJsonFile.mockReturnValue({
+      v6: { routing: { top_k_per_artifact: 'three', reranker_mode: 'bogus_mode' } },
+    });
+    const config = loadConfig();
+    expect(config.v6.routing.top_k_per_artifact).toBe(3);
+    expect(config.v6.routing.reranker_mode).toBe('bi_encoder_primary');
+  });
+
+  it('accepts cross_encoder_primary as a valid reranker_mode', () => {
+    mockReadJsonFile.mockReturnValue({
+      v6: { routing: { reranker_mode: 'cross_encoder_primary' } },
+    });
+    const config = loadConfig();
+    expect(config.v6.routing.reranker_mode).toBe('cross_encoder_primary');
+  });
+
+  it('replaces v6.routing entirely when block is a primitive', () => {
+    mockReadJsonFile.mockReturnValue({ v6: { routing: 'broken' } });
+    const config = loadConfig();
+    expect(config.v6.routing).toEqual(getDefaultConfig().v6.routing);
+  });
 });

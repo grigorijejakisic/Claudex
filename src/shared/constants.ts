@@ -92,6 +92,16 @@ export const DEFAULT_CONFIG = {
     fts5_search: true,
     error_fingerprint: false,
   },
+  // v6 routing surface (Phase 10) — defaults locked from .planning/phases/10-conditional-ship/10-CONTEXT.md decisions 1-3
+  v6: {
+    routing: {
+      top_k_per_artifact: 3,
+      max_k_per_query: 12,
+      token_pct_cap: 15,
+      bi_encoder_budget_pct: 50,
+      reranker_mode: 'bi_encoder_primary' as 'bi_encoder_primary' | 'cross_encoder_primary',
+    },
+  },
 } as const;
 
 /**

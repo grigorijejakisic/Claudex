@@ -73,6 +73,20 @@ export interface ClaudexConfig {
      */
     error_fingerprint: boolean;
   };
+  /**
+   * v6 routing surface (Phase 10 — CONTEXT decisions 1-3).
+   * Five locked first-principles defaults consumed by transcript-routing.ts
+   * (routing layer) and deliberation-surface.ts (assembly token budget).
+   */
+  v6: {
+    routing: {
+      top_k_per_artifact: number;
+      max_k_per_query: number;
+      token_pct_cap: number;
+      bi_encoder_budget_pct: number;
+      reranker_mode: 'bi_encoder_primary' | 'cross_encoder_primary';
+    };
+  };
   adapter: string;
 }
 
@@ -145,6 +159,27 @@ function validateConfig(config: ClaudexConfig): ClaudexConfig {
     for (const [field, expectedType] of Object.entries(fields)) {
       if (typeof section[field] !== expectedType) {
         section[field] = defaultSection[field];
+      }
+    }
+  }
+
+  // v6.routing nested validation (CONTEXT decision 3 — five locked keys)
+  const cfgAny = config as unknown as Record<string, unknown>;
+  if (typeof cfgAny.v6 !== 'object' || cfgAny.v6 === null || Array.isArray(cfgAny.v6)) {
+    cfgAny.v6 = (defaults as unknown as Record<string, unknown>).v6;
+  } else {
+    const v6 = cfgAny.v6 as Record<string, unknown>;
+    if (typeof v6.routing !== 'object' || v6.routing === null || Array.isArray(v6.routing)) {
+      v6.routing = (defaults.v6 as unknown as Record<string, unknown>).routing;
+    } else {
+      const r = v6.routing as Record<string, unknown>;
+      const dr = defaults.v6.routing;
+      if (typeof r.top_k_per_artifact !== 'number') r.top_k_per_artifact = dr.top_k_per_artifact;
+      if (typeof r.max_k_per_query !== 'number') r.max_k_per_query = dr.max_k_per_query;
+      if (typeof r.token_pct_cap !== 'number') r.token_pct_cap = dr.token_pct_cap;
+      if (typeof r.bi_encoder_budget_pct !== 'number') r.bi_encoder_budget_pct = dr.bi_encoder_budget_pct;
+      if (r.reranker_mode !== 'bi_encoder_primary' && r.reranker_mode !== 'cross_encoder_primary') {
+        r.reranker_mode = dr.reranker_mode;
       }
     }
   }
