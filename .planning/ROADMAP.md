@@ -134,7 +134,7 @@ Reframe artifact: `.planning/reframes/2026-05-05-multi-handle-kill.md`. Aggregat
 **Plans**: 8 plans across 3 waves (planned 2026-05-09 by `/auto-plan-phase 11`).
 
 **Plans:**
-- [ ] 11-01-PLAN.md — Routing fixes (3 Gemini findings: null-body coalesce, telemetry-bypass isolation, time-distance ordering) + regression tests [W1, POLISH-01]
+5/8 plans executed
 - [ ] 11-02-PLAN.md — Assembly fixes (4 Gemini findings: payload-spread for commitEffects, native-async, bi-encoder fallback annotation, token-budget pre-deduct) + regression tests [W1, POLISH-02]
 - [ ] 11-03-PLAN.md — Ingestion fixes (6 Gemini findings) + test rewrites + test-discipline lint + sanitized production-shape snapshot + WIR-promoted integration test [W1, POLISH-03..06]
 - [ ] 11-04-PLAN.md — Methodology fix: harness B-arm via routeFromArtifact + A-arm metadata parity + paired-McNemar verdict + 4-judge ensemble + P9 a/c parametric-knowledge audit [W2, POLISH-07..11]
@@ -192,7 +192,7 @@ Phase 8 (substrate) → Phase 9 (empirical) → Phase 10 (conditional ship). Dec
 | 8. Transcript ingestion substrate | v6.0 | 5/5 | Complete | 2026-05-08 |
 | 9. Empirical measurement | v6.0 | 4/4 | Complete (verdict invalidated post-hoc; see P11) | 2026-05-09 |
 | 10. Conditional ship | v6.0 | 4/4 | Complete (regressions found post-hoc; see P11) | 2026-05-09 |
-| 11. Polish — land v6 properly | v6.0 | 0/8 | In progress (planned 2026-05-09) | started 2026-05-09 |
+| 11. Polish — land v6 properly | 5/8 | In Progress|  | started 2026-05-09 |
 
 ---
 
