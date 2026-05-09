@@ -51,13 +51,16 @@ Reframe artifact: `.planning/reframes/2026-05-05-multi-handle-kill.md`. Aggregat
 
 </details>
 
-### ✅ v6.0 Deliberation Surfacing — SHIPPED 2026-05-09
+### 🔄 v6.0 Deliberation Surfacing — POLISH IN PROGRESS (Phase 11)
 
 **Milestone Goal:** Surface the verbatim moments that produced decisions and crystallized lessons at retrieval time, not the summaries about them. Make the agent touch the stove, not be told about it.
 
+**Status:** v6.0.0 was tagged locally on 2026-05-09 ~03:46 by autonomous orchestration but pre-push consultation (5 Gemini reviews) surfaced verdict-invalidating methodology defects + critical code regressions. Polish work consolidated as **Phase 11**. v6 is not closed until Phase 11 lands and v6.0.0 is re-tagged with a corrected annotation reflecting the polish-rerun verdict. Audit trail: `.planning/audits/2026-05-09-v6-gemini-reviews/`. Spec: `.planning/research/2026-05-09-v6-polish.md`.
+
 - [x] **Phase 8: Transcript ingestion substrate** _(type: engineering)_ — SHIPPED 2026-05-08. V32 schema bump + transcript-chunk write path + JSONL ingestion hook + redaction-at-ingestion + WIR live-wiring ship gate.
-- [x] **Phase 9: Empirical measurement** _(type: empirical)_ — SHIPPED 2026-05-09 (BOUND POSITIVE). Pooled n=60 across 2 replications; Δ +0.1667; Wilson Δ CI [+0.0038, +0.3434]. Bi-encoder-only retrieval baseline; per-kind concentration in kinds b/d/e.
-- [x] **Phase 10: Conditional ship** _(type: engineering branch)_ — SHIPPED 2026-05-09. Routing + assembly + Vesna 21→26 + WIR-01 wire-test + 9/9 ship gates + v6.0.0 annotated tag (operator-confirms public push).
+- [x] **Phase 9: Empirical measurement** _(type: empirical)_ — SHIPPED 2026-05-09 (originally BOUND POSITIVE; verdict invalidated post-hoc by Gemini methodology audit — see Phase 11). Pooled n=60 across 2 replications; Δ +0.1667; Wilson Δ CI [+0.0038, +0.3434]. Bi-encoder-only retrieval baseline; per-kind concentration in kinds b/d/e.
+- [x] **Phase 10: Conditional ship** _(type: engineering branch)_ — SHIPPED 2026-05-09. Routing + assembly + Vesna 21→26 + WIR-01 wire-test + 9/9 ship gates + v6.0.0 annotated tag (operator-confirms public push). Note: 3 critical regressions surfaced post-hoc by Gemini review — Phase 11 W1 fixes.
+- [ ] **Phase 11: Polish — land v6 properly** _(type: engineering + empirical hybrid)_ — STARTED 2026-05-09. Three internal waves: (W1) code regressions across routing / assembly / ingestion; (W2) methodology fix for the P9 harness + multi-judge ensemble + bake external-review gate into auto-orchestrate; (W3) re-bind under corrected methodology + cross-corpus generalization on big-mozzy-v2 + conditional ship (positive bind / kill receipt / inconclusive). Closes v6.0.0 once with the annotation matching whatever the corrected verdict produces. NEVER pushes during the polish. v6.0.0 tag delete-and-retag at close.
 
 ## Phase Details
 
@@ -115,7 +118,26 @@ Reframe artifact: `.planning/reframes/2026-05-05-multi-handle-kill.md`. Aggregat
 - [x] 10-03-PLAN.md — Vesna 21→26: 5 deliberation-engagement probes (a-e) + setup_step DSL extension + dispatcher
 - [x] 10-04-PLAN.md — WIR-01 wire-test + 9/9 ship gates + CHANGELOG `[6.0.0]` + STATE/ROADMAP flip + v6.0.0 annotated tag (autonomous: false on the public push)
 
-**Outcome:** Phase 10 SHIPPED 2026-05-09 (engineering branch — bound-POSITIVE verdict from P9 unlocked routing+assembly path). Routing layer landed (`src/retrieval/transcript-routing.ts` — bi-encoder primary; cross-encoder behind `v6.routing.reranker_mode` flag; artifact-kind-agnostic per CONTEXT decision 2). Assembly layer landed (`src/assembly/deliberation-surface.ts` — labeled citation format + advisory narration + asymmetric token budget per CONTEXT decision 3; opt-in via `FullAssemblyParams.deliberationSurfacing` + `appendDeliberationSurfaceToPayload` async helper at L2.5 cascade). Vesna 21→26 (5 deliberation-engagement probes a-e). WIR-01 wire-test against V17-collapsed + base-table fresh-DB fixtures (4 assertions × 2 fixture shapes = 8 sub-assertions). All 9 ship gates PASS. v6.0.0 annotated tag created locally; public push pending operator confirm.
+**Outcome:** Phase 10 SHIPPED 2026-05-09 (engineering branch — bound-POSITIVE verdict from P9 unlocked routing+assembly path). Routing layer landed (`src/retrieval/transcript-routing.ts` — bi-encoder primary; cross-encoder behind `v6.routing.reranker_mode` flag; artifact-kind-agnostic per CONTEXT decision 2). Assembly layer landed (`src/assembly/deliberation-surface.ts` — labeled citation format + advisory narration + asymmetric token budget per CONTEXT decision 3; opt-in via `FullAssemblyParams.deliberationSurfacing` + `appendDeliberationSurfaceToPayload` async helper at L2.5 cascade). Vesna 21→26 (5 deliberation-engagement probes a-e). WIR-01 wire-test against V17-collapsed + base-table fresh-DB fixtures (4 assertions × 2 fixture shapes = 8 sub-assertions). All 9 ship gates PASS. v6.0.0 annotated tag created locally; public push pending operator confirm. **Note (2026-05-09):** Pre-push Gemini consultation surfaced 3 verdict-invalidating methodology defects in P9 + 12 critical code regressions in P10 + 6 silent-failure modes in P8 ingestion — Phase 11 polish addresses all of them.
+
+### Phase 11: Polish — land v6 properly
+**Goal**: Close v6 once, correctly. The autonomous v6.0.0 tag from 2026-05-09 ~03:46 didn't survive pre-push review — the +0.0038 Wilson lower-bound bind is structurally invalid for three independent reasons (harness B-arm uses dense vector KNN while production routing uses temporal SQL hard-join; prong-2 rubric requires session_id/turn_index citations but A-arm context strips this metadata while B-arm is fed it; pooling treats r1+r2 as n=60 independent samples but they ran the same 30 probes — pseudoreplication), and the routing/assembly/ingestion paths have 13+ critical code regressions (3 assembly state-corruption bugs, 6 ingestion silent-failure modes, 2 routing non-throwing-contract violations, 1 chunker formatting destruction). Polish lands v6.0.0 *once*, with whatever annotation the corrected methodology produces.
+
+**Internal wave structure** (sequential):
+
+1. **W1 — Code regressions** _(engineering)_ — Fix the 13+ critical code findings from `.planning/audits/2026-05-09-v6-gemini-reviews/`. Includes: routing null-body coalescing + telemetry-bypass try/catch; assembly payload-spread + native-async + bi-encoder-budget surfacing; ingestion DELETE-then-INSERT idempotency + ghost-row cleanup + visible missing-file telemetry + bounded-chunk overflow split + format-preserving sub-chunker; chunker overhaul. Tests rewritten to assert visible failures (not enshrine silent successes). Production-shape integration tests against sanitized DB snapshot promoted to ship gate.
+
+2. **W2 — Methodology fix** _(engineering)_ — Replace harness B-arm with direct call to production `routeFromArtifact`. Resolve prong-2 metadata starvation (give A-arm metadata OR remove the metadata-citation requirement). Replace pooling with paired McNemar's test on identical-probe pass/fail patterns OR run replications with disjoint probe pools. Wire 4-judge ensemble (Gemini-3-Flash + Claude Opus 4.7 + GLM-5.1 + Kimi-K2.6) with 3-of-4 majority + pre-committed 3-of-3 fallback if any judge errors >10% of probes. Audit probes a/c for parametric-knowledge confounds. Bake external-review gate into auto-orchestrate / auto-execute-phase skill (mandatory default for all engineering + empirical phase close-outs going forward).
+
+3. **W3 — Re-bind + conditional ship** _(empirical OR documentation)_ — Run Q1 (within-corpus paired McNemar, locked 30-probe set) → if positive, run Q2 (disjoint-probe rebind on 60 fresh probes) → if positive, run Q3 (cross-corpus generalization on big-mozzy-v2 session log corpus). Author 11-RESULTS.md with verdict reflecting actual data. Tag v6.0.0 locally with annotation matching the verdict (positive bind / kill receipt / inconclusive triggers P11.1 corpus expansion + no tag). Operator-confirmed public push.
+
+**Plans**: TBD by `/auto-plan-phase 11` — likely 7-10 plans across the 3 waves.
+
+**Spec**: `.planning/research/2026-05-09-v6-polish.md` (committed `a9fa77e`) — exhaustive with 6 locked decisions, pre-committed conditional outcomes, methodology gates promoted from this polish, and complete must-fix list mapping each Gemini finding to a wave/task.
+
+**Audit trail**: `.planning/audits/2026-05-09-v6-gemini-reviews/` — 5 reviews (architecture, assembly, ingestion, harness, routing), 5 prompts, README with finding→Phase-11-task index.
+
+**Outcome**: TBD. Pre-committed: positive bind ships v6.0.0 with corrected annotation; bound-negative ships substrate-only with kill receipt + v6.0.0 with kill leading; inconclusive triggers P11.1 corpus expansion at n=50+ on locked fixture-set with no v6.0.0 tag yet.
 
 ## Phase typing rationale
 
@@ -158,9 +180,10 @@ Phase 8 (substrate) → Phase 9 (empirical) → Phase 10 (conditional ship). Dec
 | 6. Crash-resilient episode boundary | v5.0 | 5/5 | Complete | 2026-05-05 |
 | 7. v4 coexistence / migration / ship | v5.0 | 5/5 | Complete | 2026-05-08 |
 | 8. Transcript ingestion substrate | v6.0 | 5/5 | Complete | 2026-05-08 |
-| 9. Empirical measurement | v6.0 | 4/4 | Complete (BOUND POSITIVE) | 2026-05-09 |
-| 10. Conditional ship | v6.0 | 4/4 | Complete | 2026-05-09 |
+| 9. Empirical measurement | v6.0 | 4/4 | Complete (verdict invalidated post-hoc; see P11) | 2026-05-09 |
+| 10. Conditional ship | v6.0 | 4/4 | Complete (regressions found post-hoc; see P11) | 2026-05-09 |
+| 11. Polish — land v6 properly | v6.0 | 0/N | In progress | started 2026-05-09 |
 
 ---
 
-*Roadmap last updated: 2026-05-09 — v6.0 milestone CLOSED. Phase 10 SHIPPED via /auto-execute-phase; v6.0.0 annotated tag created locally on master. Public push (`git push origin master --tags`) is the operator's final action per CLAUDE.md rule 1 + 10-CONTEXT § Decisions ("NEVER push autonomously").*
+*Roadmap last updated: 2026-05-09 — v6.0 milestone REOPENED for Phase 11 polish. Pre-push Gemini review (`.planning/audits/2026-05-09-v6-gemini-reviews/`) surfaced verdict-invalidating methodology defects + critical code regressions; v6.0.0 local tag stays unpushed; Phase 11 lands v6 properly. v6.0.0 will be delete-and-retagged at Phase 11 close-out with the corrected annotation. Operator-confirmed push only after Phase 11 produces a defensible verdict.*
