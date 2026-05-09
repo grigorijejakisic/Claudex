@@ -7,29 +7,61 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Added (v6 Phase 8 — Transcript ingestion substrate)
+### Added
 
-- **V32 schema migration: `transcript_chunk_v6` metadata table + `vec_transcript_chunks_v6` vec0 virtual table.** Idempotent on base-table fresh-DB and V17-collapsed shapes; legacy artifact-kernel `transcript_chunk` slot left untouched. Closed-enum CHECK on `role` and `provenance` matches V25 episodic_events + V30/V31 learnings.
-- **Transcript ingestion pipeline (Phase 8 — v6 substrate).** Pure-function `chunkTranscript` (turn-boundary primary, sentence-boundary sub-chunk on >1500-token turns) + redaction-at-ingestion via `parseWrappers` (Mem0-trap structurally closed at the new write surface). `upsertChunk` exported write surface used by hooks + tests against real DB shapes — never `:memory:`-with-default-schema.
-- **CC SessionEnd hook + Angel heartbeat drain.** Hook fires `enqueueSessionIngestion` on every `clean_endsession` close-marker (single `session_events` INSERT, no LLM/embedding work in the hook). Angel heartbeat drains the queue at LIMIT 5 sessions per tick — JSONL parse → chunkTranscript → arctic-embed2 embed → upsertChunk + `vec_transcript_chunks_v6` INSERT. Per-session try/catch; embedding failures degrade to metadata-only rows.
-- **`bun run backfill:transcripts`** — operator-invoked full-archive backfill CLI. Walks `~/.claude/projects/**/*.jsonl`, mtime-ordered, idempotent re-runs (skips sessions with at least one `transcript_chunk_v6` row). `--dry-run` prints summary.
-- **`bun run reranker:fitness`** — operator-invoked BGE-v2-m3 vs arctic-embed2 top-3 overlap check on a 50-chunk sample. Writes markdown report under `context/measurements/{date}-reranker-fitness.md`. Informational only — never a ship blocker. Below-threshold sets P9's reranker default to bi-encoder-only baseline per CONTEXT decision 4.
-- **`'transcript_ingestion_pending'` event type** added to the `EventType` enum.
+- _Nothing yet._ Track v6.x milestone planning at `.planning/STATE.md` once it kicks off.
+
+## [6.0.0] — 2026-05-09
+
+**Deliberation Surfacing milestone — bound POSITIVE.** Pooled n=60 across 2 replications: Δ pass-rate +0.1667, Wilson Δ CI **[+0.0038, +0.3434]** — lower bound binds zero by 38 thousandths, modest but honest. Per-replication: r1 (s=14, t=18) and r2 (s=15, t=21) both INCONCLUSIVE individually (small n); pooling cleared zero per pre-committed CONTEXT decision 4. Retrieval baseline: **bi-encoder fallback** (cross-encoder fitness 56.0% < 60% threshold post-backfill — promotion deferred until corpus growth or distribution shift triggers a re-bind). Per-kind concentration in kinds **b/d/e** (threshold-source, dependency-change, assumption-drift) — kinds a/c (sample-size shift, scope-change) flat in P9 and ride along as non-regression baseline.
+
+Aggregator: [`.planning/aggregates/deliberation-surfacing.md`](.planning/aggregates/deliberation-surfacing.md) (3 BoundExperience entries: 9-r1, 9-r2, 9-pooled-r1+r2). Pre-commitment audit anchor: 09-CONTEXT.md commit `00ab2bb`.
+
+### Added
+
+- **Phase 8 — Transcript ingestion substrate (V32, shipped 2026-05-08; re-stated here for milestone-level traceability):** `transcript_chunk_v6` metadata table + `vec_transcript_chunks_v6` vec0 virtual table; pure-function `chunkTranscript` + `upsertChunk` + parseWrappers redaction at the new write surface; SessionEnd hook + Angel heartbeat drain; `bun run backfill:transcripts` + `bun run reranker:fitness` CLIs; WIR-01 wire-test against V17-collapsed + base-table fresh-DB at ninth-gate severity. `TARGET_USER_VERSION` bumped 31 → 32.
+- **Phase 9 — Empirical measurement (BOUND POSITIVE 2026-05-09):** drift-detection probe suite (30 fixtures × 5 kinds × 6 cases each); pre-committed decision rule + locked corpus + Wilson/Newcombe CI binding harness; runner CLI (`bun run benchmark:deliberation-surfacing`); 2 replications run + pooled at n=60 — verdict POSITIVE per CONTEXT decision rule.
+- **Phase 10 — Routing + assembly (engineering branch, ROU-01..03 + ASM-01..03):**
+  - `src/retrieval/transcript-routing.ts` — `routeFromArtifact` + `routeFromArtifacts` exported. Artifact → transcript-chunk fan-out joined by `session_id` + configurable time window from `artifact.created_at_epoch_ms`. Bi-encoder primary (snowflake-arctic-embed2 via Ollama); cross-encoder (BGE-reranker-v2-m3 port 7439) reachable behind `v6.routing.reranker_mode='cross_encoder_primary'` flag. Artifact-kind-agnostic ranking (no per-kind weighting — zero measurement support per CONTEXT decision 2). Reranker fallback discipline mirrors hybrid-retrieval RETR-08: capture reason, write one telemetry row, fall through to bi-encoder.
+  - `src/assembly/deliberation-surface.ts` — pure formatter rendering surfaced spans as labeled citations (`From session X turn 47, where ...: ...`) plus the advisory narration line `## Deliberation Surfaced — N spans from M sessions` consistent with Phase 7's "When You Recall — Narrate" discipline.
+  - `src/assembly/sections.ts` adds `formatDeliberationSurfaceSection` wrapper; `src/assembly/assembler.ts` adds opt-in `FullAssemblyParams.deliberationSurfacing` + `appendDeliberationSurfaceToPayload` async helper at L2.5 cascade position. Sites that don't opt in see no behavior change. L2.5 cascade position documented in `.claude/rules/assembly-budget.md`.
+  - `v6.routing.*` config block with five locked first-principles defaults: `top_k_per_artifact=3`, `max_k_per_query=12`, `token_pct_cap=15`, `bi_encoder_budget_pct=50`, `reranker_mode='bi_encoder_primary'` (CONTEXT decision 3).
+- **Vesna 21 → 26 functional probes:** five new `deliberation-engagement-{a,b,c,d,e}-001` probes at production-shape scale, one per P9 drift kind. Kinds a + c (FLAT in P9) included as non-regression baseline; b/d/e exercise the engagement signal. Vesna setup_step DSL extended with `deliberation_surface` kind that writes via `createArtifact` + `upsertChunk` (production write surfaces). Vesna runner now async; composes the L2.5 deliberation surface for engagement probes. P9 fixtures byte-immutable per pre-commitment lock.
+- **WIR-01 wire-test (Phase 10):** `src/tests/integration/phase-10-wire-test.test.ts` — exercises EXPORTED `routeFromArtifacts` + `formatDeliberationSurfaceSection` against V17-collapsed + base-table fresh-DB fixtures. Four assertions: spans retrieved, spans appear in output, zero errors across both shapes, advisory narration line emitted. WIR-02 phase coupling honored — Phase 10 inherits the substrate-ship gate from Phase 8.
 
 ### Changed
 
-- **`TARGET_USER_VERSION` bumped 31 → 32.** `migrations.ts` dispatch + initializeSchema fresh-DB convergence both updated; pre-existing migrations-v31 tests relaxed from `toBe(31)` to `toBeGreaterThanOrEqual(31)` (V29/V30 already used the version-ceiling pattern).
+- `bun run vesna` baseline grows from 21/21 to 26/26 PASS at 100%, gated.
+- `loadConfig` deep-merges + `validateConfig` type-guards the new `v6.routing` block.
+- Default reranker mode for the v6 transcript-routing surface is `bi_encoder_primary` — cross-encoder is an opt-in via the `v6.routing.reranker_mode` config flag (CONTEXT decision 1; promotion deferred until corpus growth or distribution shift triggers a re-bind).
+- **Mem0-trap closure asserted at the v6 write surface (carried through from P8).** Every `KNOWN_WRAPPER_TAGS` variant round-trips through `chunkTranscript` + `upsertChunk` and is structurally absent from the persisted body. Pairs with V28's BEFORE-INSERT trigger on `experience_patterns` (Phase 4) and V31's view-mode learnings.provenance enum (Phase 7) — three structural closures across three write surfaces.
 
-### Ship gates
+### Deferred (carved out of v6.0.0 — re-examined at v6.x or v7+)
 
-- **WIR-01 promoted to ninth-gate severity per the v5.0.1 silent-fail lesson.** Every v6 engineering phase runs the EXPORTED production write surface (`upsertChunk`, `ingestSession`) against V17-collapsed + base-table fresh-DB fixtures — never mocks, never test-only wrappers. Phase 8 wire-test at `src/tests/integration/phase-8-wire-test.test.ts` is the gate.
-- **Mem0-trap closure asserted at the v6 write surface.** Every `KNOWN_WRAPPER_TAGS` variant round-trips through `chunkTranscript` + `upsertChunk` and is structurally absent from the persisted body. Pairs with V28's BEFORE-INSERT trigger on `experience_patterns` (Phase 4) and V31's view-mode learnings.provenance enum (Phase 7) — three structural closures across three write surfaces.
-- **Substrate ship gates (8 of 9 PASS, 1 carry-forward):** Vesna 21/21, Phase 8 vitest 76/76, build clean, full suite no NEW regressions vs Phase-7-immediate-post-merge baseline (27 pre-existing v4-debt failures persist), sc3 88.3% aggregate **but big-mozzy-v2 remains at 70% pre-existing project-content gap** (verified pre-P8 via git-stash test — not a substrate regression), handoff-pickup 5/5, bundle-smoke 7/7, doctor exit 0 + user_version=32, WIR-01 wire test V17-collapsed + base-table fresh-DB both PASS.
+- Per-kind routing weight tuning — production artifacts don't carry drift-kind labels; runtime classification has no measurement support.
+- Cross-encoder re-bind on transcript surface — currently fitness 56% < 60% on conversation-distribution chunks; re-check after corpus growth or distribution shift.
+- Routing default tuning from production telemetry — first measurement-informed retune scheduled after first 2 weeks of production traffic.
+- Kind-a (sample-size) and kind-c (scope-change) null-result investigation — both flat in P9; informs future engagement-metric refinement.
+- Retention policy / forgetting-curve layer (RET-NEW) — required at ~10x current scale; v7+.
+- Cross-harness transcript sources (XHN) — Codex / Aider / Gemini-CLI ingestion; future milestone.
+
+### Ship gates (9/9 PASS)
+
+- **WIR-01/02 phase coupling honored** — substrate (P8) + routing+assembly (P10) both pass at ninth-gate severity per the v5.0.1 silent-fail lesson promotion.
+- `bun run vesna` 26/26 GATED PASS at 100% (entity-recall 5/5, constraint-recall 3/3, handoff-pickup 3/3, cross-project 3/3, lesson-application 3/3, self-instrumented 4/4, deliberation-engagement 5/5).
+- Phase 10 vitest tests 27/27 PASS (routing 9, assembly 10, wire-test 8).
+- `bun run build` clean.
+- `bun run test` 3656/3691 passing; 27 pre-existing v4-debt failures (llama-server-supervisor 18 + llama-client 2 + phase-5-full-gate 7) carry forward unchanged from P8/P9 baseline.
+- `bun run sc3` 88.3% aggregate (5/6 projects ≥80%; **big-mozzy-v2 remains at 70% pre-existing project-content gap** — same carry-forward acknowledged at P8 close, not a P10 regression).
+- handoff-pickup 3/3 (within Vesna).
+- `bun run vitest run src/tests/integration/cli-bundle-smoke.test.ts` 7/7 PASS.
+- `bun run doctor` exit 0; user_version=32, Ollama up, Reranker port 7439 healthy, CC hooks 25/25, Angel heartbeat fresh.
+- WIR-01 wire-test PASS on V17-collapsed + base-table fresh-DB fixtures (4 assertions × 2 fixture shapes = 8 sub-assertions).
 
 ### Coverage
 
-- 76 new tests for the v6 substrate: V32 migration (13), chunker (11), upsertChunk (10), ingest-session (10), backfill (10), reranker fitness (10), Phase 8 ingestion-hook integration (4), WIR-01 wire test (5), Mem0-trap closure (3).
-- No retrieval-side surface in P8 — substrate is reusable regardless of P9 verdict (P10's job, conditional on empirical phase verdict).
+- v6 milestone shipped tests: P8 76 + P9 30-fixture × 2-replication binding measurement + P10 35 (routing 9, assembly 10, wire-test 8, vesna-setup 2, config 4, deliberation-engagement probes 5).
+- No retrieval-side surface change in P8 — substrate was reusable regardless of P9 verdict (P10 routing + assembly is the engineering branch unlocked by the bound-POSITIVE verdict).
 
 ## [5.0.1] — 2026-05-08
 

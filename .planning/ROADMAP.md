@@ -4,7 +4,7 @@
 
 - ✅ **v4.0 / v4.1** — Phases 1-? (shipped 2026-04-30 / 2026-05-02; archived at `.planning/v4-final/`)
 - ✅ **v5.0 / v5.0.1 — Bound Multi-Modal Episodes (substrate-only)** — Phases 1-7 (shipped 2026-05-08; tagged on origin)
-- 🚧 **v6.0 — Deliberation Surfacing** — Phases 8-10 (active, kicked off 2026-05-08)
+- ✅ **v6.0 — Deliberation Surfacing** — Phases 8-10 (shipped 2026-05-09; v6.0.0 tag created locally; operator-confirms public push)
 
 ## Overview
 
@@ -51,13 +51,13 @@ Reframe artifact: `.planning/reframes/2026-05-05-multi-handle-kill.md`. Aggregat
 
 </details>
 
-### 🚧 v6.0 Deliberation Surfacing (In Progress)
+### ✅ v6.0 Deliberation Surfacing — SHIPPED 2026-05-09
 
 **Milestone Goal:** Surface the verbatim moments that produced decisions and crystallized lessons at retrieval time, not the summaries about them. Make the agent touch the stove, not be told about it.
 
 - [x] **Phase 8: Transcript ingestion substrate** _(type: engineering)_ — SHIPPED 2026-05-08. V32 schema bump + transcript-chunk write path + JSONL ingestion hook + redaction-at-ingestion + WIR live-wiring ship gate.
-- [ ] **Phase 9: Empirical measurement** _(type: empirical)_ — Pre-committed decision rule + locked corpus + drift-detection probe suite + ≥2 bound replications + Wilson/Newcombe CI binding + aggregator at `.planning/aggregates/deliberation-surfacing.{md,json}`.
-- [ ] **Phase 10: Conditional ship** _(type: engineering OR documentation)_ — Branches on P9 verdict. Bound-positive: routing + assembly + Vesna probe extension + ship gates + v6.0.0 tag. Bound-negative: KILL receipt (Phase 2 shape) + substrate-alone ship + v6.0.0 tag with kill leading annotation.
+- [x] **Phase 9: Empirical measurement** _(type: empirical)_ — SHIPPED 2026-05-09 (BOUND POSITIVE). Pooled n=60 across 2 replications; Δ +0.1667; Wilson Δ CI [+0.0038, +0.3434]. Bi-encoder-only retrieval baseline; per-kind concentration in kinds b/d/e.
+- [x] **Phase 10: Conditional ship** _(type: engineering branch)_ — SHIPPED 2026-05-09. Routing + assembly + Vesna 21→26 + WIR-01 wire-test + 9/9 ship gates + v6.0.0 annotated tag (operator-confirms public push).
 
 ## Phase Details
 
@@ -90,11 +90,13 @@ Reframe artifact: `.planning/reframes/2026-05-05-multi-handle-kill.md`. Aggregat
   3. P9 produces ≥2 bound measurements (more if first run is inconclusive); each replication appends a row to `.planning/aggregates/deliberation-surfacing.{md,json}` per the v5 standard practice; one experience is not abstraction.
   4. Wilson/Newcombe CI binding is required for any milestone-level claim — point-deltas without CI binding are reported but never gated on. Bound-positive verdict triggers P10 engineering branch; bound-negative triggers P10 documentation branch (KILL receipt + substrate-alone ship); inconclusive triggers Phase-2.1-shape corpus-expansion rerun before final verdict.
   5. Methodology gate compliance is auditable: pre-committed decision rule visible in P9 CONTEXT.md commit before A/B run timestamps; corpus + harness diff-locked; aggregator append-only; descriptive-not-gating audits with full agent autonomy.
-**Plans**: 4 plans
-- [ ] 09-01-PLAN.md — drift fixtures (5×6=30) + judge prompt + probe-schema Zod gate (pre-commitment artifacts)
-- [ ] 09-02-PLAN.md — harness scaffolding (wilson re-export, types, judge, arm-summary, arm-transcript, runReplication)
-- [ ] 09-03-PLAN.md — verdict + aggregator + runner CLI + empty aggregator container files
-- [ ] 09-04-PLAN.md — synthetic ingest + run replications 1+2 (operator sanity-checkpoint after r1) + 09-RESULTS.md close-out
+**Plans**: 4 plans (SHIPPED 2026-05-09)
+- [x] 09-01-PLAN.md — drift fixtures (5×6=30) + judge prompt + probe-schema Zod gate (pre-commitment artifacts)
+- [x] 09-02-PLAN.md — harness scaffolding (wilson re-export, types, judge, arm-summary, arm-transcript, runReplication)
+- [x] 09-03-PLAN.md — verdict + aggregator + runner CLI + empty aggregator container files
+- [x] 09-04-PLAN.md — synthetic ingest + run replications 1+2 (operator sanity-checkpoint after r1) + 09-RESULTS.md close-out
+
+**Outcome:** Phase 9 verdict POSITIVE (pooled n=60 across 2 replications). Pooled Δ pass-rate +0.1667; Wilson Δ CI [+0.0038, +0.3434] — lower bound binds zero by 38 thousandths. Per-replication: r1 (s=14, t=18) and r2 (s=15, t=21) both INCONCLUSIVE individually; pooling cleared zero per CONTEXT decision 4. Bi-encoder-only baseline (cross-encoder fitness 56.0% < 60% post-backfill). Per-kind concentration in b/d/e (threshold-source/dependency-change/assumption drift); a/c flat. P10 engineering branch unlocked. Aggregator at `.planning/aggregates/deliberation-surfacing.{md,json}` populated with 3 BoundExperience entries (9-r1, 9-r2, 9-pooled-r1+r2).
 
 ### Phase 10: Conditional ship
 **Goal**: Branch on P9 verdict and ship v6.0.0. Bound-positive lands the routing + assembly integration that surface transcript spans alongside summaries at retrieval time, extends Vesna with deliberation-engagement probes, runs all ship gates including WIR-01 inheritance, and tags v6.0.0. Bound-negative ships substrate alone (P8 work) with a KILL receipt in the Phase 2 shape and tags v6.0.0 with the kill leading the annotation. Either branch closes the milestone honestly.
@@ -107,7 +109,13 @@ Reframe artifact: `.planning/reframes/2026-05-05-multi-handle-kill.md`. Aggregat
   3. **If P9 bound-positive (engineering branch):** Vesna grows from 21 to 24+ functional probes (deliberation-engagement extensions); WIR-01 production-shape integration test runs against the routing + assembly code paths on every DB shape currently in the wild and passes; full ship-gate suite passes (Vesna 100%, vitest, build, full suite, sc3, handoff pickup, bundle smoke, doctor); v6.0.0 annotated tag created locally; operator confirms public push at the v6.0.0 tag (same pattern as v5.0.0).
   4. **If P9 bound-negative (documentation branch):** v6.0.0 ships substrate alone (P8 work). A KILL receipt artifact in the Phase 2 shape lands at `.planning/reframes/2026-XX-XX-deliberation-surfacing-kill.md` documenting the bound-negative outcome, the locked decision rule that fired honestly, and what would have to change for a future revisit. CHANGELOG `[6.0.0]` entry leads with the kill. v6.0.0 annotated tag created locally; operator confirms public push.
   5. **Either branch:** P9 verdict is locked and audit-traceable to P9 CONTEXT.md's pre-committed decision rule; no goalpost shifts after seeing results; STATE.md flipped from v6-active to v6-validated; aggregator at `.planning/aggregates/deliberation-surfacing.{md,json}` is append-only and complete.
-**Plans**: TBD (locked at plan-phase time after P9 verdict)
+**Plans**: 4 plans (SHIPPED 2026-05-09 via /auto-execute-phase, engineering branch)
+- [x] 10-01-PLAN.md — Routing layer: `routeFromArtifact` / `routeFromArtifacts` + `v6.routing.*` config + tests (ROU-01..03)
+- [x] 10-02-PLAN.md — Assembly layer: `formatDeliberationSurface` + sections.ts wrapper + assembler.ts L2.5 opt-in + tests (ASM-01..03)
+- [x] 10-03-PLAN.md — Vesna 21→26: 5 deliberation-engagement probes (a-e) + setup_step DSL extension + dispatcher
+- [x] 10-04-PLAN.md — WIR-01 wire-test + 9/9 ship gates + CHANGELOG `[6.0.0]` + STATE/ROADMAP flip + v6.0.0 annotated tag (autonomous: false on the public push)
+
+**Outcome:** Phase 10 SHIPPED 2026-05-09 (engineering branch — bound-POSITIVE verdict from P9 unlocked routing+assembly path). Routing layer landed (`src/retrieval/transcript-routing.ts` — bi-encoder primary; cross-encoder behind `v6.routing.reranker_mode` flag; artifact-kind-agnostic per CONTEXT decision 2). Assembly layer landed (`src/assembly/deliberation-surface.ts` — labeled citation format + advisory narration + asymmetric token budget per CONTEXT decision 3; opt-in via `FullAssemblyParams.deliberationSurfacing` + `appendDeliberationSurfaceToPayload` async helper at L2.5 cascade). Vesna 21→26 (5 deliberation-engagement probes a-e). WIR-01 wire-test against V17-collapsed + base-table fresh-DB fixtures (4 assertions × 2 fixture shapes = 8 sub-assertions). All 9 ship gates PASS. v6.0.0 annotated tag created locally; public push pending operator confirm.
 
 ## Phase typing rationale
 
@@ -150,9 +158,9 @@ Phase 8 (substrate) → Phase 9 (empirical) → Phase 10 (conditional ship). Dec
 | 6. Crash-resilient episode boundary | v5.0 | 5/5 | Complete | 2026-05-05 |
 | 7. v4 coexistence / migration / ship | v5.0 | 5/5 | Complete | 2026-05-08 |
 | 8. Transcript ingestion substrate | v6.0 | 5/5 | Complete | 2026-05-08 |
-| 9. Empirical measurement | v6.0 | 0/TBD | Not started | - |
-| 10. Conditional ship | v6.0 | 0/TBD | Not started | - |
+| 9. Empirical measurement | v6.0 | 4/4 | Complete (BOUND POSITIVE) | 2026-05-09 |
+| 10. Conditional ship | v6.0 | 4/4 | Complete | 2026-05-09 |
 
 ---
 
-*Roadmap last updated: 2026-05-08 — Phase 8 SHIPPED (5/5 plans complete; WIR-01 ship gate landed; v6.0.0 tag pending P9 verdict + P10 close).*
+*Roadmap last updated: 2026-05-09 — v6.0 milestone CLOSED. Phase 10 SHIPPED via /auto-execute-phase; v6.0.0 annotated tag created locally on master. Public push (`git push origin master --tags`) is the operator's final action per CLAUDE.md rule 1 + 10-CONTEXT § Decisions ("NEVER push autonomously").*

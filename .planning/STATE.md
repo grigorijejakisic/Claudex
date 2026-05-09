@@ -5,16 +5,16 @@
 See: `.planning/PROJECT.md` (updated 2026-05-08 after v5 closure + v6 milestone kickoff)
 
 **Core value:** v5 closed the *lying-memory* surface; v6 closes the *lazy-memory* surface. Surface the moments that produced decisions and lessons, not summaries about them.
-**Current focus:** v6 — Deliberation Surfacing (Phase 8 SHIPPED 2026-05-08; Phase 9 BOUND POSITIVE 2026-05-09; P10 engineering branch ready to start).
+**Current focus:** v6 — Deliberation Surfacing **CLOSED 2026-05-09**. Phase 8 SHIPPED 2026-05-08; Phase 9 BOUND POSITIVE 2026-05-09; Phase 10 SHIPPED 2026-05-09 with v6.0.0 annotated tag created locally (operator-confirms public push).
 
 ## Current Position
 
-**Current Milestone:** v6 — Deliberation Surfacing
-**Phase:** Phase 9 — Empirical measurement (BOUND POSITIVE 2026-05-09)
+**Current Milestone:** v6 — Deliberation Surfacing — **CLOSED 2026-05-09; Phase 10 SHIPPED via /auto-execute-phase. v6.0.0 tag annotated on master.**
+**Phase:** —
 **Plan:** —
-**Status:** Phase 9 SHIPPED 2026-05-09. Pooled verdict POSITIVE at n=60, Wilson Δ CI [+0.0038, +0.3434]. Per-replication: r1+r2 both INCONCLUSIVE individually (small n); pooling cleared zero. Bi-encoder-only retrieval baseline (cross-encoder fitness 56.0% < 60% threshold, post-backfill). P10 engineering branch unlocked. Two production bug fixes (vec0 BigInt + JSON-extract WHERE) landed alongside (commit 4e9da8c). 47330 transcript chunks + 45553 embeddings substrate. Vesna 21/21 preserved.
+**Status:** v6 CLOSED. Routing layer (`src/retrieval/transcript-routing.ts`), assembly layer (`src/assembly/deliberation-surface.ts` + sections.ts wrapper + assembler.ts L2.5 opt-in), Vesna 21 → 26, WIR-01 wire test, all 9 ship gates PASS, CHANGELOG `[6.0.0]` filled, local annotated `v6.0.0` tag created. Public push (`git push origin master --tags`) is queued for operator confirmation per CLAUDE.md rule 1.
 
-**Last activity:** 2026-05-09 — Phase 9 binding run completed; 09-RESULTS.md authored; aggregator `.planning/aggregates/deliberation-surfacing.json` populated with 3 BoundExperience entries (9-r1, 9-r2, 9-pooled-r1+r2).
+**Last activity:** 2026-05-09 — Phase 10 close-out completed via /auto-execute-phase. v6.0.0 tag annotation leads with the bind narrative (pooled n=60, Wilson CI [+0.0038, +0.3434], retrieval baseline `bi_encoder_fallback`, kinds b/d/e concentration). Aggregator at `.planning/aggregates/deliberation-surfacing.{md,json}` left append-only and untouched per the v5 standard methodology.
 
 ## v5 Verdict Log (CLOSED 2026-05-08)
 
@@ -35,14 +35,15 @@ See: `.planning/PROJECT.md` (updated 2026-05-08 after v5 closure + v6 milestone 
 |-------|------|------|--------|--------------|
 | 8 — Transcript ingestion substrate | V32 schema (transcript_chunk promotion + vec0 binding); JSONL watcher hook into Phase 6 boundary close; redaction-at-ingestion via parseWrappers; chunking strategy locked; backfill scope locked; live-wiring ship gate against V17-collapsed + base-table | engineering | **SHIPPED 2026-05-08** | TRX-01..05 + WIR-01 + WIR-02 |
 | 9 — Empirical measurement | Pre-commit decision rule in CONTEXT.md; lock corpus + harness; build drift-detection probe suite (≥5 condition-shift kinds); A/B with-transcript vs. summary-only baseline; ≥2 bound replications; Wilson/Newcombe CI binding; aggregate to `.planning/aggregates/deliberation-surfacing.{md,json}` | empirical | **BOUND POSITIVE 2026-05-09** | ENG-01..04 |
-| 10 — Conditional ship | Bound positive: routing (BGE-reranker fan-out from artifact references) + assembly (transcript span citations + advisory narration + budget caps) + Vesna probe extension to 24+ + ship gate validation + v6.0.0 tag. Bound negative: KILL receipt (Phase 2 shape) + substrate-alone ship + v6.0.0 tag with kill leading | engineering OR documentation | not started | ROU-01..03 + ASM-01..03 (engineering branch); WIR-01 inherited via WIR-02 phase coupling |
+| 10 — Conditional ship | Bound positive: routing (BGE-reranker fan-out from artifact references) + assembly (transcript span citations + advisory narration + budget caps) + Vesna probe extension to 24+ + ship gate validation + v6.0.0 tag. Bound negative: KILL receipt (Phase 2 shape) + substrate-alone ship + v6.0.0 tag with kill leading | engineering | **SHIPPED 2026-05-09** | ROU-01..03 + ASM-01..03 (engineering branch); WIR-01 inherited via WIR-02 phase coupling |
 
 ## v6 Phase Verdict Log
 
 - **Phase 8 (2026-05-08, type: engineering): SHIPPED.** V32 schema (transcript_chunk_v6 + vec_transcript_chunks_v6) + ingestion pipeline (chunkTranscript + upsertChunk + parseWrappers redaction) + SessionEnd hook enqueue + Angel heartbeat drain + backfill CLI + reranker-fitness CLI. WIR-01 wire test against V17-collapsed + base-table fresh-DB fixtures lands at ninth-gate severity. 76 new tests; Vesna 21/21 preserved. 8 of 9 ship gates PASS (sc3 big-mozzy-v2 at 70% is pre-existing project-content gap verified pre-P8). Boundary-detector enqueue path deferred to v6.x — see 08-03 SUMMARY Rule 4 deferral. NO v6.0.0 tag — that is P10's job after P9's empirical verdict.
 - **Phase 9 (2026-05-09, type: empirical, n=60 pooled across 2 replications): BOUND POSITIVE.** Pooled Δ pass-rate +0.1667, Wilson Δ CI [+0.0038, +0.3434]. Per-replication: r1 (s=14, t=18) and r2 (s=15, t=21) both INCONCLUSIVE individually; pooling cleared zero per CONTEXT decision 4. Bi-encoder-only baseline (cross-encoder fitness 56.0% < 60% post-backfill). Per-kind concentrated in b/d/e (threshold-source/dependency-change/assumption drift); a/c flat. P10 engineering branch unlocked. Two production bugs fixed in-flight (vec0 BigInt + JSON-extract WHERE; commit 4e9da8c). Vesna 21/21 preserved. 47330 chunks + 45553 embeddings substrate. Pre-commitment audit anchor (09-CONTEXT.md@00ab2bb) satisfied. See `.planning/phases/09-empirical-measurement/09-RESULTS.md`.
+- **Phase 10 (2026-05-09, type: engineering): SHIPPED.** v6.0 deliberation-surfacing close-out. Routing layer (`src/retrieval/transcript-routing.ts` — `routeFromArtifact`/`routeFromArtifacts`; bi-encoder primary; cross-encoder behind `v6.routing.reranker_mode` flag; artifact-kind-agnostic per CONTEXT decision 2). Assembly layer (`src/assembly/deliberation-surface.ts` — labeled citation format + advisory narration line + asymmetric token budget per CONTEXT decision 3; opt-in via `FullAssemblyParams.deliberationSurfacing` + async `appendDeliberationSurfaceToPayload` helper at L2.5 cascade). Five new Vesna probes (deliberation-engagement a-e); 21 → 26 PASS at 100%. WIR-01 wire-test against V17-collapsed + base-table fresh-DB fixtures (4 assertions × 2 fixture shapes = 8 sub-assertions, all PASS). All 9 ship gates PASS (vesna 26/26, P10 vitest 27/27, build, full suite 3656/3691 with 27 pre-existing v4-debt unchanged, sc3 88.3% with big-mozzy carry-forward, handoff-pickup 3/3 within vesna, bundle-smoke 7/7, doctor exit 0, WIR-01 PASS). v6.0.0 annotated tag created locally with bind narrative leading the annotation (pooled n=60, Wilson CI [+0.0038, +0.3434], `bi_encoder_fallback` baseline, kinds b/d/e concentration). Operator-confirmed public push pending.
 
-**v6 coverage:** 17/17 requirements mapped, 0 unmapped.
+**v6 coverage:** 17/17 requirements mapped, 0 unmapped. **Milestone CLOSED.**
 
 ## Empirical Methodology (v5 standard, mandatory in v6)
 
@@ -63,8 +64,8 @@ Promoted to standard practice 2026-05-05. Mandatory for v6 P9 empirical phase an
 
 - v4-final archive at `.planning/v4-final/` is read-only history; do not modify.
 - v5.0.0 + v5.0.1 are public on origin. v5 milestone CLOSED.
+- v6.0.0 annotated tag exists locally on master. Public push (`git push origin master --tags`) is the operator's gate; do NOT push autonomously per CLAUDE.md rule 1 + CONTEXT § Decisions ("NEVER push autonomously").
 - Aggregator non-determinism (Phase 4/6/7 close-out pattern) — continue documented "revert as known noise" close-out discipline; queue for v6.x cleanup.
 - 27 pre-existing test failures (llama-server-supervisor, llama-client, phase-5-full-gate) carry forward as v4-debt; not blocking v6.
-- Standing user directive 2026-05-08: autonomous through v6 milestone end; operator-confirms public push at v6.0.0 tag (same pattern as v5).
-- If `/auto-orchestrate` is interrupted, resume via `--from-phase 8`. The disk is the state machine.
-- v6 P10 type-of-phase resolves only after P9 verdict — engineering branch (bound positive) lands routing + assembly; documentation branch (bound negative) lands KILL receipt + substrate-alone ship. Both end at v6.0.0 tag.
+- Standing user directive 2026-05-08: autonomous through v6 milestone end; operator-confirms public push at v6.0.0 tag (same pattern as v5). v6 milestone now CLOSED; next operator action is the public push.
+- v6.x or v7+ deferred ideas: per-kind routing weight tuning, cross-encoder re-bind on grown corpus, default tuning from production telemetry, kind-a/kind-c null-result investigation, retention policy (forgetting-curve), cross-harness transcript sources. See CHANGELOG [6.0.0] § Deferred and 10-CONTEXT.md § Deferred Ideas.
