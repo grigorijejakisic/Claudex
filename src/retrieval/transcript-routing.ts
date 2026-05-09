@@ -95,12 +95,18 @@ const MAX_BODY_CHARS = 500; // mirror hybrid-retrieval reranker payload trim
 const QUERY_CHARS = 500;
 const RANKER_TIMEOUT_MS = 3000;
 
+// POLISH-01 — Gemini Routing Finding #3: pick the 20 *temporally closest*
+// candidates inside the ±window, not the 20 earliest by turn_index. The SELECT
+// below binds artifact.created_at_epoch_ms as the 4th param so the ORDER BY
+// expresses absolute time-distance from the artifact's creation timestamp.
+// Downstream callers that rely on turn-index iteration ergonomics get a
+// post-fetch in-JS re-sort by (turn_index, sub_index) before ranking.
 const CANDIDATE_SQL = `
   SELECT id, session_id, turn_index, sub_index, role, body, created_at_epoch_ms
   FROM transcript_chunk_v6
   WHERE session_id = ?
     AND created_at_epoch_ms BETWEEN ? AND ?
-  ORDER BY turn_index ASC, sub_index ASC
+  ORDER BY ABS(created_at_epoch_ms - ?) ASC
   LIMIT ${CANDIDATE_LIMIT}
 `;
 
@@ -138,7 +144,7 @@ export async function routeFromArtifact(
   let rows: CandidateRow[] = [];
   try {
     rows = cachedPrepare(db, CANDIDATE_SQL).all(
-      artifact.session_id, lo, hi,
+      artifact.session_id, lo, hi, artifact.created_at_epoch_ms,
     ) as CandidateRow[];
   } catch {
     // transcript_chunk_v6 absent on a pre-V32 DB — degrade silently to empty
@@ -149,9 +155,20 @@ export async function routeFromArtifact(
     return { spans: [], bi_encoder_only: true, candidate_count: 0 };
   }
 
+  // SQL fetched the 20 temporally closest; re-sort in JS by (turn_index, sub_index)
+  // so any downstream caller that iterates expecting turn order keeps its ergonomics.
+  rows.sort((a, b) =>
+    a.turn_index !== b.turn_index
+      ? a.turn_index - b.turn_index
+      : a.sub_index - b.sub_index,
+  );
+
   // 2. Build query text for ranking — caller-provided wins; else fall back to
-  //    the first candidate's body (still useful as a topic anchor).
-  const queryText = (artifact.query_text ?? rows[0].body).substring(0, QUERY_CHARS);
+  //    the first candidate's body (still useful as a topic anchor). Three-stage
+  //    coalesce defends against NULL body rows (Gemini Routing Finding #1) — an
+  //    empty-string fallback yields a degraded zero-similarity ranking, which
+  //    preserves the non-throwing contract from Plan 10-01.
+  const queryText = (artifact.query_text ?? rows[0]?.body ?? '').substring(0, QUERY_CHARS);
 
   // 3. Branch on reranker_mode. Both branches return RoutingSpan[] sorted desc.
   let spans: RoutingSpan[];
@@ -346,8 +363,19 @@ async function rankWithCrossEncoder(
   }
 
   // Cross-encoder failed — record telemetry, fall through to bi-encoder.
+  // Gemini Routing Finding #2: telemetry-write exception must NOT escape and
+  // bypass the bi-encoder fallback. Isolate the counter increment in its own
+  // try/catch so a DB-locked / missing-table telemetry error never sinks the
+  // user-facing routing call.
   if (ceFailureReason !== null) {
-    incrementRerankerFallbackCounter(db, callerSessionId, ceFailureReason);
+    try {
+      incrementRerankerFallbackCounter(db, callerSessionId, ceFailureReason);
+    } catch (telemetryErr) {
+      if (process.env.CLAUDEX_DEBUG === '1') {
+        // eslint-disable-next-line no-console
+        console.error('[transcript-routing] telemetry write failed:', telemetryErr);
+      }
+    }
   }
   const spans = await rankWithBiEncoder(query, candidates);
   return { spans, bi_encoder_only: true };
