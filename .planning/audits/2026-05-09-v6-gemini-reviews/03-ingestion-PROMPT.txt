@@ -1,0 +1,681 @@
+You are reviewing the v6 Claudex ingestion path.
+
+CRITICAL CONTEXT: Phase 8 shipped this code with THREE silently-failing bugs that escaped review:
+1. vec0 INSERT used JS number instead of BigInt for rowid — every embedding silently dropped
+2. INSERT OR REPLACE on vec0 doesn't actually upsert — re-runs threw UNIQUE constraint
+3. JSON-extract WHERE clause used `!= json('true')` which never matched stored boolean — infinite re-fetch loop
+
+All three were swallowed by an outer try-catch. Wire-test passed against fresh :memory: DB but production DB had been V17-collapsed (different schema shape).
+
+YOUR JOB: find the SIBLING bugs the wire test ALSO missed.
+
+FOCUS:
+1. Other silent-failure sites — where does the code catch+continue without surfacing? Look for try/catch with empty handlers, .catch(() => null), or counters that increment on error without telemetry
+2. Type coercion at SQLite boundary — better-sqlite3 returns INTEGER as JS number, BIGINT as BigInt, REAL as number. vec0 is strict. Are there OTHER places where the wrong type is being passed?
+3. Idempotency — re-running ingestion on an already-ingested session: does it correctly upsert, or does it silently fail/duplicate?
+4. SQL injection / JSON injection at parseWrappers
+5. Empty-chunk / oversized-chunk edge cases — what happens to the queue row?
+6. The "metadata-only ingestion" degraded path — under what conditions does it kick in, and is it actually visible to the operator?
+
+Be specific: cite file:line. Severity: critical/recommended/observation.
+
+DIFF:
+diff --git a/src/ingestion/ingest-session.ts b/src/ingestion/ingest-session.ts
+new file mode 100644
+index 0000000..7eecd90
+--- /dev/null
++++ b/src/ingestion/ingest-session.ts
+@@ -0,0 +1,286 @@
++/**
++ * v6 transcript ingestion entry points.
++ *
++ * Two exports:
++ *
++ *   - enqueueSessionIngestion(db, sessionId, project, jsonlPath?) — cheap
++ *     queue-row writer called from CC's SessionEnd hook and Angel's
++ *     boundary detector. Synchronous DB INSERT, milliseconds.
++ *
++ *   - ingestSession(db, sessionId, project, jsonlPath, embeddingProvider?) —
++ *     top-level worker called by Angel's heartbeat tick. Reads JSONL → runs
++ *     chunkTranscript → embeds via arctic-embed2 → upserts metadata + vec0
++ *     rows. Per-chunk try/catch — one bad chunk never aborts a session.
++ *
++ * Hook safety: enqueueSessionIngestion does not touch any LLM or embedding
++ * surface. The CC hook awaits enqueue and returns; the heavy work runs
++ * out-of-band from Angel's heartbeat (.claude/rules/hooks-safety.md).
++ */
++
++import type { Database } from 'better-sqlite3';
++import * as fs from 'node:fs';
++import { chunkTranscript, type JsonlTurn } from './transcript-chunker-v6.js';
++import { upsertChunk } from './upsert-chunk.js';
++import { EmbeddingProvider } from '../embeddings/embedding-provider.js';
++import { recordEvent } from '../core/session-events.js';
++import { cachedPrepare } from '../core/stmt-cache.js';
++import { encodeVector } from '../core/sqlite-vec-loader.js';
++
++export interface IngestionResult {
++  chunksWritten: number;
++  embeddingsWritten: number;
++  errors: number;
++}
++
++/**
++ * Enqueue a session for transcript ingestion. Cheap — single
++ * session_events INSERT, no I/O. Awaitable but completes in milliseconds;
++ * never blocks the caller hook on embedding or LLM work.
++ *
++ * Phase 8 plan 08-03 wires this into both:
++ *   - cc-hooks/session-end.ts post-emitCleanEndsessionClose
++ *   - angel/boundary/boundary-detector.ts post-clean_endsession promotion
++ */
++export function enqueueSessionIngestion(
++  db: Database,
++  sessionId: string,
++  project: string,
++  jsonlPath?: string,
++): void {
++  recordEvent(
++    db,
++    sessionId,
++    project,
++    'transcript_ingestion_pending',
++    'angel',
++    'enqueue',
++    JSON.stringify({
++      session_id: sessionId,
++      project,
++      jsonl_path: jsonlPath ?? null,
++    }),
++  );
++}
++
++/**
++ * Read a Claude Code session JSONL file into JsonlTurn[]. Each line is one
++ * JSON record. Tolerates malformed lines (skipped + counted in caller).
++ * parseWrappers redaction does NOT fire here — chunkTranscript owns that.
++ */
++function parseSessionJsonl(jsonlPath: string, sessionId: string, project: string): {
++  turns: JsonlTurn[];
++  malformed: number;
++} {
++  let raw: string;
++  try {
++    raw = fs.readFileSync(jsonlPath, 'utf8');
++  } catch {
++    return { turns: [], malformed: 0 };
++  }
++
++  const lines = raw.split(/\r?\n/).filter(l => l.length > 0);
++  const turns: JsonlTurn[] = [];
++  let malformed = 0;
++  let fileMtimeMs = 0;
++  try {
++    fileMtimeMs = fs.statSync(jsonlPath).mtimeMs;
++  } catch {
++    fileMtimeMs = Date.now();
++  }
++
++  for (let i = 0; i < lines.length; i++) {
++    const line = lines[i];
++    try {
++      const rec = JSON.parse(line) as Record<string, unknown>;
++      const role = mapRole(rec);
++      if (role === null) {
++        // No usable role — skip without counting as malformed (e.g. metadata
++        // headers, summary records, or other non-turn JSONL line types).
++        continue;
++      }
++
++      const body = extractBody(rec);
++      if (body === null) {
++        continue;
++      }
++
++      const created = parseTimestamp(rec) ?? fileMtimeMs;
++      const provenance: JsonlTurn['provenance'] =
++        role === 'tool' ? 'tool_result' :
++        role === 'system' ? 'environmental' :
++        'organic';
++
++      turns.push({
++        session_id: sessionId,
++        project_id: project,
++        turn_index: i,
++        role,
++        body,
++        created_at_epoch_ms: created,
++        provenance,
++      });
++    } catch {
++      malformed += 1;
++    }
++  }
++
++  return { turns, malformed };
++}
++
++function mapRole(rec: Record<string, unknown>): JsonlTurn['role'] | null {
++  const t = String(rec['type'] ?? '');
++  if (t === 'user') return 'user';
++  if (t === 'assistant') return 'assistant';
++  if (t === 'tool_use' || t === 'tool_result') return 'tool';
++  if (t === 'system') return 'system';
++  // Some records nest the role inside `message.role`.
++  const msg = rec['message'] as Record<string, unknown> | undefined;
++  if (msg) {
++    const r = String(msg['role'] ?? '');
++    if (r === 'user') return 'user';
++    if (r === 'assistant') return 'assistant';
++    if (r === 'tool') return 'tool';
++    if (r === 'system') return 'system';
++  }
++  return null;
++}
++
++function extractBody(rec: Record<string, unknown>): string | null {
++  const msg = rec['message'] as Record<string, unknown> | undefined;
++  const content = msg?.['content'] ?? rec['content'];
++  if (typeof content === 'string') return content;
++  if (Array.isArray(content)) {
++    const parts: string[] = [];
++    for (const item of content) {
++      if (typeof item === 'string') {
++        parts.push(item);
++        continue;
++      }
++      if (item && typeof item === 'object') {
++        const obj = item as Record<string, unknown>;
++        if (typeof obj['text'] === 'string') {
++          parts.push(obj['text']);
++        } else if (typeof obj['content'] === 'string') {
++          parts.push(obj['content']);
++        }
++      }
++    }
++    if (parts.length === 0) return null;
++    return parts.join('\n');
++  }
++  return null;
++}
++
++function parseTimestamp(rec: Record<string, unknown>): number | null {
++  const ts = rec['timestamp'];
++  if (typeof ts === 'string') {
++    const ms = Date.parse(ts);
++    if (!Number.isNaN(ms)) return ms;
++  }
++  if (typeof ts === 'number') return ts;
++  return null;
++}
++
++/**
++ * Ingest a session's transcript end-to-end. Non-throwing — wraps each
++ * chunk in try/catch so one bad embed call never aborts the session.
++ *
++ * Returns counts for the heartbeat to update the queue row's detail JSON.
++ */
++export async function ingestSession(
++  db: Database,
++  sessionId: string,
++  project: string,
++  jsonlPath: string,
++  embeddingProvider?: EmbeddingProvider,
++): Promise<IngestionResult> {
++  const result: IngestionResult = { chunksWritten: 0, embeddingsWritten: 0, errors: 0 };
++
++  const { turns, malformed } = parseSessionJsonl(jsonlPath, sessionId, project);
++  result.errors += malformed;
++  if (turns.length === 0) return result;
++
++  const chunks = chunkTranscript(turns);
++  if (chunks.length === 0) return result;
++
++  const provider = embeddingProvider ?? new EmbeddingProvider();
++
++  // Detect whether vec_transcript_chunks_v6 is available on this DB
++  // connection. If sqlite-vec wasn't loaded (test env, missing extension),
++  // skip the vec0 inserts — metadata-only ingestion is still useful.
++  const hasVecTable = (cachedPrepare(db,
++    `SELECT 1 FROM sqlite_master WHERE name='vec_transcript_chunks_v6' LIMIT 1`,
++  ).get() as { 1: number } | undefined) != null;
++
++  for (const chunk of chunks) {
++    try {
++      upsertChunk(db, chunk);
++      result.chunksWritten += 1;
++
++      // Read back the rowid (whether the row was just inserted or already
++      // existed via ON CONFLICT). The UNIQUE on (session_id, turn_index,
++      // role, sub_index) gives us a deterministic lookup.
++      const idRow = cachedPrepare(db,
++        `SELECT id FROM transcript_chunk_v6
++         WHERE session_id = ? AND turn_index = ? AND role = ? AND sub_index = ?`,
++      ).get(chunk.session_id, chunk.turn_index, chunk.role, chunk.sub_index) as
++        { id: number } | undefined;
++      if (!idRow) {
++        // Should never happen — INSERT just succeeded or row pre-existed.
++        // If it does, count as error and continue.
++        result.errors += 1;
++        continue;
++      }
++
++      if (!hasVecTable) {
++        // No vec table on this connection — metadata is enough. The 08-04
++        // backfill sweep can populate vectors later.
++        continue;
++      }
++
++      const empty = chunk.body.trim().length === 0;
++      if (empty) {
++        // No semantic content to embed — not an error, just skip the vec0
++        // insert. Re-injecting an empty body would just yield a near-zero
++        // vector that pollutes top-K.
++        continue;
++      }
++
++      const vector = await provider.embed(chunk.body);
++      if (vector === null) {
++        // Embedding service unavailable or failed — degrade to metadata-only.
++        result.errors += 1;
++        continue;
++      }
++
++      try {
++        const vec = encodeVector(vector);
++        // vec0 specifics (matched against src/embeddings/sqlite-vec-backend.ts:188):
++        //   1. Rowid binding requires BigInt — better-sqlite3 returns plain JS
++        //      numbers from SELECT, which vec0 rejects with "Only integers are
++        //      allowed for primary key values".
++        //   2. vec0 does NOT honor INSERT OR REPLACE semantics for rowid
++        //      conflicts — it raises UNIQUE constraint failed instead. Upsert
++        //      must be DELETE-then-INSERT (the v5 pattern). Discovered live
++        //      during v6 P9 backfill drain when re-runs against partially-
++        //      ingested sessions silently failed every vec insert.
++        const rowid = BigInt(idRow.id);
++        cachedPrepare(db,
++          `DELETE FROM vec_transcript_chunks_v6 WHERE rowid = ?`,
++        ).run(rowid);
++        cachedPrepare(db,
++          `INSERT INTO vec_transcript_chunks_v6 (rowid, embedding) VALUES (?, ?)`,
++        ).run(rowid, vec);
++        result.embeddingsWritten += 1;
++      } catch {
++        // vec0 insert failure (extension load issue, dimension mismatch, etc.)
++        // — count as error but keep going.
++        result.errors += 1;
++      }
++    } catch {
++      result.errors += 1;
++    }
++  }
++
++  return result;
++}
+diff --git a/src/ingestion/transcript-chunker-v6.ts b/src/ingestion/transcript-chunker-v6.ts
+new file mode 100644
+index 0000000..087d9f7
+--- /dev/null
++++ b/src/ingestion/transcript-chunker-v6.ts
+@@ -0,0 +1,118 @@
++/**
++ * v6 transcript chunker — pure function, turn-boundary primary.
++ *
++ * Phase 8 substrate (TRX-02 chunking + TRX-04 redaction). One chunk per
++ * user/assistant turn naturally; turns whose body exceeds SOFT_TOKEN_LIMIT
++ * (1500 tokens via the standard ~0.75 tokens-per-word proxy) are split at
++ * sentence boundaries to preserve reranker top-K precision.
++ *
++ * Wrapper redaction fires here exactly once per turn via parseWrappers
++ * (Phase 1 single-source-of-truth) — wrapper-tagged spans
++ * (<system-reminder>, <experience-data>, <file-content>, <command-message>,
++ * etc.) are stripped from the chunk body before any embedding or DB write.
++ * The Mem0-trap stays structurally closed at the new write surface.
++ *
++ * Pure: no DB, no I/O, no clock reads. created_at_epoch_ms carries through
++ * from the input turn.
++ */
++
++import { parseWrappers } from '../extraction/wrapper-parser.js';
++
++export interface JsonlTurn {
++  session_id: string;
++  project_id: string;
++  turn_index: number;
++  role: 'user' | 'assistant' | 'tool' | 'system';
++  body: string;
++  created_at_epoch_ms: number;
++  provenance: 'organic' | 'injected' | 'tool_result' | 'environmental';
++}
++
++export interface ChunkV6 {
++  session_id: string;
++  project_id: string;
++  turn_index: number;
++  role: 'user' | 'assistant' | 'tool' | 'system';
++  provenance: 'organic' | 'injected' | 'tool_result' | 'environmental';
++  /** 0 for single-chunk turns; 0..N-1 for sentence-boundary sub-chunks of long turns. */
++  sub_index: number;
++  body: string;
++  created_at_epoch_ms: number;
++  wrapper_redacted: boolean;
++}
++
++export const SOFT_TOKEN_LIMIT = 1500;
++const TOKENS_PER_WORD = 0.75;
++
++/**
++ * Word-count proxy for token estimation. Same shape used elsewhere in the
++ * codebase for assembly token-budget arithmetic. Conservative enough for
++ * chunking decisions (off by ≤30% on technical text).
++ */
++function approxTokenCount(s: string): number {
++  if (!s) return 0;
++  return Math.ceil(s.split(/\s+/).filter(Boolean).length / TOKENS_PER_WORD);
++}
++
++const SENTENCE_SPLIT = /(?<=[.!?])\s+/;
++
++/**
++ * Split a long body into sentence-boundary sub-chunks of <= SOFT_TOKEN_LIMIT
++ * tokens. Greedy packing: append sentences to the current sub-chunk until
++ * adding another would exceed the limit; then start a new one. Sentences
++ * that themselves exceed the limit stay intact (do NOT word-split — sentence
++ * integrity matters for retrieval; this case is rare in practice).
++ */
++function splitAtSentences(body: string): string[] {
++  if (approxTokenCount(body) <= SOFT_TOKEN_LIMIT) return [body];
++  const sentences = body.split(SENTENCE_SPLIT).filter(s => s.length > 0);
++  const subChunks: string[] = [];
++  let current: string[] = [];
++  let currentTokens = 0;
++  for (const sentence of sentences) {
++    const sentenceTokens = approxTokenCount(sentence);
++    if (current.length > 0 && currentTokens + sentenceTokens > SOFT_TOKEN_LIMIT) {
++      subChunks.push(current.join(' '));
++      current = [sentence];
++      currentTokens = sentenceTokens;
++    } else {
++      current.push(sentence);
++      currentTokens += sentenceTokens;
++    }
++  }
++  if (current.length > 0) subChunks.push(current.join(' '));
++  // Defensive: if splitting produced nothing (one giant sentence), keep the
++  // original body as a single chunk so the turn does not silently drop.
++  return subChunks.length > 0 ? subChunks : [body];
++}
++
++/**
++ * Pure-function chunker: turns → ChunkV6[]. parseWrappers fires exactly once
++ * per turn; wrapper_redacted is set when at least one wrapper-tagged span
++ * was stripped. Sub-chunk emission keeps (session_id, turn_index, role)
++ * stable and uses ascending `sub_index` (0..N-1) to disambiguate via the
++ * V32 UNIQUE(session_id, turn_index, role, sub_index) constraint.
++ */
++export function chunkTranscript(turns: JsonlTurn[]): ChunkV6[] {
++  if (turns.length === 0) return [];
++  const chunks: ChunkV6[] = [];
++  for (const turn of turns) {
++    const { organic, injected } = parseWrappers(turn.body);
++    const wrapperRedacted = injected.length > 0;
++    const subBodies = splitAtSentences(organic);
++    for (let i = 0; i < subBodies.length; i++) {
++      chunks.push({
++        session_id: turn.session_id,
++        project_id: turn.project_id,
++        turn_index: turn.turn_index,
++        role: turn.role,
++        provenance: turn.provenance,
++        sub_index: i,
++        body: subBodies[i],
++        created_at_epoch_ms: turn.created_at_epoch_ms,
++        wrapper_redacted: wrapperRedacted,
++      });
++    }
++  }
++  return chunks;
++}
+diff --git a/src/ingestion/upsert-chunk.ts b/src/ingestion/upsert-chunk.ts
+new file mode 100644
+index 0000000..2d3a0a8
+--- /dev/null
++++ b/src/ingestion/upsert-chunk.ts
+@@ -0,0 +1,45 @@
++/**
++ * v6 transcript-chunk write surface.
++ *
++ * Phase 8 plan 08-03 calls this from the ingestion hook; plan 08-05's
++ * WIR-01 live-wiring tests exercise this exact exported function against
++ * V17-collapsed + base-table fresh-DB fixtures. NEVER mock — the v5.0.1
++ * silent-fail lesson promoted live-wiring to ship-gate severity.
++ *
++ * Idempotent on the V32 UNIQUE(session_id, turn_index, role, sub_index)
++ * constraint via ON CONFLICT DO NOTHING.
++ *
++ * The closed-enum CHECK constraints on `role` and `provenance` are
++ * structural (V32 schema). Bad values throw — caller treats throws as
++ * bugs, do not swallow.
++ *
++ * Embedding is NOT computed here — vec_transcript_chunks_v6 is populated
++ * by plan 08-04's backfill sweep. Mirrors Phase 4.1's transcript-chunker
++ * pattern where embedding_ref is left null.
++ */
++
++import type { Database } from 'better-sqlite3';
++import { cachedPrepare } from '../core/stmt-cache.js';
++import type { ChunkV6 } from './transcript-chunker-v6.js';
++
++const UPSERT_SQL = `
++INSERT INTO transcript_chunk_v6 (
++  session_id, project_id, turn_index, sub_index, role, provenance,
++  body, created_at_epoch_ms, wrapper_redacted
++) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
++ON CONFLICT(session_id, turn_index, role, sub_index) DO NOTHING
++`;
++
++export function upsertChunk(db: Database, chunk: ChunkV6): void {
++  cachedPrepare(db, UPSERT_SQL).run(
++    chunk.session_id,
++    chunk.project_id,
++    chunk.turn_index,
++    chunk.sub_index,
++    chunk.role,
++    chunk.provenance,
++    chunk.body,
++    chunk.created_at_epoch_ms,
++    chunk.wrapper_redacted ? 1 : 0,
++  );
++}
+diff --git a/src/tests/ingestion/ingest-session.test.ts b/src/tests/ingestion/ingest-session.test.ts
+new file mode 100644
+index 0000000..18e36df
+--- /dev/null
++++ b/src/tests/ingestion/ingest-session.test.ts
+@@ -0,0 +1,186 @@
++/**
++ * Tests for ingestSession + enqueueSessionIngestion (Phase 8 entry points).
++ *
++ * Uses tmp JSONL files + a mock EmbeddingProvider to exercise the full
++ * read-JSONL → chunk → embed → upsert path against an in-memory V32 DB.
++ */
++
++import { describe, it, expect, beforeEach, afterEach } from 'vitest';
++import Database from 'better-sqlite3';
++import * as fs from 'node:fs';
++import * as path from 'node:path';
++import * as os from 'node:os';
++import { initializeSchema } from '../../core/migrations.js';
++import {
++  enqueueSessionIngestion,
++  ingestSession,
++} from '../../ingestion/ingest-session.js';
++import { EmbeddingProvider } from '../../embeddings/embedding-provider.js';
++
++class MockEmbeddingProvider extends EmbeddingProvider {
++  public callCount = 0;
++  constructor(public returnNull = false) {
++    super();
++  }
++  async isAvailable(): Promise<boolean> { return true; }
++  async embed(_text: string): Promise<number[] | null> {
++    this.callCount += 1;
++    if (this.returnNull) return null;
++    // Return a fixed 1024-dim vector — small floats so encodeVector is happy.
++    return Array.from({ length: 1024 }, (_, i) => (i % 7) * 0.001);
++  }
++}
++
++function writeFakeJsonl(turns: Array<{ type: string; body: string }>): string {
++  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'p8-ingest-'));
++  const file = path.join(tmpDir, 'session.jsonl');
++  const lines = turns.map((t, i) => JSON.stringify({
++    type: t.type,
++    message: { content: t.body },
++    timestamp: new Date(1700000000000 + i * 1000).toISOString(),
++  }));
++  fs.writeFileSync(file, lines.join('\n') + '\n');
++  return file;
++}
++
++describe('enqueueSessionIngestion', () => {
++  let db: Database.Database;
++  beforeEach(() => {
++    db = new Database(':memory:');
++    initializeSchema(db);
++  });
++  afterEach(() => { db.close(); });
++
++  it('writes a single transcript_ingestion_pending event row', () => {
++    enqueueSessionIngestion(db, 'sess-1', 'proj-1', '/tmp/sess-1.jsonl');
++    const rows = db.prepare(
++      `SELECT event_type, entity, action, detail FROM session_events
++        WHERE session_id = ? AND event_type = ?`
++    ).all('sess-1', 'transcript_ingestion_pending') as Array<{
++      event_type: string; entity: string; action: string; detail: string
++    }>;
++    expect(rows.length).toBe(1);
++    expect(rows[0].event_type).toBe('transcript_ingestion_pending');
++    expect(rows[0].entity).toBe('angel');
++    expect(rows[0].action).toBe('enqueue');
++    const detail = JSON.parse(rows[0].detail);
++    expect(detail.session_id).toBe('sess-1');
++    expect(detail.project).toBe('proj-1');
++    expect(detail.jsonl_path).toBe('/tmp/sess-1.jsonl');
++  });
++
++  it('jsonl_path is null when not provided', () => {
++    enqueueSessionIngestion(db, 'sess-2', 'proj-2');
++    const row = db.prepare(
++      `SELECT detail FROM session_events WHERE session_id = ?`
++    ).get('sess-2') as { detail: string };
++    expect(JSON.parse(row.detail).jsonl_path).toBeNull();
++  });
++
++  it('multiple enqueues for the same session each create a row', () => {
++    enqueueSessionIngestion(db, 'sess-dup', 'proj');
++    enqueueSessionIngestion(db, 'sess-dup', 'proj');
++    const count = (db.prepare(
++      `SELECT COUNT(*) AS cnt FROM session_events WHERE session_id = ?`
++    ).get('sess-dup') as { cnt: number }).cnt;
++    expect(count).toBe(2);
++  });
++});
++
++describe('ingestSession', () => {
++  let db: Database.Database;
++  beforeEach(() => {
++    db = new Database(':memory:');
++    initializeSchema(db);
++  });
++  afterEach(() => { db.close(); });
++
++  it('empty JSONL → 0 chunks', async () => {
++    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'p8-empty-'));
++    const file = path.join(tmpDir, 'empty.jsonl');
++    fs.writeFileSync(file, '');
++    const r = await ingestSession(db, 'sess-empty', 'proj', file, new MockEmbeddingProvider());
++    expect(r.chunksWritten).toBe(0);
++    expect(r.embeddingsWritten).toBe(0);
++  });
++
++  it('5-turn JSONL ingests 5 chunks', async () => {
++    const file = writeFakeJsonl([
++      { type: 'user', body: 'Question one.' },
++      { type: 'assistant', body: 'Answer one.' },
++      { type: 'user', body: 'Question two.' },
++      { type: 'assistant', body: 'Answer two.' },
++      { type: 'user', body: 'Question three.' },
++    ]);
++    const r = await ingestSession(db, 'sess-5', 'proj', file, new MockEmbeddingProvider());
++    expect(r.chunksWritten).toBe(5);
++    const count = (db.prepare(
++      `SELECT COUNT(*) AS cnt FROM transcript_chunk_v6 WHERE session_id = ?`
++    ).get('sess-5') as { cnt: number }).cnt;
++    expect(count).toBe(5);
++  });
++
++  it('embedding provider returns null → metadata rows still land, errors counter increments', async () => {
++    const file = writeFakeJsonl([
++      { type: 'user', body: 'Body A.' },
++      { type: 'assistant', body: 'Body B.' },
++    ]);
++    const provider = new MockEmbeddingProvider(true);
++    const r = await ingestSession(db, 'sess-noembed', 'proj', file, provider);
++    expect(r.chunksWritten).toBe(2);
++    expect(r.errors).toBeGreaterThanOrEqual(2);
++    const count = (db.prepare(
++      `SELECT COUNT(*) AS cnt FROM transcript_chunk_v6 WHERE session_id = ?`
++    ).get('sess-noembed') as { cnt: number }).cnt;
++    expect(count).toBe(2);
++  });
++
++  it('re-running ingestSession on the same session is idempotent', async () => {
++    const file = writeFakeJsonl([
++      { type: 'user', body: 'one.' },
++      { type: 'assistant', body: 'two.' },
++    ]);
++    await ingestSession(db, 'sess-idemp', 'proj', file, new MockEmbeddingProvider());
++    const before = (db.prepare(
++      `SELECT COUNT(*) AS cnt FROM transcript_chunk_v6 WHERE session_id = ?`
++    ).get('sess-idemp') as { cnt: number }).cnt;
++    await ingestSession(db, 'sess-idemp', 'proj', file, new MockEmbeddingProvider());
++    const after = (db.prepare(
++      `SELECT COUNT(*) AS cnt FROM transcript_chunk_v6 WHERE session_id = ?`
++    ).get('sess-idemp') as { cnt: number }).cnt;
++    expect(after).toBe(before);
++    expect(after).toBe(2);
++  });
++
++  it('malformed JSONL line is skipped; valid lines still ingested', async () => {
++    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'p8-malformed-'));
++    const file = path.join(tmpDir, 'bad.jsonl');
++    fs.writeFileSync(file, [
++      JSON.stringify({ type: 'user', message: { content: 'first' } }),
++      'NOT VALID JSON',
++      JSON.stringify({ type: 'assistant', message: { content: 'third' } }),
++    ].join('\n'));
++    const r = await ingestSession(db, 'sess-bad', 'proj', file, new MockEmbeddingProvider());
++    expect(r.chunksWritten).toBe(2);
++    expect(r.errors).toBeGreaterThanOrEqual(1);
++  });
++
++  it('non-existent JSONL path → 0 chunks', async () => {
++    const r = await ingestSession(db, 'sess-missing', 'proj', '/nonexistent/path.jsonl', new MockEmbeddingProvider());
++    expect(r.chunksWritten).toBe(0);
++    expect(r.embeddingsWritten).toBe(0);
++  });
++
++  it('persists wrapper_redacted=true when JSONL contains wrapper-tagged spans', async () => {
++    const file = writeFakeJsonl([
++      { type: 'user', body: 'Pre. <system-reminder>nope</system-reminder> Post.' },
++    ]);
++    await ingestSession(db, 'sess-wrap', 'proj', file, new MockEmbeddingProvider());
++    const row = db.prepare(
++      `SELECT body, wrapper_redacted FROM transcript_chunk_v6 WHERE session_id = ?`
++    ).get('sess-wrap') as { body: string; wrapper_redacted: number };
++    expect(row.wrapper_redacted).toBe(1);
++    expect(row.body).not.toContain('<system-reminder>');
++    expect(row.body).not.toContain('nope');
++  });
++});

@@ -1,0 +1,718 @@
+You are a senior architect reviewing the v6 — Deliberation Surfacing milestone of Claudex (a persistent memory system for LLM coding agents).
+
+PROJECT CONTEXT:
+- v5 shipped a substrate (provenance-tagged episodic events).
+- v6 adds deliberation surfacing — at retrieval time, surface verbatim transcript spans alongside summary artifacts.
+- Thesis grounded in "the parable" — a child stores bound multi-modal records (color, heat, pain, mamma's words); at recall, any one modality fires the whole memory.
+- v6 P9 produced BIND POSITIVE: pooled n=60, Δ pass-rate +0.1667, Wilson Δ CI [+0.0038, +0.3434]. Lower bound just above zero. Per-kind concentration in threshold-source / dependency-change / assumption-drift; flat on sample-size shift and scope-change.
+- Retrieval baseline shipped as bi-encoder-only (cross-encoder fitness 56% < 60% threshold).
+
+ARCHITECTURAL QUESTIONS:
+
+1. RECURSIVE-CORPUS RISK. The binding measurement was conducted on Claudex's own conversation history. Is there meaningful risk that the bind reflects something about THIS corpus rather than the underlying claim? Cross-corpus generalization test (a different project's session log) would test the claim. Must-do for v6.1, or acceptable v7+ deferral?
+
+2. SELF-GRADING BIAS. Judge model and agent model are both deepseek-coder-v2:16b. Does this create a confound where the judge is more lenient on prose patterns the agent shares? Three-prong rubric (surfaces divergence / cites specifically / concludes engagement) — independent prongs or correlated?
+
+3. NARROW MARGIN GENERALIZATION. Wilson lower +0.0038 means a different probe distribution could plausibly flip back to inconclusive. Per-kind: lift in 3 of 5 kinds (b/d/e), flat on 2 (a/c). What does this tell us about WHERE v6 helps and where it doesn't?
+
+4. ASYNC POST-STEP ASSEMBLY INTEGRATION. P10 landed deliberation-surface as `appendDeliberationSurfaceToPayload` — async post-step after sync assembly pipeline completes. Reasoning: "protect the sync hot path used by SessionStart hook + bridge-adapter + 175 existing tests." Critique this decision: failure modes, invariants, race conditions, callers that might not await.
+
+5. METHODOLOGY DISCIPLINE. v6 inherited v5's pre-commitment / locked corpus / Wilson CI methodology. Is this discipline appropriate for the engagement question being asked, or applied because it worked in v5? What might be more appropriate for qualitative behavioral measurement?
+
+6. THE PARABLE TEST. Does v6 actually deliver on the parable's promise — "any one modality fires the whole memory" — or something narrower? Be specific about what the parable promises vs what v6 measures.
+
+7. BUS-FACTOR-1 RISK. Three latent production bugs in v6's P8 substrate were caught only when the first real-DB backfill ran during P9 prep. Wire-test passed against synthetic fixtures; production exercising surfaced them. What systemic discipline is missing? Is the v5.0.1 silent-fail lesson actually being applied?
+
+Be specific. Cite evidence. Don't hedge. Real architectural critique, not endorsement.
+
+KEY ARTIFACTS BELOW:
+
+=== 09-RESULTS.md (P9 ship narrative) ===
+# Phase 9: Empirical Measurement — Results
+
+**Status:** Bound POSITIVE
+**Bound on:** 2026-05-09
+**Aggregator entries:** `9-r1`, `9-r2`, `9-pooled-r1+r2` in `.planning/aggregates/deliberation-surfacing.json`
+**Run report:** `context/measurements/2026-05-09-deliberation-surfacing.md`
+
+## Pooled Verdict
+
+**POSITIVE** at n=60, Δ CI [+0.0038, +0.3434].
+
+Wilson lower bound > 0 → the pooled-cross-replication delta of `transcript_pass_rate − summary_pass_rate` is statistically distinguishable from zero at 95% confidence. Per CONTEXT decision 4 (locked before measurement, audit-anchored at 09-CONTEXT.md commit `00ab2bb`), this binds POSITIVE: verbatim transcript context produces measurably more deliberation-conditional engagement than summary-only context at our scale.
+
+The lower bound is tight (+0.0038) — the bind is barely above zero, not a strong-positive signal. The methodology gate fired honestly: individual replications at n=30 were both INCONCLUSIVE (CI brackets zero), but pooling at n=60 narrowed the CI enough to clear zero. This matches the locked discipline exactly — the pooled cross-replication verdict is the gate, not per-replication outcomes.
+
+**P10 engineering branch unlocked:** routing + assembly integration (transcript span citations into production retrieval), Vesna probe extension from 21 → 24+ deliberation-engagement probes, and v6.0.0 tag with the bind narrative leading the annotation.
+
+## Per-Replication Verdicts
+
+| Replication | n | Summary pass | Transcript pass | Δ pass rate | Δ CI lower | Δ CI upper | Verdict | Retrieval baseline |
+|-------------|---|--------------|-----------------|-------------|------------|------------|---------|--------------------|
+| r1          | 30 | 14           | 18              | +0.1333     | -0.0920    | +0.3799    | INCONCLUSIVE | bi_encoder_fallback |
+| r2          | 30 | 15           | 21              | +0.2000     | -0.0149    | +0.4456    | INCONCLUSIVE | bi_encoder_fallback |
+| **pooled**  | **60** | **29**       | **39**          | **+0.1667** | **+0.0038** | **+0.3434** | **POSITIVE** | bi_encoder_fallback |
+
+Both replications used the bi-encoder fallback retrieval baseline because P9 reranker-fitness re-check (post-backfill) reported mean top-3 overlap 56.0% (n=47) — below the 60% threshold from CONTEXT decision 4's branch-selection rule. The cross-encoder is alive (BGE-v2-m3 on port 7439, CUDA, GPU) but its top-3 stability against the bi-encoder on transcript-distribution data is below the fitness threshold. Per the locked rule, that selects bi-encoder-only for the binding baseline.
+
+r1 and r2 verdicts being INCONCLUSIVE individually is consistent with the small per-replication n; pooling absorbs the per-replication variance into a tighter CI as designed.
+
+## Per-Kind Descriptive Breakdown (NOT a gate)
+
+CONTEXT additional_locks rules out per-kind binding: "the pooled cross-kind verdict is the gate." Per-kind metrics are descriptive-only (`descriptive_only: true` tagged in code). Reading them as ship-blocking is methodology drift.
+
+| Kind | Description | Summary pass rate | Transcript pass rate | Δ |
+|------|-------------|-------------------|----------------------|---|
+| a    | sample-size shift            | 0.500 | 0.500 | 0.000 |
+| b    | threshold-source drift       | 0.167 | 0.583 | +0.417 |
+| c    | scope-change drift           | 0.583 | 0.583 | 0.000 |
+| d    | dependency-change drift      | 0.583 | 0.833 | +0.250 |
+| e    | assumption drift             | 0.583 | 0.750 | +0.167 |
+
+The pooled positive bind is driven primarily by kind b (threshold-source drift, Δ=+0.417), with moderate contributions from kind d (dependency-change, +0.250) and kind e (assumption drift, +0.167). Kinds a (sample-size) and c (scope-change) show flat per-kind delta — neither arm gained nor lost ground on those. This is informational color for P10 engineering branch's routing/assembly tuning; it does not affect the ship gate.
+
+## Methodology-Gate Audit
+
+CONTEXT additional_locks: every aggregator row's `started_at_iso` MUST be strictly greater than the 09-CONTEXT.md commit timestamp (commit `00ab2bb`).
+
+| Anchor | Timestamp |
+|--------|-----------|
+| 09-CONTEXT.md commit (00ab2bb)  | 2026-05-08T21:48:07+02:00 (= 2026-05-08T19:48:07Z) |
+| 9-r1 started_at_iso             | 2026-05-09T00:43:42.333Z |
+| 9-r2 started_at_iso             | 2026-05-09T01:31:56.948Z |
+
+Strict-inequality holds: ✓ (r1 and r2 both began after 09-CONTEXT.md was committed; pre-commitment audit anchor satisfied).
+
+## Probe-Set Pre-Commitment
+
+| Anchor | Commit |
+|--------|--------|
+| Probe fixtures (30 JSONs) committed | `e23ea60` (Wave 1, 2026-05-08) |
+| Judge prompt committed              | `e23ea60` (same Wave 1 commit) |
+| First aggregator row written        | 2026-05-09T01:31:56.945Z (r1 completed_at_iso) |
+
+Fixtures + judge prompt are byte-immutable for P9 binding replications. Both r1 and r2 used the same locked probe-set under `.planning/phases/09-empirical-measurement/probes/` — fresh agent runs over the locked set, not fresh probes per replication. Single-source-of-variance discipline preserved (CONTEXT decision 2).
+
+## P10 Branch Direction
+
+**P10 will ship: engineering branch.**
+
+P10 engineering branch will:
+1. Integrate the deliberation-surfacing retrieval primitives (B-arm path) into production assembly + routing — replace the harness's manual span injection with the routing+assembly integration around the same retrieval primitives, per CONTEXT decision 3's "harness as working spec" framing.
+2. Extend Vesna probe suite from 21 → 24+ with deliberation-engagement probes covering the prong-1/2/3 rubric structure.
+3. Tag `v6.0.0` with the bind narrative leading the annotation (POSITIVE verdict + Wilson CI + per-kind context).
+
+The bind is on the tighter side (Wilson lower +0.0038), so P10 should treat the ship surface conservatively: the binding signal exists and is honest, but it is not a wide-margin win. Per-kind data suggests B-arm gains are concentrated in threshold-source / dependency-change / assumption-drift queries; routing tuning that uses those signals to score B-arm injection-worthiness has a stronger empirical anchor than mechanical "always inject" defaults.
+
+## Operational Notes
+
+**Reranker baseline is bi-encoder-only**, not cross-encoder. P10 routing should preserve the bi-encoder fallback path as a primary execution mode, not a degraded one — the binding measurement was conducted under it. If the cross-encoder fitness improves on a future post-backfill check (e.g., after meaningful corpus drift), P10 may switch to cross-encoder primary, but that is its own re-bind decision, not assumed forward.
+
+**Embedding coverage** of the substrate at measurement time was 45,553/47,330 = 96.2% (the gap is empty-body or oversized chunks that skip embedding by design at `src/ingestion/ingest-session.ts:241-247`). The synthetic-corpus partition (37 chunks across 4 sessions, deterministic `synthetic-drift-{c-05,c-06,d-05,d-06}` IDs) was 100% embedded after the post-drain re-import.
+
+**Two production bug fixes** landed during the binding-run prep (commit `4e9da8c`): the vec0 BigInt rowid coercion in `src/ingestion/ingest-session.ts` and the JSON-extract WHERE clause in both `src/cli/drain-transcripts.ts` and `src/angel/heartbeat.ts`. Both were latent in P8 and surfaced when the first real-DB backfill ran. Vesna 21/21 PASS preserved post-fix.
+
+## Closure
+
+P9 is bound POSITIVE. Phase 9 is closed. P10 engineering branch (which was conditional on this verdict) is now unblocked.
+
+The empirical record is preserved in:
+- `.planning/aggregates/deliberation-surfacing.json` (3 entries; byte-frozen for prior content; future phases may append)
+- `.planning/aggregates/deliberation-surfacing.md` (markdown projection auto-rebuilt from JSON)
+- `context/measurements/2026-05-09-deliberation-surfacing.md` (per-run report)
+
+P9.1 corpus-expansion replication is **NOT triggered** — the pooled CI bound positive at n=60, so the inconclusive-escalation cadence does not fire. The fixture set + judge prompt remain byte-immutable; future re-measurements (e.g., on grown corpus, on cross-encoder baseline) would land as new aggregator rows under the same append-only contract.
+
+=== src/retrieval/transcript-routing.ts (the new write surface) ===
+/**
+ * v6 transcript-routing surface (Phase 10 — ROU-01..03).
+ *
+ * Artifact → transcript-chunk fan-out. Given an artifact reference (CONTEXT.md
+ * decision, SUMMARY.md outcome, learning, experience pattern, mental model,
+ * directive rule, critical rule), join `transcript_chunk_v6` on `session_id`
+ * + a configurable time window from `artifact.created_at_epoch_ms` and rank
+ * the candidate chunks.
+ *
+ * Bi-encoder primary per 10-CONTEXT.md decision 1: P9 binding measurement
+ * was conducted under `bi_encoder_fallback` baseline; cross-encoder fitness
+ * re-check landed at 56.0% < 60% threshold on the conversation-distribution
+ * corpus post-backfill. Cross-encoder remains code-reachable behind the
+ * `v6.routing.reranker_mode='cross_encoder_primary'` flag for a future
+ * re-bind on a grown / different-distribution corpus.
+ *
+ * Routing is artifact-kind-agnostic per 10-CONTEXT.md decision 2: ranking
+ * depends only on join keys (session_id + time window) and the bi-encoder /
+ * cross-encoder score. Per-kind weighting has zero measurement support and
+ * would require runtime artifact classification — explicitly out of scope.
+ *
+ * Non-throwing across every external dependency: sqlite-vec absent, Ollama
+ * unreachable, reranker unreachable → degrade to a smaller result set.
+ * `bi_encoder_only=true` on the result is the signal Plan 10-02 reads to
+ * apply the reduced `bi_encoder_budget_pct × token_pct_cap` budget instead
+ * of the full `token_pct_cap`.
+ *
+ * Reranker fallback discipline matches `hybrid-retrieval.ts` (RETR-08):
+ * one telemetry row per fallback event with the captured reason
+ * (`unreachable` / `non_2xx` / `timeout` / `empty_response`).
+ */
+
+import type { Database } from 'better-sqlite3';
+import { cachedPrepare } from '../core/stmt-cache.js';
+import { loadConfig } from '../shared/config.js';
+import {
+  incrementRerankerFallbackCounter,
+  type RerankerFallbackReason,
+} from '../core/telemetry-counters.js';
+
+// ---------------------------------------------------------------------------
+// Public types
+// ---------------------------------------------------------------------------
+
+export interface RoutingArtifact {
+  /** Artifact's source session — join key for transcript_chunk_v6 */
+  session_id: string;
+  /** When the artifact was created — anchor for the time-window join */
+  created_at_epoch_ms: number;
+  /** Optional artifact-side context for ranking; falls back to first candidate body */
+  query_text?: string;
+}
+
+export interface RoutingSpan {
+  /** transcript_chunk_v6.id */
+  chunk_id: number;
+  session_id: string;
+  turn_index: number;
+  sub_index: number;
+  role: 'user' | 'assistant' | 'tool' | 'system';
+  body: string;
+  created_at_epoch_ms: number;
+  /** 0..1 — bi-encoder cosine OR cross-encoder normalized score */
+  rank_score: number;
+  /** Which ranker produced rank_score */
+  ranker: 'bi_encoder' | 'cross_encoder';
+}
+
+export interface RoutingResult {
+  /** Spans returned, ranked descending by rank_score, capped at top_k_per_artifact */
+  spans: RoutingSpan[];
+  /** True if the bi-encoder path produced these spans (Plan 10-02 reads this) */
+  bi_encoder_only: boolean;
+  /** Number of candidate chunks before ranking — observability */
+  candidate_count: number;
+}
+
+export interface RoutingOptions {
+  /** Time window from artifact.created_at_epoch_ms; default ±2h */
+  window_ms_before?: number;
+  window_ms_after?: number;
+  /** Override top_k_per_artifact for this call (falls back to config) */
+  top_k?: number;
+  /** Session id passed to telemetry on reranker fallback */
+  caller_session_id?: string;
+}
+
+// ---------------------------------------------------------------------------
+// Constants
+// ---------------------------------------------------------------------------
+
+const DEFAULT_WINDOW_MS = 2 * 60 * 60 * 1000; // 2h
+const CANDIDATE_LIMIT = 20; // SQL fetch upper bound before ranking
+const MAX_BODY_CHARS = 500; // mirror hybrid-retrieval reranker payload trim
+const QUERY_CHARS = 500;
+const RANKER_TIMEOUT_MS = 3000;
+
+const CANDIDATE_SQL = `
+  SELECT id, session_id, turn_index, sub_index, role, body, created_at_epoch_ms
+  FROM transcript_chunk_v6
+  WHERE session_id = ?
+    AND created_at_epoch_ms BETWEEN ? AND ?
+  ORDER BY turn_index ASC, sub_index ASC
+  LIMIT ${CANDIDATE_LIMIT}
+`;
+
+interface CandidateRow {
+  id: number;
+  session_id: string;
+  turn_index: number;
+  sub_index: number;
+  role: 'user' | 'assistant' | 'tool' | 'system';
+  body: string;
+  created_at_epoch_ms: number;
+}
+
+// ---------------------------------------------------------------------------
+// Public API
+// ---------------------------------------------------------------------------
+
+/**
+ * Single artifact → ranked transcript spans. Non-throwing.
+ */
+export async function routeFromArtifact(
+  db: Database,
+  artifact: RoutingArtifact,
+  opts: RoutingOptions = {},
+): Promise<RoutingResult> {
+  const cfg = loadConfig().v6.routing;
+  const topK = opts.top_k ?? cfg.top_k_per_artifact;
+  const windowBefore = opts.window_ms_before ?? DEFAULT_WINDOW_MS;
+  const windowAfter = opts.window_ms_after ?? DEFAULT_WINDOW_MS;
+  const lo = artifact.created_at_epoch_ms - windowBefore;
+  const hi = artifact.created_at_epoch_ms + windowAfter;
+
+  // 1. Candidate fetch — straight SELECT, sqlite-vec absent is irrelevant here
+  //    because we do not use vec0 for routing; ranking happens via the network.
+  let rows: CandidateRow[] = [];
+  try {
+    rows = cachedPrepare(db, CANDIDATE_SQL).all(
+      artifact.session_id, lo, hi,
+    ) as CandidateRow[];
+  } catch {
+    // transcript_chunk_v6 absent on a pre-V32 DB — degrade silently to empty
+    return { spans: [], bi_encoder_only: true, candidate_count: 0 };
+  }
+
+  if (rows.length === 0) {
+    return { spans: [], bi_encoder_only: true, candidate_count: 0 };
+  }
+
+  // 2. Build query text for ranking — caller-provided wins; else fall back to
+  //    the first candidate's body (still useful as a topic anchor).
+  const queryText = (artifact.query_text ?? rows[0].body).substring(0, QUERY_CHARS);
+
+  // 3. Branch on reranker_mode. Both branches return RoutingSpan[] sorted desc.
+  let spans: RoutingSpan[];
+  let biEncoderOnly: boolean;
+
+  if (cfg.reranker_mode === 'cross_encoder_primary') {
+    const ce = await rankWithCrossEncoder(
+      queryText, rows, db, opts.caller_session_id ?? 'unknown-session',
+    );
+    spans = ce.spans;
+    biEncoderOnly = ce.bi_encoder_only;
+  } else {
+    spans = await rankWithBiEncoder(queryText, rows);
+    biEncoderOnly = true;
+  }
+
+  spans.sort((a, b) => b.rank_score - a.rank_score);
+
+  return {
+    spans: spans.slice(0, topK),
+    bi_encoder_only: biEncoderOnly,
+    candidate_count: rows.length,
+  };
+}
+
+/**
+ * Multi-artifact fan-out with `max_k_per_query` budget enforcement.
+ * Sequential per-artifact calls (mirrors hybrid-retrieval discipline — these
+ * are I/O-bound network calls, parallel would saturate Ollama). Non-throwing.
+ */
+export async function routeFromArtifacts(
+  db: Database,
+  artifacts: RoutingArtifact[],
+  opts: RoutingOptions = {},
+): Promise<RoutingResult> {
+  if (!artifacts || artifacts.length === 0) {
+    return { spans: [], bi_encoder_only: true, candidate_count: 0 };
+  }
+
+  const cfg = loadConfig().v6.routing;
+  const allSpans: RoutingSpan[] = [];
+  let candidateTotal = 0;
+  let anyBiOnly = false;
+
+  for (const artifact of artifacts) {
+    try {
+      const r = await routeFromArtifact(db, artifact, opts);
+      candidateTotal += r.candidate_count;
+      if (r.bi_encoder_only) anyBiOnly = true;
+      allSpans.push(...r.spans);
+    } catch {
+      // Routing per-artifact is already non-throwing; defensive guard for
+      // truly unexpected errors so a single artifact never sinks the batch.
+    }
+  }
+
+  // Deduplicate by chunk_id; keep highest rank_score on collision.
+  const byId = new Map<number, RoutingSpan>();
+  for (const s of allSpans) {
+    const existing = byId.get(s.chunk_id);
+    if (!existing || s.rank_score > existing.rank_score) {
+      byId.set(s.chunk_id, s);
+    }
+  }
+  const deduped = Array.from(byId.values());
+  deduped.sort((a, b) => b.rank_score - a.rank_score);
+
+  return {
+    spans: deduped.slice(0, cfg.max_k_per_query),
+    bi_encoder_only: anyBiOnly,
+    candidate_count: candidateTotal,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Internal ranker helpers (private — not exported)
+// ---------------------------------------------------------------------------
+
+/**
+ * Bi-encoder cosine ranking via Ollama snowflake-arctic-embed2. On any
+ * failure (Ollama unreachable, non-200, timeout, malformed response):
+ * return the candidates with rank_score=0 so the caller still sees the
+ * spans — degraded but non-throwing per CONTEXT decision 1.
+ */
+async function rankWithBiEncoder(
+  query: string,
+  candidates: CandidateRow[],
+): Promise<RoutingSpan[]> {
+  const fallback = (): RoutingSpan[] =>
+    candidates.map((c) => ({
+      chunk_id: c.id,
+      session_id: c.session_id,
+      turn_index: c.turn_index,
+      sub_index: c.sub_index,
+      role: c.role,
+      body: c.body,
+      created_at_epoch_ms: c.created_at_epoch_ms,
+      rank_score: 0,
+      ranker: 'bi_encoder' as const,
+    }));
+
+  try {
+    const texts = [query, ...candidates.map((c) => (c.body ?? '').substring(0, MAX_BODY_CHARS))];
+    const response = await fetch('http://localhost:11434/api/embed', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ model: 'snowflake-arctic-embed2', input: texts }),
+      signal: AbortSignal.timeout(RANKER_TIMEOUT_MS),
+    });
+    if (!response.ok) return fallback();
+    const data = (await response.json()) as { embeddings?: number[][] };
+    if (!data.embeddings || data.embeddings.length !== texts.length) return fallback();
+
+    const queryEmb = data.embeddings[0];
+    const queryNorm = Math.sqrt(queryEmb.reduce((s, v) => s + v * v, 0)) || 1;
+
+    return candidates.map((c, i) => {
+      const docEmb = data.embeddings![i + 1];
+      const docNorm = Math.sqrt(docEmb.reduce((s, v) => s + v * v, 0)) || 1;
+      let dot = 0;
+      for (let d = 0; d < queryEmb.length; d++) dot += queryEmb[d] * docEmb[d];
+      const cosine = dot / (queryNorm * docNorm);
+      return {
+        chunk_id: c.id,
+        session_id: c.session_id,
+        turn_index: c.turn_index,
+        sub_index: c.sub_index,
+        role: c.role,
+        body: c.body,
+        created_at_epoch_ms: c.created_at_epoch_ms,
+        rank_score: cosine,
+        ranker: 'bi_encoder' as const,
+      };
+    });
+  } catch {
+    return fallback();
+  }
+}
+
+/**
+ * Cross-encoder ranking via the BGE-reranker-v2-m3 service on port 7439.
+ * On failure: capture the reason, write one telemetry row, fall through
+ * to the bi-encoder path. Mirrors `hybrid-retrieval.ts` reranker
+ * discipline exactly (RETR-08).
+ */
+async function rankWithCrossEncoder(
+  query: string,
+  candidates: CandidateRow[],
+  db: Database,
+  callerSessionId: string,
+): Promise<{ spans: RoutingSpan[]; bi_encoder_only: boolean }> {
+  let ceFailureReason: RerankerFallbackReason | null = null;
+  const documents = candidates.map((c) => (c.body ?? '').substring(0, MAX_BODY_CHARS));
+
+  try {
+    const response = await fetch('http://127.0.0.1:7439/rerank', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ query: query.substring(0, QUERY_CHARS), documents }),
+      signal: AbortSignal.timeout(RANKER_TIMEOUT_MS),
+    });
+    if (!response.ok) {
+      ceFailureReason = 'non_2xx';
+    } else {
+      const data = (await response.json()) as { scores?: number[]; indices?: number[] };
+      if (!data.scores || data.scores.length === 0 || !data.indices) {
+        ceFailureReason = 'empty_response';
+      } else {
+        const maxScore = Math.max(...data.scores, 0.001);
+        const scoreByIdx = new Map<number, number>();
+        for (let i = 0; i < data.indices.length; i++) {
+          scoreByIdx.set(data.indices[i], data.scores[i] / maxScore);
+        }
+        const spans: RoutingSpan[] = candidates.map((c, i) => ({
+          chunk_id: c.id,
+          session_id: c.session_id,
+          turn_index: c.turn_index,
+          sub_index: c.sub_index,
+          role: c.role,
+          body: c.body,
+          created_at_epoch_ms: c.created_at_epoch_ms,
+          rank_score: scoreByIdx.get(i) ?? 0,
+          ranker: 'cross_encoder' as const,
+        }));
+        return { spans, bi_encoder_only: false };
+      }
+    }
+  } catch (e) {
+    const name = (e as { name?: string } | null)?.name;
+    ceFailureReason =
+      name === 'TimeoutError' || name === 'AbortError' ? 'timeout' : 'unreachable';
+  }
+
+  // Cross-encoder failed — record telemetry, fall through to bi-encoder.
+  if (ceFailureReason !== null) {
+    incrementRerankerFallbackCounter(db, callerSessionId, ceFailureReason);
+  }
+  const spans = await rankWithBiEncoder(query, candidates);
+  return { spans, bi_encoder_only: true };
+}
+
+=== src/assembly/deliberation-surface.ts (the section formatter) ===
+/**
+ * v6 deliberation surfacing — pure formatter.
+ *
+ * Phase 10 plan 10-02 (ASM-01..03). Consumes a `RoutingResult` from Plan
+ * 10-01's `routeFromArtifact(s)` and renders the surfaced transcript spans
+ * as labeled citations beneath an advisory-narration header consistent with
+ * Phase 7's "When You Recall — Narrate" discipline.
+ *
+ * Pure: no I/O, no DB, no network. Non-throwing (loadConfig is already
+ * non-throwing; no other failure surfaces exist in the formatter).
+ *
+ * Token budget asymmetry per CONTEXT decision 3:
+ *   full token_pct_cap          when the cross-encoder confirmed the spans
+ *   bi_encoder_budget_pct ×     when only the bi-encoder produced them
+ *     token_pct_cap                (lower-confidence → smaller share)
+ *
+ * Greedy-packs spans largest-score-first; spans that overflow are dropped
+ * silently rather than truncated mid-sentence. The advisory header is
+ * suppressed when no spans pack (no empty section header).
+ *
+ * Opt-in per assembly site via `DeliberationSurfaceOptions.enabled` —
+ * sites that don't opt in see no behavior change.
+ */
+
+import { estimateTokens } from '../shared/text-utils.js';
+import { loadConfig } from '../shared/config.js';
+import type { RoutingResult, RoutingSpan } from '../retrieval/transcript-routing.js';
+
+// ---------------------------------------------------------------------------
+// Public types
+// ---------------------------------------------------------------------------
+
+export interface DeliberationSurfaceOptions {
+  /** Total assembly token budget — surfaced spans cap at token_pct_cap × this */
+  totalAssemblyBudgetTokens: number;
+  /** When false, formatter returns null with no other side effects (opt-in) */
+  enabled: boolean;
+  /** Optional per-span artifact-context labels keyed by chunk_id */
+  artifactLabels?: Record<number, string>;
+}
+
+export interface DeliberationSurfaceResult {
+  /** Rendered section text with advisory header + per-span citations; null if nothing surfaced */
+  text: string | null;
+  /** Spans actually included after greedy-packing */
+  packed: RoutingSpan[];
+  /** True if the bi-encoder reduced budget was applied */
+  bi_encoder_budget_applied: boolean;
+}
+
+// ---------------------------------------------------------------------------
+// Public API
+// ---------------------------------------------------------------------------
+
+/**
+ * Render surfaced spans as labeled citations + advisory header. Pure +
+ * non-throwing. Returns null when disabled, empty, or every span overflows.
+ */
+export function formatDeliberationSurface(
+  routing: RoutingResult,
+  opts: DeliberationSurfaceOptions,
+): DeliberationSurfaceResult {
+  if (!opts.enabled) {
+    return { text: null, packed: [], bi_encoder_budget_applied: false };
+  }
+  if (!routing || !routing.spans || routing.spans.length === 0) {
+    return { text: null, packed: [], bi_encoder_budget_applied: false };
+  }
+
+  const cfg = loadConfig().v6.routing;
+  const baseBudgetPct = cfg.token_pct_cap / 100;
+  const biEncoderMultiplier = cfg.bi_encoder_budget_pct / 100;
+  const effectivePct = routing.bi_encoder_only
+    ? baseBudgetPct * biEncoderMultiplier
+    : baseBudgetPct;
+  const budgetTokens = Math.floor(opts.totalAssemblyBudgetTokens * effectivePct);
+  const biEncoderBudgetApplied = routing.bi_encoder_only;
+
+  // Pre-render each citation block so we can measure exact token cost.
+  const labels = opts.artifactLabels ?? {};
+  const candidates = routing.spans.slice(0, cfg.max_k_per_query);
+  const rendered = candidates.map((span) => ({
+    span,
+    text: renderCitationBlock(span, labels[span.chunk_id]),
+  }));
+
+  // Greedy-pack: largest-score-first (already sorted by Plan 10-01 contract).
+  // Drop overflow silently; continue scanning so smaller low-rank spans can
+  // still slot in if they fit.
+  const packed: RoutingSpan[] = [];
+  const packedTexts: string[] = [];
+  let usedTokens = 0;
+  for (const r of rendered) {
+    const cost = estimateTokens(r.text);
+    if (usedTokens + cost > budgetTokens) continue;
+    packed.push(r.span);
+    packedTexts.push(r.text);
+    usedTokens += cost;
+  }
+
+  if (packed.length === 0) {
+    return { text: null, packed: [], bi_encoder_budget_applied: biEncoderBudgetApplied };
+  }
+
+  const sessionCount = new Set(packed.map((s) => s.session_id)).size;
+  const header = buildAdvisoryHeader(packed.length, sessionCount);
+  const text = `${header}\n\n${packedTexts.join('\n\n')}`;
+
+  return { text, packed, bi_encoder_budget_applied: biEncoderBudgetApplied };
+}
+
+// ---------------------------------------------------------------------------
+// Internal helpers
+// ---------------------------------------------------------------------------
+
+/**
+ * Build the per-span citation block.
+ *
+ * Format per CONTEXT § specifics:
+ *   "From session {sessionId} turn {turnIndex}, where {label}: {body}"
+ *
+ * The `, where {label}` clause is omitted when no label is supplied.
+ */
+function renderCitationBlock(span: RoutingSpan, label: string | undefined): string {
+  const labelSuffix = label ? `, where ${label}` : '';
+  return `From session ${span.session_id} turn ${span.turn_index}${labelSuffix}: ${span.body}`;
+}
+
+/**
+ * Build the advisory narration line per CONTEXT § specifics:
+ *   "## Deliberation Surfaced — N spans from M sessions"
+ */
+function buildAdvisoryHeader(spans: number, sessions: number): string {
+  const spanWord = spans === 1 ? 'span' : 'spans';
+  const sessionWord = sessions === 1 ? 'session' : 'sessions';
+  return `## Deliberation Surfaced — ${spans} ${spanWord} from ${sessions} ${sessionWord}`;
+}
+
+=== src/assembly/assembler.ts (the L2.5 cascade integration) — DIFF ONLY ===
+diff --git a/src/assembly/assembler.ts b/src/assembly/assembler.ts
+index 2f8af58..6fa6f7e 100644
+--- a/src/assembly/assembler.ts
++++ b/src/assembly/assembler.ts
+@@ -83,6 +83,33 @@ export interface FullAssemblyParams {
+   /** Pinnable wall-clock for cache-stability tests (CACH-03). If omitted,
+    * defaults to Math.floor(Date.now() / 1000) at each clock-leak site. */
+   nowEpoch?: number;
++  /**
++   * v6 Phase 10 — opt-in deliberation surfacing (default false). When true,
++   * the assembler fans out from `deliberationArtifacts` to their originating
++   * transcript spans via Plan 10-01's routing surface and renders the
++   * surfaced spans at the L2.5 cascade position per
++   * `.claude/rules/assembly-budget.md`. Sites that don't opt in see no
++   * behavior change. Per CONTEXT decision 3 — opt-in protects assembly
++   * budget when callers haven't reasoned about transcript-span surfacing.
++   */
++  deliberationSurfacing?: boolean;
++  /**
++   * v6 Phase 10 — artifact references the deliberation surface fans out
++   * from. Caller pre-fetches these (typically the artifacts already chosen
++   * by the L2 reference layer); routing joins each on session_id +/- 2h.
++   * Required when `deliberationSurfacing=true`; ignored otherwise.
++   */
++  deliberationArtifacts?: Array<{
++    session_id: string;
++    created_at_epoch_ms: number;
++    query_text?: string;
++  }>;
++  /**
++   * v6 Phase 10 — optional artifact-context labels keyed by transcript
++   * chunk_id. Rendered into the citation as ", where {label}" per
++   * CONTEXT § specifics format example.
++   */
++  deliberationLabels?: Record<number, string>;
+ }
+ 
+ export interface RegularPromptParams {
+@@ -857,3 +884,58 @@ export function assembleTopicPivot(params: TopicPivotParams): InjectPayload {
+     return { ...EMPTY_PAYLOAD };
+   }
+ }
++
++// ---------------------------------------------------------------------------
++// v6 Phase 10 — opt-in deliberation surfacing (L2.5 cascade position)
++// ---------------------------------------------------------------------------
++
++import { formatDeliberationSurfaceSection } from './sections.js';
++
++/**
++ * v6 Phase 10 — append the deliberation-surface section to a payload built
++ * by `assembleFullContext`. Lives at the L2.5 cascade position per
++ * `.claude/rules/assembly-budget.md` (between the L2 reference layer and
++ * the L3 materialization layer).
++ *
++ * Async because the routing surface makes network calls (Ollama / reranker).
++ * Kept as a separate post-processing step so `assembleFullContext` stays
++ * synchronous for the existing sync hot path.
++ *
++ * Opt-in per assembly site via `params.deliberationSurfacing` — sites that
++ * don't opt in (the default) see no behavior change. When opted in but no
++ * artifact references were supplied, returns the payload unchanged.
++ *
++ * Non-throwing: routing failures, formatting failures, empty surface — all
++ * return the original payload unmodified.
++ */
++export async function appendDeliberationSurfaceToPayload(
++  payload: InjectPayload,
++  params: FullAssemblyParams,
++): Promise<InjectPayload> {
++  if (!params.deliberationSurfacing) return payload;
++  const artifacts = params.deliberationArtifacts;
++  if (!artifacts || artifacts.length === 0) return payload;
++  try {
++    const totalBudget = scaleBudget(
++      params.config.injection.budget_tokens,
++      params.contextWindowTokens,
++    );
++    const section = await formatDeliberationSurfaceSection(params.db, artifacts, {
++      enabled: true,
++      totalAssemblyBudgetTokens: totalBudget,
++      caller_session_id: params.sessionId,
++      artifactLabels: params.deliberationLabels,
++    });
++    if (!section) return payload;
++    const newContent = payload.content
++      ? `${payload.content}\n\n${section}`
++      : section;
++    return {
++      content: newContent,
++      tokenEstimate: estimateTokens(newContent),
++      sources: [...payload.sources, 'deliberation_surface'],
++    };
++  } catch {
++    return payload;
++  }
++}

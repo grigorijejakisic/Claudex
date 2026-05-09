@@ -1,0 +1,613 @@
+You are reviewing the v6 Claudex assembly integration.
+
+CONTEXT: Phase 10 added a deliberation-surface assembly section (transcript spans alongside summaries). It ships as an ASYNC POST-STEP — `appendDeliberationSurfaceToPayload` runs after the sync assembly pipeline completes. The plan author chose this to "protect the sync hot path used by SessionStart hook + bridge-adapter + 175 existing assembly tests."
+
+FOCUS:
+1. Is the async-post-step pattern actually safe under all assembly cascades? (SessionStart hook, bridge adapter, worker-context, recall-server) — what if one of these doesn't await the post-step, or expects the payload to be final after the sync phase?
+2. Token budget asymmetry — full token_pct_cap when reranker confirmed, 50% bi_encoder_budget_pct when fallback. How does the consumer know which mode the spans came from?
+3. Advisory narration line — when does it fire vs not? Edge cases?
+4. The opt-in semantics — what happens if a non-opt-in assembly site accidentally calls the post-step?
+5. Backwards compat — does anything currently consuming the assembly output break if the post-step changes the payload shape?
+
+Be specific: cite file:line. Severity tiers. Skip cosmetic.
+
+DIFF:
+diff --git a/src/assembly/assembler.ts b/src/assembly/assembler.ts
+index 2f8af58..6fa6f7e 100644
+--- a/src/assembly/assembler.ts
++++ b/src/assembly/assembler.ts
+@@ -83,6 +83,33 @@ export interface FullAssemblyParams {
+   /** Pinnable wall-clock for cache-stability tests (CACH-03). If omitted,
+    * defaults to Math.floor(Date.now() / 1000) at each clock-leak site. */
+   nowEpoch?: number;
++  /**
++   * v6 Phase 10 — opt-in deliberation surfacing (default false). When true,
++   * the assembler fans out from `deliberationArtifacts` to their originating
++   * transcript spans via Plan 10-01's routing surface and renders the
++   * surfaced spans at the L2.5 cascade position per
++   * `.claude/rules/assembly-budget.md`. Sites that don't opt in see no
++   * behavior change. Per CONTEXT decision 3 — opt-in protects assembly
++   * budget when callers haven't reasoned about transcript-span surfacing.
++   */
++  deliberationSurfacing?: boolean;
++  /**
++   * v6 Phase 10 — artifact references the deliberation surface fans out
++   * from. Caller pre-fetches these (typically the artifacts already chosen
++   * by the L2 reference layer); routing joins each on session_id +/- 2h.
++   * Required when `deliberationSurfacing=true`; ignored otherwise.
++   */
++  deliberationArtifacts?: Array<{
++    session_id: string;
++    created_at_epoch_ms: number;
++    query_text?: string;
++  }>;
++  /**
++   * v6 Phase 10 — optional artifact-context labels keyed by transcript
++   * chunk_id. Rendered into the citation as ", where {label}" per
++   * CONTEXT § specifics format example.
++   */
++  deliberationLabels?: Record<number, string>;
+ }
+ 
+ export interface RegularPromptParams {
+@@ -857,3 +884,58 @@ export function assembleTopicPivot(params: TopicPivotParams): InjectPayload {
+     return { ...EMPTY_PAYLOAD };
+   }
+ }
++
++// ---------------------------------------------------------------------------
++// v6 Phase 10 — opt-in deliberation surfacing (L2.5 cascade position)
++// ---------------------------------------------------------------------------
++
++import { formatDeliberationSurfaceSection } from './sections.js';
++
++/**
++ * v6 Phase 10 — append the deliberation-surface section to a payload built
++ * by `assembleFullContext`. Lives at the L2.5 cascade position per
++ * `.claude/rules/assembly-budget.md` (between the L2 reference layer and
++ * the L3 materialization layer).
++ *
++ * Async because the routing surface makes network calls (Ollama / reranker).
++ * Kept as a separate post-processing step so `assembleFullContext` stays
++ * synchronous for the existing sync hot path.
++ *
++ * Opt-in per assembly site via `params.deliberationSurfacing` — sites that
++ * don't opt in (the default) see no behavior change. When opted in but no
++ * artifact references were supplied, returns the payload unchanged.
++ *
++ * Non-throwing: routing failures, formatting failures, empty surface — all
++ * return the original payload unmodified.
++ */
++export async function appendDeliberationSurfaceToPayload(
++  payload: InjectPayload,
++  params: FullAssemblyParams,
++): Promise<InjectPayload> {
++  if (!params.deliberationSurfacing) return payload;
++  const artifacts = params.deliberationArtifacts;
++  if (!artifacts || artifacts.length === 0) return payload;
++  try {
++    const totalBudget = scaleBudget(
++      params.config.injection.budget_tokens,
++      params.contextWindowTokens,
++    );
++    const section = await formatDeliberationSurfaceSection(params.db, artifacts, {
++      enabled: true,
++      totalAssemblyBudgetTokens: totalBudget,
++      caller_session_id: params.sessionId,
++      artifactLabels: params.deliberationLabels,
++    });
++    if (!section) return payload;
++    const newContent = payload.content
++      ? `${payload.content}\n\n${section}`
++      : section;
++    return {
++      content: newContent,
++      tokenEstimate: estimateTokens(newContent),
++      sources: [...payload.sources, 'deliberation_surface'],
++    };
++  } catch {
++    return payload;
++  }
++}
+diff --git a/src/assembly/deliberation-surface.ts b/src/assembly/deliberation-surface.ts
+new file mode 100644
+index 0000000..0c57ac5
+--- /dev/null
++++ b/src/assembly/deliberation-surface.ts
+@@ -0,0 +1,137 @@
++/**
++ * v6 deliberation surfacing — pure formatter.
++ *
++ * Phase 10 plan 10-02 (ASM-01..03). Consumes a `RoutingResult` from Plan
++ * 10-01's `routeFromArtifact(s)` and renders the surfaced transcript spans
++ * as labeled citations beneath an advisory-narration header consistent with
++ * Phase 7's "When You Recall — Narrate" discipline.
++ *
++ * Pure: no I/O, no DB, no network. Non-throwing (loadConfig is already
++ * non-throwing; no other failure surfaces exist in the formatter).
++ *
++ * Token budget asymmetry per CONTEXT decision 3:
++ *   full token_pct_cap          when the cross-encoder confirmed the spans
++ *   bi_encoder_budget_pct ×     when only the bi-encoder produced them
++ *     token_pct_cap                (lower-confidence → smaller share)
++ *
++ * Greedy-packs spans largest-score-first; spans that overflow are dropped
++ * silently rather than truncated mid-sentence. The advisory header is
++ * suppressed when no spans pack (no empty section header).
++ *
++ * Opt-in per assembly site via `DeliberationSurfaceOptions.enabled` —
++ * sites that don't opt in see no behavior change.
++ */
++
++import { estimateTokens } from '../shared/text-utils.js';
++import { loadConfig } from '../shared/config.js';
++import type { RoutingResult, RoutingSpan } from '../retrieval/transcript-routing.js';
++
++// ---------------------------------------------------------------------------
++// Public types
++// ---------------------------------------------------------------------------
++
++export interface DeliberationSurfaceOptions {
++  /** Total assembly token budget — surfaced spans cap at token_pct_cap × this */
++  totalAssemblyBudgetTokens: number;
++  /** When false, formatter returns null with no other side effects (opt-in) */
++  enabled: boolean;
++  /** Optional per-span artifact-context labels keyed by chunk_id */
++  artifactLabels?: Record<number, string>;
++}
++
++export interface DeliberationSurfaceResult {
++  /** Rendered section text with advisory header + per-span citations; null if nothing surfaced */
++  text: string | null;
++  /** Spans actually included after greedy-packing */
++  packed: RoutingSpan[];
++  /** True if the bi-encoder reduced budget was applied */
++  bi_encoder_budget_applied: boolean;
++}
++
++// ---------------------------------------------------------------------------
++// Public API
++// ---------------------------------------------------------------------------
++
++/**
++ * Render surfaced spans as labeled citations + advisory header. Pure +
++ * non-throwing. Returns null when disabled, empty, or every span overflows.
++ */
++export function formatDeliberationSurface(
++  routing: RoutingResult,
++  opts: DeliberationSurfaceOptions,
++): DeliberationSurfaceResult {
++  if (!opts.enabled) {
++    return { text: null, packed: [], bi_encoder_budget_applied: false };
++  }
++  if (!routing || !routing.spans || routing.spans.length === 0) {
++    return { text: null, packed: [], bi_encoder_budget_applied: false };
++  }
++
++  const cfg = loadConfig().v6.routing;
++  const baseBudgetPct = cfg.token_pct_cap / 100;
++  const biEncoderMultiplier = cfg.bi_encoder_budget_pct / 100;
++  const effectivePct = routing.bi_encoder_only
++    ? baseBudgetPct * biEncoderMultiplier
++    : baseBudgetPct;
++  const budgetTokens = Math.floor(opts.totalAssemblyBudgetTokens * effectivePct);
++  const biEncoderBudgetApplied = routing.bi_encoder_only;
++
++  // Pre-render each citation block so we can measure exact token cost.
++  const labels = opts.artifactLabels ?? {};
++  const candidates = routing.spans.slice(0, cfg.max_k_per_query);
++  const rendered = candidates.map((span) => ({
++    span,
++    text: renderCitationBlock(span, labels[span.chunk_id]),
++  }));
++
++  // Greedy-pack: largest-score-first (already sorted by Plan 10-01 contract).
++  // Drop overflow silently; continue scanning so smaller low-rank spans can
++  // still slot in if they fit.
++  const packed: RoutingSpan[] = [];
++  const packedTexts: string[] = [];
++  let usedTokens = 0;
++  for (const r of rendered) {
++    const cost = estimateTokens(r.text);
++    if (usedTokens + cost > budgetTokens) continue;
++    packed.push(r.span);
++    packedTexts.push(r.text);
++    usedTokens += cost;
++  }
++
++  if (packed.length === 0) {
++    return { text: null, packed: [], bi_encoder_budget_applied: biEncoderBudgetApplied };
++  }
++
++  const sessionCount = new Set(packed.map((s) => s.session_id)).size;
++  const header = buildAdvisoryHeader(packed.length, sessionCount);
++  const text = `${header}\n\n${packedTexts.join('\n\n')}`;
++
++  return { text, packed, bi_encoder_budget_applied: biEncoderBudgetApplied };
++}
++
++// ---------------------------------------------------------------------------
++// Internal helpers
++// ---------------------------------------------------------------------------
++
++/**
++ * Build the per-span citation block.
++ *
++ * Format per CONTEXT § specifics:
++ *   "From session {sessionId} turn {turnIndex}, where {label}: {body}"
++ *
++ * The `, where {label}` clause is omitted when no label is supplied.
++ */
++function renderCitationBlock(span: RoutingSpan, label: string | undefined): string {
++  const labelSuffix = label ? `, where ${label}` : '';
++  return `From session ${span.session_id} turn ${span.turn_index}${labelSuffix}: ${span.body}`;
++}
++
++/**
++ * Build the advisory narration line per CONTEXT § specifics:
++ *   "## Deliberation Surfaced — N spans from M sessions"
++ */
++function buildAdvisoryHeader(spans: number, sessions: number): string {
++  const spanWord = spans === 1 ? 'span' : 'spans';
++  const sessionWord = sessions === 1 ? 'session' : 'sessions';
++  return `## Deliberation Surfaced — ${spans} ${spanWord} from ${sessions} ${sessionWord}`;
++}
+diff --git a/src/assembly/sections.ts b/src/assembly/sections.ts
+index fc9c0c2..6f9e39b 100644
+--- a/src/assembly/sections.ts
++++ b/src/assembly/sections.ts
+@@ -1145,3 +1145,49 @@ export function formatExperienceTierSection(items: ExperienceTierItem[]): string
+   return lines.join('\n');
+ }
+ 
++// ---------------------------------------------------------------------------
++// v6 Phase 10 — opt-in deliberation surfacing
++// ---------------------------------------------------------------------------
++
++import { routeFromArtifacts, type RoutingArtifact } from '../retrieval/transcript-routing.js';
++import {
++  formatDeliberationSurface,
++  type DeliberationSurfaceOptions,
++} from './deliberation-surface.js';
++
++/**
++ * v6 Phase 10 — opt-in deliberation surfacing wrapper.
++ *
++ * Calls Plan 10-01's routing surface with the artifact references the
++ * assembler already retrieved, then formats the surfaced spans via Plan
++ * 10-02's pure formatter. Non-throwing — returns null on any failure
++ * (routing unreachable, empty result, disabled, over budget).
++ *
++ * Opt-in per assembly site via opts.enabled (default false in callers —
++ * sites that opt in must pass `enabled: true` explicitly).
++ *
++ * Budget cap (token_pct_cap × totalAssemblyBudgetTokens) is enforced inside
++ * formatDeliberationSurface; bi-encoder-only paths get the reduced
++ * bi_encoder_budget_pct multiplier per CONTEXT decision 3.
++ *
++ * See .claude/rules/assembly-budget.md cascade — this section sits at the
++ * L2.5 reference-layer position alongside packed-artifact summaries.
++ */
++export async function formatDeliberationSurfaceSection(
++  db: Database,
++  artifacts: RoutingArtifact[],
++  opts: DeliberationSurfaceOptions & { caller_session_id?: string },
++): Promise<string | null> {
++  if (!opts.enabled) return null;
++  if (!artifacts || artifacts.length === 0) return null;
++  try {
++    const routing = await routeFromArtifacts(db, artifacts, {
++      caller_session_id: opts.caller_session_id,
++    });
++    const result = formatDeliberationSurface(routing, opts);
++    return result.text;
++  } catch {
++    return null;
++  }
++}
++
+diff --git a/src/tests/assembly/deliberation-surface.test.ts b/src/tests/assembly/deliberation-surface.test.ts
+new file mode 100644
+index 0000000..ff72c5e
+--- /dev/null
++++ b/src/tests/assembly/deliberation-surface.test.ts
+@@ -0,0 +1,299 @@
++/**
++ * Phase 10 Plan 10-02 — vitest coverage of the v6 assembly layer.
++ *
++ * Truths 1, 2, 3, 5, 6 hit the pure formatter (no DB / no network).
++ * Truths 4, 7 hit `formatDeliberationSurfaceSection` against an in-memory
++ * V32 DB seeded via the production write surface (upsertChunk); only the
++ * network seams are mocked.
++ */
++
++import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
++import Database from 'better-sqlite3';
++import * as fs from 'node:fs';
++import * as path from 'node:path';
++import * as os from 'node:os';
++
++import { initializeSchema } from '../../core/migrations.js';
++import { upsertChunk } from '../../ingestion/upsert-chunk.js';
++import {
++  formatDeliberationSurface,
++  type DeliberationSurfaceOptions,
++} from '../../assembly/deliberation-surface.js';
++import { formatDeliberationSurfaceSection } from '../../assembly/sections.js';
++import type { RoutingResult, RoutingSpan } from '../../retrieval/transcript-routing.js';
++
++// ---------------------------------------------------------------------------
++// Test scaffolding
++// ---------------------------------------------------------------------------
++
++const BASE_TIME = 1_700_000_000_000;
++
++let tmpHome: string;
++let prevHome: string | undefined;
++let prevUserProfile: string | undefined;
++let fetchSpy: ReturnType<typeof vi.spyOn> | null = null;
++
++beforeEach(() => {
++  tmpHome = fs.mkdtempSync(path.join(os.tmpdir(), 'p10-asm-'));
++  prevHome = process.env.HOME;
++  prevUserProfile = process.env.USERPROFILE;
++  process.env.HOME = tmpHome;
++  process.env.USERPROFILE = tmpHome;
++});
++
++afterEach(() => {
++  if (fetchSpy) {
++    fetchSpy.mockRestore();
++    fetchSpy = null;
++  }
++  if (prevHome === undefined) delete process.env.HOME;
++  else process.env.HOME = prevHome;
++  if (prevUserProfile === undefined) delete process.env.USERPROFILE;
++  else process.env.USERPROFILE = prevUserProfile;
++  try {
++    fs.rmSync(tmpHome, { recursive: true, force: true });
++  } catch {
++    /* ignore */
++  }
++});
++
++function makeSpan(
++  chunkId: number,
++  sessionId: string,
++  turnIndex: number,
++  body: string,
++): RoutingSpan {
++  return {
++    chunk_id: chunkId,
++    session_id: sessionId,
++    turn_index: turnIndex,
++    sub_index: 0,
++    role: 'assistant',
++    body,
++    created_at_epoch_ms: BASE_TIME + turnIndex * 60_000,
++    rank_score: 1 - turnIndex * 0.1,
++    ranker: 'cross_encoder',
++  };
++}
++
++function freshV32Db(): Database.Database {
++  const db = new Database(':memory:');
++  initializeSchema(db);
++  return db;
++}
++
++function seedChunks(db: Database.Database, sessionId: string, count: number): void {
++  for (let i = 0; i < count; i++) {
++    upsertChunk(db, {
++      session_id: sessionId,
++      project_id: 'test-project',
++      turn_index: i,
++      sub_index: 0,
++      role: i % 2 === 0 ? 'user' : 'assistant',
++      provenance: 'organic',
++      body: `Synthetic chunk #${i} body for ${sessionId}.`,
++      created_at_epoch_ms: BASE_TIME + i * 60_000,
++      wrapper_redacted: false,
++    });
++  }
++}
++
++// ---------------------------------------------------------------------------
++// 1. Labeled citations format per CONTEXT § specifics
++// ---------------------------------------------------------------------------
++
++describe('formatDeliberationSurface — labeled citations format per CONTEXT § specifics', () => {
++  it('renders "From session X turn N, where {label}: {body}" for each span', () => {
++    const spans = [
++      makeSpan(11, 'sess-1', 47, 'Phase 2.1 KILL outcome rationale ...'),
++      makeSpan(22, 'sess-2', 12, 'sqlite-vec single-store decision ...'),
++    ];
++    const routing: RoutingResult = { spans, bi_encoder_only: false, candidate_count: 2 };
++    const labels: Record<number, string> = {
++      11: 'Phase 2.1 KILL was decided',
++      22: 'sqlite-vec migration completed',
++    };
++
++    const result = formatDeliberationSurface(routing, {
++      enabled: true,
++      totalAssemblyBudgetTokens: 10_000,
++      artifactLabels: labels,
++    });
++
++    expect(result.text).not.toBeNull();
++    expect(result.text).toContain('From session sess-1 turn 47, where Phase 2.1 KILL was decided: Phase 2.1 KILL outcome rationale ...');
++    expect(result.text).toContain('From session sess-2 turn 12, where sqlite-vec migration completed: sqlite-vec single-store decision ...');
++  });
++});
++
++// ---------------------------------------------------------------------------
++// 2. Advisory narration line shape
++// ---------------------------------------------------------------------------
++
++describe('formatDeliberationSurface — advisory narration line shape', () => {
++  it('emits "## Deliberation Surfaced — {N} spans from {M} sessions" header', () => {
++    const spans = [
++      makeSpan(1, 'sess-A', 0, 'span 1'),
++      makeSpan(2, 'sess-A', 1, 'span 2'),
++      makeSpan(3, 'sess-B', 0, 'span 3'),
++    ];
++    const routing: RoutingResult = { spans, bi_encoder_only: false, candidate_count: 3 };
++    const result = formatDeliberationSurface(routing, {
++      enabled: true,
++      totalAssemblyBudgetTokens: 10_000,
++    });
++    expect(result.text).not.toBeNull();
++    expect(result.text!.startsWith('## Deliberation Surfaced — 3 spans from 2 sessions')).toBe(true);
++  });
++
++  it('uses singular "span" / "session" when N=1 / M=1', () => {
++    const spans = [makeSpan(1, 'sess-only', 0, 'one span')];
++    const routing: RoutingResult = { spans, bi_encoder_only: false, candidate_count: 1 };
++    const result = formatDeliberationSurface(routing, {
++      enabled: true,
++      totalAssemblyBudgetTokens: 10_000,
++    });
++    expect(result.text!.startsWith('## Deliberation Surfaced — 1 span from 1 session')).toBe(true);
++  });
++});
++
++// ---------------------------------------------------------------------------
++// 3. Token-budget asymmetry between cross-encoder and bi-encoder paths
++// ---------------------------------------------------------------------------
++
++describe('formatDeliberationSurface — token budget asymmetry', () => {
++  it('packs more spans on cross-encoder path than on bi-encoder-only path', () => {
++    // Build spans of equal byte-length so token cost is uniform.
++    const spanBody = 'x'.repeat(800); // ~200 tokens via chars/4 estimate
++    const spans = Array.from({ length: 5 }, (_, i) => makeSpan(i, 'sess-budget', i, spanBody));
++
++    const ceRouting: RoutingResult = { spans, bi_encoder_only: false, candidate_count: 5 };
++    const biRouting: RoutingResult = { spans, bi_encoder_only: true, candidate_count: 5 };
++    const opts: DeliberationSurfaceOptions = {
++      enabled: true,
++      totalAssemblyBudgetTokens: 10_000, // 15% = 1500 tokens; bi: 7.5% = 750
++    };
++
++    const ce = formatDeliberationSurface(ceRouting, opts);
++    const bi = formatDeliberationSurface(biRouting, opts);
++
++    expect(ce.bi_encoder_budget_applied).toBe(false);
++    expect(bi.bi_encoder_budget_applied).toBe(true);
++    // Cross-encoder path packs strictly more spans than bi-encoder-only path.
++    expect(ce.packed.length).toBeGreaterThan(bi.packed.length);
++  });
++});
++
++// ---------------------------------------------------------------------------
++// 4. Opt-in via enabled flag (formatDeliberationSurfaceSection wrapper)
++// ---------------------------------------------------------------------------
++
++describe('formatDeliberationSurfaceSection — opt-in via enabled flag', () => {
++  it('returns null and makes no routing call when enabled=false', async () => {
++    const db = freshV32Db();
++    seedChunks(db, 'sess-optin', 3);
++    let fetchCalls = 0;
++    fetchSpy = vi.spyOn(globalThis, 'fetch').mockImplementation((async () => {
++      fetchCalls++;
++      return new Response('{}', { status: 200 });
++    }) as typeof fetch);
++
++    const result = await formatDeliberationSurfaceSection(
++      db,
++      [{ session_id: 'sess-optin', created_at_epoch_ms: BASE_TIME, query_text: 'q' }],
++      { enabled: false, totalAssemblyBudgetTokens: 10_000 },
++    );
++
++    expect(result).toBeNull();
++    expect(fetchCalls).toBe(0);
++    db.close();
++  });
++
++  it('returns a section when enabled=true with seeded chunks', async () => {
++    const db = freshV32Db();
++    seedChunks(db, 'sess-optin', 3);
++    fetchSpy = vi.spyOn(globalThis, 'fetch').mockImplementation((async (input: string | URL | Request, init?: RequestInit) => {
++      const url = String(input);
++      if (url.includes('11434/api/embed')) {
++        const body = init?.body ? JSON.parse(String(init.body)) : { input: [] };
++        const texts: string[] = body.input ?? [];
++        return new Response(
++          JSON.stringify({ embeddings: texts.map(() => Array(1024).fill(0.001)) }),
++          { status: 200 },
++        );
++      }
++      return new Response('', { status: 404 });
++    }) as typeof fetch);
++
++    const result = await formatDeliberationSurfaceSection(
++      db,
++      [{ session_id: 'sess-optin', created_at_epoch_ms: BASE_TIME + 60_000, query_text: 'q' }],
++      { enabled: true, totalAssemblyBudgetTokens: 10_000 },
++    );
++
++    expect(result).not.toBeNull();
++    expect(result!.startsWith('## Deliberation Surfaced —')).toBe(true);
++    db.close();
++  });
++});
++
++// ---------------------------------------------------------------------------
++// 5. Empty spans returns null (no empty header)
++// ---------------------------------------------------------------------------
++
++describe('formatDeliberationSurface — empty spans returns null', () => {
++  it('returns null with no header when routing produced zero spans', () => {
++    const routing: RoutingResult = { spans: [], bi_encoder_only: true, candidate_count: 0 };
++    const result = formatDeliberationSurface(routing, {
++      enabled: true,
++      totalAssemblyBudgetTokens: 10_000,
++    });
++    expect(result.text).toBeNull();
++    expect(result.packed.length).toBe(0);
++  });
++});
++
++// ---------------------------------------------------------------------------
++// 6. Greedy packing drops overflow spans silently
++// ---------------------------------------------------------------------------
++
++describe('formatDeliberationSurface — greedy packing drops overflow silently', () => {
++  it('skips a span that would overflow the budget but continues scanning', () => {
++    const small = 'x'.repeat(80); // ~20 tokens via chars/4
++    const huge = 'y'.repeat(20_000); // ~5000 tokens
++    const spans = [
++      makeSpan(1, 'sess-greed', 0, small),
++      makeSpan(2, 'sess-greed', 1, small),
++      makeSpan(3, 'sess-greed', 2, huge),
++      makeSpan(4, 'sess-greed', 3, small),
++      makeSpan(5, 'sess-greed', 4, small),
++    ];
++    const routing: RoutingResult = { spans, bi_encoder_only: false, candidate_count: 5 };
++    const result = formatDeliberationSurface(routing, {
++      enabled: true,
++      totalAssemblyBudgetTokens: 10_000, // 15% = 1500 tokens
++    });
++    expect(result.packed.length).toBe(4);
++    // Huge span (chunk_id=3) was dropped silently
++    expect(result.packed.map((s) => s.chunk_id)).not.toContain(3);
++  });
++});
++
++// ---------------------------------------------------------------------------
++// 7. Integration site landed at the L2.5 cascade position
++// ---------------------------------------------------------------------------
++
++describe('formatDeliberationSurfaceSection — integration at L2.5 cascade position', () => {
++  it('assembler.ts wires formatDeliberationSurfaceSection into the cascade', () => {
++    const assemblerPath = path.resolve(__dirname, '../../assembly/assembler.ts');
++    const assemblerSrc = fs.readFileSync(assemblerPath, 'utf8');
++    expect(assemblerSrc).toContain('formatDeliberationSurfaceSection');
++    expect(assemblerSrc).toContain('appendDeliberationSurfaceToPayload');
++  });
++
++  it('.claude/rules/assembly-budget.md documents the L2.5 cascade slot', () => {
++    const rulePath = path.resolve(__dirname, '../../../.claude/rules/assembly-budget.md');
++    const ruleSrc = fs.readFileSync(rulePath, 'utf8');
++    expect(ruleSrc).toContain('L2.5 | Deliberation Surface');
++  });
++});
