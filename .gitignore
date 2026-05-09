@@ -4,6 +4,8 @@ dist/
 *.db
 *.db-wal
 *.db-shm
+# POLISH-05 — production-shape WIR fixture is intentionally tracked
+!.planning/fixtures/production-shape-v32.db
 context/checkpoints/
 context/sessions/
 context/reasoning/

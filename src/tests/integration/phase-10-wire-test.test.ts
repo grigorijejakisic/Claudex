@@ -242,7 +242,12 @@ describe('WIR-01 (b) — spans actually appear in the assembly output', () => {
       );
 
       expect(sectionText).not.toBeNull();
-      expect(sectionText).toMatch(/^## Deliberation Surfaced — \d+ spans? from \d+ sessions?/);
+      // POLISH-02 — bi-encoder-only path emits the locked low-confidence header
+      // (Gemini Assembly Finding #3). These wire tests use the bi-encoder
+      // fallback (Ollama mocked, no cross-encoder), so the suffix is expected.
+      expect(sectionText).toMatch(
+        /^## Deliberation Surfaced (?:\(low-confidence retrieval\)|— \d+ spans? from \d+ sessions?)/,
+      );
       expect(sectionText).toContain(`From session ${sessionId}`);
       // At least one of the seeded bodies must appear in the output.
       const containsBody = bodies.some((b) => sectionText!.includes(b));
@@ -310,7 +315,7 @@ describe('WIR-01 (c) — zero errors across V17-collapsed + base-table fresh-DB 
 // ---------------------------------------------------------------------------
 
 describe('WIR-01 (d) — advisory narration line emitted', () => {
-  it('emits "## Deliberation Surfaced — N spans from M sessions" in the rendered section', async () => {
+  it('emits "## Deliberation Surfaced …" advisory header in the rendered section', async () => {
     const db = freshBaseTableV32Db();
     // Seed across two distinct sessions for M > 1
     const a = seedDeliberation(db, 'wir01-advisory-A');
@@ -324,7 +329,14 @@ describe('WIR-01 (d) — advisory narration line emitted', () => {
     );
 
     expect(section).not.toBeNull();
-    expect(section).toMatch(/^## Deliberation Surfaced — \d+ spans? from \d+ sessions?$/m);
+    // POLISH-02 — header has two locked variants per Gemini Assembly Finding #3:
+    //   bi_encoder_only=true → '## Deliberation Surfaced (low-confidence retrieval)'
+    //   cross-encoder confirmed → '## Deliberation Surfaced — N spans from M sessions'
+    // This wire test uses the bi-encoder fallback path; either variant satisfies
+    // "advisory line was emitted."
+    expect(section).toMatch(
+      /^## Deliberation Surfaced (?:\(low-confidence retrieval\)|— \d+ spans? from \d+ sessions?)$/m,
+    );
     db.close();
   });
 });

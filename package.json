@@ -25,7 +25,10 @@
   "type": "module",
   "scripts": {
     "build": "bun run build.ts",
-    "test": "vitest run",
+    "lint:test-discipline": "node scripts/lint-test-discipline.cjs",
+    "snapshot:build": "node scripts/build-production-shape-snapshot.cjs",
+    "test": "node scripts/lint-test-discipline.cjs && vitest run",
+    "test:no-lint": "vitest run",
     "setup": "node dist/cli/setup.cjs",
     "doctor": "node dist/cli/doctor.cjs",
     "health": "node dist/cli/health.cjs",
