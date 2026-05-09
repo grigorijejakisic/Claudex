@@ -1,5 +1,11 @@
 import { wilsonDeltaCI, type CI } from './wilson.js';
-import type { ReplicationRunResult, BindVerdict, ReplicationSummary } from './types.js';
+import type {
+  ReplicationRunResult,
+  BindVerdict,
+  ReplicationSummary,
+  PerProbeOutcome,
+  McNemarVerdict,
+} from './types.js';
 
 /**
  * Per-replication BindVerdict via Wilson/Newcombe CI on Δ(transcript − summary).
@@ -86,4 +92,107 @@ export function perKindBreakdown(results: ReplicationRunResult[]) {
       descriptive_only: true as const,
     };
   });
+}
+
+// ---------------------------------------------------------------------------
+// POLISH-09 — paired-McNemar exact test (replaces poolReplications semantics)
+// ---------------------------------------------------------------------------
+
+/**
+ * Paired-McNemar exact test on per-probe paired pass/fail patterns across
+ * r1 + r2. Replaces the pseudoreplication-prone `poolReplications` shape.
+ *
+ * Per 11-CONTEXT.md § Methodology critique #2:
+ *   - Pre-commit minimum-discordant-pair threshold (default 5).
+ *   - Below the threshold → INCONCLUSIVE regardless of p-value.
+ *
+ * Per 11-CONTEXT.md § Implementation Decisions: OR-aggregate r1 + r2 per
+ * probe (probe passes B-arm iff EITHER replication's B-arm passes). This
+ * captures the strictest discordant-pair signal — the alternative
+ * (require both replications to pass) is too strict given known judge
+ * variance.
+ *
+ * Verdict:
+ *   - p < 0.05 AND b_only > a_only → BIND_POSITIVE
+ *   - p < 0.05 AND a_only > b_only → BIND_NEGATIVE
+ *   - else                          → INCONCLUSIVE
+ */
+export function pairedMcNemar(
+  outcomes: PerProbeOutcome[],
+  options: { min_discordant_threshold?: number } = {},
+): McNemarVerdict {
+  const minThreshold = options.min_discordant_threshold ?? 5;
+
+  let a_only = 0;
+  let b_only = 0;
+  for (const o of outcomes) {
+    const a_pass = o.r1_a_arm_pass || o.r2_a_arm_pass;
+    const b_pass = o.r1_b_arm_pass || o.r2_b_arm_pass;
+    if (a_pass && !b_pass) a_only++;
+    else if (b_pass && !a_pass) b_only++;
+    // Concordant pairs (both pass or both fail) drop out of McNemar.
+  }
+  const discordant_pairs = a_only + b_only;
+
+  // McNemar exact: under H0 (no difference), b_only ~ Binomial(discordant_pairs, 0.5).
+  // Two-sided p-value: 2 × P(X ≤ min(a_only, b_only) | n=discordant_pairs, p=0.5).
+  let p_value = 1.0;
+  if (discordant_pairs > 0) {
+    const k = Math.min(a_only, b_only);
+    p_value = Math.min(1, 2 * binomialCdf(k, discordant_pairs, 0.5));
+  }
+
+  let verdict: McNemarVerdict['verdict'];
+  if (discordant_pairs < minThreshold) {
+    verdict = 'INCONCLUSIVE';
+  } else if (p_value < 0.05 && b_only > a_only) {
+    verdict = 'BIND_POSITIVE';
+  } else if (p_value < 0.05 && a_only > b_only) {
+    verdict = 'BIND_NEGATIVE';
+  } else {
+    verdict = 'INCONCLUSIVE';
+  }
+
+  // Per-replication breakdown for transparency (descriptive, not a binding gate).
+  const by_replication: McNemarVerdict['by_replication'] = ([1, 2] as const).map((r) => {
+    let a_pass = 0;
+    let b_pass = 0;
+    for (const o of outcomes) {
+      if (r === 1) {
+        if (o.r1_a_arm_pass) a_pass++;
+        if (o.r1_b_arm_pass) b_pass++;
+      } else {
+        if (o.r2_a_arm_pass) a_pass++;
+        if (o.r2_b_arm_pass) b_pass++;
+      }
+    }
+    return { replication: r, a_pass, b_pass, n: outcomes.length };
+  });
+
+  return {
+    a_only,
+    b_only,
+    discordant_pairs,
+    p_value,
+    min_discordant_threshold: minThreshold,
+    verdict,
+    by_replication,
+  };
+}
+
+// Binomial CDF — exact, not approximation. n is small (≤ 60), no numerical issues.
+function binomialCdf(k: number, n: number, p: number): number {
+  let cdf = 0;
+  for (let i = 0; i <= k; i++) cdf += binomialPmf(i, n, p);
+  return cdf;
+}
+function binomialPmf(k: number, n: number, p: number): number {
+  if (k < 0 || k > n) return 0;
+  return Math.exp(logCombination(n, k) + k * Math.log(p) + (n - k) * Math.log(1 - p));
+}
+function logCombination(n: number, k: number): number {
+  if (k < 0 || k > n) return -Infinity;
+  let log = 0;
+  for (let i = 1; i <= k; i++) log += Math.log(n - i + 1) - Math.log(i);
+  return log;
 }

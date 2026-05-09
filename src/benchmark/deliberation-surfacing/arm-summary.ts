@@ -78,8 +78,25 @@ export async function runSummaryArm(
   try {
     const artifacts: ScoredArtifact[] = await hybridSearchAsync(db, probe.prompt, project, { limit: 10 });
     injected_artifact_count = artifacts.length;
+    // POLISH-08 — A-arm metadata parity (Gemini Harness Finding #1).
+    // The B-arm (`runTranscriptArmViaRouting`) labels every span with
+    // `[from session_id=…, turn_index=…]`. Without parity, the prong-2
+    // "cite specifically with session_id + turn_index" rubric would
+    // measure metadata access asymmetry rather than deliberation
+    // engagement. We label each A-arm summary with `[from session_id=…]`
+    // — the artifact-level retrieval surface does not carry per-turn
+    // indices, but it does carry session_id (ScoredArtifact extends
+    // ArtifactRow which has session_id). This closes the asymmetry
+    // for the citable-metadata prong. The remaining gap (turn_index)
+    // is an artifact-vs-chunk granularity difference; the prong-2
+    // rubric will be verified during W3 against the actual judge prompt
+    // to confirm session_id is sufficient for cite-quality scoring.
     renderedContext = artifacts
-      .map((a, i) => `[ctx-${i + 1}] ${(a.summary ?? a.content ?? '').slice(0, 600)}`)
+      .map((a, i) => {
+        const sid = a.session_id ?? 'unknown';
+        const summary = (a.summary ?? a.content ?? '').slice(0, 600);
+        return `[ctx-${i + 1}, from session_id=${sid}] ${summary}`;
+      })
       .join('\n');
   } catch (err) {
     return {
