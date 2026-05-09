@@ -60,7 +60,7 @@ Reframe artifact: `.planning/reframes/2026-05-05-multi-handle-kill.md`. Aggregat
 - [x] **Phase 8: Transcript ingestion substrate** _(type: engineering)_ — SHIPPED 2026-05-08. V32 schema bump + transcript-chunk write path + JSONL ingestion hook + redaction-at-ingestion + WIR live-wiring ship gate.
 - [x] **Phase 9: Empirical measurement** _(type: empirical)_ — SHIPPED 2026-05-09 (originally BOUND POSITIVE; verdict invalidated post-hoc by Gemini methodology audit — see Phase 11). Pooled n=60 across 2 replications; Δ +0.1667; Wilson Δ CI [+0.0038, +0.3434]. Bi-encoder-only retrieval baseline; per-kind concentration in kinds b/d/e.
 - [x] **Phase 10: Conditional ship** _(type: engineering branch)_ — SHIPPED 2026-05-09. Routing + assembly + Vesna 21→26 + WIR-01 wire-test + 9/9 ship gates + v6.0.0 annotated tag (operator-confirms public push). Note: 3 critical regressions surfaced post-hoc by Gemini review — Phase 11 W1 fixes.
-- [ ] **Phase 11: Polish — land v6 properly** _(type: engineering + empirical hybrid)_ — STARTED 2026-05-09. Three internal waves: (W1) code regressions across routing / assembly / ingestion; (W2) methodology fix for the P9 harness + multi-judge ensemble + bake external-review gate into auto-orchestrate; (W3) re-bind under corrected methodology + cross-corpus generalization on big-mozzy-v2 + conditional ship (positive bind / kill receipt / inconclusive). Closes v6.0.0 once with the annotation matching whatever the corrected verdict produces. NEVER pushes during the polish. v6.0.0 tag delete-and-retag at close.
+- [x] **Phase 11: Polish — land v6 properly** _(type: engineering + empirical hybrid)_ — STARTED 2026-05-09. Three internal waves: (W1) code regressions across routing / assembly / ingestion; (W2) methodology fix for the P9 harness + multi-judge ensemble + bake external-review gate into auto-orchestrate; (W3) re-bind under corrected methodology + cross-corpus generalization on big-mozzy-v2 + conditional ship (positive bind / kill receipt / inconclusive). Closes v6.0.0 once with the annotation matching whatever the corrected verdict produces. NEVER pushes during the polish. v6.0.0 tag delete-and-retag at close. (completed 2026-05-09)
 
 ## Phase Details
 
@@ -134,7 +134,7 @@ Reframe artifact: `.planning/reframes/2026-05-05-multi-handle-kill.md`. Aggregat
 **Plans**: 8 plans across 3 waves (planned 2026-05-09 by `/auto-plan-phase 11`).
 
 **Plans:**
-5/8 plans executed
+8/8 plans complete
 - [ ] 11-02-PLAN.md — Assembly fixes (4 Gemini findings: payload-spread for commitEffects, native-async, bi-encoder fallback annotation, token-budget pre-deduct) + regression tests [W1, POLISH-02]
 - [ ] 11-03-PLAN.md — Ingestion fixes (6 Gemini findings) + test rewrites + test-discipline lint + sanitized production-shape snapshot + WIR-promoted integration test [W1, POLISH-03..06]
 - [ ] 11-04-PLAN.md — Methodology fix: harness B-arm via routeFromArtifact + A-arm metadata parity + paired-McNemar verdict + 4-judge ensemble + P9 a/c parametric-knowledge audit [W2, POLISH-07..11]
@@ -192,7 +192,7 @@ Phase 8 (substrate) → Phase 9 (empirical) → Phase 10 (conditional ship). Dec
 | 8. Transcript ingestion substrate | v6.0 | 5/5 | Complete | 2026-05-08 |
 | 9. Empirical measurement | v6.0 | 4/4 | Complete (verdict invalidated post-hoc; see P11) | 2026-05-09 |
 | 10. Conditional ship | v6.0 | 4/4 | Complete (regressions found post-hoc; see P11) | 2026-05-09 |
-| 11. Polish — land v6 properly | 5/8 | In Progress|  | started 2026-05-09 |
+| 11. Polish — land v6 properly | 8/8 | Complete   | 2026-05-09 | started 2026-05-09 |
 
 ---
 

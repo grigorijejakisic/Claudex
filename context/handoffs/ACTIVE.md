@@ -1,49 +1,186 @@
 ---
 status: active
 phase: "11"
-summary: Phase 11 W1 + W2 SHIPPED. W3 (empirical re-bind) is operator-driven — requires LIVE 4-judge ensemble (Gemini-3-Flash + Claude Opus 4.7 + GLM-5.1 + Kimi-K2.6) + 2-4 days of GPU/cloud compute per question, plus checkpoint:human tasks for big-mozzy-v2 probe authoring + v6.0.0 retag operator-approval. v6.0.0 local tag is UNCHANGED — still has the unverified Phase 10 annotation. Operator must run W3 before retag + public push.
-topic: 2026-05-09-phase-11-w2-complete-w3-pending-operator
-created_at_epoch_ms: 1778361000000
+summary: Phase 11 W1 + W2 + W3-engineering-scaffolding SHIPPED (8/8 plan SUMMARYs on disk). W3 measurement runs + checkpoint:human tasks (big-mozzy-v2 user-pair probe authoring + v6.0.0 retag operator-approval) remain operator work. v6.0.0 local tag UNCHANGED — operator runs the empirical re-bind, then phase-11-close.cjs prints the recommended retag annotation, then operator approves + executes.
+topic: 2026-05-09-phase-11-engineering-shipped-w3-empirical-pending
+created_at_epoch_ms: 1778363400000
 ---
 
-# 2026-05-09 — Phase 11 polish W1 + W2 SHIPPED; W3 awaits operator
+# 2026-05-09 — Phase 11 engineering complete; W3 empirical re-bind awaits operator
 
-**Where we are:** Phase 11 (the v6 polish phase, addressing pre-push Gemini consultation defects) has 5 of 8 plans SHIPPED. Wave 1 (engineering — code regressions) and Wave 2 (engineering — methodology fix + skill update) are complete. Wave 3 is **operator-driven empirical measurement** — it is a separate operator commitment, not a continuation of the autonomous engineering thread.
+**Where we are:** Phase 11 (the v6 polish phase) has all 8 plan SUMMARY.md files on disk. W1 (code regressions) and W2 (methodology fix + skill update) shipped end-to-end. W3 (Q1/Q2/Q3 empirical re-bind + 11-RESULTS.md + v6.0.0 retag) has its **engineering scaffolding** shipped — the runner functions, gate-readers, conditional-outcomes classifier, retag-annotation generator are all in place and tested. **The actual measurement runs** (live 4-judge cloud ensemble + 2-4 days GPU/cloud compute per question) and the **two checkpoint:human tasks** (big-mozzy-v2 user-pair probe authoring + v6.0.0 retag annotation operator-approval) are operator commitments outside the autonomous pipeline.
 
-## Morning operator action — three decisions
+## Operator-runnable command sequence for W3 close-out
 
-1. **Decide on Wave 3 timing.** W3 plans need ~3-6 days of GPU/cloud compute per the spec. Costs apply (Gemini-3-Flash + GLM-5.1 + Kimi-K2.6 are paid Ollama cloud; Claude Opus 4.7 is OAuth/MAX so no API charge). Schedule overnight runs or a dedicated multi-day window.
-2. **Decide on Angel/GLM-5.1 scheduling.** GLM-5.1 is Angel's default model AND a judge in the W3 ensemble. Mitigation per `.planning/phases/11-polish-land-v6-properly/11-CONTEXT.md` § Operational constraints (line 122): swap Angel to a non-judge cloud model OR run W3 during Angel-idle window.
-3. **Author big-mozzy-v2 user-pair probes for Q3** (CONTEXT line 108 — required user-pair authoring). Q3 only runs if Q1 + Q2 both BIND_POSITIVE; if W3 short-circuits earlier, Q3 doesn't happen.
+This is the precise resume path. Each step is its own operator decision.
 
-## What's complete (W1 + W2 SHIPPED)
+### 1. Pre-flight checks
 
-**Wave 1 — Code regressions (POLISH-01..06)** — 13 Gemini findings closed across routing / assembly / ingestion + test-discipline lint + sanitized fixture + WIR integration test:
+```bash
+cd 'C:\Users\Grigorije\Desktop\Projects\CLAUDEXv3'
 
-- 11-01 routing fixes (POLISH-01): null-body coalesce, telemetry-bypass try/catch isolation, time-distance ordering. Commits `af9a5ca`, `b91b3d2`.
-- 11-02 assembly fixes (POLISH-02): commitEffects spread, async contract guard, bi-encoder header annotation `## Deliberation Surfaced (low-confidence retrieval)`, token-budget pre-deduct. Commit `ea0590e`.
-- 11-03 ingestion + tests + lint + snapshot + WIR (POLISH-03..06): atomic upsert, ghost-row cleanup, vec0 DELETE before empty-skip, missing-file errors=-1 sentinel + telemetry, format-preserving sub-chunker (backtick-fence-aware), force-split with telemetry, test-discipline lint at `scripts/lint-test-discipline.cjs`, sanitized FRESH-V32 fixture at `.planning/fixtures/production-shape-v32.db` (788 KB), WIR integration test at `src/tests/integration/phase-11-ingestion-wire-test.test.ts`. Commits `659c0c4`, `b87dc84`, `0863986`.
+# Verify reranker is alive (Plan 11-06 pre-flight gate fails closed if not)
+curl -s -o NUL -w '%{http_code}' http://127.0.0.1:7439/rerank \
+  -X POST -H 'content-type: application/json' \
+  -d '{"query":"preflight","documents":["preflight"]}'
+# Should print 200. If not: python services/reranker.py & or restart Angel.
 
-**Wave 2 — Methodology fix + skill update (POLISH-07..12):**
+# Verify Ollama can run all 4 judge models (cloud passthroughs may not show in `list`):
+ollama list | grep -E 'gemini-3-flash-preview|glm-5\.1|kimi-k2\.6'
+# Anthropic OAuth: check ~/.claude/.credentials.json exists.
+```
 
-- 11-04 methodology fix (POLISH-07..11): `runTranscriptArmViaRouting` calls production routeFromArtifact, A-arm session_id metadata parity, `pairedMcNemar` exact test in verdict.ts (replaces pooled-Wilson), 4-judge ensemble scaffolding at `judge-ensemble.ts` (pluggable JudgeDispatcher / VerdictParser; live cloud plumbing is W3's job), 30-probe parametric-knowledge audit at `.planning/phases/11-polish-land-v6-properly/11-PROBE-AUDIT.md`. Commit `42b1beb`.
-- 11-05 external-review-gate skill mod (POLISH-12): `scripts/external-review-gate.cjs` orchestrator + skill modifications at `~/.claude/skills/{auto-execute-phase,auto-orchestrate}/SKILL.md` (user-global). Classification rule pre-committed (critical→BLOCK / high→LOG / else SIGNOFF); operator override `--skip-external-review` with audit log. Commit `afdb924`.
+### 2. Decide GLM-5.1 / Angel scheduling (CONTEXT § Operational constraints line 122)
 
-## What's incomplete (W3 — operator-driven)
+GLM-5.1 is Angel's default LLM AND a judge in the W3 ensemble. Pick one:
 
-| Plan | Status | What it needs |
-|------|--------|---------------|
-| 11-06 Q1 within-corpus paired-McNemar | NOT STARTED | Live 4-judge ensemble + reranker on port 7439 + 2-4 days compute. Plan ready; runner.ts needs `runQ1` function (Task 1) + actual run (Task 2). |
-| 11-07 Q2 disjoint-probe rebind | NOT STARTED | Conditional on Q1 BIND_POSITIVE. Authoring 60 fresh probes is ~1-2 days of human-pair work. |
-| 11-08 Q3 cross-corpus + 11-RESULTS.md + v6.0.0 retag | NOT STARTED | Conditional on Q1 + Q2 both BIND_POSITIVE for Q3 to run. checkpoint:human tasks for big-mozzy-v2 probe authoring (Task 2) + v6.0.0 retag annotation operator-approval (Task 5). |
+- **(a) Swap:** edit `~/.claudex/config.json` → `angel.default_model = "minimax-m2.7:cloud"`; restart Angel; restore after Q1+Q2+Q3 complete.
+- **(b) Idle window:** schedule the run overnight when no active CC sessions / Angel is naturally idle.
 
-**v6.0.0 local tag is UNCHANGED.** It still has the Phase 10 annotation (which the Gemini consultation later flagged as methodology-invalidated). Per CONTEXT decision 4: "v6.0.0 local tag — keep until polish completes, then delete + re-tag." The polish is engineering-complete (W1 + W2) but not empirically-rebound (W3). DO NOT push the existing tag; DO NOT retag prematurely.
+Default if unsure: option (b).
+
+### 3. Run Q1 (locked 30-probe paired-McNemar; ~2-4 days compute)
+
+Operator wires `JudgeDispatcher` + `replicationDriver` via a thin invoke script (live cloud passthroughs for the 4 judges + production routing for the B-arm). The Q1 orchestration is shipped at `src/benchmark/deliberation-surfacing/runner.ts:runQ1` with full pre-flight + fallback-rate monitoring + paired-McNemar verdict. Output: `.planning/phases/11-polish-land-v6-properly/q1-verdict.json`.
+
+Q1 verdict possibilities:
+- `BIND_POSITIVE` → proceed to step 4 (Q2)
+- `BIND_NEGATIVE` or `INCONCLUSIVE` → skip to step 7 (close-out with KILL receipt)
+
+### 4. Author 60 disjoint Q2 probes (Plan 11-07 Task 2 — user-pair work)
+
+Read the locked authoring rules: `.planning/phases/11-polish-land-v6-properly/q2-probe-rules.md`.
+
+Operator + LLM together, against real claudex-v3 session archive:
+- 12 probes per kind × 5 kinds = 60 (30 per replication, no r1↔r2 overlap within Q2)
+- Disjoint from P9: no anchor session_id, no normalized prompt overlap, ID prefix `q2-` (not `drift-`)
+- Parametric-knowledge avoidance per W2 audit
+- ≥70% real source, anchor freshness from sessions later than P9 cluster
+
+Save to `.planning/phases/11-polish-land-v6-properly/q2-locked-probes.json`. Validate:
+
+```bash
+bun run phase-11:validate-q2
+# Exit 0 → pool is locked-eligible
+# Exit 1 → constraint violations listed; re-author affected probes
+```
+
+Estimated time: 30 min – 2h per probe × 60 = 30-120h total.
+
+### 5. Run Q2 (60-probe disjoint pool, Wilson lower bound > 0; ~2-4 days compute)
+
+Same harness shape as Q1 but with the 60-probe disjoint pool. Output: `.planning/phases/11-polish-land-v6-properly/q2-verdict.json` (or `q2-skipped.json` if Q1 wasn't BIND_POSITIVE — emitted by `runner.ts:writeQ2Skipped`).
+
+Q2 verdict possibilities:
+- `BIND_POSITIVE` → proceed to step 6 (Q3)
+- `BIND_NEGATIVE` → skip to step 7 (close-out with KILL receipt; q2-bind-was-artifact)
+- `INCONCLUSIVE` → skip to step 7 (close-out as p11_1_corpus_expansion — DO NOT retag v6.0.0; queue P11.1)
+
+### 6. Author + run Q3 cross-corpus on big-mozzy-v2 (Plan 11-08 Task 2 — checkpoint:human)
+
+Big-mozzy-v2 is a separate corpus (browser automation / scraping); user-pair authoring is required because the orchestrator does not have domain knowledge to author drift fixtures alone (CONTEXT line 108).
+
+Author 30 cross-corpus drift fixtures sampled from big-mozzy-v2's history. Save to `.planning/phases/11-polish-land-v6-properly/q3-locked-probes.json`. Run Q3 against that fixture; output `q3-verdict.json` (or `q3-skipped.json` if cross-corpus deferred).
+
+### 7. Run phase-11-close to author 11-RESULTS.md
+
+```bash
+bun run phase-11:close
+# Reads q1-verdict.json + (q2-verdict.json | q2-skipped.json) + (q3-verdict.json | q3-skipped.json | absent)
+# Writes .planning/phases/11-polish-land-v6-properly/11-RESULTS.md
+# Prints the recommended v6.0.0 retag annotation matching the branch
+```
+
+The applier classifies the branch deterministically per the spec's pre-committed conditional outcomes table:
+- `engineering_close_strong_bind` (Q1+Q2+Q3 all BIND_POSITIVE)
+- `engineering_close_within_corpus_bind` (Q1+Q2 BIND_POSITIVE; Q3 inconclusive/missing)
+- `engineering_close_recursive_echo` (Q1+Q2 BIND_POSITIVE; Q3 BIND_NEGATIVE)
+- `kill_receipt_q1_negative` / `kill_receipt_q1_inconclusive` / `kill_receipt_q2_negative`
+- `p11_1_corpus_expansion` (Q1 BIND_POSITIVE, Q2 INCONCLUSIVE — **do NOT retag**)
+
+### 8. Approve or reject the retag annotation (Plan 11-08 Task 5 — checkpoint:human)
+
+```bash
+bun run phase-11:retag-cmd
+# Prints just the recommended annotation + the heredoc retag command for review.
+```
+
+Operator inspects the annotation. If accurate:
+
+```bash
+git tag -d v6.0.0
+git tag -a v6.0.0 -m "$(cat <<'EOF'
+<paste the title from phase-11:retag-cmd output>
+
+<paste the body from phase-11:retag-cmd output>
+EOF
+)"
+```
+
+If not accurate: edit the annotation manually before running, OR reject and re-run W3 if the verdict triple itself is suspect.
+
+### 9. Update STATE.md / ROADMAP.md / REQUIREMENTS.md
+
+```bash
+node C:/Users/Grigorije/.claude/get-shit-done/bin/gsd-tools.cjs roadmap update-plan-progress 11
+# Then manually open STATE.md + ROADMAP.md + REQUIREMENTS.md and flip Phase 11 to COMPLETE
+# with the landed branch identifier from 11-RESULTS.md.
+```
+
+### 10. Run external-review-gate dogfood (Plan 11-05 meta-validation)
+
+```bash
+node scripts/external-review-gate.cjs --phase 11 --project claudex-v3 --skip-codex
+# (--skip-codex unless Codex is reachable post-2026-05-14)
+# Gate runs against the full Phase 11 artifact set (PLANs + SUMMARYs + 11-RESULTS.md).
+# Verdict SIGNOFF / LOG / BLOCK per the pre-committed classification rule.
+# If BLOCK: address findings; do not push.
+```
+
+### 11. Public push (operator-confirmed; out of scope for autonomous pipeline)
+
+```bash
+git push origin master --tags
+```
+
+CLAUDE.md rule 1 + CONTEXT § Phase Boundary explicit: NEVER push autonomously. Same pattern as v5.0.0.
+
+## What's complete (W1 + W2 + W3 engineering)
+
+**Wave 1 (engineering — code regressions):**
+- 11-01 routing fixes (POLISH-01): `af9a5ca`, `b91b3d2`
+- 11-02 assembly fixes (POLISH-02): `ea0590e`
+- 11-03 ingestion + lint + snapshot + WIR (POLISH-03..06): `659c0c4`, `b87dc84`, `0863986`
+
+**Wave 2 (engineering — methodology fix + skill update):**
+- 11-04 methodology (POLISH-07..11): `42b1beb`
+- 11-05 external-review-gate (POLISH-12): `afdb924`
+
+**Wave 3 (engineering scaffolding — runner + gates + applier + retag-annotation generator):**
+- 11-06/07/08 W3 scaffolding (POLISH-13/14/15/16 auto tasks): `dbf407d`
+
+**Phase 11 SUMMARY.md files on disk:** 11-01 through 11-08 (8 of 8). All requirements POLISH-01 through POLISH-16 have engineering deliverables. Tasks 2 + 5 of Plan 11-08 (checkpoint:human) and Plan 11-06 Task 2 / Plan 11-07 Task 2 (operator-driven empirical work) are flagged as operator commitments in their respective SUMMARY files.
+
+## Ship gates as of pause
+
+- `bun run build` exits 0
+- `bun run vesna` — 26/26 = 100% PASS preserved across all W1 + W2 + W3-scaffolding work
+- `bun run test` (full suite) — 3748 passes / 27 v4-debt failures matching CLAUDE.md baseline / 8 skipped — no new regressions
+- `bun run lint:test-discipline` — 0 flagged sites
+- WIR integration test (Phase 11) — 3/3 PASS
+- All 8 SUMMARY.md files on disk
+- Phase 11 PROBE-AUDIT.md committed (30 probes classified)
+- Q2 probe authoring rules committed at q2-probe-rules.md
+- Q2 validator + phase-11-close + retag-cmd scripts committed
+- 48 new tests across runQ1.test.ts (29) + validate-q2-probes.test.ts (9) + phase-11-close.test.ts (10)
 
 ## What's local-ahead-of-origin
 
-13 commits ahead of `origin/master` (W1 + W2):
+15 commits ahead of `origin/master` (W1 + W2 + W3-scaffolding + handoff):
 
 ```
+dbf407d feat(11-06/07/08): W3 engineering scaffolding (POLISH-13/14/15/16 auto tasks)
+cc01fdf docs(11): W1+W2 SUMMARYs + handoff for W3 operator-driven empirical re-bind
 afdb924 feat(11-05): external-review-gate orchestrator + skill modifications (POLISH-12)
 42b1beb feat(11-04): methodology fix scaffolding (POLISH-07/08/09/10/11)
 0863986 feat(11-03): test-discipline lint + sanitized fixture + WIR integration test (POLISH-04/05/06)
@@ -59,31 +196,9 @@ a3e7a9b docs(11): capture phase context
 d547afe phase(06): close — VAL-04 deferral + STATE table consistency
 ```
 
-Plus the unchanged local annotated tag `v6.0.0` from Phase 10 close-out.
-
-## Ship gates as of pause
-
-- `bun run build` exits 0
-- `bun run vesna` — 26/26 = 100% PASS preserved across all W1 + W2 work
-- `bun run test` (full suite) — 3700 passes / 27 v4-debt failures (matches CLAUDE.md baseline) / 8 skipped — no new regressions
-- `bun run lint:test-discipline` — 0 flagged sites
-- WIR integration test (Phase 11) — 3 cases pass against the committed fixture
-- All 5 W1 + W2 SUMMARY.md files exist on disk
-- Phase 11 PROBE-AUDIT.md committed (30 probes classified)
-
-## How to resume W3
-
-1. Re-read 11-CONTEXT.md and 11-{06,07,08}-PLAN.md to refresh the conditional outcomes table.
-2. Decide Angel/GLM scheduling (option a swap or option b idle window).
-3. Verify reranker on port 7439 is alive; verify Ollama can run all 4 judge models; verify Anthropic OAuth at `~/.claude/.credentials.json`.
-4. Either:
-   - (i) Spawn `/auto-execute-phase 11` again — the skill will pick up at the first incomplete plan (11-06). The existing W1+W2 SUMMARY files are present; the orchestrator's `init execute-phase` resolver will skip them.
-   - (ii) Manually invoke the runner: implement 11-06 Task 1 (`runQ1` function in runner.ts) then run Task 2 against the live ensemble.
-5. As Q1/Q2/Q3 complete, the conditional outcomes table in 11-CONTEXT.md determines the v6.0.0 retag annotation.
-6. Plan 11-08 Task 5 (checkpoint:human) requires operator approval before the local v6.0.0 retag. Plan 11-08 close-out dogfoods the external-review-gate (Plan 11-05).
-7. Public push `git push origin master --tags` is OUT OF SCOPE for the autonomous pipeline — operator-confirmed at retag close-out only (CLAUDE.md rule 1 + CONTEXT § Phase Boundary).
+Plus the unchanged local annotated tag `v6.0.0` from Phase 10 close-out (with the methodology-invalidated annotation per CONTEXT decision 4 — retag pending W3 verdict).
 
 ## Risks if W3 is delayed
 
 - **None operationally.** Engineering work shipped is internally consistent; Vesna preserved; full suite intact. The retained v6.0.0 local tag has an annotation that the Gemini consultation flagged as methodology-invalidated — keeping it unchanged is the correct conservative posture per CONTEXT decision 4.
-- **Audit-trail completeness:** the 11-PROBE-AUDIT.md captures the parametric-knowledge confound finding from Gemini Harness #5 even if W3 never runs. The "what would invalidate this measurement" pre-commits in 11-CONTEXT.md § Methodology critique are the operator's honest signaling of risks.
+- **The engineering scaffolding is locked in:** Q1/Q2/Q3 verdict files have shape contracts, the conditional outcomes classifier is deterministic, the retag annotation generator is exhaustive across the 8 branches. Operator running W3 has zero engineering risk; only the empirical-result risk (which the conditional outcomes table absorbs by design — no goalpost shifting).
