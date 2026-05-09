@@ -1,73 +1,97 @@
 ---
 status: active
-phase: "7"
-summary: Phase 7 (v4 coexistence/migration/ship) discuss complete. CONTEXT.md committed cleanly. Team pre-cleaned. Spawn plan-7 immediately.
-topic: 2026-05-06-phase-7
-created_at_epoch_ms: 1778029260000
+phase: "10"
+summary: v6.0.0 SHIPPED locally. v6 milestone CLOSED. Phase 10 close-out complete. Local annotated v6.0.0 tag with bind narrative leading. Operator-confirms public push (`git push origin master --tags`).
+topic: 2026-05-09-v6.0.0-ship-pending-public-push
+created_at_epoch_ms: 1778345700000
 ---
-# 2026-05-06 — Phase 7 mid-cycle (v5.0.0 ship phase)
+# 2026-05-09 — v6.0.0 ready for public push
 
-**Where we are:** Phase 7 discuss-phase complete. CONTEXT.md on disk at `.planning/phases/07-v4-coexistence-migration-ship/07-CONTEXT.md` (19KB, 4 locked areas) and committed cleanly at `55f84b3` (recovered from earlier malformed `886595c` via reset --soft + resplit). plan-phase + execute-phase + v5.0.0 tag remain.
+**Where we are:** v6.0 Deliberation Surfacing milestone CLOSED. Phase 10 SHIPPED via /auto-execute-phase. CHANGELOG `[6.0.0]`, STATE.md, ROADMAP.md flipped to milestone close. Local annotated v6.0.0 tag created on master with the bind narrative leading the annotation. **Public push deferred to operator per CLAUDE.md rule 1 + CONTEXT § Decisions ("NEVER push autonomously"). Same pattern as v5.0.0.**
 
-**Standing user directive (also in curated context as preference):** "no need to stop between phases, keep going" — autonomous through Phase 7 → v5.0.0 tag. NO AskUserQuestion gates between phases. Only escalate for genuine uncertainty.
+## Morning operator action — copy/paste this
 
-## First 5 Minutes — Resume Script
+```bash
+cd 'C:\Users\Grigorije\Desktop\Projects\CLAUDEXv3'
+git push origin master --tags
+```
 
-Execute in order. No interpretation needed.
+That's it. After the push lands, v6.0.0 is public.
 
-1. **Verify clean state** (read-only, ~10 sec):
-   ```bash
-   git log --oneline -5     # HEAD should be at session-end commit; 55f84b3 (docs(07)) two back
-   git status --short       # only context/checkpoints/latest.yaml + node_modules noise allowed
-   ls .planning/phases/07-v4-coexistence-migration-ship/  # 07-CONTEXT.md must exist
-   ```
-   If anything looks wrong, surface it — don't proceed.
+## What's local-ahead-of-origin
 
-2. **Spawn plan-7 immediately** via `/auto-orchestrate --from-phase 7`. The pipeline detects existing CONTEXT.md, skips discuss, lands on plan-phase. Team `auto-gsd-pipeline` was pre-deleted at session 59 close, so TeamCreate succeeds first try.
+7 commits ahead of `origin/master` plus the `v6.0.0` annotated tag:
 
-3. **Handle plan-7 SendMessage questions** per the orchestrator skill answer_questions step — check 07-CONTEXT.md first (it's exhaustive), then PROJECT.md/ROADMAP.md/REQUIREMENTS.md, then escalate only for genuine UX/scope-naming uncertainty. The locked decisions in CONTEXT.md should answer 90%+ of plan-7's questions.
+```
+b43bf0c phase(10): close — v6.0.0 deliberation surfacing shipped (bound POSITIVE)
+7e5f695 test(10-04): WIR-01 wire-test for v6 routing + assembly surface
+50f6131 feat(10-03): Vesna 21 -> 26 with 5 deliberation-engagement probes (a-e)
+0aec7cf feat(10-02): assembly layer — deliberation surfacing (ASM-01..03)
+c98d160 test(10-01): vitest coverage of routing surface
+7c8f8ff feat(10-01): implement routeFromArtifact + routeFromArtifacts
+e0a3564 feat(10-01): land v6.routing config block with five locked defaults
+```
 
-4. **After plan-7 lands PLAN.md files** → spawn execute-7 → run through to completion → close-out commit (ROADMAP/STATE final updates) → tag v5.0.0 with annotation in 07-CONTEXT.md.
+(Plus Phase 9 commits already on master from the earlier session, also ahead of origin — `b240628 phase(09): bind POSITIVE …` and `4e9da8c fix(transcript-ingestion): vec0 BigInt + JSON-extract WHERE`.)
 
-That's the whole script. ~1.5h wall time per Phase 4/6 pacing.
+## Tag annotation summary
 
-## What's Left To Do (per locked Phase 7 scope)
+`v6.0.0` annotated tag — leads with the bind narrative per CONTEXT decision 4:
 
-1. **V30 schema migration** — add `provenance` column to `learnings` with `organic | injected | tool_result | environmental` CHECK constraint; backfill 191 existing rows to `organic`.
-2. **Write-path filter** in `src/adapters/shared/lifecycle.ts:755 captureInsightsAsLearnings` — skip lines matching INJECTED_BLOCK_TAGS pre-promotion.
-3. **9 reader-site comment downgrades** (mechanical: "TODO Phase 7" → steady-state docs) at the 9 reader sites Phase 4 added uniform comments to.
-4. **3 new Vesna probes**: `episodic-recall-001` (parable canonical regression), `episodic-recall-002` (generic episodic-recall), `learnings-injected-guard-001` (mirrors extraction-deleted-001).
-5. **3 new vitest integration tests**: `phase-7-learnings-provenance.test.ts`, `phase-2-1-kill-regression.test.ts`, `phase-6-crash-resilience.test.ts`.
-6. **CHANGELOG.md v5.0.0 entry** — Keep-a-Changelog format with Added/Removed/Changed/Coverage. Content drafted by plan/execute teammates against final shape of what shipped.
-7. **Final ROADMAP/STATE/REQUIREMENTS docs update** — Phase 7 marked SHIPPED, surviving phases all complete, milestone closed.
-8. **Tag v5.0.0** on master with annotation in 07-CONTEXT.md (annotation leads with the kill, doesn't bury it).
+> Pooled n=60 across 2 replications. Δ pass-rate +0.1667. Wilson Δ CI [+0.0038, +0.3434].
+> Lower bound binds zero by 38 thousandths — modest but honest.
+> Retrieval baseline: bi_encoder_fallback (snowflake-arctic-embed2 cosine via Ollama).
+> Per-kind concentration in kinds b/d/e (threshold-source / dependency-change / assumption-drift).
+> Phases shipped: 8 (substrate), 9 (empirical), 10 (routing + assembly + Vesna 26 + WIR-01).
+> Substrate-only branch did NOT fire — engineering branch unlocked by the bound-POSITIVE verdict.
 
-**7 must-pass ship gates before tag** (full table in CONTEXT.md):
-- Vesna 21/21 PASS at 100%
-- 3 new vitest integration tests PASS
-- `bun run build` clean
-- `bun run test` no NEW regressions vs Phase-7-immediate-post-merge baseline (each plan rebases via SUMMARY.md baseline-record discipline; 27 pre-existing failures persist as v4-debt)
-- `bun run sc3` ≥80% MEMORY.md content quality
-- Handoff-pickup 3/3 (active/paused/archived — already in suite)
-- Bundle smoke 7/7 (inherited v4.1.2 gate)
-- Plus `bun run doctor` exit 0 (substrate health)
+Verify the full annotation with:
 
-## Context That Won't Be Obvious
+```bash
+git tag -l --format='%(contents)' v6.0.0
+```
 
-- **Team `auto-gsd-pipeline` was pre-deleted at end of session 59.** TeamCreate will succeed first try. If it doesn't (e.g., stale config recreated by another process), `rm -rf ~/.claude/teams/auto-gsd-pipeline ~/.claude/tasks/auto-gsd-pipeline` and retry.
+## Ship-gate verdict — 9/9 PASS
 
-- **`learnings` is the 4th Mem0-trap surface** — discuss-7's code trace surfaced this. NOT a frozen v4 archive: `promoteLearnings` is a live writer called from `lifecycle.ts:1151` (Stop hook) and `:1319` (bridge) via `captureInsightsAsLearnings`. Lacks the provenance discipline Phase 1 installed for `episodic_events`. Closing it via V30 + write-path filter completes the parable's "no extraction-time pattern creation" principle uniformly across all extraction surfaces. Same uniform-application pattern as Phase 4's Sites B+C discovery.
+| # | Gate | Verdict | Numbers |
+|---|---|---|---|
+| 1 | Vesna full suite | PASS | 26/26 (100%) — GATED PASS |
+| 2 | Phase 10 vitest | PASS | 27/27 (routing 9 + assembly 10 + wire-test 8) |
+| 3 | Build | PASS | exit 0 |
+| 4 | Full vitest suite | PASS (carry-forward) | 3656/3691 passing; 27 pre-existing v4-debt failures (llama-server-supervisor 18 + llama-client 2 + phase-5-full-gate 7) unchanged from P8/P9 baseline |
+| 5 | sc3 | PASS (carry-forward) | aggregate 88.3%; big-mozzy-v2 70% pre-existing project-content gap (verified pre-P8 per STATE.md) |
+| 6 | Handoff pickup | PASS | 3/3 within Vesna |
+| 7 | CLI bundle smoke | PASS | 7/7 |
+| 8 | doctor | PASS | exit 0; user_version=32; Reranker:7439 healthy; Ollama up; CC hooks 25/25; Angel alive |
+| 9 | WIR-01 wire-test | PASS | 4 assertions × 2 fixture shapes (V17-collapsed + base-table) = 8 sub-assertions, all green |
 
-- **`decisions` (126 rows) is preserve-as-legacy WITHOUT provenance work.** Structural defenses (fingerprint dedup + INSERT OR IGNORE + Tier 4 explicit-marker requirement + redaction) make Mem0-trap structurally low-risk. Don't add provenance "for symmetry" — it's schema bloat for diminishing returns.
+## Anomalies / disputed findings
 
-- **Pass-count baseline rebases per plan.** Phase 7's "no NEW regressions" gate compares against the post-each-plan-merge baseline, NOT against Phase-7-pre-merge baseline. Each plan's SUMMARY.md records the new baseline. Same convention Phase 4 used (04-01-SUMMARY.md:79 explicitly cites the post-fixture-patch baseline).
+None. The 27 vitest failures and big-mozzy 70% are explicitly carry-forward from P8 close — STATE.md anchors both. Aggregator non-determinism (the multi-handle.md / 06 sweep summary / 02 RESULTS.md churn that surfaced during the test run) was reverted per the documented "revert as known noise" close-out discipline.
 
-- **Aggregator non-determinism is a known noise pattern at gate-close.** When committing the Phase 7 close-out, expect `.planning/aggregates/multi-handle.md` to show mutated latency p99 ratios + `02-RESULTS.md`/`02-results.json` to show as deleted in working tree. Revert both as known noise (same as Phase 4 + Phase 6 close-out commits did). The aggregator bug is deferred to v5.1.
+## Files changed in this close-out commit (`b43bf0c`)
 
-- **Phase rename "v4 coexistence / migration / ship" is technically misleading post-locking** (preserve-as-legacy means no schema migration of v4 data). Same call as Phase 4's "Angel reduction" name surviving Site B/C scope expansion: keep the name, CONTEXT carries the explanation. User-approval gate at v5.0.0 tag time can retroactively rename if desired; not blocking.
+- `CHANGELOG.md` — `[6.0.0]` filled with bind narrative leading; fresh empty `[Unreleased]` block above.
+- `.planning/STATE.md` — milestone CLOSED; Phase 10 SHIPPED row appended to verdict log; v6 phase-structure table flipped.
+- `.planning/ROADMAP.md` — v6 milestone header ✅; Phase 9 + 10 plans flipped [x] with outcome blocks; progress table flipped.
+- `.planning/phases/10-conditional-ship/10-{01..04}-PLAN.md` — first commit of the four plans the orchestrator authored.
+- `.planning/phases/10-conditional-ship/10-{01..04}-SUMMARY.md` — first commit of the four close-out summaries.
 
-- **27 pre-existing test failures (llama-server-supervisor, llama-client, phase-5-full-gate per Phase 4 baseline) are release-tolerated.** Phase 7 doesn't fix v4 test debt. Document in CHANGELOG.md as "known pre-existing failures, scheduled for v5.1+ cleanup."
+## Aggregator status
 
-- **The malformed `886595c` commit was cleaned up at session 59 close** via `git reset --soft HEAD~2` + `git restore --staged` of ablation files + clean re-commit as `55f84b3 docs(07): capture phase context`. The 10 Phase-6-multiplier-ablation JSON files are back to untracked stray (unchanged from session start; v4-final/phases/06-p5-... has the canonical runs). Decide their final fate during Phase 7 cleanup or defer indefinitely.
+`.planning/aggregates/deliberation-surfacing.{md,json}` is **append-only and untouched** — Phase 10 did NOT mutate the existing 3 BoundExperience entries (9-r1, 9-r2, 9-pooled-r1+r2) per the v5 standard methodology.
 
-**Where to look:** `.planning/phases/07-v4-coexistence-migration-ship/07-CONTEXT.md`, `.planning/reframes/2026-05-05-multi-handle-kill.md`, `.planning/ROADMAP.md`, `.planning/REQUIREMENTS.md`, `.planning/STATE.md`, `CHANGELOG.md` (existing, Keep-a-Changelog format with `[Unreleased]` placeholder).
+## After the push lands
+
+Next concrete operator action is closing this handoff (delete `context/handoffs/ACTIVE.md` or move to `archive/`) and starting v6.x planning. Deferred ideas to consider for v6.x are in CHANGELOG `[6.0.0]` § Deferred and `.planning/phases/10-conditional-ship/10-CONTEXT.md` § Deferred Ideas — operator picks.
+
+## Push readiness checklist (for operator's eyes)
+
+- [x] All 9 ship gates green
+- [x] WIR-01 wire-test PASS on V17-collapsed + base-table
+- [x] Build clean
+- [x] CHANGELOG `[6.0.0]` filled with bind narrative leading
+- [x] STATE.md + ROADMAP.md flipped to milestone close
+- [x] All Phase 10 PLAN + SUMMARY files committed
+- [x] Local annotated v6.0.0 tag created
+- [ ] **Operator confirms `git push origin master --tags`** ← next action
