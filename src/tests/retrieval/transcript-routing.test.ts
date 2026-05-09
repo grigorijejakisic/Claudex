@@ -429,6 +429,170 @@ describe('routeFromArtifact — degrades non-throwing when network seams fail', 
 });
 
 // ---------------------------------------------------------------------------
+// 6. POLISH-01 Routing Finding #1 — null-body candidate yields degraded result
+// ---------------------------------------------------------------------------
+
+describe('routeFromArtifact — null-body candidate yields degraded result, never throws', () => {
+  it('coalesces NULL body + missing query_text to empty string and returns degraded ranking', async () => {
+    // Build a DB where transcript_chunk_v6 allows NULL body — models
+    // production drift (older schema variant or direct PRAGMA-bypass writes
+    // that produced NULL body rows). The fix must defend against the shape,
+    // regardless of which schema generation produced it.
+    const db = new Database(':memory:');
+    db.exec(`
+      CREATE TABLE transcript_chunk_v6 (
+        id INTEGER PRIMARY KEY,
+        session_id TEXT NOT NULL,
+        project_id TEXT,
+        turn_index INTEGER NOT NULL,
+        sub_index INTEGER NOT NULL,
+        role TEXT NOT NULL,
+        body TEXT,                                     -- NULLABLE (drift shape)
+        created_at_epoch_ms INTEGER NOT NULL,
+        provenance TEXT,
+        wrapper_redacted INTEGER
+      );
+      CREATE TABLE telemetry (
+        event_kind TEXT, ts_epoch_ms INTEGER, session_id TEXT, detail TEXT
+      );
+    `);
+    db.prepare(
+      `INSERT INTO transcript_chunk_v6 (id, session_id, project_id, turn_index, sub_index, role, body, created_at_epoch_ms, provenance, wrapper_redacted)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    ).run(
+      1, 'sess-null-1', 'test-project', 0, 0, 'tool', null, BASE_TIME, 'organic', 0,
+    );
+
+    mockOllamaEmbed();
+
+    let threw = false;
+    let result: Awaited<ReturnType<typeof routeFromArtifact>> | null = null;
+    try {
+      result = await routeFromArtifact(db, {
+        session_id: 'sess-null-1',
+        created_at_epoch_ms: BASE_TIME,
+        // query_text deliberately omitted — coalesce path engages
+      });
+    } catch {
+      threw = true;
+    }
+
+    expect(threw).toBe(false);
+    expect(result).not.toBeNull();
+    expect(result!.spans.length).toBe(1);
+    expect(result!.bi_encoder_only).toBe(true);
+    db.close();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 7. POLISH-01 Routing Finding #2 — telemetry-write throw isolated from fallback
+// ---------------------------------------------------------------------------
+
+describe('routeFromArtifact — telemetry exception during fallback is isolated', () => {
+  it('runs bi-encoder fallback even when telemetry write throws', async () => {
+    const db = freshV32Db();
+    const sessionId = 'sess-telem-throw';
+    seedChunks(db, sessionId, 3);
+
+    // Flip mode to cross_encoder_primary.
+    const cfgDir = path.join(tmpHome, '.claudex');
+    fs.mkdirSync(cfgDir, { recursive: true });
+    fs.writeFileSync(
+      path.join(cfgDir, 'config.json'),
+      JSON.stringify({ v6: { routing: { reranker_mode: 'cross_encoder_primary' } } }),
+    );
+
+    // Mock cross-encoder to fail (so we enter the telemetry write site),
+    // and embed to succeed (so the bi-encoder fallback can produce spans).
+    fetchSpy = vi.spyOn(globalThis, 'fetch').mockImplementation(
+      (async (input: string | URL | Request): Promise<Response> => {
+        const url = String(input);
+        if (url.includes('7439/rerank')) return new Response('Service Unavailable', { status: 503 });
+        if (url.includes('11434/api/embed')) {
+          return new Response(
+            JSON.stringify({ embeddings: [Array(1024).fill(0.001), Array(1024).fill(0.002), Array(1024).fill(0.003), Array(1024).fill(0.004)] }),
+            { status: 200, headers: { 'Content-Type': 'application/json' } },
+          );
+        }
+        return new Response('', { status: 404 });
+      }) as typeof fetch,
+    );
+
+    // Make telemetry table unavailable by dropping it AFTER schema init.
+    // The next INSERT into telemetry will throw "no such table: telemetry"
+    // which is exactly the production drift Gemini surfaced.
+    db.prepare(`DROP TABLE telemetry`).run();
+
+    let threw = false;
+    let result: Awaited<ReturnType<typeof routeFromArtifact>> | null = null;
+    try {
+      result = await routeFromArtifact(db, {
+        session_id: sessionId,
+        created_at_epoch_ms: BASE_TIME + 60_000,
+        query_text: 'telemetry-throw test',
+      }, { caller_session_id: 'caller-throw' });
+    } catch {
+      threw = true;
+    }
+
+    // The fix: telemetry-write throw is isolated; bi-encoder fallback completes.
+    expect(threw).toBe(false);
+    expect(result).not.toBeNull();
+    expect(result!.spans.length).toBeGreaterThan(0);
+    expect(result!.bi_encoder_only).toBe(true);
+    db.close();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 8. POLISH-01 Routing Finding #3 — time-window absolute-distance ordering
+// ---------------------------------------------------------------------------
+
+describe('routeFromArtifact — candidate fetch orders by absolute time-distance from artifact', () => {
+  it('returns the 20 chunks closest to artifact.created_at_epoch_ms when 30 chunks fall inside the window', async () => {
+    const db = freshV32Db();
+    const artifactTs = BASE_TIME;
+    // Seed 30 chunks across a 4h window with the artifact at the midpoint.
+    // Offsets in minutes: -75..-5 (i=0..14, 5min apart) then +5..+75 (i=15..29).
+    // Closest 20 are at offsets in [-50min, +50min] inclusive — turn_index 5..24.
+    for (let i = 0; i < 30; i++) {
+      const offsetMin = i < 15 ? -(15 - i) * 5 : (i - 14) * 5;
+      const ts = artifactTs + offsetMin * 60_000;
+      upsertChunk(db, {
+        session_id: 'sess-time',
+        project_id: 'test-project',
+        turn_index: i,
+        sub_index: 0,
+        role: 'assistant',
+        provenance: 'organic',
+        body: `body ${i}`,
+        created_at_epoch_ms: ts,
+        wrapper_redacted: false,
+      });
+    }
+    mockOllamaEmbed();
+
+    const result = await routeFromArtifact(
+      db,
+      { session_id: 'sess-time', created_at_epoch_ms: artifactTs, query_text: 'q' },
+      { window_ms_before: 2 * 60 * 60_000, window_ms_after: 2 * 60 * 60_000 },
+    );
+
+    // 30 candidates inside window; SQL caps at 20 closest.
+    expect(result.candidate_count).toBe(20);
+    // Default top_k_per_artifact returns 3 spans — every returned span's
+    // turn_index must be in the closest-20 range [5, 24] regardless of which
+    // 3 the ranker picked.
+    for (const s of result.spans) {
+      expect(s.turn_index).toBeGreaterThanOrEqual(5);
+      expect(s.turn_index).toBeLessThanOrEqual(24);
+    }
+    db.close();
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Purity guard — production module is never mocked
 // ---------------------------------------------------------------------------
 
