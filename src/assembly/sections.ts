@@ -1145,3 +1145,49 @@ export function formatExperienceTierSection(items: ExperienceTierItem[]): string
   return lines.join('\n');
 }
 
+// ---------------------------------------------------------------------------
+// v6 Phase 10 — opt-in deliberation surfacing
+// ---------------------------------------------------------------------------
+
+import { routeFromArtifacts, type RoutingArtifact } from '../retrieval/transcript-routing.js';
+import {
+  formatDeliberationSurface,
+  type DeliberationSurfaceOptions,
+} from './deliberation-surface.js';
+
+/**
+ * v6 Phase 10 — opt-in deliberation surfacing wrapper.
+ *
+ * Calls Plan 10-01's routing surface with the artifact references the
+ * assembler already retrieved, then formats the surfaced spans via Plan
+ * 10-02's pure formatter. Non-throwing — returns null on any failure
+ * (routing unreachable, empty result, disabled, over budget).
+ *
+ * Opt-in per assembly site via opts.enabled (default false in callers —
+ * sites that opt in must pass `enabled: true` explicitly).
+ *
+ * Budget cap (token_pct_cap × totalAssemblyBudgetTokens) is enforced inside
+ * formatDeliberationSurface; bi-encoder-only paths get the reduced
+ * bi_encoder_budget_pct multiplier per CONTEXT decision 3.
+ *
+ * See .claude/rules/assembly-budget.md cascade — this section sits at the
+ * L2.5 reference-layer position alongside packed-artifact summaries.
+ */
+export async function formatDeliberationSurfaceSection(
+  db: Database,
+  artifacts: RoutingArtifact[],
+  opts: DeliberationSurfaceOptions & { caller_session_id?: string },
+): Promise<string | null> {
+  if (!opts.enabled) return null;
+  if (!artifacts || artifacts.length === 0) return null;
+  try {
+    const routing = await routeFromArtifacts(db, artifacts, {
+      caller_session_id: opts.caller_session_id,
+    });
+    const result = formatDeliberationSurface(routing, opts);
+    return result.text;
+  } catch {
+    return null;
+  }
+}
+

@@ -83,6 +83,33 @@ export interface FullAssemblyParams {
   /** Pinnable wall-clock for cache-stability tests (CACH-03). If omitted,
    * defaults to Math.floor(Date.now() / 1000) at each clock-leak site. */
   nowEpoch?: number;
+  /**
+   * v6 Phase 10 — opt-in deliberation surfacing (default false). When true,
+   * the assembler fans out from `deliberationArtifacts` to their originating
+   * transcript spans via Plan 10-01's routing surface and renders the
+   * surfaced spans at the L2.5 cascade position per
+   * `.claude/rules/assembly-budget.md`. Sites that don't opt in see no
+   * behavior change. Per CONTEXT decision 3 — opt-in protects assembly
+   * budget when callers haven't reasoned about transcript-span surfacing.
+   */
+  deliberationSurfacing?: boolean;
+  /**
+   * v6 Phase 10 — artifact references the deliberation surface fans out
+   * from. Caller pre-fetches these (typically the artifacts already chosen
+   * by the L2 reference layer); routing joins each on session_id +/- 2h.
+   * Required when `deliberationSurfacing=true`; ignored otherwise.
+   */
+  deliberationArtifacts?: Array<{
+    session_id: string;
+    created_at_epoch_ms: number;
+    query_text?: string;
+  }>;
+  /**
+   * v6 Phase 10 — optional artifact-context labels keyed by transcript
+   * chunk_id. Rendered into the citation as ", where {label}" per
+   * CONTEXT § specifics format example.
+   */
+  deliberationLabels?: Record<number, string>;
 }
 
 export interface RegularPromptParams {
@@ -855,5 +882,60 @@ export function assembleTopicPivot(params: TopicPivotParams): InjectPayload {
     };
   } catch {
     return { ...EMPTY_PAYLOAD };
+  }
+}
+
+// ---------------------------------------------------------------------------
+// v6 Phase 10 — opt-in deliberation surfacing (L2.5 cascade position)
+// ---------------------------------------------------------------------------
+
+import { formatDeliberationSurfaceSection } from './sections.js';
+
+/**
+ * v6 Phase 10 — append the deliberation-surface section to a payload built
+ * by `assembleFullContext`. Lives at the L2.5 cascade position per
+ * `.claude/rules/assembly-budget.md` (between the L2 reference layer and
+ * the L3 materialization layer).
+ *
+ * Async because the routing surface makes network calls (Ollama / reranker).
+ * Kept as a separate post-processing step so `assembleFullContext` stays
+ * synchronous for the existing sync hot path.
+ *
+ * Opt-in per assembly site via `params.deliberationSurfacing` — sites that
+ * don't opt in (the default) see no behavior change. When opted in but no
+ * artifact references were supplied, returns the payload unchanged.
+ *
+ * Non-throwing: routing failures, formatting failures, empty surface — all
+ * return the original payload unmodified.
+ */
+export async function appendDeliberationSurfaceToPayload(
+  payload: InjectPayload,
+  params: FullAssemblyParams,
+): Promise<InjectPayload> {
+  if (!params.deliberationSurfacing) return payload;
+  const artifacts = params.deliberationArtifacts;
+  if (!artifacts || artifacts.length === 0) return payload;
+  try {
+    const totalBudget = scaleBudget(
+      params.config.injection.budget_tokens,
+      params.contextWindowTokens,
+    );
+    const section = await formatDeliberationSurfaceSection(params.db, artifacts, {
+      enabled: true,
+      totalAssemblyBudgetTokens: totalBudget,
+      caller_session_id: params.sessionId,
+      artifactLabels: params.deliberationLabels,
+    });
+    if (!section) return payload;
+    const newContent = payload.content
+      ? `${payload.content}\n\n${section}`
+      : section;
+    return {
+      content: newContent,
+      tokenEstimate: estimateTokens(newContent),
+      sources: [...payload.sources, 'deliberation_surface'],
+    };
+  } catch {
+    return payload;
   }
 }

@@ -25,6 +25,7 @@ Priority-ordered cascade with budget gating. Each section only included if withi
 | P4.5 | Rules Reminder | CLAUDE.md rules (post-compact only) |
 | Flow | Session Flow | Journal entries as narrative spine |
 | L2 | Reference Layer | Packed artifact summaries (metadata only) |
+| L2.5 | Deliberation Surface | v6 Phase 10 — opt-in transcript-span citations + advisory narration; capped at v6.routing.token_pct_cap × budget; bi-encoder-only paths reduced by v6.routing.bi_encoder_budget_pct |
 | L3 | Materialization | FTS5-selected full content |
 | Codebase | Codebase Context | Relevant symbols + recent changes (session-start only, 800 token cap) |
 | Predicted | Predicted Context | Proactive memory (session-start only, 2000 token cap) |
