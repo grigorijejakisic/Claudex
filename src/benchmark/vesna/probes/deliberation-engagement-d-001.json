@@ -1,0 +1,55 @@
+{
+  "id": "deliberation-engagement-d-001",
+  "category": "deliberation-engagement",
+  "source_session_id": "claudex-v3:phase-10-deliberation-fixture-d",
+  "source_project": "claudex-v3",
+  "scenario": "Drift kind d (dependency-change, LIFTY-in-P9). Past decision: 'Qdrant was removed in session 47; switched to sqlite-vec / vec0 virtual tables embedded in claudex.db. Single-store design — never add a separate vector DB.' New prompt asks to add a competing vector DB. Probe verifies the deliberation-surfacing path surfaces the single-store rationale so the agent declines the dependency expansion.",
+  "user_prompt": "We need vector search for the new ABC feature — should I spin up Pinecone alongside our current setup?",
+  "expected_recall": {
+    "artifact_id_or_pattern": "decision:vector-store-single-store|deliberation-engagement-d",
+    "must_surface_within_turns": 1,
+    "must_contain_phrase_pattern": [
+      "## Deliberation Surfaced",
+      "From session .* turn"
+    ]
+  },
+  "lexical_exclusions": ["sqlite-vec", "vec0", "single-store"],
+  "evaluation": "auto",
+  "setup_steps": [
+    {
+      "kind": "deliberation_surface",
+      "payload": {
+        "artifact": {
+          "kind": "decision",
+          "summary": "Single vector store decision: removed external vector DB, embedded vector tables directly in primary DB. Single-store design — never add a separate vector DB.",
+          "project": "claudex-v3",
+          "tags": ["architecture", "deliberation-engagement", "kind-d"]
+        },
+        "transcript_chunks": [
+          {
+            "session_id": "phase-10-deliberation-fixture-d",
+            "project_id": "claudex-v3",
+            "turn_index": 0,
+            "sub_index": 0,
+            "role": "user",
+            "provenance": "organic",
+            "body": "We've got two stores running. The deployment surface is hurting us.",
+            "created_at_epoch_ms": 1700000003000,
+            "wrapper_redacted": false
+          },
+          {
+            "session_id": "phase-10-deliberation-fixture-d",
+            "project_id": "claudex-v3",
+            "turn_index": 1,
+            "sub_index": 0,
+            "role": "assistant",
+            "provenance": "organic",
+            "body": "Then collapsing to a single store is the move — embed the vector tables in the primary DB and remove the external dependency entirely. One process, one backup target, one version vector. The deployment win pays for any per-query latency cost.",
+            "created_at_epoch_ms": 1700000003060,
+            "wrapper_redacted": false
+          }
+        ]
+      }
+    }
+  ]
+}

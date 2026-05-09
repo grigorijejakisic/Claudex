@@ -1,0 +1,55 @@
+{
+  "id": "deliberation-engagement-a-001",
+  "category": "deliberation-engagement",
+  "source_session_id": "claudex-v3:phase-10-deliberation-fixture-a",
+  "source_project": "claudex-v3",
+  "scenario": "Drift kind a (sample-size shift, FLAT-in-P9 baseline). Past decision: 'multi-handle retrieval was killed at n=20 with Wilson CI lower -0.157 (Phase 2 KILL); strict + relaxed reruns also confirmed KILL.' New prompt asks whether the corpus growth changes the verdict. Probe verifies the deliberation-surfacing path renders the original deliberation context for the agent so it can re-cite the binding methodology before acting.",
+  "user_prompt": "We have a much bigger held-out corpus now. Should I rerun that retrieval thesis at the new corpus size to see if the kill flips?",
+  "expected_recall": {
+    "artifact_id_or_pattern": "decision:multi-handle-retrieval-kill|deliberation-engagement-a",
+    "must_surface_within_turns": 1,
+    "must_contain_phrase_pattern": [
+      "## Deliberation Surfaced",
+      "From session .* turn"
+    ]
+  },
+  "lexical_exclusions": ["multi-handle", "Wilson", "Phase 2.1"],
+  "evaluation": "auto",
+  "setup_steps": [
+    {
+      "kind": "deliberation_surface",
+      "payload": {
+        "artifact": {
+          "kind": "decision",
+          "summary": "Multi-handle retrieval thesis killed empirically at n=20 in Phase 2; corpus-expansion rerun (Phase 2.1) at n=20 strict + n=19 relaxed both confirmed KILL.",
+          "project": "claudex-v3",
+          "tags": ["empirical", "deliberation-engagement", "kind-a"]
+        },
+        "transcript_chunks": [
+          {
+            "session_id": "phase-10-deliberation-fixture-a",
+            "project_id": "claudex-v3",
+            "turn_index": 0,
+            "sub_index": 0,
+            "role": "user",
+            "provenance": "organic",
+            "body": "Should we conclude the experiment now? We're at sample size 20 and the Wilson lower bound is below zero.",
+            "created_at_epoch_ms": 1700000000000,
+            "wrapper_redacted": false
+          },
+          {
+            "session_id": "phase-10-deliberation-fixture-a",
+            "project_id": "claudex-v3",
+            "turn_index": 1,
+            "sub_index": 0,
+            "role": "assistant",
+            "provenance": "organic",
+            "body": "Yes — Wilson CI lower bound at -0.157 binds the kill at this sample size. Pre-committed decision rule fires; corpus-expansion rerun is a fresh experiment, not a re-litigation of this verdict.",
+            "created_at_epoch_ms": 1700000000060,
+            "wrapper_redacted": false
+          }
+        ]
+      }
+    }
+  ]
+}

@@ -14,6 +14,7 @@ import * as path from 'path';
 import type Database from 'better-sqlite3';
 import { openDatabase } from '../../core/storage.js';
 import { createArtifact } from '../../core/artifacts.js';
+import { upsertChunk } from '../../ingestion/upsert-chunk.js';
 import type { SetupStep } from './types.js';
 
 const VESNA_TEST_SESSION_PREFIX = 'vesna-probe-';
@@ -130,6 +131,30 @@ export async function applySetup(
         break;
       }
 
+      case 'deliberation_surface': {
+        // v6 Phase 10 — synthetic past-deliberation: artifact + companion transcript chunks.
+        // Writes via the production write surfaces so the deliberation-surfacing routing
+        // path (Plan 10-01 routeFromArtifact) can fan out from the artifact reference.
+        const { artifact, transcript_chunks } = step.payload;
+        const ref = artifact.tags && artifact.tags.length > 0
+          ? `vesna:${JSON.stringify(artifact.tags)}`
+          : `vesna:${ctx.sessionId}`;
+        createArtifact(
+          db,
+          ctx.sessionId,
+          artifact.project,
+          artifact.kind,
+          ref,
+          artifact.summary.slice(0, 150),
+          artifact.summary,
+          5,
+        );
+        for (const chunk of transcript_chunks) {
+          upsertChunk(db, chunk);
+        }
+        break;
+      }
+
       default: {
         const exhaustive: never = step;
         throw new Error(`applySetup: unknown step kind: ${JSON.stringify(exhaustive)}`);
@@ -161,6 +186,16 @@ export async function resetTestDb(db: Database.Database): Promise<void> {
     db.prepare(`DELETE FROM critical_rules WHERE project LIKE 'vesna-%'`).run();
   } catch {
     // Table may not exist — ignore.
+  }
+  // v6 Phase 10 — scrub probe-scoped transcript chunks. Synthetic chunks
+  // are tagged via session_id starting with the deliberation fixture prefix
+  // ('phase-10-deliberation-fixture-'); resetTestDb removes them between runs.
+  try {
+    db.prepare(
+      `DELETE FROM transcript_chunk_v6 WHERE session_id LIKE 'phase-10-deliberation-fixture-%'`,
+    ).run();
+  } catch {
+    // Table may not exist on a pre-V32 DB — ignore.
   }
   for (const p of [getHandoffFixturePath(), getNarrationFlagPath()]) {
     try {

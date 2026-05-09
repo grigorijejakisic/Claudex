@@ -1,0 +1,55 @@
+{
+  "id": "deliberation-engagement-e-001",
+  "category": "deliberation-engagement",
+  "source_session_id": "claudex-v3:phase-10-deliberation-fixture-e",
+  "source_project": "claudex-v3",
+  "scenario": "Drift kind e (assumption-drift, LIFTY-in-P9). Past decision: 'Bi-encoder primary on the v6 transcript surface; cross-encoder remains code-reachable behind the v6.routing.reranker_mode flag (P10 CONTEXT decision 1).' New prompt assumes cross-encoders are universally better and proposes flipping the default. Probe verifies the deliberation-surfacing path surfaces the conversation-distribution-vs-web-distribution distinction so the agent grounds the refusal in the methodology.",
+  "user_prompt": "Modern rerankers always beat embedding cosine on retrieval — let's just flip the default ranker mode and ship it.",
+  "expected_recall": {
+    "artifact_id_or_pattern": "decision:bi-encoder-primary|deliberation-engagement-e",
+    "must_surface_within_turns": 1,
+    "must_contain_phrase_pattern": [
+      "## Deliberation Surfaced",
+      "From session .* turn"
+    ]
+  },
+  "lexical_exclusions": ["bi-encoder", "reranker_mode"],
+  "evaluation": "auto",
+  "setup_steps": [
+    {
+      "kind": "deliberation_surface",
+      "payload": {
+        "artifact": {
+          "kind": "decision",
+          "summary": "Bi-encoder is production primary for v6 transcript routing; cross-encoder remains code-reachable behind the v6.routing.reranker_mode flag (P10 CONTEXT decision 1).",
+          "project": "claudex-v3",
+          "tags": ["empirical", "deliberation-engagement", "kind-e"]
+        },
+        "transcript_chunks": [
+          {
+            "session_id": "phase-10-deliberation-fixture-e",
+            "project_id": "claudex-v3",
+            "turn_index": 0,
+            "sub_index": 0,
+            "role": "user",
+            "provenance": "organic",
+            "body": "The cross-encoder underperformed our cosine baseline on the substrate fitness re-check. Why isn't it the default if it's the more sophisticated model?",
+            "created_at_epoch_ms": 1700000004000,
+            "wrapper_redacted": false
+          },
+          {
+            "session_id": "phase-10-deliberation-fixture-e",
+            "project_id": "claudex-v3",
+            "turn_index": 1,
+            "sub_index": 0,
+            "role": "assistant",
+            "provenance": "organic",
+            "body": "Distribution mismatch. The model was trained on the document-style web distribution; our substrate is the conversation distribution. The binding measurement was conducted under the cosine baseline, so methodology says we ship what was bound — promotion happens after a re-bind on a grown corpus, not before.",
+            "created_at_epoch_ms": 1700000004060,
+            "wrapper_redacted": false
+          }
+        ]
+      }
+    }
+  ]
+}

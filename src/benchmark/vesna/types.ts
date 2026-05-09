@@ -12,6 +12,7 @@ export type ProbeCategory =
   | 'cross-project'
   | 'lesson-application'
   | 'self-instrumented'
+  | 'deliberation-engagement'
   | 'buffer';
 
 export interface ExpectedRecall {
@@ -59,6 +60,35 @@ export type SetupStep =
       kind: 'narration_directive';
       payload: {
         silent: boolean;
+      };
+    }
+  | {
+      /**
+       * v6 Phase 10 — synthetic past-deliberation seeded as an artifact +
+       * companion transcript chunks. Writes via the production write surfaces
+       * (createArtifact + upsertChunk) so the deliberation-surfacing routing
+       * path can fan out from the artifact reference to the surrounding
+       * transcript spans. Used by the 5 deliberation-engagement probes (a-e).
+       */
+      kind: 'deliberation_surface';
+      payload: {
+        artifact: {
+          kind: 'decision' | 'learning' | 'observation';
+          summary: string;
+          project: string;
+          tags?: string[];
+        };
+        transcript_chunks: Array<{
+          session_id: string;
+          project_id: string;
+          turn_index: number;
+          sub_index: number;
+          role: 'user' | 'assistant' | 'tool' | 'system';
+          provenance: 'organic' | 'injected' | 'tool_result' | 'environmental';
+          body: string;
+          created_at_epoch_ms: number;
+          wrapper_redacted: boolean;
+        }>;
       };
     };
 

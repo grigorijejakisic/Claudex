@@ -89,6 +89,7 @@ function formatHumanReport(
     'cross-project',
     'lesson-application',
     'self-instrumented',
+    'deliberation-engagement',
   ];
 
   // Per-probe lines

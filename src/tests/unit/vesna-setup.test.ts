@@ -215,3 +215,97 @@ describe('production DB isolation', () => {
     expect(process.env.CLAUDEX_VESNA_DB).toContain(tmpDir);
   });
 });
+
+describe('applySetup — deliberation_surface step (v6 Phase 10)', () => {
+  it('writes the artifact and the companion transcript chunks via production write surfaces', async () => {
+    const step = {
+      kind: 'deliberation_surface' as const,
+      payload: {
+        artifact: {
+          kind: 'decision' as const,
+          summary: 'p10 deliberation fixture artifact',
+          project: 'claudex-v3',
+          tags: ['deliberation-engagement', 'kind-x'],
+        },
+        transcript_chunks: [
+          {
+            session_id: 'phase-10-deliberation-fixture-x',
+            project_id: 'claudex-v3',
+            turn_index: 0,
+            sub_index: 0,
+            role: 'user' as const,
+            provenance: 'organic' as const,
+            body: 'past deliberation user side',
+            created_at_epoch_ms: 1700000099000,
+            wrapper_redacted: false,
+          },
+          {
+            session_id: 'phase-10-deliberation-fixture-x',
+            project_id: 'claudex-v3',
+            turn_index: 1,
+            sub_index: 0,
+            role: 'assistant' as const,
+            provenance: 'organic' as const,
+            body: 'past deliberation assistant side',
+            created_at_epoch_ms: 1700000099060,
+            wrapper_redacted: false,
+          },
+        ],
+      },
+    };
+
+    await applySetup(db, [step], ctx);
+
+    const chunks = db
+      .prepare(`SELECT body FROM transcript_chunk_v6 WHERE session_id = ? ORDER BY turn_index`)
+      .all('phase-10-deliberation-fixture-x') as Array<{ body: string }>;
+    expect(chunks.length).toBe(2);
+    expect(chunks[0].body).toBe('past deliberation user side');
+    expect(chunks[1].body).toBe('past deliberation assistant side');
+
+    const artifactCount = db
+      .prepare(`SELECT COUNT(*) AS c FROM artifacts WHERE session_id = ?`)
+      .get(ctx.sessionId) as { c: number };
+    expect(artifactCount.c).toBeGreaterThanOrEqual(1);
+  });
+
+  it('resetTestDb scrubs the synthetic deliberation chunks on next run', async () => {
+    const step = {
+      kind: 'deliberation_surface' as const,
+      payload: {
+        artifact: {
+          kind: 'decision' as const,
+          summary: 'reset test fixture',
+          project: 'claudex-v3',
+          tags: ['deliberation-engagement', 'kind-y'],
+        },
+        transcript_chunks: [
+          {
+            session_id: 'phase-10-deliberation-fixture-y',
+            project_id: 'claudex-v3',
+            turn_index: 0,
+            sub_index: 0,
+            role: 'user' as const,
+            provenance: 'organic' as const,
+            body: 'will be scrubbed',
+            created_at_epoch_ms: 1700000098000,
+            wrapper_redacted: false,
+          },
+        ],
+      },
+    };
+    await applySetup(db, [step], ctx);
+
+    let count = (db.prepare(
+      `SELECT COUNT(*) AS c FROM transcript_chunk_v6 WHERE session_id = ?`,
+    ).get('phase-10-deliberation-fixture-y') as { c: number }).c;
+    expect(count).toBe(1);
+
+    await resetTestDb(db);
+
+    count = (db.prepare(
+      `SELECT COUNT(*) AS c FROM transcript_chunk_v6 WHERE session_id = ?`,
+    ).get('phase-10-deliberation-fixture-y') as { c: number }).c;
+    expect(count).toBe(0);
+  });
+});

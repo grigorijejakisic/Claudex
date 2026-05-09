@@ -1,0 +1,55 @@
+{
+  "id": "deliberation-engagement-b-001",
+  "category": "deliberation-engagement",
+  "source_session_id": "claudex-v3:phase-10-deliberation-fixture-b",
+  "source_project": "claudex-v3",
+  "scenario": "Drift kind b (threshold-source shift, LIFTY-in-P9). Past decision: 'cross-encoder fitness threshold set at 60% top-3 overlap from binding-measurement methodology, NOT operational corpus tuning (P9 CONTEXT decision 4).' New prompt proposes lowering the threshold to make a marginal fitness number passable. Probe verifies the deliberation-surfacing path surfaces the methodology lineage so the agent can refuse the threshold lowering.",
+  "user_prompt": "The latest backfill came in just under the published bar — let's relax the gate so we can flip the ranker default.",
+  "expected_recall": {
+    "artifact_id_or_pattern": "decision:cross-encoder-fitness-threshold|deliberation-engagement-b",
+    "must_surface_within_turns": 1,
+    "must_contain_phrase_pattern": [
+      "## Deliberation Surfaced",
+      "From session .* turn"
+    ]
+  },
+  "lexical_exclusions": ["56%", "cross-encoder", "fitness"],
+  "evaluation": "auto",
+  "setup_steps": [
+    {
+      "kind": "deliberation_surface",
+      "payload": {
+        "artifact": {
+          "kind": "decision",
+          "summary": "Cross-encoder fitness threshold = 60% top-3 overlap; below threshold means bi-encoder fallback is the production primary (P9 CONTEXT decision 4).",
+          "project": "claudex-v3",
+          "tags": ["empirical", "deliberation-engagement", "kind-b"]
+        },
+        "transcript_chunks": [
+          {
+            "session_id": "phase-10-deliberation-fixture-b",
+            "project_id": "claudex-v3",
+            "turn_index": 0,
+            "sub_index": 0,
+            "role": "user",
+            "provenance": "organic",
+            "body": "Where did the 60% threshold for the cross-encoder come from? Is it a tunable knob or a methodology constant?",
+            "created_at_epoch_ms": 1700000001000,
+            "wrapper_redacted": false
+          },
+          {
+            "session_id": "phase-10-deliberation-fixture-b",
+            "project_id": "claudex-v3",
+            "turn_index": 1,
+            "sub_index": 0,
+            "role": "assistant",
+            "provenance": "organic",
+            "body": "Methodology constant. The 60% threshold was sourced from the binding-measurement design, not from operational corpus tuning — moving it to fit a marginal observed value would invalidate the pre-commitment discipline that protects the verdict from goalpost shifts.",
+            "created_at_epoch_ms": 1700000001060,
+            "wrapper_redacted": false
+          }
+        ]
+      }
+    }
+  ]
+}

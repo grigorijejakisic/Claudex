@@ -32,6 +32,8 @@ import {
 import { evaluate, type AgentObservation } from './evaluator.js';
 import { hybridSearchSync } from '../../core/hybrid-retrieval.js';
 import { parseHandoffHeader } from '../../angel/handoff-writer.js';
+import { formatDeliberationSurfaceSection } from '../../assembly/sections.js';
+import type { RoutingArtifact } from '../../retrieval/transcript-routing.js';
 
 export interface RunOptions {
   /** Number of trials per probe. Default 3 (CONTEXT line 134). */
@@ -65,7 +67,7 @@ export async function runProbe(
       defaultProject: probe.source_project,
     });
 
-    const observation = composeAgentText(db, probe);
+    const observation = await composeAgentText(db, probe);
     const result = evaluate(observation, probe.expected_recall);
     results.push({
       passed: result.passed,
@@ -95,7 +97,7 @@ export async function runProbe(
  * source_project surface — Phase 6.5's HYBRID equivalence is what makes
  * lexical-exclusion probes pass.
  */
-export function composeAgentText(db: Database.Database, probe: Probe): AgentObservation {
+export async function composeAgentText(db: Database.Database, probe: Probe): Promise<AgentObservation> {
   const parts: string[] = [];
 
   // 1. Critical rules — rule-injection surface (constraint-recall probes lean on this).
@@ -161,6 +163,26 @@ export function composeAgentText(db: Database.Database, probe: Probe): AgentObse
     }
   }
 
+  // 4.5. v6 Phase 10 — opt-in deliberation surfacing (per probe).
+  // Probes whose setup_steps include kind='deliberation_surface' seed
+  // synthetic transcript chunks tagged with the deliberation-fixture session
+  // prefix. Fan out from those sessions and surface the spans alongside
+  // the artifact-derived signal so deliberation-engagement probes can match
+  // on '## Deliberation Surfaced —' + 'From session ... turn'.
+  try {
+    const deliberationArtifacts = collectDeliberationArtifacts(probe);
+    if (deliberationArtifacts.length > 0) {
+      const section = await formatDeliberationSurfaceSection(db, deliberationArtifacts, {
+        enabled: true,
+        totalAssemblyBudgetTokens: 8000,
+        caller_session_id: `vesna:${probe.id}`,
+      });
+      if (section) parts.push(section);
+    }
+  } catch {
+    // Non-fatal — routing failures degrade silently per Plan 10-01 contract.
+  }
+
   // 5. The user prompt is part of the in-context turn.
   parts.push('## User Prompt\n' + probe.user_prompt);
 
@@ -169,6 +191,32 @@ export function composeAgentText(db: Database.Database, probe: Probe): AgentObse
     turns: 1,
     tool_calls: [],
   };
+}
+
+/**
+ * Extract artifact references from a probe's deliberation_surface setup
+ * steps. Returns one RoutingArtifact per chunk session_id (deduplicated),
+ * anchored to the earliest chunk timestamp.
+ */
+function collectDeliberationArtifacts(probe: Probe): RoutingArtifact[] {
+  if (!probe.setup_steps) return [];
+  const byId = new Map<string, RoutingArtifact>();
+  for (const step of probe.setup_steps) {
+    if (step.kind !== 'deliberation_surface') continue;
+    for (const chunk of step.payload.transcript_chunks) {
+      const existing = byId.get(chunk.session_id);
+      if (!existing) {
+        byId.set(chunk.session_id, {
+          session_id: chunk.session_id,
+          created_at_epoch_ms: chunk.created_at_epoch_ms,
+          query_text: probe.user_prompt,
+        });
+      } else if (chunk.created_at_epoch_ms < existing.created_at_epoch_ms) {
+        existing.created_at_epoch_ms = chunk.created_at_epoch_ms;
+      }
+    }
+  }
+  return Array.from(byId.values());
 }
 
 /**

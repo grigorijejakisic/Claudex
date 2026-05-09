@@ -33,6 +33,7 @@ const VALID_CATEGORIES: ProbeCategory[] = [
   'cross-project',
   'lesson-application',
   'self-instrumented',
+  'deliberation-engagement',
   'buffer',
 ];
 
