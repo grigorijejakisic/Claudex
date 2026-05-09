@@ -84,6 +84,28 @@ export function formatDeliberationSurface(
     text: renderCitationBlock(span, labels[span.chunk_id]),
   }));
 
+  // POLISH-02 — Gemini Assembly Finding #4: pre-deduct header + per-span
+  // separator overhead BEFORE the greedy-pack loop runs. The greedy pack must
+  // see the *content-available* budget, not the gross cap, so the rendered
+  // surface (header + separators + span content) ≤ budgetTokens. Worst-case
+  // overhead uses `candidates.length` separators since pre-pack we don't know
+  // how many will fit; post-pack actual overhead is ≤ pre-deduct estimate, so
+  // the cap is held. We render the header upfront with the worst-case count
+  // (candidates.length) so the token estimate matches the actual rendered
+  // header within ±1 token (counts are interpolated as digits — same length
+  // class for typical N≤20).
+  const sessionCountWorst = new Set(candidates.map((c) => c.session_id)).size;
+  const headerText = buildAdvisoryHeader(
+    candidates.length,
+    sessionCountWorst,
+    biEncoderBudgetApplied,
+  );
+  const SEPARATOR = '\n\n';
+  const headerTokens = estimateTokens(headerText);
+  const separatorTokens = estimateTokens(SEPARATOR);
+  const overheadEstimate = headerTokens + separatorTokens * candidates.length;
+  const packBudgetTokens = Math.max(0, budgetTokens - overheadEstimate);
+
   // Greedy-pack: largest-score-first (already sorted by Plan 10-01 contract).
   // Drop overflow silently; continue scanning so smaller low-rank spans can
   // still slot in if they fit.
@@ -92,7 +114,7 @@ export function formatDeliberationSurface(
   let usedTokens = 0;
   for (const r of rendered) {
     const cost = estimateTokens(r.text);
-    if (usedTokens + cost > budgetTokens) continue;
+    if (usedTokens + cost > packBudgetTokens) continue;
     packed.push(r.span);
     packedTexts.push(r.text);
     usedTokens += cost;
@@ -103,8 +125,8 @@ export function formatDeliberationSurface(
   }
 
   const sessionCount = new Set(packed.map((s) => s.session_id)).size;
-  const header = buildAdvisoryHeader(packed.length, sessionCount);
-  const text = `${header}\n\n${packedTexts.join('\n\n')}`;
+  const header = buildAdvisoryHeader(packed.length, sessionCount, biEncoderBudgetApplied);
+  const text = `${header}${SEPARATOR}${packedTexts.join(SEPARATOR)}`;
 
   return { text, packed, bi_encoder_budget_applied: biEncoderBudgetApplied };
 }
@@ -127,10 +149,23 @@ function renderCitationBlock(span: RoutingSpan, label: string | undefined): stri
 }
 
 /**
- * Build the advisory narration line per CONTEXT § specifics:
- *   "## Deliberation Surfaced — N spans from M sessions"
+ * Build the advisory narration line per CONTEXT § specifics.
+ *
+ * POLISH-02 — Gemini Assembly Finding #3: when `bi_encoder_budget_applied=true`
+ * the locked wording is `## Deliberation Surfaced (low-confidence retrieval)`
+ * (see 11-CONTEXT.md § Assembly fallback annotation, line 70). The suffix
+ * surfaces the cross-encoder/bi-encoder asymmetry to the consumer LLM so it
+ * can calibrate trust in the surfaced spans. Cross-encoder confirmed path
+ * keeps the existing `N spans from M sessions` summary header.
  */
-function buildAdvisoryHeader(spans: number, sessions: number): string {
+function buildAdvisoryHeader(
+  spans: number,
+  sessions: number,
+  biEncoderBudgetApplied: boolean,
+): string {
+  if (biEncoderBudgetApplied) {
+    return '## Deliberation Surfaced (low-confidence retrieval)';
+  }
   const spanWord = spans === 1 ? 'span' : 'spans';
   const sessionWord = sessions === 1 ? 'session' : 'sessions';
   return `## Deliberation Surfaced — ${spans} ${spanWord} from ${sessions} ${sessionWord}`;

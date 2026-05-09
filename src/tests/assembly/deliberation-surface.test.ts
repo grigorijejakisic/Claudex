@@ -232,7 +232,10 @@ describe('formatDeliberationSurfaceSection — opt-in via enabled flag', () => {
     );
 
     expect(result).not.toBeNull();
-    expect(result!.startsWith('## Deliberation Surfaced —')).toBe(true);
+    // POLISH-02 — bi-encoder-only path emits the locked low-confidence header.
+    // This fixture mocks Ollama only (no cross-encoder), so routing.bi_encoder_only=true.
+    expect(result!.startsWith('## Deliberation Surfaced')).toBe(true);
+    expect(result!).toContain('low-confidence retrieval');
     db.close();
   });
 });
@@ -295,5 +298,209 @@ describe('formatDeliberationSurfaceSection — integration at L2.5 cascade posit
     const rulePath = path.resolve(__dirname, '../../../.claude/rules/assembly-budget.md');
     const ruleSrc = fs.readFileSync(rulePath, 'utf8');
     expect(ruleSrc).toContain('L2.5 | Deliberation Surface');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 8. POLISH-02 — appendDeliberationSurfaceToPayload preserves commitEffects
+// ---------------------------------------------------------------------------
+
+describe('appendDeliberationSurfaceToPayload — preserves commitEffects via spread (Gemini Assembly Finding #1)', () => {
+  it('returns a payload whose commitEffects is the same function reference as the input', async () => {
+    const { appendDeliberationSurfaceToPayload } = await import('../../assembly/assembler.js');
+    const { loadConfig } = await import('../../shared/config.js');
+    const db = freshV32Db();
+    seedChunks(db, 'sess-spread', 3);
+
+    fetchSpy = vi.spyOn(globalThis, 'fetch').mockImplementation(
+      (async (input: string | URL | Request, init?: RequestInit) => {
+        const url = String(input);
+        if (url.includes('11434/api/embed')) {
+          const body = init?.body ? JSON.parse(String(init.body)) : { input: [] };
+          const texts: string[] = body.input ?? [];
+          return new Response(
+            JSON.stringify({ embeddings: texts.map(() => Array(1024).fill(0.001)) }),
+            { status: 200 },
+          );
+        }
+        return new Response('', { status: 404 });
+      }) as typeof fetch,
+    );
+
+    const flushSpy = vi.fn();
+    const inputPayload = {
+      content: 'existing context content',
+      tokenEstimate: 100,
+      sources: ['l1_identity'],
+      commitEffects: flushSpy, // load-bearing — must survive the surface mutation
+    };
+
+    const result = await appendDeliberationSurfaceToPayload(inputPayload, {
+      db,
+      project: 'test-project',
+      projectDir: '/test',
+      config: loadConfig(),
+      sessionId: 'caller-session',
+      contextWindowTokens: 200_000,
+      deliberationSurfacing: true,
+      deliberationArtifacts: [
+        { session_id: 'sess-spread', created_at_epoch_ms: BASE_TIME + 60_000, query_text: 'q' },
+      ],
+    });
+
+    // Spread preserved commitEffects as the SAME reference.
+    expect(result.commitEffects).toBe(flushSpy);
+    expect(result.content).toContain('existing context content');
+    expect(result.content).toContain('## Deliberation Surfaced');
+    expect(result.sources).toContain('deliberation_surface');
+    expect(result.sources).toContain('l1_identity'); // existing source preserved
+    db.close();
+  });
+
+  it('opt-out fast-path returns the original payload reference (no spread mutation)', async () => {
+    const { appendDeliberationSurfaceToPayload } = await import('../../assembly/assembler.js');
+    const { loadConfig } = await import('../../shared/config.js');
+    const db = freshV32Db();
+
+    const flushSpy = vi.fn();
+    const inputPayload = {
+      content: 'unchanged',
+      tokenEstimate: 50,
+      sources: ['l1_identity'],
+      commitEffects: flushSpy,
+    };
+
+    const result = await appendDeliberationSurfaceToPayload(inputPayload, {
+      db,
+      project: 'test-project',
+      projectDir: '/test',
+      config: loadConfig(),
+      sessionId: 'caller-session',
+      contextWindowTokens: 200_000,
+      // deliberationSurfacing left undefined — opt-out path
+    });
+
+    // Opt-out: same payload back, commitEffects intact.
+    expect(result.commitEffects).toBe(flushSpy);
+    expect(result.content).toBe('unchanged');
+    db.close();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 9. POLISH-02 — async contract guard (Gemini Assembly Finding #2)
+// ---------------------------------------------------------------------------
+
+describe('appendDeliberationSurfaceToPayload — async contract guard (Gemini Assembly Finding #2)', () => {
+  it('returns a Promise (not a raw payload) so sync callers cannot accidentally inject [object Promise]', async () => {
+    const { appendDeliberationSurfaceToPayload } = await import('../../assembly/assembler.js');
+    const { loadConfig } = await import('../../shared/config.js');
+    const db = freshV32Db();
+
+    const inputPayload = {
+      content: 'foo',
+      tokenEstimate: 10,
+      sources: [],
+    };
+
+    const ret = appendDeliberationSurfaceToPayload(inputPayload, {
+      db,
+      project: 'test-project',
+      projectDir: '/test',
+      config: loadConfig(),
+      sessionId: 'caller-session',
+      contextWindowTokens: 200_000,
+    });
+
+    // Must be a Promise — TypeScript signature already enforces this; the runtime
+    // assertion documents the contract Gemini flagged: a sync caller invoking
+    // this function without `await` MUST receive a Promise so the `[object Promise]`
+    // injection bug is impossible (the consumer dereferencing `.content` on a
+    // Promise raises a clear TypeError, not a silent string concatenation).
+    expect(ret).toBeInstanceOf(Promise);
+    const result = await ret;
+    expect(result.content).toBe('foo'); // opt-out preserved the input
+    db.close();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 10. POLISH-02 — bi-encoder-only emits low-confidence header (Gemini Assembly Finding #3)
+// ---------------------------------------------------------------------------
+
+describe('formatDeliberationSurface — bi-encoder-only emits low-confidence-retrieval header (Gemini Assembly Finding #3)', () => {
+  it('renders the locked low-confidence-retrieval header when bi_encoder_only=true', () => {
+    const spans: RoutingSpan[] = [
+      makeSpan(1, 's1', 0, 'b1'),
+      makeSpan(2, 's2', 1, 'b2'),
+    ];
+    spans.forEach((s) => (s.ranker = 'bi_encoder'));
+    const routing: RoutingResult = { spans, bi_encoder_only: true, candidate_count: 2 };
+    const result = formatDeliberationSurface(routing, {
+      enabled: true,
+      totalAssemblyBudgetTokens: 10_000,
+    });
+    expect(result.text).not.toBeNull();
+    expect(result.text).toContain('## Deliberation Surfaced (low-confidence retrieval)');
+    expect(result.text).not.toContain(' spans from ');
+    expect(result.bi_encoder_budget_applied).toBe(true);
+  });
+
+  it('renders the N-spans-from-M-sessions header when bi_encoder_only=false', () => {
+    const spans: RoutingSpan[] = [
+      makeSpan(1, 's1', 0, 'b1'),
+      makeSpan(2, 's2', 1, 'b2'),
+    ];
+    const routing: RoutingResult = { spans, bi_encoder_only: false, candidate_count: 2 };
+    const result = formatDeliberationSurface(routing, {
+      enabled: true,
+      totalAssemblyBudgetTokens: 10_000,
+    });
+    expect(result.text).not.toBeNull();
+    expect(result.text).toContain('## Deliberation Surfaced — 2 spans from 2 sessions');
+    expect(result.text).not.toContain('low-confidence');
+    expect(result.bi_encoder_budget_applied).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 11. POLISH-02 — token budget pre-deducts header + separator overhead (Gemini Assembly Finding #4)
+// ---------------------------------------------------------------------------
+
+describe('formatDeliberationSurface — token budget pre-deducts header + separator overhead (Gemini Assembly Finding #4)', () => {
+  it('total surface tokens stay under cap even when greedy-pack would over-pack the gross budget', async () => {
+    const { estimateTokens } = await import('../../shared/text-utils.js');
+    // 15% of 2000 = 300 tokens cap (cross-encoder confirmed path)
+    const totalAssemblyBudgetTokens = 2000;
+    // Build many small spans whose sum exceeds the gross cap once header+separators are added.
+    // 30-token bodies × 12 spans = 360 tokens; without pre-deduct, all 12 fit (300 cap → 360 over).
+    // Header (~10) + 12 separators (~6 each = 72) = 82 overhead → actual rendered would be ~442 > 300.
+    // With pre-deduct: packBudget = 300 - 82 = 218; loop fits ~7 spans (210 body) → rendered ≤ 300.
+    const longBody = 'word '.repeat(30).trim();
+    const spans: RoutingSpan[] = [];
+    for (let i = 0; i < 12; i++) {
+      spans.push({
+        chunk_id: i,
+        session_id: 's1',
+        turn_index: i,
+        sub_index: 0,
+        role: 'assistant',
+        body: longBody,
+        created_at_epoch_ms: BASE_TIME + i * 60_000,
+        rank_score: 1 - i * 0.05,
+        ranker: 'cross_encoder',
+      });
+    }
+    const routing: RoutingResult = { spans, bi_encoder_only: false, candidate_count: 12 };
+
+    const result = formatDeliberationSurface(routing, {
+      enabled: true,
+      totalAssemblyBudgetTokens,
+    });
+
+    expect(result.text).not.toBeNull();
+    const renderedTokens = estimateTokens(result.text!);
+    const cap = Math.floor(totalAssemblyBudgetTokens * 15 / 100);
+    expect(renderedTokens).toBeLessThanOrEqual(cap);
   });
 });

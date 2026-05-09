@@ -930,7 +930,13 @@ export async function appendDeliberationSurfaceToPayload(
     const newContent = payload.content
       ? `${payload.content}\n\n${section}`
       : section;
+    // POLISH-02 — Gemini Assembly Finding #1: spread the original payload so
+    // every field — most importantly `commitEffects?: () => void` — survives the
+    // surface mutation. Cherry-picking content/tokenEstimate/sources silently
+    // dropped commitEffects and broke the experience-pattern callback flush
+    // discipline. Spread first; override only the fields this step mutates.
     return {
+      ...payload,
       content: newContent,
       tokenEstimate: estimateTokens(newContent),
       sources: [...payload.sources, 'deliberation_surface'],
