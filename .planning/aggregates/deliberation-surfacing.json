@@ -1,5 +1,116 @@
 {
   "schema_version": 1,
   "question": "does verbatim transcript context surface deliberation-conditional engagement that summary-only context does not, at our scale?",
-  "bound_experiences": []
+  "bound_experiences": [
+    {
+      "phase": "9-r1",
+      "labeler": "three_prong_rubric_deepseek_coder_v2_16b",
+      "date": "2026-05-09",
+      "n": 30,
+      "verdict": "INCONCLUSIVE",
+      "conditions": {
+        "replication_label": "r1",
+        "agent_model": "deepseek-coder-v2:16b",
+        "judge_model": "deepseek-coder-v2:16b",
+        "retrieval_baseline": "bi_encoder_fallback",
+        "probe_set_directory": ".planning/phases/09-empirical-measurement/probes",
+        "pre_commitment_anchor_commit": "09-CONTEXT.md@00ab2bb"
+      },
+      "metrics": {
+        "summary_pass_count": 14,
+        "transcript_pass_count": 18,
+        "delta_pass_rate": 0.13333333333333333,
+        "delta_ci_lower": -0.09195187125822157,
+        "delta_ci_upper": 0.3799304360346508,
+        "delta_ci_point": 0.1333333333333333,
+        "started_at_iso": "2026-05-09T00:43:42.333Z",
+        "completed_at_iso": "2026-05-09T01:31:56.945Z"
+      }
+    },
+    {
+      "phase": "9-r2",
+      "labeler": "three_prong_rubric_deepseek_coder_v2_16b",
+      "date": "2026-05-09",
+      "n": 30,
+      "verdict": "INCONCLUSIVE",
+      "conditions": {
+        "replication_label": "r2",
+        "agent_model": "deepseek-coder-v2:16b",
+        "judge_model": "deepseek-coder-v2:16b",
+        "retrieval_baseline": "bi_encoder_fallback",
+        "probe_set_directory": ".planning/phases/09-empirical-measurement/probes",
+        "pre_commitment_anchor_commit": "09-CONTEXT.md@00ab2bb"
+      },
+      "metrics": {
+        "summary_pass_count": 15,
+        "transcript_pass_count": 21,
+        "delta_pass_rate": 0.2,
+        "delta_ci_lower": -0.01485167622759584,
+        "delta_ci_upper": 0.44562721129624716,
+        "delta_ci_point": 0.19999999999999996,
+        "started_at_iso": "2026-05-09T01:31:56.948Z",
+        "completed_at_iso": "2026-05-09T02:22:13.883Z"
+      }
+    },
+    {
+      "phase": "9-pooled-r1+r2",
+      "labeler": "three_prong_rubric_pooled",
+      "date": "2026-05-09",
+      "n": 60,
+      "verdict": "GREEN_LIGHT",
+      "conditions": {
+        "replications": [
+          "r1",
+          "r2"
+        ],
+        "pooling_method": "sum_pass_counts_across_replications_via_wilsonDeltaCI",
+        "pre_commitment_anchor_commit": "09-CONTEXT.md@00ab2bb"
+      },
+      "metrics": {
+        "pooled_summary_pass_count": 29,
+        "pooled_transcript_pass_count": 39,
+        "delta_pass_rate": 0.16666666666666666,
+        "delta_ci_lower": 0.0038290236278638035,
+        "delta_ci_upper": 0.3434277327059603,
+        "delta_ci_point": 0.16666666666666669,
+        "per_kind": [
+          {
+            "kind": "a",
+            "summary_pass_rate": 0.5,
+            "transcript_pass_rate": 0.5,
+            "delta": 0,
+            "descriptive_only": true
+          },
+          {
+            "kind": "b",
+            "summary_pass_rate": 0.16666666666666666,
+            "transcript_pass_rate": 0.5833333333333334,
+            "delta": 0.4166666666666667,
+            "descriptive_only": true
+          },
+          {
+            "kind": "c",
+            "summary_pass_rate": 0.5833333333333334,
+            "transcript_pass_rate": 0.5833333333333334,
+            "delta": 0,
+            "descriptive_only": true
+          },
+          {
+            "kind": "d",
+            "summary_pass_rate": 0.5833333333333334,
+            "transcript_pass_rate": 0.8333333333333334,
+            "delta": 0.25,
+            "descriptive_only": true
+          },
+          {
+            "kind": "e",
+            "summary_pass_rate": 0.5833333333333334,
+            "transcript_pass_rate": 0.75,
+            "delta": 0.16666666666666666,
+            "descriptive_only": true
+          }
+        ]
+      }
+    }
+  ]
 }

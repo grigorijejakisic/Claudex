@@ -5,16 +5,16 @@
 See: `.planning/PROJECT.md` (updated 2026-05-08 after v5 closure + v6 milestone kickoff)
 
 **Core value:** v5 closed the *lying-memory* surface; v6 closes the *lazy-memory* surface. Surface the moments that produced decisions and lessons, not summaries about them.
-**Current focus:** v6 — Deliberation Surfacing (Phase 8 SHIPPED 2026-05-08; Phase 9 empirical measurement ready to start).
+**Current focus:** v6 — Deliberation Surfacing (Phase 8 SHIPPED 2026-05-08; Phase 9 BOUND POSITIVE 2026-05-09; P10 engineering branch ready to start).
 
 ## Current Position
 
 **Current Milestone:** v6 — Deliberation Surfacing
-**Phase:** Phase 9 — Empirical measurement (not started)
+**Phase:** Phase 9 — Empirical measurement (BOUND POSITIVE 2026-05-09)
 **Plan:** —
-**Status:** Phase 8 (transcript ingestion substrate) SHIPPED 2026-05-08. V32 migration + ingestion pipeline + WIR-01 ship gate landed. 76 new tests pass; 8 of 9 ship gates PASS, 1 (sc3 big-mozzy-v2) carry-forward pre-existing project-content gap verified pre-P8 via git-stash test. Vesna 21/21 preserved.
+**Status:** Phase 9 SHIPPED 2026-05-09. Pooled verdict POSITIVE at n=60, Wilson Δ CI [+0.0038, +0.3434]. Per-replication: r1+r2 both INCONCLUSIVE individually (small n); pooling cleared zero. Bi-encoder-only retrieval baseline (cross-encoder fitness 56.0% < 60% threshold, post-backfill). P10 engineering branch unlocked. Two production bug fixes (vec0 BigInt + JSON-extract WHERE) landed alongside (commit 4e9da8c). 47330 transcript chunks + 45553 embeddings substrate. Vesna 21/21 preserved.
 
-**Last activity:** 2026-05-08 — Phase 8 close-out commit; CHANGELOG `[Unreleased]` populated with v6 substrate landing; STATE.md + ROADMAP.md flipped.
+**Last activity:** 2026-05-09 — Phase 9 binding run completed; 09-RESULTS.md authored; aggregator `.planning/aggregates/deliberation-surfacing.json` populated with 3 BoundExperience entries (9-r1, 9-r2, 9-pooled-r1+r2).
 
 ## v5 Verdict Log (CLOSED 2026-05-08)
 
@@ -34,12 +34,13 @@ See: `.planning/PROJECT.md` (updated 2026-05-08 after v5 closure + v6 milestone 
 | Phase | Goal | Type | Status | Requirements |
 |-------|------|------|--------|--------------|
 | 8 — Transcript ingestion substrate | V32 schema (transcript_chunk promotion + vec0 binding); JSONL watcher hook into Phase 6 boundary close; redaction-at-ingestion via parseWrappers; chunking strategy locked; backfill scope locked; live-wiring ship gate against V17-collapsed + base-table | engineering | **SHIPPED 2026-05-08** | TRX-01..05 + WIR-01 + WIR-02 |
-| 9 — Empirical measurement | Pre-commit decision rule in CONTEXT.md; lock corpus + harness; build drift-detection probe suite (≥5 condition-shift kinds); A/B with-transcript vs. summary-only baseline; ≥2 bound replications; Wilson/Newcombe CI binding; aggregate to `.planning/aggregates/deliberation-surfacing.{md,json}` | empirical | not started | ENG-01..04 |
+| 9 — Empirical measurement | Pre-commit decision rule in CONTEXT.md; lock corpus + harness; build drift-detection probe suite (≥5 condition-shift kinds); A/B with-transcript vs. summary-only baseline; ≥2 bound replications; Wilson/Newcombe CI binding; aggregate to `.planning/aggregates/deliberation-surfacing.{md,json}` | empirical | **BOUND POSITIVE 2026-05-09** | ENG-01..04 |
 | 10 — Conditional ship | Bound positive: routing (BGE-reranker fan-out from artifact references) + assembly (transcript span citations + advisory narration + budget caps) + Vesna probe extension to 24+ + ship gate validation + v6.0.0 tag. Bound negative: KILL receipt (Phase 2 shape) + substrate-alone ship + v6.0.0 tag with kill leading | engineering OR documentation | not started | ROU-01..03 + ASM-01..03 (engineering branch); WIR-01 inherited via WIR-02 phase coupling |
 
 ## v6 Phase Verdict Log
 
 - **Phase 8 (2026-05-08, type: engineering): SHIPPED.** V32 schema (transcript_chunk_v6 + vec_transcript_chunks_v6) + ingestion pipeline (chunkTranscript + upsertChunk + parseWrappers redaction) + SessionEnd hook enqueue + Angel heartbeat drain + backfill CLI + reranker-fitness CLI. WIR-01 wire test against V17-collapsed + base-table fresh-DB fixtures lands at ninth-gate severity. 76 new tests; Vesna 21/21 preserved. 8 of 9 ship gates PASS (sc3 big-mozzy-v2 at 70% is pre-existing project-content gap verified pre-P8). Boundary-detector enqueue path deferred to v6.x — see 08-03 SUMMARY Rule 4 deferral. NO v6.0.0 tag — that is P10's job after P9's empirical verdict.
+- **Phase 9 (2026-05-09, type: empirical, n=60 pooled across 2 replications): BOUND POSITIVE.** Pooled Δ pass-rate +0.1667, Wilson Δ CI [+0.0038, +0.3434]. Per-replication: r1 (s=14, t=18) and r2 (s=15, t=21) both INCONCLUSIVE individually; pooling cleared zero per CONTEXT decision 4. Bi-encoder-only baseline (cross-encoder fitness 56.0% < 60% post-backfill). Per-kind concentrated in b/d/e (threshold-source/dependency-change/assumption drift); a/c flat. P10 engineering branch unlocked. Two production bugs fixed in-flight (vec0 BigInt + JSON-extract WHERE; commit 4e9da8c). Vesna 21/21 preserved. 47330 chunks + 45553 embeddings substrate. Pre-commitment audit anchor (09-CONTEXT.md@00ab2bb) satisfied. See `.planning/phases/09-empirical-measurement/09-RESULTS.md`.
 
 **v6 coverage:** 17/17 requirements mapped, 0 unmapped.
 

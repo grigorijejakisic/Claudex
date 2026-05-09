@@ -90,7 +90,11 @@ Reframe artifact: `.planning/reframes/2026-05-05-multi-handle-kill.md`. Aggregat
   3. P9 produces ≥2 bound measurements (more if first run is inconclusive); each replication appends a row to `.planning/aggregates/deliberation-surfacing.{md,json}` per the v5 standard practice; one experience is not abstraction.
   4. Wilson/Newcombe CI binding is required for any milestone-level claim — point-deltas without CI binding are reported but never gated on. Bound-positive verdict triggers P10 engineering branch; bound-negative triggers P10 documentation branch (KILL receipt + substrate-alone ship); inconclusive triggers Phase-2.1-shape corpus-expansion rerun before final verdict.
   5. Methodology gate compliance is auditable: pre-committed decision rule visible in P9 CONTEXT.md commit before A/B run timestamps; corpus + harness diff-locked; aggregator append-only; descriptive-not-gating audits with full agent autonomy.
-**Plans**: TBD (locked at plan-phase time)
+**Plans**: 4 plans
+- [ ] 09-01-PLAN.md — drift fixtures (5×6=30) + judge prompt + probe-schema Zod gate (pre-commitment artifacts)
+- [ ] 09-02-PLAN.md — harness scaffolding (wilson re-export, types, judge, arm-summary, arm-transcript, runReplication)
+- [ ] 09-03-PLAN.md — verdict + aggregator + runner CLI + empty aggregator container files
+- [ ] 09-04-PLAN.md — synthetic ingest + run replications 1+2 (operator sanity-checkpoint after r1) + 09-RESULTS.md close-out
 
 ### Phase 10: Conditional ship
 **Goal**: Branch on P9 verdict and ship v6.0.0. Bound-positive lands the routing + assembly integration that surface transcript spans alongside summaries at retrieval time, extends Vesna with deliberation-engagement probes, runs all ship gates including WIR-01 inheritance, and tags v6.0.0. Bound-negative ships substrate alone (P8 work) with a KILL receipt in the Phase 2 shape and tags v6.0.0 with the kill leading the annotation. Either branch closes the milestone honestly.
