@@ -72,3 +72,9 @@ Promoted to standard practice 2026-05-05. Mandatory for v6 P9 empirical phase an
 - 27 pre-existing test failures (llama-server-supervisor, llama-client, phase-5-full-gate) carry forward as v4-debt; not blocking v6.
 - Standing user directive 2026-05-08: autonomous through v6 milestone end; operator-confirms public push at v6.0.0 tag (same pattern as v5). v6 milestone now CLOSED; next operator action is the public push.
 - v6.x or v7+ deferred ideas: per-kind routing weight tuning, cross-encoder re-bind on grown corpus, default tuning from production telemetry, kind-a/kind-c null-result investigation, retention policy (forgetting-curve), cross-harness transcript sources. See CHANGELOG [6.0.0] § Deferred and 10-CONTEXT.md § Deferred Ideas.
+
+## Accumulated Context
+
+### Roadmap Evolution
+
+- 2026-05-10 — Phase 12 added: Real v6 structural marks (cross-family invocation pipeline + methodology critique checkpoint + adversarial test/fixture authoring + Vesna probe-suite polishing + lightweight telemetry instrumentation + mid-flight commit visibility). Lands the structural marks the v6→v6-polish round-trip produced as load-bearing countermeasures. Spec: `.planning/research/2026-05-10-phase-12-real-v6-structural-marks.md`. Six items, three waves (W1 foundation / W2 gates+observation / W3 standalone polish), 12-CLOSE external-review-gate dogfood. Track A on `/auto-orchestrate`; Track B (Phase 11 W3 empirical re-bind) runs operator-driven in parallel; both close before public push.
