@@ -1,0 +1,5 @@
+# AI-assistant scan exclusions
+Sessions/
+node_modules/
+.planning/
+context/
