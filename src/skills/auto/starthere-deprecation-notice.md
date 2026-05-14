@@ -1,6 +1,6 @@
 # /starthere Deprecation Notice — Phase 13 Organic Claudex
 
-**Status:** APPROVED — apply after one-week deprecation window passes (2026-05-21 or later)
+**Status:** APPLIED 2026-05-14 — skill directory `~/.claude/skills/starthere/` removed via `rm -rf` after the operator-run end-to-end substrate test passed same day (planted-fact recall worked: session B retrieved "violets are green" from session A via `claudex-recall` × 4 calls and cited the prior failure record). One-week deprecation window cast away because the substrate demonstrably carried what the skill used to ritualize.
 **Phase:** 13-organic-claudex
 **Context:** `.planning/phases/13-organic-claudex/13-CONTEXT.md` + spec at `.planning/research/2026-05-14-phase-13-organic-claudex.md`
 
