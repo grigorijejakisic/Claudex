@@ -17,16 +17,17 @@ Plans: 12-01 through 12-09 across three waves + 12-CLOSE.
 
 ### Area 1 — Cross-Family Invocation Pipeline (12-01)
 
-**First-class families (operator-locked):**
-Cross-family invocation pipeline = 2-family primitive: Gemini-3-Flash (via gemini-cli with Windows node-path bypass) + Codex CLI (with documented Windows platform guards from `docs/codex.md`).
+**Implementation approach (operator-locked — revised):**
+12-01 is a **thin wrapper module** (`src/skills/auto/cross-family-wrapper.ts`) over the existing `/codex-review` and `/gemini-review` skills. NOT a new primitive. The existing review skills already handle Windows workarounds, retry logic, and output parsing for both Codex CLI and Gemini-3-Flash (gemini-cli with Windows node-path bypass).
 
-Claude is intentionally NOT a first-class family in this pipeline because Claude is already present as orchestrator + teammates in the calling context — invoking Claude-via-SDK would be same-family critique, defeating the purpose.
+The wrapper provides a single function `invokeCrossFamily(prompt, options)` for auto-* skills to call. Under the hood it routes to the existing review skills with appropriate prompt-flavoring per call site. Plan 12-01 scope is ~150–300 LOC, substantially smaller than a full pipeline build.
 
-- Gemini CLI invocation: `node --no-warnings=DEP0040 "C:/Users/Grigorije/AppData/Roaming/npm/node_modules/@google/gemini-cli/dist/index.js" --approval-mode plan -o text -p "prompt"` (Windows node-path bypass for exit-126 issue)
-- Codex CLI: standard invocation; respect Windows platform guards (no `-o` flag, no `/tmp/`, no `run_in_background`)
+Claude is intentionally NOT a third family in this pipeline — Claude is already present as orchestrator + teammates in the calling context; invoking Claude-via-SDK would be same-family critique, defeating the purpose.
+
+Authorship mode: the wrapper accepts `mode: 'review' | 'authorship'`. In `authorship` mode (12-03 adversarial test authoring), the family's response is returned as `findings[].evidence` (vitest body) per the Q4 schema lock below — same invocation pattern, different prompt framing.
 
 **Prompt-bounding discipline (operator-locked):**
-Per-call-site configurable budget; pipeline-level 32K hard ceiling enforced at the primitive. If a caller exceeds the ceiling, the pipeline truncates with documented `truncated: true` flag in the structured response — never silently. Truncation strategy: lop newest content first, preserve structured prompt header + artifact-under-critique.
+Per-call-site configurable budget; wrapper-level 32K hard ceiling. If a caller exceeds the ceiling, the wrapper truncates with documented `truncated: true` flag in the structured response — never silently. Truncation strategy: lop newest content first, preserve structured prompt header + artifact-under-critique.
 
 Initial budgets (planner refines during 12-01):
 - 12-02 methodology critique: ~4–8K
@@ -220,7 +221,7 @@ No areas were left to Claude's discretion — all four gray areas received expli
 <specifics>
 ## Specific Ideas
 
-- The 2-family pipeline (Gemini + Codex, not Claude) was an operator correction from the spec's original "Gemini + Codex + Claude Opus via SDK" — the spec will be updated post-context to reflect this.
+- 12-01 scope was revised: thin wrapper over existing `/codex-review` + `/gemini-review` skills, NOT a new pipeline primitive. The spec file (`.planning/research/2026-05-10-phase-12-real-v6-structural-marks.md`) was updated to reflect this on 2026-05-14. Claude excluded from the 2-family set (Gemini-3-Flash + Codex CLI) — already present as orchestrator + teammates.
 - The `feedback_good_child_parable.md` memory is directly load-bearing for items 8 and 9. The "silence-means-escalate" fix exists because the 2026-05-10 session demonstrated auto-discuss-phase filling six gray areas with defaults while operator input was in flight — operator decision then: "fold the fix into phase 12."
 - The big-balkan pattern (one high-importance experience pattern crowding position 0 across 16 unrelated queries in sessions 39+40) is the concrete empirical basis for item 7. The W3 16-search corpus is the regression harness.
 - Phase 12 is the last step before public push. All nine marks must close before push.
@@ -238,8 +239,8 @@ v7 design questions (pairwise Elo, telemetry verdict structure, cross-agent vali
 
 ## Operator-Locked Answers (BLOCK-class)
 
-- **Q [12-01/Q1]:** Which families are first-class in the pipeline?
-  - Answer: 2-family pipeline — Gemini-3-Flash (gemini-cli, Windows node-path bypass) + Codex CLI. Claude intentionally excluded (already present as orchestrator + teammates).
+- **Q [12-01/Q1]:** Which families are first-class / what is the implementation approach? (REVISED 2026-05-14)
+  - Answer: Thin wrapper module (`src/skills/auto/cross-family-wrapper.ts`) over existing `/codex-review` + `/gemini-review` skills. NOT a new primitive. Families = Gemini-3-Flash + Codex CLI (via existing skills). Claude excluded (already present as orchestrator + teammates). `mode: 'review'|'authorship'` parameter added for 12-03 use case.
   - Timestamp: 2026-05-14
 
 - **Q [12-01/Q2]:** Prompt-bounding discipline?
