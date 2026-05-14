@@ -175,8 +175,11 @@ function runOllamaReviewer(model, timeoutMs) {
 
 function runCodexReviewer(timeoutMs) {
   try {
-    // Codex CLI invocation. The `codex` binary may not be on PATH; that's a graceful skip.
-    const stdout = execSync(`codex review`, {
+    // `codex exec -` reads the prompt from stdin. We use `exec` not `review` because
+    // the script already bundles phase artifacts inline; `review` is for git-diff targets
+    // and would error out with "Specify --uncommitted, --base, --commit" otherwise.
+    // The `codex` binary may not be on PATH; that's a graceful skip.
+    const stdout = execSync(`codex exec -`, {
       input: reviewerPrompt,
       encoding: 'utf8',
       timeout: timeoutMs,
