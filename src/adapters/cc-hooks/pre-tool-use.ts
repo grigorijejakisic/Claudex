@@ -12,7 +12,13 @@
 
 import { wrapHook } from './infrastructure.js';
 import { cachedPrepare } from '../../core/stmt-cache.js';
-import { buildHandoffReadCue, buildDecisionLockCue } from '../../core/context-pull-cues.js';
+import {
+  buildHandoffReadCue,
+  buildDecisionLockCue,
+  buildScriptEncounterCue,
+  buildErrorInvestigationCue,
+  buildPackageInstallCue,
+} from '../../core/context-pull-cues.js';
 
 /**
  * Looks up permission decision for a tool call.
@@ -83,14 +89,28 @@ const main = wrapHook('PreToolUse', async (input, ctx) => {
     };
   }
 
-  // 12-08: Context-pull cues — handoff-read and decision-lock
+  // 12-08 + Phase 13 Plan 05: Context-pull cues — six surfaces total.
+  // One-cue-per-tool-invocation: if a Phase-12 cue fires (handoff_read /
+  // decision_lock), the new surfaces are skipped to avoid stacking noise.
   let contextCue: string | null = null;
   try {
     const filePath = (toolInput.file_path as string) ?? (toolInput.path as string) ?? '';
     if (toolName === 'Read' && filePath && isHandoffPath(filePath)) {
       contextCue = await buildHandoffReadCue(ctx.db, filePath, input.session_id);
     } else if ((toolName === 'Write' || toolName === 'Edit') && filePath && isDecisionLockPath(filePath)) {
-      contextCue = await buildDecisionLockCue(ctx.db, filePath, input.session_id);
+      contextCue = await buildDecisionLockCue(ctx.db, filePath);
+    }
+
+    if (!contextCue) {
+      if (toolName === 'Read' && filePath) {
+        contextCue = await buildScriptEncounterCue(ctx.db, filePath, ctx.project, input.session_id);
+      } else if (toolName === 'Bash') {
+        const command = (toolInput.command as string) ?? '';
+        if (command) {
+          contextCue = await buildErrorInvestigationCue(ctx.db, command, ctx.project)
+            ?? await buildPackageInstallCue(ctx.db, command, ctx.project);
+        }
+      }
     }
   } catch { /* non-blocking */ }
 
