@@ -102,6 +102,112 @@ Note: cross-encoder reranker fell back to bi-encoder ${n} ${plural} in the last 
 }
 
 /**
+ * Priority 1.6 (Phase 13 Plan 04 — companion to Plan 03):
+ * Frame Extraction Degraded health line. Fires when any of the latest 3
+ * session_highlights rows for this project have degraded=1. Mirrors the
+ * reranker-health pattern: descriptive, not imperative; bypasses the
+ * budget cap because degraded-mode visibility is mandatory.
+ *
+ * Returns null when no degraded highlights exist (the common case).
+ */
+export function formatFrameExtractionDegradedSection(latestHighlights: Array<{ degraded?: boolean }>): string | null {
+  if (!latestHighlights || latestHighlights.length === 0) return null;
+  const degradedCount = latestHighlights.filter(h => h.degraded === true).length;
+  if (degradedCount === 0) return null;
+  return `## Frame Extraction Degraded
+${degradedCount} of the last ${latestHighlights.length} session highlights were produced by the fallback model (Opus unavailable). Restart Angel to retry Opus extraction.`;
+}
+
+/**
+ * Priority 2.6 (Phase 13 Plan 04):
+ * Recent Session Frames — the latest N session_highlights rows formatted as
+ * a budget-capped section. Caller supplies the rows from getLatestHighlights
+ * + the budget cap (25% of injection budget per 13-CONTEXT.md).
+ *
+ * Truncation order when over budget: drop posture_context first (least
+ * action-relevant), then mental_model (longest), then collapse
+ * tools_introduced / decisions_not_made / open_questions to N entries each.
+ * Preserves the action-shaped fields (what to do next) over the descriptive
+ * fields (what was happening).
+ *
+ * Returns null when no highlights exist (graceful empty-Sessions/ path) or
+ * when the formatted section exceeds the cap even after truncation.
+ */
+export interface RecentFrameInput {
+  session_id: string;
+  created_at_epoch_ms: number;
+  mental_model?: string;
+  open_questions?: Array<{ question: string; context: string }>;
+  reframes?: Array<{ old_theory: string; new_theory: string; why: string }>;
+  tools_introduced?: Array<{ path: string; purpose: string }>;
+  decisions_not_made?: Array<{ gray_area: string; why_deferred: string }>;
+  posture_context?: string;
+  degraded?: boolean;
+}
+
+export function formatRecentSessionFramesSection(
+  highlights: RecentFrameInput[],
+  budgetTokens: number,
+): string | null {
+  if (!highlights || highlights.length === 0) return null;
+
+  // Try full-detail format first.
+  const full = renderFrames(highlights, { includeMentalModel: true, includePosture: true });
+  if (full && estimateTokens(full) <= budgetTokens) return full;
+
+  // Drop posture_context.
+  const noPosture = renderFrames(highlights, { includeMentalModel: true, includePosture: false });
+  if (noPosture && estimateTokens(noPosture) <= budgetTokens) return noPosture;
+
+  // Drop mental_model.
+  const minimal = renderFrames(highlights, { includeMentalModel: false, includePosture: false });
+  if (minimal && estimateTokens(minimal) <= budgetTokens) return minimal;
+
+  // Even the minimal form is over-budget — drop the section rather than emit
+  // a malformed half-section. Operator sees the health line instead if any.
+  return null;
+}
+
+function renderFrames(
+  highlights: RecentFrameInput[],
+  opts: { includeMentalModel: boolean; includePosture: boolean },
+): string | null {
+  const blocks: string[] = ['## Recent Session Frames'];
+  for (const h of highlights) {
+    const lines: string[] = [];
+    const dateStr = new Date(h.created_at_epoch_ms).toISOString().slice(0, 10);
+    const sidPrefix = h.session_id.slice(0, 8);
+    lines.push(`### Session ${dateStr} (from ${sidPrefix})`);
+    if (opts.includeMentalModel && h.mental_model) {
+      lines.push(`**Mental model:** ${h.mental_model}`);
+    }
+    if ((h.open_questions ?? []).length > 0) {
+      const q = (h.open_questions ?? []).slice(0, 5)
+        .map(o => `- ${o.question} (${o.context})`).join('\n');
+      lines.push(`**Open questions:**\n${q}`);
+    }
+    if ((h.tools_introduced ?? []).length > 0) {
+      const t = (h.tools_introduced ?? []).slice(0, 5)
+        .map(o => `- \`${o.path}\`: ${o.purpose}`).join('\n');
+      lines.push(`**Tools introduced:**\n${t}`);
+    }
+    if ((h.decisions_not_made ?? []).length > 0) {
+      const d = (h.decisions_not_made ?? []).slice(0, 5)
+        .map(o => `- ${o.gray_area} (${o.why_deferred})`).join('\n');
+      lines.push(`**Decisions deferred:**\n${d}`);
+    }
+    if (opts.includePosture && h.posture_context) {
+      lines.push(`**Posture:** ${h.posture_context}`);
+    }
+    if (lines.length > 1) {
+      blocks.push(lines.join('\n'));
+    }
+  }
+  if (blocks.length === 1) return null; // no body content survived
+  return blocks.join('\n\n');
+}
+
+/**
  * Priority 4.1: Proven principles — proactive injection of established learnings.
  * Unlike experience warnings (keyword-matched per turn), these are injected
  * unconditionally at session start. They represent the accumulated wisdom that

@@ -540,19 +540,24 @@ const main = wrapHook('UserPromptSubmit', async (input, ctx) => {
     // else: skip extra content to stay within budget — messages NOT marked delivered
   }
 
-  if (combinedContent) {
-    // Commit deferred side effects — experience pattern trigger counts, flags, etc.
-    // Only now, after confirming the payload will be injected into context.
-    try { payload.commitEffects?.(); } catch { /* non-fatal */ }
+  // Phase 13 Plan 04: per-turn timestamp injection — keeps long sessions
+  // timestamp-fresh so the agent can compute elapsed time across turns even
+  // when the SessionStart injection has scrolled out of cache.
+  const currentTimeLine = `**Current time:** ${nowIso()}`;
+  combinedContent = combinedContent
+    ? currentTimeLine + '\n\n' + combinedContent
+    : currentTimeLine;
 
-    return {
-      hookSpecificOutput: {
-        hookEventName: 'UserPromptSubmit',
-        additionalContext: combinedContent,
-      },
-    };
-  }
-  return {};
+  // Commit deferred side effects — experience pattern trigger counts, flags, etc.
+  // Only now, after confirming the payload will be injected into context.
+  try { payload.commitEffects?.(); } catch { /* non-fatal */ }
+
+  return {
+    hookSpecificOutput: {
+      hookEventName: 'UserPromptSubmit',
+      additionalContext: combinedContent,
+    },
+  };
 });
 
 main();

@@ -18,6 +18,7 @@ import { cachedPrepare } from '../../core/stmt-cache.js';
 import { captureRecallFlowEntry } from '../shared/lifecycle.js';
 import { writeEnvironmentalEvent } from '../../core/episodic-events.js';
 import { writeClaudeEnvFile, detectCcMemoryConflict } from '../shared/env-file.js';
+import { nowIso } from './session-writer.js';
 import { verifyMemoryMd } from '../../core/memory-md-verify.js';
 import { predictSessionIntent, CONFIDENCE_THRESHOLD } from '../../intelligence/intent-predictor.js';
 import { seedCriticalRules, promoteFromCapabilityTracker } from '../../intelligence/critical-reminders.js';
@@ -368,6 +369,12 @@ const main = wrapHook('SessionStart', async (input, ctx) => {
   // Append last session summary to the assembled context (cross-session reconstruction)
   let fullContent = payload.content || '';
 
+  // Phase 13 Plan 04: per-turn timestamp injection at the top of additionalContext.
+  // ISO 8601 + local timezone offset — supplements the static `currentDate` memory
+  // line with sub-day precision so the agent can compute elapsed time.
+  const currentTimeLine = `**Current time:** ${nowIso()}`;
+  fullContent = currentTimeLine + (fullContent ? '\n\n' + fullContent : '');
+
   // C3: KAIROS warning injection — one line, only when KAIROS is active
   if (ccKairosActive) {
     fullContent += '\nKAIROS mode active -- Angel consolidation may conflict\n';
@@ -407,17 +414,16 @@ const main = wrapHook('SessionStart', async (input, ctx) => {
     }
   } catch { /* non-fatal — auto-prime is best-effort */ }
 
-  if (fullContent) {
-    return {
-      hookSpecificOutput: {
-        hookEventName: 'SessionStart',
-        additionalContext: fullContent,
-        ...(watchPaths.length > 0 ? { watchPaths } : {}),
-        ...(initialMessage ? { initialUserMessage: initialMessage } : {}),
-      },
-    };
-  }
-  return {};
+  // fullContent always carries at least the **Current time:** line, so this
+  // branch is the steady-state return path.
+  return {
+    hookSpecificOutput: {
+      hookEventName: 'SessionStart',
+      additionalContext: fullContent,
+      ...(watchPaths.length > 0 ? { watchPaths } : {}),
+      ...(initialMessage ? { initialUserMessage: initialMessage } : {}),
+    },
+  };
 });
 
 main();

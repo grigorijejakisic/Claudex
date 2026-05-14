@@ -19,6 +19,8 @@ import {
   formatIdentitySection,
   formatClaudexReadySection,
   formatRerankerHealthSection,
+  formatFrameExtractionDegradedSection,
+  formatRecentSessionFramesSection,
   formatProvenPrinciplesSection,
   formatProjectSection,
   formatCheckpointSection,
@@ -32,6 +34,7 @@ import {
   renderSessionContinuity,
   renderExperienceWarnings as formatExperienceWarningsSection,
 } from './sections.js';
+import { getLatestHighlights } from '../intelligence/session-highlights.js';
 import {
   findMatchingPatterns,
   getProvenPrinciples,
@@ -363,6 +366,32 @@ export function assembleFullContext(params: FullAssemblyParams): InjectPayload {
           sources.push('session_continuity');
         }
       }
+
+      // Priority 2.6 (Phase 13 Plan 04): Recent Session Frames + Frame Extraction
+      // Degraded health line. Highlights are budget-capped at 25% of injection
+      // budget (per 13-CONTEXT.md). Degraded health line bypasses the budget cap
+      // — degraded-mode visibility is mandatory, same posture as reranker health.
+      try {
+        const latestHighlights = getLatestHighlights(params.db, params.project, 3);
+        const degraded = formatFrameExtractionDegradedSection(latestHighlights);
+        if (degraded) {
+          sections.push(degraded);
+          sources.push('frame_extraction_degraded');
+        }
+        const framesBudget = Math.max(
+          0,
+          Math.floor(params.config.injection.budget_tokens * 0.25),
+        );
+        const framesSection = formatRecentSessionFramesSection(latestHighlights, framesBudget);
+        if (framesSection) {
+          const cost = estimateTokens(framesSection);
+          if (cost <= budget) {
+            sections.push(framesSection);
+            budget -= cost;
+            sources.push('session_highlights');
+          }
+        }
+      } catch { /* non-fatal — section is advisory, never blocks assembly */ }
     }
 
     // Priority 3: Checkpoint — skipLearnings because Priority 4 injects them separately
