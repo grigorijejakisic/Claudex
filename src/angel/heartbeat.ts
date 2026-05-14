@@ -301,24 +301,50 @@ export async function heartbeatTick(ctx: HeartbeatContext): Promise<TickResult> 
     const batchSize = hasActiveSessions ? 3 : 5;
     const unprocessed = getUnprocessedSessions(ctx.db, batchSize);
 
+    // Phase 13.1: per-await timeouts. Either of the awaits below can hang
+    // indefinitely on an unresponsive Ollama call. Without timeouts, a single
+    // session's hang darks the whole Phase 2 loop and prevents subsequent
+    // phases (curated extraction, sessions-indexer, highlights). The tick
+    // watchdog at startHeartbeat is the catch-all; this is the proper fix
+    // at the precise layer where the hang originates.
+    const PHASE2_AWAIT_TIMEOUT_MS = 60_000;
+    function withTimeout<T>(p: Promise<T>, label: string): Promise<T> {
+      return Promise.race([
+        p,
+        new Promise<T>((_, rej) => setTimeout(
+          () => rej(new Error(`phase2-timeout:${label}`)),
+          PHASE2_AWAIT_TIMEOUT_MS,
+        )),
+      ]);
+    }
+
     for (const session of unprocessed) {
+      const sid = session.session_id.slice(0, 8);
+      console.log(`[hb-trace] phase2 session=${sid} START`);
+
       // Phase 2a (P2): Directive detection — runs BEFORE generic pattern
       // extraction so that `directive_rule` artifacts are in place before the
       // pattern-extractor's manifest-builder reads existing artifacts for
       // dedup. Failure here must NOT block pattern extraction for the same
       // session; see RESEARCH §1.1.
       try {
-        const dirResult = await extractDirectivesFromSession(
-          ctx.db,
-          session.session_id,
-          session.project,
+        console.log(`[hb-trace] phase2 session=${sid} extractDirectives START`);
+        const dirResult = await withTimeout(
+          extractDirectivesFromSession(
+            ctx.db,
+            session.session_id,
+            session.project,
+          ),
+          'extractDirectives',
         );
+        console.log(`[hb-trace] phase2 session=${sid} extractDirectives OK`);
         result.directives_extracted =
           (result.directives_extracted ?? 0) + dirResult.inserted + dirResult.updated;
         if (dirResult.errors > 0) {
           result.directives_errors = (result.directives_errors ?? 0) + dirResult.errors;
         }
-      } catch {
+      } catch (e) {
+        console.log(`[hb-trace] phase2 session=${sid} extractDirectives ERR ${(e as Error).message}`);
         // Non-fatal — session is still marked processed by the existing
         // pattern-extractor post-condition below.
       }
@@ -333,14 +359,20 @@ export async function heartbeatTick(ctx: HeartbeatContext): Promise<TickResult> 
       // 0-default fields for observability surfaces; Phase 7 retirement
       // work decides whether to drop them.
       try {
-        const domains = await classifySessionDomains(
-          ctx.db,
-          session.session_id,
-          session.project,
-          ctx.config.localModel,
+        console.log(`[hb-trace] phase2 session=${sid} classifyDomains START`);
+        const domains = await withTimeout(
+          classifySessionDomains(
+            ctx.db,
+            session.session_id,
+            session.project,
+            ctx.config.localModel,
+          ),
+          'classifyDomains',
         );
+        console.log(`[hb-trace] phase2 session=${sid} classifyDomains OK domains=${domains}`);
         result.domains_classified += domains;
-      } catch {
+      } catch (e) {
+        console.log(`[hb-trace] phase2 session=${sid} classifyDomains ERR ${(e as Error).message}`);
         // Individual session processing failure — continue with others
       }
     }
