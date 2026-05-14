@@ -136,6 +136,8 @@ export interface TickResult {
   sessions_indexer_errors?: number;
   duration_ms: number;
   error?: string;
+  // Phase 13.1 watchdog: set when the tick exceeded TICK_TIMEOUT_MS
+  timeout_skip?: boolean;
 }
 
 /**
@@ -144,6 +146,7 @@ export interface TickResult {
  */
 export async function heartbeatTick(ctx: HeartbeatContext): Promise<TickResult> {
   const start = Date.now();
+  console.log(`[hb-trace] tick START ${new Date(start).toISOString()}`);
   const result: TickResult = {
     idle_warnings_sent: 0,
     // Phase 4: dead — no extractor exists. Field kept to avoid breaking
@@ -267,6 +270,7 @@ export async function heartbeatTick(ctx: HeartbeatContext): Promise<TickResult> 
       // Non-critical — auto-close failures don't break the heartbeat
     }
 
+    console.log(`[hb-trace] pre-stuck-detection ${Date.now() - start}ms`);
     // Phase 1c: Stuck session detection (A11)
     // Active (non-idle) sessions that are making no progress get an intervention.
     // Detects: repeated tool failures, looping prompts, no file progress.
@@ -287,6 +291,7 @@ export async function heartbeatTick(ctx: HeartbeatContext): Promise<TickResult> 
       // Non-critical — stuck detection failure doesn't break the heartbeat
     }
 
+    console.log(`[hb-trace] pre-pattern-extraction ${Date.now() - start}ms`);
     // Phase 2: Process completed sessions (pattern extraction)
     // Process up to 5 sessions when running autonomously (no active sessions),
     // or 3 when the user is working (save resources for hook responsiveness).
@@ -339,6 +344,7 @@ export async function heartbeatTick(ctx: HeartbeatContext): Promise<TickResult> 
         // Individual session processing failure — continue with others
       }
     }
+    console.log(`[hb-trace] pre-curated-extract ${Date.now() - start}ms`);
     // Phase 12: Curated Context Extraction — scan completed sessions for
     // reframes, directives, and other high-signal statements that belong in
     // the Project Curated Context slot (P2.1 injection). Angel's fallback
@@ -372,6 +378,7 @@ export async function heartbeatTick(ctx: HeartbeatContext): Promise<TickResult> 
       // Non-critical — curated extraction failure doesn't break the heartbeat
     }
 
+    console.log(`[hb-trace] pre-indexer ${Date.now() - start}ms`);
     // Phase 13 Plan 02: Sessions/ markdown indexer.
     // Stat()-scan each registered project's Sessions/ dir; for files whose mtime
     // exceeds the cursor, re-chunk and upsert via the existing Phase 8 pipeline.
@@ -385,6 +392,7 @@ export async function heartbeatTick(ctx: HeartbeatContext): Promise<TickResult> 
     } catch {
       // Non-fatal — indexer failure must not kill the heartbeat
     }
+    console.log(`[hb-trace] post-indexer ${Date.now() - start}ms`);
 
     // Phase 13 Plan 03: highlights extraction for completed sessions.
     // For each registered project, find completed sessions that have no
@@ -411,6 +419,7 @@ export async function heartbeatTick(ctx: HeartbeatContext): Promise<TickResult> 
     } catch {
       // Non-fatal — highlights extraction failure must not kill the heartbeat
     }
+    console.log(`[hb-trace] post-highlights ${Date.now() - start}ms`);
 
     // Phase 4: Guardian duties — learning curation, pattern quality, DB maintenance
     try {
@@ -1278,6 +1287,7 @@ export async function heartbeatTick(ctx: HeartbeatContext): Promise<TickResult> 
   } catch { /* drain failure non-critical */ }
 
   result.duration_ms = Date.now() - start;
+  console.log(`[hb-trace] tick COMPLETE ${result.duration_ms}ms`);
   return result;
 }
 
@@ -1616,7 +1626,24 @@ export function startHeartbeat(
   async function tick() {
     if (!running) return;
 
-    const result = await heartbeatTick(ctx);
+    // Phase 13.1 watchdog: cap any single tick at 5 min so a hung subsystem
+    // (e.g. Phase 2 pattern-extraction Ollama call) can't dark the whole loop.
+    // The timeout result is observable via result.timeout_skip + log line.
+    const TICK_TIMEOUT_MS = 5 * 60 * 1000;
+    const result = await Promise.race([
+      heartbeatTick(ctx),
+      new Promise<TickResult>((resolve) => setTimeout(() => {
+        console.error(`[hb] tick exceeded ${TICK_TIMEOUT_MS}ms — skipping cycle to keep loop alive`);
+        resolve({
+          idle_warnings_sent: 0,
+          sessions_processed: 0,
+          patterns_extracted: 0,
+          domains_classified: 0,
+          duration_ms: TICK_TIMEOUT_MS,
+          timeout_skip: true,
+        } as TickResult);
+      }, TICK_TIMEOUT_MS)),
+    ]);
     onTick?.(result);
 
     if (running) {

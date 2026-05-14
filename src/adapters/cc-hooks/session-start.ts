@@ -121,6 +121,20 @@ const main = wrapHook('SessionStart', async (input, ctx) => {
     await ensureAngelRunning(ctx.db, input.session_id, ctx.project);
   } catch { /* Angel is optional */ }
 
+  // Phase 13.1 defensive indexer: scan Sessions/ folders for new/modified
+  // markdown and re-index via the same upsertChunk pipeline Angel uses.
+  // Wrapped with a 3s budget so a slow scan doesn't block session-start.
+  // This is defense in depth: if Angel's heartbeat is hung (Phase 13.1 W2
+  // root cause not yet fixed), retrieval at next UserPromptSubmit still
+  // sees fresh chunks because we caught up the index here.
+  try {
+    const { scanAndIndexSessions } = await import('../../angel/sessions-indexer.js');
+    await Promise.race([
+      scanAndIndexSessions(ctx.db),
+      new Promise<void>((resolve) => setTimeout(resolve, 3000)),
+    ]);
+  } catch { /* indexer failure non-fatal — Angel will catch up later */ }
+
   // Write CLAUDE_ENV_FILE — inject env flags for CC's bash environment.
   // X3: CC sources this file before every BashTool command for the session.
   // T1/T2: Disable CC auto-memory (~11K tokens/turn saved).
