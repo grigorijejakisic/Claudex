@@ -1,6 +1,6 @@
 # Patch: auto-discuss-phase — silence-means-escalate fix
 
-**Status:** APPROVED — apply to `~/.claude/skills/auto-discuss-phase/SKILL.md`
+**Status:** APPLIED 2026-05-15 — patch content appended to `~/.claude/skills/auto-discuss-phase/SKILL.md` as a clearly-labeled "Operator-applied patch" section at the end of the file. Reversible by deleting that section. Tomorrow tests whether the appended rules are picked up at skill-invocation time.
 **Phase:** 12-real-v6-structural-marks
 **Context:** 12-CONTEXT.md Q [12-09/Q1] operator-locked answers
 
