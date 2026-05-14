@@ -51,6 +51,7 @@ import {
   migrateV29toV30,
   migrateV30toV31,
   migrateV31toV32,
+  migrateV32toV33,
   migrateSchemaFixes,
   cleanupOrphanTables,
   upgradeV2SchemaInPlace,
@@ -94,6 +95,7 @@ export { migrateV14toV15 };
  *   30 — v5 Phase 7 (MIG-01): learnings.provenance ALTER (base-table)
  *   31 — v5.0.1 hot-fix (MIG-02): learnings.provenance view rebuild (V17 view-mode)
  *   32 — v6 Phase 8: transcript_chunk_v6 + vec_transcript_chunks_v6 (TRX-05)
+ *   33 — v6 Phase 13 Plan 03: session_highlights table (per-session frame artifacts)
  *
  * Dual version tracking:
  * Both `PRAGMA user_version` and `schema_versions` table are needed:
@@ -108,7 +110,7 @@ export { migrateV14toV15 };
  * `claudex doctor` (DIAG-05) reads this to verify the on-disk DB is in sync.
  * Bumping a migration must bump this constant in lockstep.
  */
-export const TARGET_USER_VERSION = 32;
+export const TARGET_USER_VERSION = 33;
 
 export function runMigrations(db: Database): void {
   const row = db.pragma('user_version') as Array<{ user_version: number }>;
@@ -156,6 +158,7 @@ export function runMigrations(db: Database): void {
     [29, () => { migrateV29toV30(db); }],
     [30, () => { migrateV30toV31(db); }],
     [31, () => { migrateV31toV32(db); }],
+    [32, () => { migrateV32toV33(db); }],
   ];
 
   // Handle special cases for version 0 and 1

@@ -79,6 +79,24 @@ export function recordRetrievedButUnapplied(
   writeTelemetrySignal(db, 'signal_retrieved_but_unapplied', detail);
 }
 
+/**
+ * Phase 13 Plan 03: record a frame-extraction fallback event.
+ * Mirrors the reranker-fallback discipline — every Opus-to-fallback transition
+ * writes one row with the structured reason so operators can spot persistent
+ * Opus unavailability and the existing health-line surfacing.
+ */
+export function recordFrameExtractionFallback(
+  db: Database,
+  detail: {
+    session_id: string;
+    project: string;
+    reason: 'opus_timeout' | 'opus_non_2xx' | 'opus_auth_failed' | 'opus_parse_failed' | 'opus_empty_response' | string;
+    fallback_model: string;
+  },
+): void {
+  writeTelemetrySignal(db, 'frame_extraction_fallback', detail);
+}
+
 // ── Internal helpers ──────────────────────────────────────────────────────────
 
 function writeTelemetrySignal(

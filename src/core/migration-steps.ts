@@ -2269,6 +2269,43 @@ export function migrateV30toV31(db: Database): boolean {
  * pattern — wrapped in try/catch so DBs without sqlite-vec still advance
  * to UV=32 functionally (only the bi-encoder path degrades).
  */
+/**
+ * V32 → V33 (Phase 13 Plan 03): session_highlights table for per-session FRAME
+ * artifacts (mental model, open questions, reframes, tools introduced,
+ * decisions not made, posture context). New table, distinct from
+ * project_curated_context — per-session scope, structured fields, 1:1 session FK.
+ *
+ * Idempotent: CREATE TABLE IF NOT EXISTS + CREATE INDEX IF NOT EXISTS.
+ * Shape-agnostic: no existing table is altered; no view/trigger is touched.
+ * WIR-01 coverage in 13-03 tests applies the same DDL against V32 fresh-DB
+ * and V17-collapsed shapes — both succeed because the DDL touches no
+ * pre-existing surface.
+ */
+export function migrateV32toV33(db: Database): boolean {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS session_highlights (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      session_id TEXT NOT NULL,
+      project TEXT NOT NULL,
+      mental_model TEXT,
+      open_questions TEXT,
+      reframes TEXT,
+      tools_introduced TEXT,
+      decisions_not_made TEXT,
+      posture_context TEXT,
+      degraded INTEGER NOT NULL DEFAULT 0,
+      degraded_reason TEXT,
+      degraded_model TEXT,
+      created_at_epoch_ms INTEGER NOT NULL,
+      re_extracted_at_epoch_ms INTEGER,
+      UNIQUE(session_id, project)
+    );
+    CREATE INDEX IF NOT EXISTS idx_session_highlights_project_created
+      ON session_highlights (project, created_at_epoch_ms DESC);
+  `);
+  return true;
+}
+
 export function migrateV31toV32(db: Database): boolean {
   const exists = db.prepare(
     "SELECT 1 FROM sqlite_master WHERE type='table' AND name='transcript_chunk_v6'"

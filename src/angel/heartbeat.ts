@@ -58,7 +58,9 @@ import {
   isCloudModel,
   LLAMA_MODEL_ALIAS,
 } from './llama-client.js';
-import { scanAndIndexSessions } from './sessions-indexer.js';
+import { scanAndIndexSessions, getRegisteredProjectDirs } from './sessions-indexer.js';
+import { extractHighlightsForSession } from './highlights-extractor.js';
+import { getSessionsPendingHighlights } from '../intelligence/session-highlights.js';
 
 export interface HeartbeatContext {
   db: Database;
@@ -382,6 +384,32 @@ export async function heartbeatTick(ctx: HeartbeatContext): Promise<TickResult> 
       result.sessions_indexer_errors = idx.errors;
     } catch {
       // Non-fatal — indexer failure must not kill the heartbeat
+    }
+
+    // Phase 13 Plan 03: highlights extraction for completed sessions.
+    // For each registered project, find completed sessions that have no
+    // highlights row (or have degraded=1) and produce one via Opus-primary,
+    // local-fallback. Retry-on-degradation: degraded rows are revisited each tick.
+    try {
+      const projectsForHighlights = getRegisteredProjectDirs();
+      for (const { projectId, projectDir } of projectsForHighlights) {
+        const pending = getSessionsPendingHighlights(ctx.db, projectId, 5);
+        for (const sessionId of pending) {
+          try {
+            await extractHighlightsForSession({
+              db: ctx.db,
+              sessionId,
+              project: projectId,
+              projectDir,
+              config: ctx.config,
+            });
+          } catch {
+            // Individual session extraction failure — continue with others
+          }
+        }
+      }
+    } catch {
+      // Non-fatal — highlights extraction failure must not kill the heartbeat
     }
 
     // Phase 4: Guardian duties — learning curation, pattern quality, DB maintenance
