@@ -23,6 +23,7 @@ import { mapToolToDomain } from '../../intelligence/critical-reminders.js';
 import { writeToolResult } from '../../core/episodic-events.js';
 import { cachedPrepare } from '../../core/stmt-cache.js';
 import * as fs from 'fs';
+import { appendTurnToSessionFile, nowIso } from './session-writer.js';
 
 // ---------------------------------------------------------------------------
 // Behavioral signal thresholds (spec-defined)
@@ -41,6 +42,28 @@ const main = wrapHook('PostToolUse', async (input, ctx) => {
       `UPDATE sessions SET last_heartbeat_ts = ? WHERE session_id = ?`
     ).run(now, input.session_id);
   } catch { /* swallow */ }
+
+  // Phase 13 Plan 01: optional per-turn fsync write of tool result to Sessions/ markdown.
+  // Off by default; operator opts in via `v6.sessions.log_tool_results` config flag.
+  const sessionsCfg = (ctx.config as { sessions?: { log_tool_results?: boolean } }).sessions;
+  if (sessionsCfg?.log_tool_results) {
+    const toolResponse = typeof toolOutput === 'string' ? toolOutput : (toolOutput ? JSON.stringify(toolOutput) : '');
+    if (toolResponse) {
+      try {
+        const writeErr = appendTurnToSessionFile({
+          cwd: input.cwd as string,
+          sessionId: input.session_id as string,
+          role: 'tool_result',
+          body: toolResponse,
+          timestampIso: nowIso(),
+          toolName: toolName || 'unknown',
+        });
+        if (writeErr) {
+          emitErrorTelemetry(ctx.db, input.session_id, 'sessions_write_error', writeErr);
+        }
+      } catch { /* non-blocking */ }
+    }
+  }
 
   // Content-aware routing — route to the project the content belongs to
   const routingContent = extractRoutingContent(toolInput, toolOutput);

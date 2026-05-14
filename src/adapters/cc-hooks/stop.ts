@@ -51,6 +51,7 @@ import { decayActivationScores } from '../../core/hybrid-retrieval.js';
 import { penalizeUnreferencedArtifacts } from '../../intelligence/retrieval-feedback.js';
 import { cachedPrepare } from '../../core/stmt-cache.js';
 import { embedText, embedJournalEntry } from '../../embeddings/embed-pipeline.js';
+import { appendTurnToSessionFile, nowIso } from './session-writer.js';
 import { upsertConversationEmbedding, upsertThreadEmbedding } from '../../embeddings/qdrant-client.js';
 import {
   updateTemporalProfile,
@@ -89,6 +90,23 @@ const main = wrapHook('Stop', async (input, ctx) => {
     ?? (input.assistant_text as string)
     ?? undefined;
   const lastUserText = (input.prompt as string) ?? (input.user_prompt as string) ?? undefined;
+
+  // Phase 13 Plan 01: per-turn fsync write of assistant turn to Sessions/ markdown.
+  // Runs first so the assistant turn is durable regardless of what follows.
+  if (lastAssistantText) {
+    try {
+      const writeErr = appendTurnToSessionFile({
+        cwd: input.cwd as string,
+        sessionId: input.session_id as string,
+        role: 'assistant',
+        body: lastAssistantText,
+        timestampIso: nowIso(),
+      });
+      if (writeErr) {
+        emitErrorTelemetry(ctx.db, input.session_id, 'sessions_write_error', writeErr);
+      }
+    } catch { /* non-blocking */ }
+  }
 
   // Phase 6 EBD-02: heartbeat tick. Best-effort; never fails the hook.
   try {

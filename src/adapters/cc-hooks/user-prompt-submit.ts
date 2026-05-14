@@ -35,6 +35,7 @@ import { acknowledgeTransfer } from '../../core/session-transfer.js';
 import { classifyIntent, getRetrievalConfigForIntent } from '../../intelligence/intent-classifier.js';
 import type { IntentType, RetrievalConfig } from '../../intelligence/intent-classifier.js';
 import { cachedPrepare } from '../../core/stmt-cache.js';
+import { appendTurnToSessionFile, nowIso } from './session-writer.js';
 
 /** CC internal messages that should not trigger any context processing. */
 const CC_INTERNAL_RE = /^(tasknotification\s|outputfile)/i;
@@ -47,6 +48,23 @@ const main = wrapHook('UserPromptSubmit', async (input, ctx) => {
   // consume assembly budget. Let them pass through with zero injection.
   if (CC_INTERNAL_RE.test(prompt)) {
     return {};
+  }
+
+  // Phase 13 Plan 01: per-turn fsync write of user turn to Sessions/ markdown.
+  // Runs BEFORE Angel liveness so user turns are durable even if Angel is down.
+  if (prompt) {
+    try {
+      const writeErr = appendTurnToSessionFile({
+        cwd: input.cwd as string,
+        sessionId: input.session_id as string,
+        role: 'user',
+        body: prompt,
+        timestampIso: nowIso(),
+      });
+      if (writeErr) {
+        emitErrorTelemetry(ctx.db, input.session_id, 'sessions_write_error', writeErr);
+      }
+    } catch { /* non-blocking — never fail the hook */ }
   }
 
   // Plan 04-06-03 (hook-driven Angel liveness) — each user turn verifies

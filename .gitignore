@@ -13,3 +13,5 @@ context/logs/
 .qdrant-initialized
 SYSTEM_ANALYSIS_REPORT.md
 .planning/agent-history.json
+# Claudex per-session markdown transcripts (operator opt-in to commit)
+Sessions/
