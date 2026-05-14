@@ -25,7 +25,7 @@ import { ensurePointerId } from './pointer-recall.js';
 import { classifyTaskPattern, writeTaskPattern } from './task-pattern-classifier.js';
 import type { LessonWriteParams, LessonType, LessonFrontmatter } from './lesson-types.js';
 
-const SLUG_RE = /^[a-z0-9][a-z0-9-]{0,59}$/;
+const SLUG_RE = /^[a-z0-9][a-z0-9_-]{0,59}$/;
 
 /**
  * Compute absolute path for a lesson file:

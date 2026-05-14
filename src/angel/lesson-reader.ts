@@ -28,7 +28,7 @@ import type {
   LessonType,
 } from './lesson-types.js';
 
-const FILENAME_RE = /^(feedback|project|process)_([a-z0-9][a-z0-9-]{0,59})\.md$/;
+const FILENAME_RE = /^(feedback|project|process)_([a-z0-9][a-z0-9_-]{0,59})\.md$/;
 
 export function parseLessonFile(filePath: string): ParsedLesson | null {
   let raw: string;
@@ -169,25 +169,25 @@ function parseFrontmatter(raw: string): LessonFrontmatter | null {
     }
   }
 
-  // Validate required fields
-  if (!state.type || state.created_at_epoch == null || !state.telemetry) return null;
-  const t = state.telemetry;
-  if (
-    !Array.isArray(t.tools_used)
-    || !Array.isArray(t.files_touched)
-    || !Array.isArray(t.errors_encountered)
-    || !Array.isArray(t.user_framing_tokens)
-    || !Array.isArray(t.session_arc)
-    || typeof t.duration_min !== 'number'
-    || typeof t.correction_count !== 'number'
-  ) {
-    return null;
-  }
-
+  // Validate: only `type` is strictly required. created_at_epoch + telemetry
+  // were Phase 4.1 requirements; relaxed to defaults so user-style memory
+  // files (with just `type: feedback / project / process` + originSessionId)
+  // also load. Existing telemetry-shaped files preserve their data unchanged.
+  if (!state.type) return null;
+  const t = state.telemetry ?? {};
   return {
     type: state.type,
-    created_at_epoch: state.created_at_epoch,
-    telemetry: t as TelemetryHandles,
+    created_at_epoch: state.created_at_epoch ?? 0,
+    telemetry: {
+      tools_used: Array.isArray(t.tools_used) ? t.tools_used : [],
+      files_touched: Array.isArray(t.files_touched) ? t.files_touched : [],
+      errors_encountered: Array.isArray(t.errors_encountered) ? t.errors_encountered : [],
+      user_framing_tokens: Array.isArray(t.user_framing_tokens) ? t.user_framing_tokens : [],
+      session_arc: Array.isArray(t.session_arc) ? t.session_arc : [],
+      triggered_by: Array.isArray(t.triggered_by) ? t.triggered_by : [],
+      duration_min: typeof t.duration_min === 'number' ? t.duration_min : 0,
+      correction_count: typeof t.correction_count === 'number' ? t.correction_count : 0,
+    } as TelemetryHandles,
     shape: state.shape,
     tier: state.tier,
     last_fired_at_epoch: state.last_fired_at_epoch,
