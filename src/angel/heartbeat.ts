@@ -58,6 +58,7 @@ import {
   isCloudModel,
   LLAMA_MODEL_ALIAS,
 } from './llama-client.js';
+import { scanAndIndexSessions } from './sessions-indexer.js';
 
 export interface HeartbeatContext {
   db: Database;
@@ -126,6 +127,11 @@ export interface TickResult {
   boundary_reopens_emitted?: number;
   boundary_reopens_anomalous?: number;
   boundary_cursor_replays?: number;
+  // Phase 13 Plan 02: Sessions/ markdown indexer
+  sessions_files_scanned?: number;
+  sessions_files_indexed?: number;
+  sessions_chunks_upserted?: number;
+  sessions_indexer_errors?: number;
   duration_ms: number;
   error?: string;
 }
@@ -362,6 +368,20 @@ export async function heartbeatTick(ctx: HeartbeatContext): Promise<TickResult> 
       }
     } catch {
       // Non-critical — curated extraction failure doesn't break the heartbeat
+    }
+
+    // Phase 13 Plan 02: Sessions/ markdown indexer.
+    // Stat()-scan each registered project's Sessions/ dir; for files whose mtime
+    // exceeds the cursor, re-chunk and upsert via the existing Phase 8 pipeline.
+    // Recovery = normal path: same loop covers steady-state and DB-wipe-rebuild.
+    try {
+      const idx = await scanAndIndexSessions(ctx.db);
+      result.sessions_files_scanned = idx.files_scanned;
+      result.sessions_files_indexed = idx.files_indexed;
+      result.sessions_chunks_upserted = idx.chunks_upserted;
+      result.sessions_indexer_errors = idx.errors;
+    } catch {
+      // Non-fatal — indexer failure must not kill the heartbeat
     }
 
     // Phase 4: Guardian duties — learning curation, pattern quality, DB maintenance
