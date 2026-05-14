@@ -104,11 +104,22 @@ export function listActiveSessions(
 ): DiscoveredSession[] {
   try {
     const exclude = excludeSessionId ?? '';
+    // Phase 13.1: status='active' is unreliable for liveness. Every
+    // session-start marks predecessors completed (session-start.ts:191),
+    // Angel auto-closes idle sessions, and the SessionEnd hook marks
+    // completed. Sessions that are CURRENTLY ALIVE in CC routinely show
+    // as status='completed' in this table. Use last_heartbeat_ts (bumped
+    // per CC turn) within the last 10 minutes as the real liveness signal.
     return cachedPrepare(db,
       `SELECT s.session_id, s.name, s.project, ts.topic, s.created_at_epoch, 'exact_name' as match_type
        FROM sessions s LEFT JOIN thread_state ts ON ts.session_id = s.session_id
-       WHERE s.status = 'active' AND s.session_id != ?
-       ORDER BY s.created_at_epoch DESC LIMIT 20`
+       WHERE (
+         s.status = 'active'
+         OR (s.last_heartbeat_ts IS NOT NULL
+             AND s.last_heartbeat_ts > strftime('%s', 'now', '-10 minutes'))
+       )
+       AND s.session_id != ?
+       ORDER BY COALESCE(s.last_heartbeat_ts, 0) DESC, s.created_at_epoch DESC LIMIT 20`
     ).all(exclude) as DiscoveredSession[];
   } catch {
     return [];
