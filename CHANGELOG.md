@@ -11,6 +11,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - _Nothing yet._ Track v6.x milestone planning at `.planning/STATE.md` once it kicks off.
 
+## [6.x Organic Claudex] — 2026-05-14
+
+### Phase 13: Organic Claudex — Eliminate the Ritual Gap
+
+**The thesis:** the Sessions/ markdown text of every session, written per-turn to disk, is the source of truth. Everything else (vectors, FTS, embeddings, highlights, curated context) is a derived index over that text. The autonomous substrate now carries what /starthere and /endsession were doing manually.
+
+Phase 13 ships six structural marks across three waves. Vesna **29/29 at 100%** (Phase 12 baseline preserved through every mark).
+
+**Six structural marks shipped:**
+
+- **13-01 Sessions/ as source of truth** — Per-turn fsync writes to `<cwd>/Sessions/<date>_<session-id>.md` from UserPromptSubmit (user turn) + Stop (assistant turn) + PostToolUse (tool result, config-gated). Crash-kill leaves everything written on disk — no batched-ingest commit boundary to cross. Wrappers preserved at write-time; redaction is extraction-time. Non-throwing write path returns `Error | null`; failure emits `sessions_write_error` telemetry but never blocks the hook. `Sessions/` added to .gitignore (operator opts in to commit). 11 fixture tests cover path determinism, multi-turn ordering, wrapper preservation, crash-resilience simulation, error-return.
+- **13-02 DB-as-derived-index** — Angel heartbeat stat()-scans Sessions/ via mtime, re-indexes new/modified files through the existing Phase 8 `chunkTranscript` + `upsertChunk` pipeline. Recovery = normal path — same loop for steady-state and DB-wipe-rebuild. Cross-session latency ≤2 minutes (heartbeat cycle); same-session retrieval explicitly out of scope (CC's in-conversation transcript covers that). `sessions_index_cursor` table created lazily (CREATE TABLE IF NOT EXISTS — no schema migration). WIR-01 fixture coverage on V32 fresh-DB shape. 14 fixture tests.
+- **13-03 Highlights extraction** — New `session_highlights` table (V33 migration, idempotent + shape-agnostic). Angel produces frame artifacts per session at session-boundary: `mental_model`, `open_questions[]`, `reframes[]`, `tools_introduced[]`, `decisions_not_made[]`, `posture_context`. **Claude Opus 4.7 OAuth primary; local LLM fallback** via existing `callLocalLLM` (`config.localModel`) with `degraded` flag discipline mirroring the reranker-fallback pattern. Closed-enum `degraded_reason` taxonomy: `opus_timeout | opus_non_2xx | opus_auth_failed | opus_parse_failed | opus_empty_response`. `frame_extraction_fallback` telemetry row on every fallback. Heartbeat retries `degraded=1` rows on each tick; Opus success replaces the degraded row (`re_extracted_at_epoch_ms` set). 17 tests.
+- **13-04 Auto-orient at session-start + temporal awareness** — `assembleFullContext` injects `## Recent Session Frames` at Priority 2.6 (between session-continuity at P2.5 and checkpoint at P3) from the latest 3 highlights. Budget cap = 25% of injection budget with cascading truncation (full → drop posture → drop mental_model → drop section) preserving action-relevant fields. Per-turn `**Current time:** <ISO 8601 + offset>` prepended in both SessionStart and UserPromptSubmit — substrate primitive for elapsed-time reasoning; long sessions stay timestamp-fresh. `## Frame Extraction Degraded` health line surfaces when any of the latest 3 highlights are degraded (bypasses budget cap; mirrors Reranker Health). 13 tests.
+- **13-05 Pull-trigger normalization** — 3 new PreToolUse cue surfaces: `script_encounter` (prior-history scripts, ≥3 prior sessions touched the file), `error_investigation` (log/grep/test-debug command patterns), `package_install` (npm/bun/pip/uv/cargo/go install commands). Total: **6 cue types** (3 from Phase 12 item 8 + 3 new). `shouldFireCue` highlights-coverage gate uses bespoke per-surface structured-field checks — no embedding calls in hooks (latency budget reserved for reranker fallback). Per-type opt-out flags `v6.cues.{script_encounter,error_investigation,package_install}.enabled`. Master switch `v6.cues.enabled`. Ambiguous-user-instruction surface explicitly EXCLUDED (high false-positive cost; telemetry-gated for v6.x). 30 tests.
+- **13-06 Skill obsolescence (pending operator gate)** — Deletion-action documents produced for `/starthere` and `/endsession` at `src/skills/auto/starthere-deprecation-notice.md` and `src/skills/auto/endsession-deprecation-notice.md`. Skills live in `~/.claude/skills/` (outside project CWD); operator applies the rm commands after the one-week deprecation window. Window opens 2026-05-14, closes 2026-05-21. Gate condition: `bun run vesna` ≥29/29 + no operator-reported context-loss incidents during the window. Rollback contract: substrate gets fixed, not skills restored. Pre-committed Vesna at 13-06 close: **29/29 at 100% GATED PASS**.
+
+**What did NOT change** — v6 retrieval algorithm (hybrid vec0 + FTS + BGE-reranker-v2-m3), Phase 12 items 1–9, all other skills, Angel process, CC JSONL files (CC keeps its JSONL; Sessions/ is for Claudex).
+
+**v6.0.0 retag** — pending operator confirmation on wake. Telemetry-based annotation (W3 synthetic-probe re-bind DEPRECATED 2026-05-14 per Big Mozzy V2 diagnostic). Phase 12 item 5 telemetry signals must light up real-use signal during the 2-week post-push window for the annotation to be defensible.
+
+### Deferred
+
+- Operator must apply deprecation notice text to `~/.claude/skills/starthere/SKILL.md` and `~/.claude/skills/endsession/SKILL.md` (Step 1 of each deprecation-notice document).
+- Operator must execute the `rm -r ~/.claude/skills/{starthere,endsession}/` commands after the one-week deprecation window if no context-loss incidents (Step 2 of each).
+- v6.0.0 retag with telemetry-based annotation — operator action on wake.
+
 ## [6.0.0] — 2026-05-09
 
 **Deliberation Surfacing milestone — bound POSITIVE.** Pooled n=60 across 2 replications: Δ pass-rate +0.1667, Wilson Δ CI **[+0.0038, +0.3434]** — lower bound binds zero by 38 thousandths, modest but honest. Per-replication: r1 (s=14, t=18) and r2 (s=15, t=21) both INCONCLUSIVE individually (small n); pooling cleared zero per pre-committed CONTEXT decision 4. Retrieval baseline: **bi-encoder fallback** (cross-encoder fitness 56.0% < 60% threshold post-backfill — promotion deferred until corpus growth or distribution shift triggers a re-bind). Per-kind concentration in kinds **b/d/e** (threshold-source, dependency-change, assumption-drift) — kinds a/c (sample-size shift, scope-change) flat in P9 and ride along as non-regression baseline.
