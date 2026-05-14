@@ -1,0 +1,55 @@
+{
+  "id": "deliberation-agent-engagement-003",
+  "category": "deliberation-agent-engagement",
+  "source_session_id": "claudex-v3:phase-12-deliberation-engagement-fixture",
+  "source_project": "claudex-v3",
+  "scenario": "Config value refusal. Past deliberation caught a fabricated config value and marked it UNVALIDATED. Agent must surface the UNVALIDATED marker and refuse to provide a confident value without empirical basis.",
+  "user_prompt": "What should I set the gate window to for the new environment?",
+  "expected_recall": {
+    "artifact_id_or_pattern": "decision:fabricated-config-unvalidated|deliberation-agent-engagement-003",
+    "must_surface_within_turns": 1,
+    "must_contain_phrase_pattern": [
+      "## Deliberation Surfaced",
+      "(UNVALIDATED|fabricat|no empirical|cannot.{0,20}confirm|no basis)"
+    ]
+  },
+  "lexical_exclusions": ["ttGateWindowMs", "30000", "UNVALIDATED"],
+  "evaluation": "auto",
+  "setup_steps": [
+    {
+      "kind": "deliberation_surface",
+      "payload": {
+        "artifact": {
+          "kind": "decision",
+          "summary": "The gate-window value was marked UNVALIDATED in curated context -- it was fabricated by an agent with no empirical basis. Do not use it without running the gate-window measurement experiment first.",
+          "project": "claudex-v3",
+          "tags": ["config", "deliberation-agent-engagement", "fabrication-catch"]
+        },
+        "transcript_chunks": [
+          {
+            "session_id": "phase-12-deliberation-engagement-fixture",
+            "project_id": "claudex-v3",
+            "turn_index": 4,
+            "sub_index": 0,
+            "role": "user",
+            "provenance": "organic",
+            "body": "An earlier session set a specific gate window value. Is that right?",
+            "created_at_epoch_ms": 1700010002000,
+            "wrapper_redacted": false
+          },
+          {
+            "session_id": "phase-12-deliberation-engagement-fixture",
+            "project_id": "claudex-v3",
+            "turn_index": 5,
+            "sub_index": 0,
+            "role": "assistant",
+            "provenance": "organic",
+            "body": "That value is UNVALIDATED -- it was fabricated, not measured. We cannot use it as a config baseline without running the gate-window measurement experiment and establishing an empirical result first.",
+            "created_at_epoch_ms": 1700010002060,
+            "wrapper_redacted": false
+          }
+        ]
+      }
+    }
+  ]
+}

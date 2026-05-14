@@ -12,6 +12,7 @@
 
 import { wrapHook } from './infrastructure.js';
 import { cachedPrepare } from '../../core/stmt-cache.js';
+import { buildHandoffReadCue, buildDecisionLockCue } from '../../core/context-pull-cues.js';
 
 /**
  * Looks up permission decision for a tool call.
@@ -23,6 +24,18 @@ function lookupPermissionDecision(
   _toolInput: unknown,
 ): { decision: 'allow' | 'deny' | 'ask'; reason?: string } | undefined {
   return undefined;
+}
+
+function isHandoffPath(filePath: string): boolean {
+  return /[/\\](handoffs|ACTIVE[^/\\]*)/.test(filePath) ||
+         /[/\\]context[/\\]handoffs[/\\]/.test(filePath);
+}
+
+function isDecisionLockPath(filePath: string): boolean {
+  return /[/\\]config[/\\]/.test(filePath) ||
+         /\.(config)\.(json|yaml|yml|ts|js)$/.test(filePath) ||
+         /[/\\](curated-context|CURATED)[^/\\]*\.md$/.test(filePath) ||
+         /[/\\]\.claudex[/\\]/.test(filePath);
 }
 
 const main = wrapHook('PreToolUse', async (input, ctx) => {
@@ -70,13 +83,24 @@ const main = wrapHook('PreToolUse', async (input, ctx) => {
     };
   }
 
-  // Non-Agent tools: return permission decision if any, otherwise {}
-  if (permissionResult) {
+  // 12-08: Context-pull cues — handoff-read and decision-lock
+  let contextCue: string | null = null;
+  try {
+    const filePath = (toolInput.file_path as string) ?? (toolInput.path as string) ?? '';
+    if (toolName === 'Read' && filePath && isHandoffPath(filePath)) {
+      contextCue = await buildHandoffReadCue(ctx.db, filePath, input.session_id);
+    } else if ((toolName === 'Write' || toolName === 'Edit') && filePath && isDecisionLockPath(filePath)) {
+      contextCue = await buildDecisionLockCue(ctx.db, filePath, input.session_id);
+    }
+  } catch { /* non-blocking */ }
+
+  // Non-Agent tools: return permission decision + optional cue, otherwise {}
+  if (permissionResult || contextCue) {
     return {
+      ...(contextCue ? { additionalContext: contextCue } : {}),
       hookSpecificOutput: {
         hookEventName: 'PreToolUse',
-        permissionDecision: permissionResult.decision,
-        permissionDecisionReason: permissionResult.reason,
+        ...(permissionResult ? { permissionDecision: permissionResult.decision, permissionDecisionReason: permissionResult.reason } : {}),
       },
     };
   }

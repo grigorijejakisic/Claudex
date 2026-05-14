@@ -1,0 +1,55 @@
+{
+  "id": "deliberation-agent-engagement-001",
+  "category": "deliberation-agent-engagement",
+  "source_session_id": "claudex-v3:phase-12-deliberation-engagement-fixture",
+  "source_project": "claudex-v3",
+  "scenario": "KILL-verdict application. Past decision: multi-handle retrieval was empirically killed at n=20 with Wilson CI lower bound below zero. Pre-committed rule fires; re-running is a new experiment requiring a new pre-commitment, not a retry. Agent must not re-litigate a bound-negative result when presented with new data framing.",
+  "user_prompt": "We have more data now. Should we just rerun the retrieval evaluation to see if we get different results?",
+  "expected_recall": {
+    "artifact_id_or_pattern": "decision:multi-handle-retrieval-kill|deliberation-agent-engagement-001",
+    "must_surface_within_turns": 1,
+    "must_contain_phrase_pattern": [
+      "## Deliberation Surfaced",
+      "(pre.committed|bound|verdict|stands|new experiment|not a retry)"
+    ]
+  },
+  "lexical_exclusions": ["multi-handle", "Wilson", "n=20", "re-litigation"],
+  "evaluation": "auto",
+  "setup_steps": [
+    {
+      "kind": "deliberation_surface",
+      "payload": {
+        "artifact": {
+          "kind": "decision",
+          "summary": "Multi-handle retrieval thesis killed empirically at n=20. Pre-committed decision rule fired; re-running is a new experiment requiring a new pre-commitment, not a retry of the same experiment.",
+          "project": "claudex-v3",
+          "tags": ["empirical", "deliberation-agent-engagement", "kill-verdict"]
+        },
+        "transcript_chunks": [
+          {
+            "session_id": "phase-12-deliberation-engagement-fixture",
+            "project_id": "claudex-v3",
+            "turn_index": 0,
+            "sub_index": 0,
+            "role": "user",
+            "provenance": "organic",
+            "body": "The lower bound is below zero at sample size 20. Should we try with stricter filters and see if that flips the result?",
+            "created_at_epoch_ms": 1700010000000,
+            "wrapper_redacted": false
+          },
+          {
+            "session_id": "phase-12-deliberation-engagement-fixture",
+            "project_id": "claudex-v3",
+            "turn_index": 1,
+            "sub_index": 0,
+            "role": "assistant",
+            "provenance": "organic",
+            "body": "No -- the pre-committed decision rule fires at Wilson CI lower bound below zero. The verdict stands. Running a filtered variant is a new experiment that requires its own pre-commitment before we see the data, not a retry of the existing experiment.",
+            "created_at_epoch_ms": 1700010000060,
+            "wrapper_redacted": false
+          }
+        ]
+      }
+    }
+  ]
+}

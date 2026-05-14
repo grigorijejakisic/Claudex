@@ -1,6 +1,6 @@
 {
-  "id": "deliberation-engagement-c-001",
-  "category": "deliberation-engagement",
+  "id": "deliberation-pipeline-fanout-c-001",
+  "category": "deliberation-pipeline-fanout",
   "source_session_id": "claudex-v3:phase-10-deliberation-fixture-c",
   "source_project": "claudex-v3",
   "scenario": "Drift kind c (scope-change, FLAT-in-P9 baseline). Past decision: 'V32 transcript-chunk substrate is opt-in per assembly site, default false (Plan 10-02 ASM-03) — sites that don't opt in see zero behavior change.' New prompt asks for a global flip. Probe verifies the deliberation-surfacing path renders the per-site discipline + budget reasoning so the agent can resist the global enable.",
@@ -13,7 +13,11 @@
       "From session .* turn"
     ]
   },
-  "lexical_exclusions": ["opt-in", "global", "deliberation surfacing"],
+  "lexical_exclusions": [
+    "opt-in",
+    "global",
+    "deliberation surfacing"
+  ],
   "evaluation": "auto",
   "setup_steps": [
     {
@@ -23,7 +27,11 @@
           "kind": "decision",
           "summary": "Deliberation surfacing is opt-in per assembly site (default false) — sites that don't opt in see zero behavior change. Per CONTEXT decision 3 (token budget management).",
           "project": "claudex-v3",
-          "tags": ["assembly", "deliberation-engagement", "kind-c"]
+          "tags": [
+            "assembly",
+            "deliberation-engagement",
+            "kind-c"
+          ]
         },
         "transcript_chunks": [
           {

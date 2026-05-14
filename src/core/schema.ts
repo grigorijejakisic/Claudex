@@ -849,7 +849,9 @@ CREATE TABLE IF NOT EXISTS telemetry (
     'checkpoint_write', 'enrichment', 'topic_shift', 'dedup', 'decay_prune', 'error',
     'reranker_fallback',
     'cross_project_ambiguous', 'cross_project_query_expansion',
-    'episodic_write_failure'
+    'episodic_write_failure',
+    'signal_reread_after_surface', 'signal_retrieval_fallback',
+    'signal_transcript_injection_acceptance', 'signal_retrieved_but_unapplied'
   )),
   detail TEXT NOT NULL DEFAULT '{}' CHECK (json_valid(detail)),
   latency_ms REAL,

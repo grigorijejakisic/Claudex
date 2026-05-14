@@ -89,7 +89,8 @@ function formatHumanReport(
     'cross-project',
     'lesson-application',
     'self-instrumented',
-    'deliberation-engagement',
+    'deliberation-pipeline-fanout',
+    'deliberation-agent-engagement',
   ];
 
   // Per-probe lines

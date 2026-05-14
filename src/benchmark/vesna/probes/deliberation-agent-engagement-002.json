@@ -1,0 +1,55 @@
+{
+  "id": "deliberation-agent-engagement-002",
+  "category": "deliberation-agent-engagement",
+  "source_session_id": "claudex-v3:phase-12-deliberation-engagement-fixture",
+  "source_project": "claudex-v3",
+  "scenario": "Methodology critique application. Past deliberation identified pseudoreplication: same probes across two replication runs are not independent samples. Pre-committed pooling rule requires disjoint probe pools for independent measurements. Agent must cite this constraint when asked to pool non-independent runs.",
+  "user_prompt": "We ran the evaluation twice on the same probe set. Can we pool both runs together for a combined sample?",
+  "expected_recall": {
+    "artifact_id_or_pattern": "decision:pseudoreplication-pooling|deliberation-agent-engagement-002",
+    "must_surface_within_turns": 1,
+    "must_contain_phrase_pattern": [
+      "## Deliberation Surfaced",
+      "(disjoint|independent|not.{0,20}pool|same probe|correlated)"
+    ]
+  },
+  "lexical_exclusions": ["pseudoreplication", "disjoint", "n=60"],
+  "evaluation": "auto",
+  "setup_steps": [
+    {
+      "kind": "deliberation_surface",
+      "payload": {
+        "artifact": {
+          "kind": "decision",
+          "summary": "Pseudoreplication: same probes across two replication runs are not independent samples. Pre-committed pooling rule requires disjoint probe pools for independent measurements.",
+          "project": "claudex-v3",
+          "tags": ["methodology", "deliberation-agent-engagement", "pooling"]
+        },
+        "transcript_chunks": [
+          {
+            "session_id": "phase-12-deliberation-engagement-fixture",
+            "project_id": "claudex-v3",
+            "turn_index": 2,
+            "sub_index": 0,
+            "role": "user",
+            "provenance": "organic",
+            "body": "If we ran the same probe set twice, can we pool those runs for a bigger effective sample?",
+            "created_at_epoch_ms": 1700010001000,
+            "wrapper_redacted": false
+          },
+          {
+            "session_id": "phase-12-deliberation-engagement-fixture",
+            "project_id": "claudex-v3",
+            "turn_index": 3,
+            "sub_index": 0,
+            "role": "assistant",
+            "provenance": "organic",
+            "body": "No -- pooling non-independent samples is pseudoreplication. Runs on the same probe set are correlated, not independent. The pre-committed pooling rule requires disjoint probe pools. Pooling here would inflate the apparent n without increasing actual information.",
+            "created_at_epoch_ms": 1700010001060,
+            "wrapper_redacted": false
+          }
+        ]
+      }
+    }
+  ]
+}

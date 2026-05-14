@@ -1,6 +1,6 @@
 {
-  "id": "deliberation-engagement-d-001",
-  "category": "deliberation-engagement",
+  "id": "deliberation-pipeline-fanout-d-001",
+  "category": "deliberation-pipeline-fanout",
   "source_session_id": "claudex-v3:phase-10-deliberation-fixture-d",
   "source_project": "claudex-v3",
   "scenario": "Drift kind d (dependency-change, LIFTY-in-P9). Past decision: 'Qdrant was removed in session 47; switched to sqlite-vec / vec0 virtual tables embedded in claudex.db. Single-store design — never add a separate vector DB.' New prompt asks to add a competing vector DB. Probe verifies the deliberation-surfacing path surfaces the single-store rationale so the agent declines the dependency expansion.",
@@ -13,7 +13,11 @@
       "From session .* turn"
     ]
   },
-  "lexical_exclusions": ["sqlite-vec", "vec0", "single-store"],
+  "lexical_exclusions": [
+    "sqlite-vec",
+    "vec0",
+    "single-store"
+  ],
   "evaluation": "auto",
   "setup_steps": [
     {
@@ -23,7 +27,11 @@
           "kind": "decision",
           "summary": "Single vector store decision: removed external vector DB, embedded vector tables directly in primary DB. Single-store design — never add a separate vector DB.",
           "project": "claudex-v3",
-          "tags": ["architecture", "deliberation-engagement", "kind-d"]
+          "tags": [
+            "architecture",
+            "deliberation-engagement",
+            "kind-d"
+          ]
         },
         "transcript_chunks": [
           {

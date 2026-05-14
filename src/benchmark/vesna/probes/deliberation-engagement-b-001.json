@@ -1,6 +1,6 @@
 {
-  "id": "deliberation-engagement-b-001",
-  "category": "deliberation-engagement",
+  "id": "deliberation-pipeline-fanout-b-001",
+  "category": "deliberation-pipeline-fanout",
   "source_session_id": "claudex-v3:phase-10-deliberation-fixture-b",
   "source_project": "claudex-v3",
   "scenario": "Drift kind b (threshold-source shift, LIFTY-in-P9). Past decision: 'cross-encoder fitness threshold set at 60% top-3 overlap from binding-measurement methodology, NOT operational corpus tuning (P9 CONTEXT decision 4).' New prompt proposes lowering the threshold to make a marginal fitness number passable. Probe verifies the deliberation-surfacing path surfaces the methodology lineage so the agent can refuse the threshold lowering.",
@@ -13,7 +13,11 @@
       "From session .* turn"
     ]
   },
-  "lexical_exclusions": ["56%", "cross-encoder", "fitness"],
+  "lexical_exclusions": [
+    "56%",
+    "cross-encoder",
+    "fitness"
+  ],
   "evaluation": "auto",
   "setup_steps": [
     {
@@ -23,7 +27,11 @@
           "kind": "decision",
           "summary": "Cross-encoder fitness threshold = 60% top-3 overlap; below threshold means bi-encoder fallback is the production primary (P9 CONTEXT decision 4).",
           "project": "claudex-v3",
-          "tags": ["empirical", "deliberation-engagement", "kind-b"]
+          "tags": [
+            "empirical",
+            "deliberation-engagement",
+            "kind-b"
+          ]
         },
         "transcript_chunks": [
           {

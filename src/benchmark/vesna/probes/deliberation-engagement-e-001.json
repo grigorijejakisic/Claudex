@@ -1,6 +1,6 @@
 {
-  "id": "deliberation-engagement-e-001",
-  "category": "deliberation-engagement",
+  "id": "deliberation-pipeline-fanout-e-001",
+  "category": "deliberation-pipeline-fanout",
   "source_session_id": "claudex-v3:phase-10-deliberation-fixture-e",
   "source_project": "claudex-v3",
   "scenario": "Drift kind e (assumption-drift, LIFTY-in-P9). Past decision: 'Bi-encoder primary on the v6 transcript surface; cross-encoder remains code-reachable behind the v6.routing.reranker_mode flag (P10 CONTEXT decision 1).' New prompt assumes cross-encoders are universally better and proposes flipping the default. Probe verifies the deliberation-surfacing path surfaces the conversation-distribution-vs-web-distribution distinction so the agent grounds the refusal in the methodology.",
@@ -13,7 +13,10 @@
       "From session .* turn"
     ]
   },
-  "lexical_exclusions": ["bi-encoder", "reranker_mode"],
+  "lexical_exclusions": [
+    "bi-encoder",
+    "reranker_mode"
+  ],
   "evaluation": "auto",
   "setup_steps": [
     {
@@ -23,7 +26,11 @@
           "kind": "decision",
           "summary": "Bi-encoder is production primary for v6 transcript routing; cross-encoder remains code-reachable behind the v6.routing.reranker_mode flag (P10 CONTEXT decision 1).",
           "project": "claudex-v3",
-          "tags": ["empirical", "deliberation-engagement", "kind-e"]
+          "tags": [
+            "empirical",
+            "deliberation-engagement",
+            "kind-e"
+          ]
         },
         "transcript_chunks": [
           {

@@ -51,7 +51,7 @@ Reframe artifact: `.planning/reframes/2026-05-05-multi-handle-kill.md`. Aggregat
 
 </details>
 
-### 🔄 v6.0 Deliberation Surfacing — POLISH IN PROGRESS (Phase 11)
+### ✅ v6.0 Deliberation Surfacing — PHASE 12 COMPLETE (2026-05-14)
 
 **Milestone Goal:** Surface the verbatim moments that produced decisions and crystallized lessons at retrieval time, not the summaries about them. Make the agent touch the stove, not be told about it.
 
@@ -60,7 +60,8 @@ Reframe artifact: `.planning/reframes/2026-05-05-multi-handle-kill.md`. Aggregat
 - [x] **Phase 8: Transcript ingestion substrate** _(type: engineering)_ — SHIPPED 2026-05-08. V32 schema bump + transcript-chunk write path + JSONL ingestion hook + redaction-at-ingestion + WIR live-wiring ship gate.
 - [x] **Phase 9: Empirical measurement** _(type: empirical)_ — SHIPPED 2026-05-09 (originally BOUND POSITIVE; verdict invalidated post-hoc by Gemini methodology audit — see Phase 11). Pooled n=60 across 2 replications; Δ +0.1667; Wilson Δ CI [+0.0038, +0.3434]. Bi-encoder-only retrieval baseline; per-kind concentration in kinds b/d/e.
 - [x] **Phase 10: Conditional ship** _(type: engineering branch)_ — SHIPPED 2026-05-09. Routing + assembly + Vesna 21→26 + WIR-01 wire-test + 9/9 ship gates + v6.0.0 annotated tag (operator-confirms public push). Note: 3 critical regressions surfaced post-hoc by Gemini review — Phase 11 W1 fixes.
-- [x] **Phase 11: Polish — land v6 properly** _(type: engineering + empirical hybrid)_ — STARTED 2026-05-09. Three internal waves: (W1) code regressions across routing / assembly / ingestion; (W2) methodology fix for the P9 harness + multi-judge ensemble + bake external-review gate into auto-orchestrate; (W3) re-bind under corrected methodology + cross-corpus generalization on big-mozzy-v2 + conditional ship (positive bind / kill receipt / inconclusive). Closes v6.0.0 once with the annotation matching whatever the corrected verdict produces. NEVER pushes during the polish. v6.0.0 tag delete-and-retag at close. (completed 2026-05-09)
+- [x] **Phase 11: Polish — land v6 properly** _(type: engineering + empirical hybrid)_ — SHIPPED 2026-05-09. Three internal waves: (W1) code regressions across routing / assembly / ingestion; (W2) methodology fix for the P9 harness + multi-judge ensemble + bake external-review gate into auto-orchestrate; (W3) re-bind under corrected methodology + cross-corpus generalization on big-mozzy-v2 + conditional ship (positive bind / kill receipt / inconclusive). Closes v6.0.0 once with the annotation matching whatever the corrected verdict produces. NEVER pushes during the polish. v6.0.0 tag delete-and-retag at close. (completed 2026-05-09)
+- [x] **Phase 12: Real v6 structural marks** _(type: engineering)_ — SHIPPED 2026-05-14. Nine structural fixes responding to the Big Mozzy V2 diagnostic: (1) cross-family-wrapper.ts with invokeCrossFamily; (2) methodology-critique-gate.ts for pre-commitment cross-family critique; (3) adversarial-probe-gate.ts for cross-family test authoring; (4) four telemetry signal recorders for post-push behavior observability; (5) Vesna probe polishing (lesson-application audit, deliberation-engagement split into pipeline-fanout + agent-engagement, 3 new agent-engagement probes); (6) mid-flight commit visibility via PostToolUse sidecar + statusline script; (7) topical-distance importance cap in hybrid-retrieval (big-balkan fix); (8) three context-pull cues wired into PreToolUse + Stop hooks; (9) block-gate.ts shared module + silence-means-escalate patch documents for all three auto-* skills. Vesna 29/29 at 100%. All 9 plan SUMMARY.md files written.
 
 ## Phase Details
 

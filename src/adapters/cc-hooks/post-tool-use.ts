@@ -347,6 +347,31 @@ const main = wrapHook('PostToolUse', async (input, ctx) => {
     emitErrorTelemetry(ctx.db, input.session_id, 'post_tool_use/episodic_tool_result', e);
   }
 
+  // ---------------------------------------------------------------------------
+  // 12-06: Mid-flight commit visibility — write last commit to sidecar file
+  // ---------------------------------------------------------------------------
+  if (toolName === 'Bash') {
+    const command = (toolInput as { command?: string })?.command ?? '';
+    if (command.trimStart().startsWith('git commit')) {
+      try {
+        const { execSync } = await import('node:child_process');
+        const { mkdirSync, writeFileSync } = await import('node:fs');
+        const { homedir } = await import('node:os');
+        const { join } = await import('node:path');
+        const claudexDir = join(homedir(), '.claudex');
+        mkdirSync(claudexDir, { recursive: true });
+        const lastCommit = execSync('git log -1 --format="%H %s"', {
+          encoding: 'utf8',
+          timeout: 5_000,
+          cwd: input.cwd,
+        }).trim();
+        writeFileSync(join(claudexDir, '.last-commit.txt'), lastCommit + '\n', 'utf8');
+      } catch {
+        // Non-blocking; never fails the hook
+      }
+    }
+  }
+
   return {};
 });
 

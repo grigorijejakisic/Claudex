@@ -15,6 +15,7 @@
  */
 
 import { wrapHook, getTranscriptPath } from './infrastructure.js';
+import { detectsWaitForDirection, buildWaitForDirectionCue } from '../../core/context-pull-cues.js';
 import { getTokenGauge } from '../../gauge/token-gauge.js';
 import { CC_CAPABILITIES } from '../../shared/constants.js';
 import { emitErrorTelemetry } from '../../observability/error-telemetry.js';
@@ -673,7 +674,16 @@ const main = wrapHook('Stop', async (input, ctx) => {
     }
   } catch { /* non-throwing */ }
 
-  const warnings = [gateWarning, idleWarning, readBeforeEditWarning, testWarning].filter(Boolean).join('\n\n');
+  let waitForDirectionCue = '';
+  try {
+    const assistantResponse = (input.last_assistant_message as string) ?? '';
+    if (assistantResponse && detectsWaitForDirection(assistantResponse)) {
+      const cue = await buildWaitForDirectionCue(ctx.db, input.session_id);
+      if (cue) waitForDirectionCue = cue;
+    }
+  } catch { /* non-blocking */ }
+
+  const warnings = [gateWarning, idleWarning, readBeforeEditWarning, testWarning, waitForDirectionCue].filter(Boolean).join('\n\n');
   if (warnings) {
     return { systemMessage: warnings };
   }

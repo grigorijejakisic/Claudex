@@ -1,6 +1,6 @@
 {
-  "id": "deliberation-engagement-a-001",
-  "category": "deliberation-engagement",
+  "id": "deliberation-pipeline-fanout-a-001",
+  "category": "deliberation-pipeline-fanout",
   "source_session_id": "claudex-v3:phase-10-deliberation-fixture-a",
   "source_project": "claudex-v3",
   "scenario": "Drift kind a (sample-size shift, FLAT-in-P9 baseline). Past decision: 'multi-handle retrieval was killed at n=20 with Wilson CI lower -0.157 (Phase 2 KILL); strict + relaxed reruns also confirmed KILL.' New prompt asks whether the corpus growth changes the verdict. Probe verifies the deliberation-surfacing path renders the original deliberation context for the agent so it can re-cite the binding methodology before acting.",
@@ -13,7 +13,11 @@
       "From session .* turn"
     ]
   },
-  "lexical_exclusions": ["multi-handle", "Wilson", "Phase 2.1"],
+  "lexical_exclusions": [
+    "multi-handle",
+    "Wilson",
+    "Phase 2.1"
+  ],
   "evaluation": "auto",
   "setup_steps": [
     {
@@ -23,7 +27,11 @@
           "kind": "decision",
           "summary": "Multi-handle retrieval thesis killed empirically at n=20 in Phase 2; corpus-expansion rerun (Phase 2.1) at n=20 strict + n=19 relaxed both confirmed KILL.",
           "project": "claudex-v3",
-          "tags": ["empirical", "deliberation-engagement", "kind-a"]
+          "tags": [
+            "empirical",
+            "deliberation-engagement",
+            "kind-a"
+          ]
         },
         "transcript_chunks": [
           {
