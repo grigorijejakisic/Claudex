@@ -239,25 +239,25 @@ export function renderEntities(db: Database, project: string): string {
  *
  * Reads the V17 `artifact` table. Dashboard style: the section is
  * cross-project by design — MEMORY.md is per-project but this list shows
- * what's hot everywhere. Ties broken by most-recent touch, then project_id
+ * what's hot everywhere. Ties broken by most-recent touch, then project
  * ASC for determinism.
  */
 export function renderActiveProjects(db: Database): string {
   const cutoff = Math.floor(Date.now() / 1000) - ACTIVE_WINDOW_SECONDS;
 
-  let rows: Array<{ project_id: string; activity_cnt: number; last_touched: number }> = [];
+  let rows: Array<{ project: string; activity_cnt: number; last_touched: number }> = [];
   try {
     rows = cachedPrepare(
       db,
-      `SELECT project_id,
+      `SELECT project,
               COUNT(*) AS activity_cnt,
               MAX(updated_at_epoch) AS last_touched
        FROM artifact
        WHERE updated_at_epoch >= ?
-         AND project_id IS NOT NULL
-         AND project_id != ''
-       GROUP BY project_id
-       ORDER BY activity_cnt DESC, last_touched DESC, project_id ASC
+         AND project IS NOT NULL
+         AND project != ''
+       GROUP BY project
+       ORDER BY activity_cnt DESC, last_touched DESC, project ASC
        LIMIT ${MAX_ACTIVE_PROJECTS}`,
     ).all(cutoff) as typeof rows;
   } catch {
@@ -269,7 +269,7 @@ export function renderActiveProjects(db: Database): string {
     lines.push('');
   } else {
     for (const row of rows) {
-      lines.push(`- ${row.project_id} — ${row.activity_cnt} edits in last 7d`);
+      lines.push(`- ${row.project} — ${row.activity_cnt} edits in last 7d`);
     }
   }
   return lines.join('\n') + '\n';
@@ -297,7 +297,7 @@ export function renderRecentThreads(db: Database, project: string): string {
       `SELECT session_id
        FROM artifact
        WHERE kind = 'transcript_chunk'
-         AND project_id = ?
+         AND project = ?
          AND session_id IS NOT NULL
        GROUP BY session_id
        ORDER BY MAX(created_at_epoch) DESC
@@ -319,7 +319,7 @@ export function renderRecentThreads(db: Database, project: string): string {
               MAX(session_id) AS session_id
        FROM artifact
        WHERE kind = 'transcript_chunk'
-         AND project_id = ?
+         AND project = ?
          AND session_id IN (${placeholders})
          AND json_extract(data, '$.topic_label') IS NOT NULL
        GROUP BY json_extract(data, '$.topic_label')

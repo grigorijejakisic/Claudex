@@ -316,7 +316,7 @@ function insertChunks(
   const stmt = db.prepare(
     `INSERT INTO artifact(
        id, kind, title, body, scope, status, confidence,
-       created_at_epoch, updated_at_epoch, session_id, project_id, data
+       created_at_epoch, updated_at_epoch, session_id, project, data
      ) VALUES (?, 'transcript_chunk', ?, ?, NULL, 'active', NULL, ?, ?, ?, ?, ?)`,
   );
 

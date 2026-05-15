@@ -475,7 +475,7 @@ export async function dedupLookup(
            FROM artifact a
           WHERE a.kind = 'directive_rule'
             AND a.scope = ?
-            AND a.project_id = ?
+            AND a.project = ?
             AND a.status = 'active'
             AND a.embedding_ref IN (${placeholders})`,
       )
@@ -689,7 +689,7 @@ function writeArtifact(
   db.prepare(
     `INSERT INTO artifact(
        id, kind, title, body, scope, status, confidence,
-       created_at_epoch, updated_at_epoch, session_id, project_id, data
+       created_at_epoch, updated_at_epoch, session_id, project, data
      ) VALUES (?, 'directive_rule', ?, ?, ?, 'active', ?, ?, ?, ?, ?, ?)`,
   ).run(
     id,
