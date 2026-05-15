@@ -61,7 +61,7 @@ becomes more *predictable*, not richer.
 
 ```
 Wave 0 (immediate, blocking nothing):
-  14-00 — RCA-2 Opus rate-limit hybrid (1 file + tests, ~1 day)
+  14-00 — RCA-2 Opus rate-limit hybrid (1 file + tests; smallest)
 
 Wave 1 (foundation contracts — no inter-dependencies):
   14-01 — Handoff schema (one + automated migration)
@@ -169,10 +169,11 @@ Re-run `extractHighlightsForSession` against an existing
 `degraded=0` (when API key set) OR is produced by local llama
 without degraded=1 (when API key unset).
 
-### Estimated cost
+### Sizing
 
-~1 day. Single-file production change + ~5 new tests + one manual
-re-extraction verification.
+**Smallest plan in the phase.** One production file (`highlights-
+extractor.ts`) + one telemetry helper + ~5 new tests + one manual
+re-extraction verification gate.
 
 ---
 
@@ -250,10 +251,11 @@ machine-readable fields.
 Migration is operator-driven (run the tool). Per-project. Rollback
 = revert ACTIVE.md from git history.
 
-### Estimated cost
+### Sizing
 
-~2 days. CLI + comprehensive tests + actually run on big-mozzy-v2
-to verify end-to-end.
+New CLI script + comprehensive tests + parser-failure telemetry
+hook in `parseHandoffHeader` + actual run on big-mozzy-v2 ACTIVE.md
+to verify end-to-end. Bigger than 14-00; smaller than 14-06.
 
 ---
 
@@ -315,9 +317,12 @@ Existing tests: must continue to pass after caller updates.
 `ALTER TABLE ... RENAME COLUMN` is reversible. Add the reverse
 migration as `migrateV34toV33` for symmetry.
 
-### Estimated cost
+### Sizing
 
-~1 day. Migration + caller sweep + test updates.
+Migration step (one ALTER TABLE per V17 table) + caller sweep across
+~7 files (directive-detector, retrieval-log, transcript-chunker,
+memory-md-writer, v17-runner, v17-triggers, test fixtures) + paired
+forward/reverse migration for symmetry.
 
 ---
 
@@ -392,9 +397,12 @@ substantive filters; replace.
 
 No DB changes. Pure code. Rollback = revert the predicate file.
 
-### Estimated cost
+### Sizing
 
-~1.5 days. Predicate + SQL clause + 4-5 caller updates + tests.
+New `artifact-filters.ts` (predicate + SQL clause helpers) + caller
+updates at 4-5 sites (experience-tier, retention-sweep, consolidator,
+lesson-promoter) + new test file for the predicate + measurement
+re-run to confirm noise rate drops below the 20% AC.
 
 ---
 
@@ -458,9 +466,12 @@ implicit query.
 
 No DB changes. Pure code.
 
-### Estimated cost
+### Sizing
 
-~1.5 days.
+New section formatter in `sections.ts` + assembler wiring at P2.7 +
+new test file. Depends on 14-01 (canonical handoff schema) for the
+`summary` field as implicit query, and 14-03 (`isSubstantive`) for
+the candidate filter.
 
 ---
 
@@ -532,9 +543,14 @@ boundary detector as the funnel.
 
 No DB changes. Behavioral refactor.
 
-### Estimated cost
+### Sizing
 
-~2 days. Refactor + careful testing of the lifecycle ordering.
+Lifecycle refactor — boundary-detector becomes the single funnel +
+removes `status='completed'` writes from every other site (sweep
+required) + ordered downstream actions with per-action telemetry +
+test coverage for the ordering. Lifecycle work tends to surface
+edge cases (idle TERMINATED transition, repeated transitions,
+multi-agent sessions) so test coverage is the long pole.
 
 ---
 
@@ -604,24 +620,28 @@ Reversible: new migration that divides by 1000 and renames back.
 Risk: callers that expect the old shape break loudly (good — they
 get caught immediately).
 
-### Estimated cost
+### Sizing
 
-~3 days. This is the largest single Wave-1 plan; touches many
-tables and many callers. Worth doing because it eliminates a
-whole class of silent bugs.
+**Largest plan in Wave 1.** Touches every `*_epoch` column on
+multiple tables (sessions, observations, learnings, checkpoint_meta,
+V17 artifact, episodic_events, telemetry, pressure_scores, more)
+plus a sweep across the entire codebase for `*_epoch` reads.
+Migration tool needed for existing lesson files (rename
+`created_at_epoch` → `created_at_epoch_ms`). Worth doing because
+it eliminates a whole class of silent bugs.
 
 ---
 
 ## Plan 14-07 — V17 ↔ legacy `artifacts` migration (Phase 14.7)
 
-### Status: HIGH-COST, OWN MILESTONE
+### Status: HIGHEST-COST PLAN, OWN MILESTONE
 
-Per RCA-3: ~8-12 days of focused engineering across DDL, data
-migration, 22 caller updates, test reconciliation, and benchmark
-protection. **Specced as its own sub-phase**, ships independently
-as `v7.0.0`. Detailed spec lives at
-`.planning/phases/14-substrate-coherence/14-07-SPEC.md` (to be
-written after 14-00 through 14-06 ship).
+Per RCA-3: substantial work across DDL, data migration, 22 caller
+updates, test reconciliation, and benchmark protection. **The
+single highest-cost plan in Phase 14 by a wide margin.** Specced
+as its own sub-phase, ships independently as `v7.0.0`. Detailed
+spec lives at `.planning/phases/14-substrate-coherence/14-07-SPEC.md`
+(to be written after 14-00 through 14-06 ship).
 
 Headline goals:
 - Single source of truth for knowledge artifacts
@@ -681,9 +701,11 @@ continuity block tagged with the agent identifier.
 
 None. Pure code.
 
-### Estimated cost
+### Sizing
 
-~1 day.
+Smallest plan in Phase 14 alongside 14-00. Single function rewrite
+in `sections.ts` + filename-based agent-tag extraction + budget-
+aware truncation when over cap + new test cases.
 
 ---
 
@@ -719,9 +741,10 @@ v7.0.0 (next milestone, after v6.6.0 ships):
   - Plan 14-07 (V17 migration — own spec)
 ```
 
-Total estimated cost for v6.6.0: ~13 days (parallel execution
-where waves allow). v7.0.0 adds ~8-12 days. **Roadmap commitment,
-not a single session.**
+Cumulative sizing: v6.6.0 is the bulk of Phase 14. v7.0.0 (Plan
+14-07) adds the largest single piece on top. **Roadmap commitment,
+not a single session — pacing TBD against actual measured throughput
+once a few plans have shipped through the gate.**
 
 ## Verification at milestone ship
 
