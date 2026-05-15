@@ -183,3 +183,117 @@ Tracked here for follow-up; not for this session.
 - "Recall" analysis is qualitative — I listed memory files I
   expected to see; I didn't quantify how many same-project memory
   files exist that would be candidates for the surface.
+
+---
+
+## Post-Plan-14-03 Re-measurement (2026-05-16)
+
+**Auditor session:** executor-subagent (Plan 14-03 implementation)
+**DB:** `~/.claudex/db/claudex.db` (V36, same DB as original)
+**Target project:** big-mozzy-v2 (excluded from candidate pool per design)
+**Method:** Query the NEW candidate pool (with `substantiveSqlClause('a')`) directly,
+sample top-100 by recency, classify noise using the plan's definition.
+
+**Change shipped:** `fetchCandidatePool` in `experience-tier.ts` now uses `substantiveSqlClause('a')`
+instead of `artifact_type IN ('learning', 'observation', 'memory_file', 'flow', 'milestone')`.
+
+### Candidate pool size comparison
+
+| Pool | Size |
+|---|---|
+| Old (with observations) | 3,137 |
+| New (substantive only) | 816 |
+
+Pool reduced by **74%**. Experience tier now selects from a denser, more signal-rich pool.
+
+### Source-project breakdown (N=100)
+
+| Source project | N | Noise rate |
+|---|---|---|
+| `claudex-v3` | 41 | ~5% (2/41) |
+| `lacuna-betting-9f1d552c` | 35 | ~37% (13/35 — mostly short `[Pre-assembly]` flows) |
+| `kompas-98604047` | 4 | ~50% (2/4) |
+| `big-mozzart-clean` | 4 | 0% |
+| other (combined) | 16 | ~0% |
+| `big-mozzy-v2` (same-project) | **0** | n/a |
+
+### Artifact-type breakdown
+
+| Type | N | Note |
+|---|---|---|
+| `flow` | 42 | Pre-assembly/Reflection flows; ~38% are short < 60 chars (plan-definition noise) |
+| `memory_file` | 24 | Substantive — all pass length gate comfortably |
+| `learning` | 19 | Mostly substantive; ~2 short `[Reflection]` summaries |
+| `observation` | 15 | All passed importance >= 4 AND length >= 60 (the gate worked) |
+
+### Noise rate
+
+**18% (18/100)** match the plan-definition noise pattern:
+- 14 `flow` artifacts with summaries < 60 chars (`[Pre-assembly] ...` session flows)
+- 2 `learning` artifacts with `[Reflection]` prefix + < 60 char summary
+- 2 other short-summary certified-substantive artifacts
+
+**Original noise rate (pre-fix): 83% (83/100)**
+
+The remaining 18% noise is a different failure mode than the original:
+- Before: single-tool-call observations (`Read: file.ts`, `Edit: auth.ts`) — raw CC tool traces
+- After: short session-flow artifacts (`[Pre-assembly] Can I — predicted context`) — certified-substantive type (`flow`) but content not transferable
+
+The `flow` noise is a secondary concern deferred per anti_scope: "Do NOT add a domain affinity signal" and "Do NOT modify the scoring weights." A follow-on plan may add a length filter or classify `[Pre-assembly]` flows differently.
+
+### Comparison
+
+| Metric | Original (pre-fix) | Post-Plan-14-03 | Delta |
+|---|---|---|---|
+| Noise rate (plan def.) | 83% (83/100) | 18% (18/100) | **-65pp** |
+| Same-project share | 0/100 | 0/100 | 0 (by design) |
+| Substantive (non-noise) | 17/100 | 82/100 | **+65pp** |
+| Candidate pool size | 3,137 | 816 | -74% (denser) |
+
+### Verdict
+
+**PASS** — Noise rate 18% < 20% threshold (AC-3).
+
+### Sample of remaining noise (verbatim)
+
+Short session-flow artifacts that passed the substance filter (type=`flow`, certified-substantive)
+but contain < 60 chars of content:
+
+- `[flow] lacuna-betting-9f1d552c: [Pre-assembly] Can I — predicted context`
+- `[flow] lacuna-betting-9f1d552c: [Pre-assembly] I completely agree — predicted context`
+- `[flow] lacuna-betting-9f1d552c: [Pre-assembly] 1 — predicted context`
+- `[flow] kompas-98604047: [Pre-assembly] leave next session — predicted context`
+- `[learning] desktop-01dcc792: [Reflection] oauth, refresh, token — 2 learnings`
+
+These are not tool-call traces; they are legitimate flow records from the session-flow writer.
+Filtering them would require either (a) a length requirement on `flow` type (narrower than the plan
+scope), or (b) a domain-affinity signal to prefer lacuna-betting flows in lacuna-betting sessions,
+not in big-mozzy sessions.
+
+### Sample of substantive injections (first 10)
+
+| # | Source | Summary (truncated) |
+|---|---|---|
+| 1 | `[learning] claudex-v3` | Root cause inside Phase 2 not yet identified — needs deeper per-session instrume… |
+| 2 | `[learning] claudex-v3` | The root cause inside that one Ollama call is bounded follow-up — likely a promp… |
+| 3 | `[memory_file] claudex-v3` | # DONE 2026-05-14 — /starthere + /endsession deleted… |
+| 4 | `[memory_file] claudex-v3` | # Reach for memory on memory-shaped questions… |
+| 5 | `[memory_file] claudex-v3` | # Persona-tuning of behavioral rules — manual track, post-Phase-13… |
+| 6 | `[learning] claudex-v3` | claudex_search had flat ranking because all non-artifact sources used hardcoded… |
+| 7 | `[learning] claudex-v3` | Session 39 subsystem audit results: (1) Assembly — excellent, all 17 sections ac… |
+| 8 | `[learning] claudex-v3` | FEEDBACK CRITICAL: User explicitly manages context window usage… |
+| 9 | `[observation] lacuna-betting-9f1d552c` | (long, substantive investigative observation — passed importance + length gate) |
+| 10 | `[memory_file] lacuna-betting-9f1d552c` | (betting domain memory file — domain-relevant) |
+
+Note: "substantive" here means non-noise per the plan's definition. Domain-relevance to big-mozzy
+specifically is a separate concern (domain affinity) not addressed by this plan.
+
+### Caveats
+
+- Measurement queries the static candidate pool at the time of measurement (2026-05-16), not
+  live session injection events. This is the methodologically correct approach: the fix changes
+  what CAN be selected, not what was historically injected.
+- The 18% remaining noise is structurally different from the original 83%: it comes from
+  certified-substantive types (`flow`, `learning`) with short summaries, not raw tool-call traces.
+- The production DB is at V36 using `timestamp_epoch` (seconds) — the query used `timestamp_epoch`
+  for ordering consistency with the production system state.
