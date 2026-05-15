@@ -509,92 +509,264 @@ export function formatGsdSection(gsd: GsdState | null): string | null {
 }
 
 /**
- * Priority 2.5: Session continuity — ACTIVE.md as sole source of truth.
+ * Enumerates all `ACTIVE*.md` files in `handoffsDir` matching the strict
+ * lowercase filename regex. Returns an array of parsed entries sorted with
+ * the untagged `ACTIVE.md` first, then tagged files sorted by agentId ASC.
  *
- * Sources every field from `context/handoffs/ACTIVE.md`: the frontmatter
- * `status` + `phase` + `summary` form the authoritative "Where we are"
- * surface, and the locked body schema (`**What we found:** ...`,
- * `**What we decided:** ...`, `**What's next:** ...`, `**Where to look:** ...`,
- * plus an optional `## Operator Gates` bulleted list) drives the rest.
+ * Files that fail `parseHandoffHeader` validation are silently skipped.
+ * Returns an empty array when the directory does not exist or is unreadable.
  *
- * Phase 13.1 substrate-readout test (2026-05-15) caught the prior shape
- * extracting a `**Left off:**` line from the latest file in `sessionsDir/`.
- * That file was a transcript log, not a handoff artifact; whatever framing
- * the prior session opened with would persist as today's "Left off" — at
- * test time it surfaced a 9-plans-stale "tomorrow's first command:
- * /auto-orchestrate ..." directive that directly contradicted ACTIVE.md.
- * Session logs no longer feed this section. The `sessionsDir` parameter
- * is kept for caller signature stability but ignored.
+ * Filename pattern: `^ACTIVE(?:-([a-z0-9][a-z0-9_-]*))?\.md$`
+ *   - `ACTIVE.md`          → agentId: null   (untagged primary)
+ *   - `ACTIVE-agent2.md`   → agentId: "agent2"
+ *   - `ACTIVE-frontend.md` → agentId: "frontend"
+ *   - `ACTIVE-Foo.md`      → rejected (uppercase agent ID)
+ *   - `ACTIVE-.md`         → rejected (empty agent ID)
  *
- * Returns null when ACTIVE.md is absent, frontmatter fails validation, or
- * `status: archived`. Non-throwing.
+ * @internal Not exported — tests reach it indirectly via renderSessionContinuity.
  */
-export function renderSessionContinuity(handoffPath?: string, _sessionsDir?: string): string | null {
+const HANDOFF_FILENAME_RE = /^ACTIVE(?:-([a-z0-9][a-z0-9_-]*))?\.md$/;
+
+interface HandoffFileEntry {
+  filePath: string;
+  agentId: string | null;
+  createdAt: number;
+  content: string;
+  header: import('../angel/handoff-writer.js').HandoffHeader;
+}
+
+function listHandoffFiles(handoffsDir: string): HandoffFileEntry[] {
   try {
-    if (!handoffPath) return null;
+    if (!fs.existsSync(handoffsDir)) return [];
+    const names = fs.readdirSync(handoffsDir);
+    const entries: HandoffFileEntry[] = [];
 
-    let handoffContent: string;
-    try {
-      if (!fs.existsSync(handoffPath)) return null;
-      handoffContent = normalizeText(fs.readFileSync(handoffPath, 'utf-8'));
-    } catch { return null; }
+    for (const name of names) {
+      const m = HANDOFF_FILENAME_RE.exec(name);
+      if (!m) continue;
+      // m[1] is the agent ID capture group, or undefined for ACTIVE.md
+      const agentId = m[1] ?? null;
 
-    const header = parseHandoffHeader(handoffContent);
-    if (!header) return null;
-    if (header.status === 'archived') return null;
+      const filePath = path.join(handoffsDir, name);
+      let raw: string;
+      try {
+        raw = normalizeText(fs.readFileSync(filePath, 'utf-8'));
+      } catch { continue; }
 
-    const parts: string[] = ['## Session Continuity'];
+      const header = parseHandoffHeader(raw);
+      if (!header) continue;
 
-    // Status + phase line — drawn from frontmatter, not derived. The phase
-    // tag is the canonical "where" — keep it visible above the prose so
-    // the agent's first hook into "left off" is the right number, not a
-    // body line that could be stale relative to the header.
-    const statusLine = header.status === 'paused'
-      ? `**Status:** paused at phase ${header.phase}`
-      : `**Status:** active, phase ${header.phase}`;
-    parts.push(statusLine);
-    if (header.topic) parts.push(`**Topic:** ${header.topic}`);
-
-    // Summary is the canonical "left off" — written authoritatively by the
-    // operator each handoff cycle. Drop the historical session-log extraction.
-    if (header.summary) {
-      parts.push(`**Summary:** ${header.summary}`);
+      entries.push({
+        filePath,
+        agentId,
+        createdAt: header.created_at_epoch_ms ?? 0,
+        content: raw,
+        header,
+      });
     }
 
-    // Body extractions — locked handoff schema (handoff-writer.ts L177-182).
-    // What's next + Where to look are the action-shaped fields that load
-    // resumption. What we found / decided are descriptive, dropped here to
-    // keep the section under its ~300-token cap.
-    const whatsNext = extractInlineField(handoffContent, "**What's next:**");
-    if (whatsNext) parts.push(`**What's next:** ${whatsNext}`);
-    const whereToLook = extractInlineField(handoffContent, '**Where to look:**');
-    if (whereToLook) parts.push(`**Where to look:** ${whereToLook}`);
-
-    // Phase 13.1 Fix #3 — Operator Gates section. Preserves explicit
-    // "walk through together before applying" / "operator-gated read-first"
-    // constraints across sessions. Convention: a `## Operator Gates`
-    // section in the ACTIVE.md body with `-` bullet lines. The substrate
-    // surfaces them verbatim; the agent must honor them before acting on
-    // the corresponding queued item.
-    const gates = extractBulletedSection(handoffContent, '## Operator Gates');
-    if (gates.length > 0) {
-      parts.push('**Operator gates** (honor before acting on the listed work):');
-      for (const gate of gates.slice(0, 5)) {
-        parts.push(`- ${gate}`);
+    // Sort: untagged first (agentId === null), then tagged by agentId ASC
+    entries.sort((a, b) => {
+      if (a.agentId === null && b.agentId !== null) return -1;
+      if (a.agentId !== null && b.agentId === null) return 1;
+      if (a.agentId !== null && b.agentId !== null) {
+        return a.agentId < b.agentId ? -1 : a.agentId > b.agentId ? 1 : 0;
       }
+      return 0;
+    });
+
+    return entries;
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Render a single handoff entry as an array of content lines (without the
+ * `## Session Continuity` outer heading). Used by renderSessionContinuity
+ * for both single-entry and multi-entry paths.
+ *
+ * Returns null if the entry's status is `archived` or if there is no
+ * meaningful content beyond the header.
+ */
+function renderHandoffBlock(entry: HandoffFileEntry, agentPrefix: string | null): string | null {
+  const { header, content } = entry;
+  if (header.status === 'archived') return null;
+
+  const parts: string[] = [];
+
+  // Agent prefix header (only for tagged files in multi-agent mode)
+  if (agentPrefix !== null) {
+    parts.push(`### Agent ${agentPrefix}`);
+  }
+
+  // Status + phase line — drawn from frontmatter, not derived.
+  const statusLine = header.status === 'paused'
+    ? `**Status:** paused at phase ${header.phase}`
+    : `**Status:** active, phase ${header.phase}`;
+  parts.push(statusLine);
+  if (header.topic) parts.push(`**Topic:** ${header.topic}`);
+
+  if (header.summary) {
+    parts.push(`**Summary:** ${header.summary}`);
+  }
+
+  // Body extractions — locked handoff schema.
+  const whatsNext = extractInlineField(content, "**What's next:**");
+  if (whatsNext) parts.push(`**What's next:** ${whatsNext}`);
+  const whereToLook = extractInlineField(content, '**Where to look:**');
+  if (whereToLook) parts.push(`**Where to look:** ${whereToLook}`);
+
+  // Phase 13.1 Fix #3 — Operator Gates section (per-handoff, never crossing).
+  const gates = extractBulletedSection(content, '## Operator Gates');
+  if (gates.length > 0) {
+    parts.push('**Operator gates** (honor before acting on the listed work):');
+    for (const gate of gates.slice(0, 5)) {
+      parts.push(`- ${gate}`);
+    }
+  }
+
+  if (parts.length === 0 || (agentPrefix === null && parts.length <= 0) ||
+      (agentPrefix === null && parts.every(p => !p.trim()))) {
+    return null;
+  }
+
+  return parts.join('\n');
+}
+
+/**
+ * Priority 2.5: Session continuity — enumerates all `ACTIVE*.md` files in
+ * `handoffsDir` and renders each as its own Session Continuity block,
+ * tagged by agent when multiple files are present.
+ *
+ * Sources every field from each `ACTIVE*.md` file's frontmatter
+ * (`status` + `phase` + `summary`) and body schema (`**What's next:**`,
+ * `**Where to look:**`, `## Operator Gates`).
+ *
+ * Phase 14-08 (2026-05-15): multi-agent ACTIVE*.md support.
+ *   - Multiple handoffs render as multiple `### Agent <id>` sub-blocks
+ *     under one `## Session Continuity` heading.
+ *   - Untagged `ACTIVE.md` renders without `### Agent` prefix (back-compat).
+ *   - Ordering: untagged first, then tagged sorted by agentId ASC.
+ *   - Over-budget truncation: drops oldest-by-`created_at_epoch_ms` first.
+ *
+ * Phase 13.1 substrate-readout test (2026-05-15): session-log extraction
+ * removed. The `_sessionsDir` parameter is kept for caller signature
+ * stability but ignored.
+ *
+ * Back-compat: when only `ACTIVE.md` exists (no agent-tagged files), the
+ * rendered output is byte-identical to the pre-Plan-14-08 output (AC-5).
+ *
+ * Returns null when no valid handoffs exist or all are archived.
+ * Non-throwing.
+ *
+ * @param handoffsDir  Path to the `context/handoffs/` directory.
+ * @param _sessionsDir Ignored (kept for caller signature stability).
+ */
+export function renderSessionContinuity(handoffsDir?: string, _sessionsDir?: string): string | null {
+  try {
+    if (!handoffsDir) return null;
+
+    const allEntries = listHandoffFiles(handoffsDir);
+    // Filter out archived entries after enumeration
+    const entries = allEntries.filter(e => e.header.status !== 'archived');
+
+    if (entries.length === 0) return null;
+
+    // -----------------------------------------------------------------------
+    // Single-entry path (N == 1)
+    // -----------------------------------------------------------------------
+    if (entries.length === 1) {
+      const entry = entries[0];
+      // Untagged ACTIVE.md: back-compat byte-identical path
+      if (entry.agentId === null) {
+        // Render exactly as the pre-Plan-14-08 code did.
+        const parts: string[] = ['## Session Continuity'];
+
+        const statusLine = entry.header.status === 'paused'
+          ? `**Status:** paused at phase ${entry.header.phase}`
+          : `**Status:** active, phase ${entry.header.phase}`;
+        parts.push(statusLine);
+        if (entry.header.topic) parts.push(`**Topic:** ${entry.header.topic}`);
+        if (entry.header.summary) parts.push(`**Summary:** ${entry.header.summary}`);
+
+        const whatsNext = extractInlineField(entry.content, "**What's next:**");
+        if (whatsNext) parts.push(`**What's next:** ${whatsNext}`);
+        const whereToLook = extractInlineField(entry.content, '**Where to look:**');
+        if (whereToLook) parts.push(`**Where to look:** ${whereToLook}`);
+
+        const gates = extractBulletedSection(entry.content, '## Operator Gates');
+        if (gates.length > 0) {
+          parts.push('**Operator gates** (honor before acting on the listed work):');
+          for (const gate of gates.slice(0, 5)) {
+            parts.push(`- ${gate}`);
+          }
+        }
+
+        if (parts.length <= 1) return null;
+
+        let result = parts.join('\n');
+        if (result.length > 1200) {
+          result = result.slice(0, 1197) + '...';
+        }
+        return wrapFileContent(result, 'session-continuity (ACTIVE.md)');
+      }
+
+      // Single agent-tagged file (uncommon — only handoff is tagged)
+      const block = renderHandoffBlock(entry, entry.agentId);
+      if (!block) return null;
+      const heading = '## Session Continuity';
+      let result = `${heading}\n${block}`;
+      if (result.length > 1200) {
+        result = result.slice(0, 1197) + '...';
+      }
+      return wrapFileContent(result, 'session-continuity (ACTIVE*.md)');
     }
 
-    // If we only got the header and nothing else, skip
-    if (parts.length <= 1) return null;
+    // -----------------------------------------------------------------------
+    // Multi-entry path (N > 1)
+    // -----------------------------------------------------------------------
+    // Render all entries into blocks. Each non-null block gets an agent header
+    // UNLESS it is the untagged primary (agentId === null, back-compat).
+    const renderBlocks = (candidates: HandoffFileEntry[]): string | null => {
+      const blocks: string[] = [];
+      for (const e of candidates) {
+        const prefix = e.agentId ?? null; // null means no ### Agent header
+        const block = renderHandoffBlock(e, prefix);
+        if (block) blocks.push(block);
+      }
+      if (blocks.length === 0) return null;
+      const heading = '## Session Continuity';
+      return `${heading}\n\n${blocks.join('\n\n')}`;
+    };
 
-    // Hard cap at ~1200 chars (~300 tokens)
-    let result = parts.join('\n');
-    if (result.length > 1200) {
-      result = result.slice(0, 1197) + '...';
+    // Try full set first
+    let combined = renderBlocks(entries);
+    if (!combined) return null;
+
+    // Over-budget: drop oldest-by-createdAt first until under 1200 chars
+    // (or only 1 entry remains, then apply in-block truncation).
+    let remaining = [...entries];
+    while (combined !== null && combined.length > 1200 && remaining.length > 1) {
+      // Find the oldest entry by createdAt (lowest epoch = oldest)
+      let oldestIdx = 0;
+      for (let i = 1; i < remaining.length; i++) {
+        if (remaining[i].createdAt < remaining[oldestIdx].createdAt) {
+          oldestIdx = i;
+        }
+      }
+      remaining = remaining.filter((_, i) => i !== oldestIdx);
+      combined = renderBlocks(remaining);
     }
 
-    // Wrap in data boundary — content is derived from project files (C3)
-    return wrapFileContent(result, 'session-continuity (ACTIVE.md)');
+    if (!combined) return null;
+
+    // Apply in-block truncation when reduced to 1 (or still over cap)
+    if (combined.length > 1200) {
+      combined = combined.slice(0, 1197) + '...';
+    }
+
+    return wrapFileContent(combined, 'session-continuity (ACTIVE*.md)');
   } catch {
     return null;
   }

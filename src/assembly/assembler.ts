@@ -405,14 +405,16 @@ export function assembleFullContext(params: FullAssemblyParams): InjectPayload {
         }
       }
 
-      // Priority 2.5: Session continuity (handoff + latest session log, compressed)
-      let handoffPath: string | undefined;
+      // Priority 2.5: Session continuity — enumerates all ACTIVE*.md files in the
+      // handoffs directory. Passes the directory; renderSessionContinuity handles
+      // file enumeration and multi-agent rendering (Plan 14-08).
+      let handoffsDir: string | undefined;
       let sessionsDir: string | undefined;
       try {
-        handoffPath = path.join(getHandoffsDir(params.projectDir), 'ACTIVE.md');
+        handoffsDir = getHandoffsDir(params.projectDir);
         sessionsDir = getSessionsDir(params.projectDir);
       } catch { /* non-fatal */ }
-      const continuity = renderSessionContinuity(handoffPath, sessionsDir);
+      const continuity = renderSessionContinuity(handoffsDir, sessionsDir);
       if (continuity) {
         const cost = estimateTokens(continuity);
         if (cost <= budget) {
