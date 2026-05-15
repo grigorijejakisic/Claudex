@@ -77,6 +77,40 @@ ON CONFLICT(session_id, project) DO UPDATE SET
 `;
 
 export function upsertHighlights(db: Database, row: SessionHighlightsRow): void {
+  // Phase 13.1 Fix #4 (2026-05-15): write-time project integrity check.
+  // The 2026-05-15 substrate-readout test surfaced a big-mozzy session's
+  // frame appearing in a claudex-v3 session-start injection. The read-side
+  // filter (`WHERE project = ?`) was correct; the leakage came from a
+  // mismatch between `session_highlights.project` and the originating
+  // `sessions.project` for the same session_id. Validate at write time so
+  // any future caller (heartbeat, manual one-shot, test fixture) that
+  // passes the wrong project fails loudly instead of poisoning retrieval.
+  //
+  // Throws rather than silently coercing on a real mismatch — a
+  // mis-attributed highlight is the kind of bug a degraded path should
+  // surface, not paper over. The `sessions` table query itself is wrapped
+  // so a missing table on minimal/test DBs falls through to "no
+  // comparison possible" rather than blocking the write.
+  try {
+    const sessionRow = cachedPrepare(
+      db,
+      `SELECT project FROM sessions WHERE session_id = ?`,
+    ).get(row.session_id) as { project: string | null } | undefined;
+    if (sessionRow && sessionRow.project && sessionRow.project !== row.project) {
+      throw new Error(
+        `session_highlights project mismatch: row.project=${row.project} ` +
+        `vs sessions.project=${sessionRow.project} for session_id=${row.session_id}`,
+      );
+    }
+  } catch (e) {
+    // Re-throw the integrity violation; swallow only "no such table" /
+    // other shape errors that mean the comparison surface isn't present.
+    if (e instanceof Error && e.message.startsWith('session_highlights project mismatch')) {
+      throw e;
+    }
+    // Otherwise: sessions table missing on a minimal DB — skip the check.
+  }
+
   cachedPrepare(db, UPSERT_SQL).run(
     row.session_id,
     row.project,
@@ -98,12 +132,44 @@ export function getLatestHighlights(
   db: Database,
   project: string,
   limit: number = 3,
+  minEpochMs?: number,
 ): SessionHighlightsRecord[] {
   try {
+    // Phase 13.1 Fix #4 (2026-05-15): JOIN to sessions so the project
+    // filter is keyed off the source-of-truth `sessions.project` rather
+    // than `session_highlights.project`. The write-time integrity check
+    // in upsertHighlights makes the two equal going forward; the JOIN is
+    // belt-and-suspenders for any legacy rows the integrity check missed
+    // and for the cross-attribution failure mode that motivated the
+    // readout test.
+    //
+    // Phase 13.1 Fix #6 (2026-05-15): optional `minEpochMs` floor. When
+    // the caller passes ACTIVE.md's `created_at_epoch_ms`, frames extracted
+    // before the most recent handoff rewrite drop out. The handoff IS the
+    // operator's "new state begins here" marker; pre-pivot frames describe
+    // work that has been superseded and shouldn't crowd the post-pivot
+    // session-start cascade. Closes the big-mozzy frame leak from the
+    // 2026-05-15 readout — `e6aeef55`'s PnL frame was extracted before
+    // that day's ACTIVE.md rewrite and falls out naturally.
+    if (minEpochMs !== undefined) {
+      const rows = cachedPrepare(db, `
+        SELECT sh.*
+        FROM session_highlights sh
+        JOIN sessions s ON s.session_id = sh.session_id
+        WHERE s.project = ?
+          AND sh.created_at_epoch_ms >= ?
+        ORDER BY sh.created_at_epoch_ms DESC
+        LIMIT ?
+      `).all(project, minEpochMs, limit) as Array<Record<string, unknown>>;
+      return rows.map(deserializeRow);
+    }
+
     const rows = cachedPrepare(db, `
-      SELECT * FROM session_highlights
-      WHERE project = ?
-      ORDER BY created_at_epoch_ms DESC
+      SELECT sh.*
+      FROM session_highlights sh
+      JOIN sessions s ON s.session_id = sh.session_id
+      WHERE s.project = ?
+      ORDER BY sh.created_at_epoch_ms DESC
       LIMIT ?
     `).all(project, limit) as Array<Record<string, unknown>>;
 

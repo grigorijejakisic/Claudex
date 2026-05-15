@@ -54,11 +54,26 @@ function makeDb(): DatabaseType {
   return db;
 }
 
+/**
+ * Seed a sessions row. Required after Phase 13.1 Fix #4 (2026-05-15): the
+ * upsertHighlights integrity check validates that session_highlights.project
+ * matches sessions.project for the same session_id, and getLatestHighlights
+ * JOINs to sessions to read project from the source-of-truth column. Without
+ * a sessions row, getLatestHighlights returns nothing (correct production
+ * behavior: a highlight without an owning session is orphaned).
+ */
+function seedSession(db: DatabaseType, session_id: string, project: string, status: string = 'completed'): void {
+  db.prepare(
+    `INSERT INTO sessions (session_id, project, status, created_at_epoch) VALUES (?, ?, ?, 0)`,
+  ).run(session_id, project, status);
+}
+
 describe('upsertHighlights + getLatestHighlights — WIR-01', () => {
   let db: DatabaseType;
   beforeEach(() => { db = makeDb(); });
 
   it('inserts a highlights row and retrieves it via getLatestHighlights', () => {
+    seedSession(db, 'session-1', 'my-project');
     upsertHighlights(db, {
       session_id: 'session-1',
       project: 'my-project',
@@ -82,6 +97,7 @@ describe('upsertHighlights + getLatestHighlights — WIR-01', () => {
   });
 
   it('upsert replaces existing row for same session_id + project (UNIQUE constraint)', () => {
+    seedSession(db, 's1', 'p1');
     upsertHighlights(db, { session_id: 's1', project: 'p1', mental_model: 'v1', created_at_epoch_ms: 1000 });
     upsertHighlights(db, { session_id: 's1', project: 'p1', mental_model: 'v2', created_at_epoch_ms: 1001 });
     const rows = getLatestHighlights(db, 'p1', 5);
@@ -91,6 +107,7 @@ describe('upsertHighlights + getLatestHighlights — WIR-01', () => {
 
   it('getLatestHighlights returns latest N by created_at_epoch_ms DESC', () => {
     for (let i = 1; i <= 5; i++) {
+      seedSession(db, `s${i}`, 'p1');
       upsertHighlights(db, { session_id: `s${i}`, project: 'p1', mental_model: `model-${i}`, created_at_epoch_ms: i * 1000 });
     }
     const rows = getLatestHighlights(db, 'p1', 3);
@@ -101,6 +118,7 @@ describe('upsertHighlights + getLatestHighlights — WIR-01', () => {
   });
 
   it('getHighlightsBySessionId returns correct row or null', () => {
+    seedSession(db, 'find-me', 'p1');
     upsertHighlights(db, { session_id: 'find-me', project: 'p1', mental_model: 'x', created_at_epoch_ms: 1000 });
     const found = getHighlightsBySessionId(db, 'find-me', 'p1');
     expect(found).not.toBeNull();
@@ -110,6 +128,7 @@ describe('upsertHighlights + getLatestHighlights — WIR-01', () => {
   });
 
   it('stores degraded=true artifacts with reason + model', () => {
+    seedSession(db, 'degraded-session', 'p1');
     upsertHighlights(db, {
       session_id: 'degraded-session',
       project: 'p1',
@@ -125,6 +144,7 @@ describe('upsertHighlights + getLatestHighlights — WIR-01', () => {
   });
 
   it('re_extracted_at_epoch_ms is preserved when Opus upgrades a degraded artifact', () => {
+    seedSession(db, 'retry-session', 'p1');
     upsertHighlights(db, {
       session_id: 'retry-session', project: 'p1',
       degraded: true, degraded_reason: 'opus_timeout',
@@ -144,6 +164,8 @@ describe('upsertHighlights + getLatestHighlights — WIR-01', () => {
   });
 
   it('isolates rows by project (DESC ordering is per-project)', () => {
+    seedSession(db, 'sA', 'pA');
+    seedSession(db, 'sB', 'pB');
     upsertHighlights(db, { session_id: 'sA', project: 'pA', mental_model: 'A1', created_at_epoch_ms: 1000 });
     upsertHighlights(db, { session_id: 'sB', project: 'pB', mental_model: 'B1', created_at_epoch_ms: 2000 });
     const a = getLatestHighlights(db, 'pA', 5);
@@ -157,6 +179,110 @@ describe('upsertHighlights + getLatestHighlights — WIR-01', () => {
   it('returns [] safely when the project has no highlights', () => {
     const rows = getLatestHighlights(db, 'empty-project', 3);
     expect(rows).toEqual([]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Phase 13.1 Fix #4 (2026-05-15): project-truth filter via sessions JOIN
+// ---------------------------------------------------------------------------
+describe('Phase 13.1 Fix #4 — project integrity', () => {
+  let db: DatabaseType;
+  beforeEach(() => { db = makeDb(); });
+
+  it('upsertHighlights rejects project mismatch vs sessions.project', () => {
+    seedSession(db, 'cross-project-s', 'big-mozzy-v2');
+    expect(() =>
+      upsertHighlights(db, {
+        session_id: 'cross-project-s',
+        project: 'claudex-v3',
+        mental_model: 'oops',
+        created_at_epoch_ms: 1000,
+      }),
+    ).toThrow(/project mismatch/i);
+  });
+
+  it('upsertHighlights tolerates orphan session_id (no sessions row yet)', () => {
+    // Some test/seed callers may upsert before the sessions row lands.
+    // The integrity check is best-effort: when the row is absent, the
+    // check skips rather than blocks the write.
+    expect(() =>
+      upsertHighlights(db, {
+        session_id: 'orphan-s',
+        project: 'p1',
+        mental_model: 'first write',
+        created_at_epoch_ms: 1000,
+      }),
+    ).not.toThrow();
+  });
+
+  it('getLatestHighlights JOIN filters on sessions.project, not session_highlights.project', () => {
+    // Simulate a legacy cross-attribution row: session belongs to project A
+    // but a stale highlight row in the DB still claims project B. The JOIN
+    // means it surfaces under A (the source of truth), not B.
+    seedSession(db, 'legacy-mismatch', 'project-A');
+    db.prepare(
+      `INSERT INTO session_highlights (session_id, project, mental_model, created_at_epoch_ms, degraded)
+       VALUES ('legacy-mismatch', 'project-B', 'leaked', 1000, 0)`,
+    ).run();
+    const a = getLatestHighlights(db, 'project-A', 5);
+    const b = getLatestHighlights(db, 'project-B', 5);
+    expect(a).toHaveLength(1);
+    expect(a[0].mental_model).toBe('leaked');
+    expect(b).toEqual([]);
+  });
+
+  it('getLatestHighlights returns nothing for a project with no sessions of its own', () => {
+    seedSession(db, 'belongs-to-other', 'project-X');
+    upsertHighlights(db, {
+      session_id: 'belongs-to-other',
+      project: 'project-X',
+      mental_model: 'X content',
+      created_at_epoch_ms: 1000,
+    });
+    // A different project queries — no JOIN matches, expect [].
+    const rows = getLatestHighlights(db, 'project-Y', 5);
+    expect(rows).toEqual([]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Phase 13.1 Fix #6 (2026-05-15): ACTIVE.md created_at_epoch_ms freshness floor
+// ---------------------------------------------------------------------------
+describe('Phase 13.1 Fix #6 — getLatestHighlights minEpochMs floor', () => {
+  let db: DatabaseType;
+  beforeEach(() => { db = makeDb(); });
+
+  it('drops rows older than minEpochMs', () => {
+    seedSession(db, 'old-s', 'p1');
+    seedSession(db, 'new-s', 'p1');
+    upsertHighlights(db, { session_id: 'old-s', project: 'p1', mental_model: 'pre-pivot', created_at_epoch_ms: 1000 });
+    upsertHighlights(db, { session_id: 'new-s', project: 'p1', mental_model: 'post-pivot', created_at_epoch_ms: 5000 });
+    const rows = getLatestHighlights(db, 'p1', 10, 3000);
+    expect(rows).toHaveLength(1);
+    expect(rows[0].mental_model).toBe('post-pivot');
+  });
+
+  it('keeps rows at-or-after minEpochMs (>= boundary)', () => {
+    seedSession(db, 'boundary-s', 'p1');
+    upsertHighlights(db, { session_id: 'boundary-s', project: 'p1', mental_model: 'on-boundary', created_at_epoch_ms: 5000 });
+    const rows = getLatestHighlights(db, 'p1', 10, 5000);
+    expect(rows).toHaveLength(1);
+  });
+
+  it('falls back to unfiltered query when minEpochMs is undefined', () => {
+    seedSession(db, 'old-s', 'p1');
+    upsertHighlights(db, { session_id: 'old-s', project: 'p1', mental_model: 'old', created_at_epoch_ms: 1000 });
+    expect(getLatestHighlights(db, 'p1', 10).length).toBe(1);
+    expect(getLatestHighlights(db, 'p1', 10, undefined).length).toBe(1);
+  });
+
+  it('still respects the JOIN — orphan highlights stay invisible even with floor unset', () => {
+    db.prepare(
+      `INSERT INTO session_highlights (session_id, project, mental_model, created_at_epoch_ms, degraded)
+       VALUES ('orphan', 'p1', 'no session row', 9999, 0)`,
+    ).run();
+    expect(getLatestHighlights(db, 'p1', 10).length).toBe(0);
+    expect(getLatestHighlights(db, 'p1', 10, 0).length).toBe(0);
   });
 });
 

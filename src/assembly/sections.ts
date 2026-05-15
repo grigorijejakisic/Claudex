@@ -24,6 +24,12 @@ import type { ToolCostEstimate } from '../observability/telemetry.js';
 import { estimateTokens, normalizeText } from '../shared/text-utils.js';
 import { listEntries as listCuratedEntries } from '../core/curated-context.js';
 import { readRerankerFallbackCount } from '../core/telemetry-counters.js';
+import {
+  readLastHeartbeatTickEpochMs,
+  readLastHighlightsEpochMs,
+  readRecentPhase2Failures,
+} from '../core/substrate-health.js';
+import { parseHandoffHeader } from '../angel/handoff-writer.js';
 import type { Database } from 'better-sqlite3';
 import type { CuratedEntry } from '../core/curated-context.js';
 import { GLOBAL_PROJECT_SCOPE } from '../shared/constants.js';
@@ -99,6 +105,147 @@ export function formatRerankerHealthSection(db: Database): string | null {
   const plural = n === 1 ? 'time' : 'times';
   return `## Reranker Health
 Note: cross-encoder reranker fell back to bi-encoder ${n} ${plural} in the last hour. The cross-encoder (BGE-v2-m3 on port 7439) is the precision layer; the bi-encoder fallback (snowflake-arctic-embed2 cosine via Ollama) is a degraded mode. If this surfaces across multiple sessions, restart \`services/reranker.py\` — Angel's RerankerSupervisor will resume management.`;
+}
+
+/**
+ * Priority 1.3 (Phase 13.1 Fix #5 — 2026-05-15):
+ * Substrate Health surface. Probes the long-lived substrate write paths
+ * (Angel heartbeat, session_highlights extraction) and emits a one- or
+ * two-line health note when either is stale. Bypasses the budget cap
+ * because degraded-substrate visibility is mandatory — every other
+ * session-start surface depends on these paths being live.
+ *
+ * Thresholds:
+ *   - Heartbeat: warn if last tick is >10 min ago, or has never ticked.
+ *     The default Angel heartbeat interval is ~60s; 10 min is "the loop
+ *     has missed ≥10 ticks", which is the Phase 13.1 W2 hung-loop signal.
+ *   - Highlights: warn if last successful (non-degraded) extraction is
+ *     >24h old. Highlights are less time-sensitive than heartbeat — a
+ *     24h gap typically means yesterday's session never got framed.
+ *
+ * Returns null when both signals are within threshold (the happy path) so
+ * this section adds zero tokens to cache-stable injections.
+ *
+ * Voice is descriptive (matches reranker-health framing). The operator
+ * acts on the line; the agent treats it as a warning that downstream
+ * MEMORY.md / Recent Session Frames / experience patterns may be stale.
+ */
+export function formatSubstrateHealthSection(
+  db: Database,
+  project: string,
+  nowEpochMs?: number,
+): string | null {
+  try {
+    const now = nowEpochMs ?? Date.now();
+    const HEARTBEAT_THRESHOLD_MS = 10 * 60 * 1000;
+    const HIGHLIGHTS_THRESHOLD_MS = 24 * 60 * 60 * 1000;
+
+    const lastTick = readLastHeartbeatTickEpochMs(db);
+    const lastHighlight = readLastHighlightsEpochMs(db, project);
+    const phase2 = readRecentPhase2Failures(db);
+
+    // Cold-start gate: when no signal has ever written a row AND no
+    // phase-2 failures have been recorded, the DB is brand new (fresh
+    // install, integration-test fixture, first-ever session). "Degraded"
+    // implies we expected data and it's stale — a cold-start DB hasn't
+    // had time to write anything yet, so the surface would be pure noise.
+    // The signal becomes meaningful once the substrate has produced at
+    // least one tick OR one highlight for this project OR one phase-2
+    // failure on the heartbeat.
+    if (lastTick === null && lastHighlight === null && phase2.count === 0) return null;
+
+    const tickAge = lastTick === null ? Infinity : now - lastTick;
+    const highlightAge = lastHighlight === null ? Infinity : now - lastHighlight;
+
+    // Heartbeat: fire when either (a) it has ticked at least once and the
+    // last tick is older than threshold, or (b) it has never ticked but
+    // highlights exist (proving the DB is alive — heartbeat is the one
+    // that's missing). When ONLY highlights exist with no heartbeat ever,
+    // that's the "Phase 13.1 W2 hung-loop" signal: Angel ran once long
+    // enough to seed highlights but the heartbeat has stalled since.
+    const heartbeatDegraded =
+      lastTick === null ? lastHighlight !== null : tickAge > HEARTBEAT_THRESHOLD_MS;
+
+    // Highlights: only fire on STALE successful extractions. Never-extracted
+    // is normal for a new project that has no completed sessions yet — the
+    // heartbeat note already covers the upstream cause if Angel is the one
+    // that's failing.
+    const highlightsDegraded =
+      lastHighlight !== null && highlightAge > HIGHLIGHTS_THRESHOLD_MS;
+
+    // Phase-2 failures: any recorded failure in the 24h window is worth
+    // surfacing — it's the localization Phase 13.1 Fix #7 captured so the
+    // operator doesn't have to read Angel logs to know which session +
+    // function hung.
+    const phase2Degraded = phase2.count > 0;
+
+    if (!heartbeatDegraded && !highlightsDegraded && !phase2Degraded) return null;
+
+    const lines: string[] = ['## Substrate Health'];
+
+    if (heartbeatDegraded) {
+      const tickDesc = lastTick === null
+        ? 'no recorded ticks'
+        : `last tick ${formatAgeMs(tickAge)} ago`;
+      lines.push(
+        `Note: Angel heartbeat is not ticking on schedule (${tickDesc}). ` +
+        `Downstream effects: MEMORY.md regeneration, session_highlights ` +
+        `extraction, sessions indexer, pattern extraction, retention sweep ` +
+        `are all driven by the heartbeat. Restart Angel ` +
+        `(\`node dist/angel/index.cjs\`) if this persists across sessions.`,
+      );
+    }
+
+    if (highlightsDegraded) {
+      lines.push(
+        `Note: session_highlights extraction is lagging ` +
+        `(last successful extraction ${formatAgeMs(highlightAge)} ago). ` +
+        `Recent Session Frames may be missing the most recent session ` +
+        `or showing fallback-model output.`,
+      );
+    }
+
+    if (phase2Degraded) {
+      // Compose the narrative from the failure summary. The session_id_short
+      // + subsystem combo is the localization that previously required
+      // grepping Angel logs by hand. `hadTimeout` distinguishes per-await
+      // hang (Phase 13.1 W2 root cause shape) from other failure modes.
+      const subs = phase2.subsystems.length > 0
+        ? phase2.subsystems.join(', ')
+        : 'unknown phase-2 path';
+      const sessionTag = phase2.latestSessionShort
+        ? ` Most recent on session \`${phase2.latestSessionShort}\`.`
+        : '';
+      const timeoutTag = phase2.hadTimeout
+        ? ' At least one was a per-await timeout (the Phase 13.1 W2 hang shape).'
+        : '';
+      lines.push(
+        `Note: Angel heartbeat Phase 2 has logged ${phase2.count} failure` +
+        `${phase2.count === 1 ? '' : 's'} in the last 24h ` +
+        `(${subs}).${sessionTag}${timeoutTag} ` +
+        `Pattern extraction + domain classification for affected sessions ` +
+        `was skipped; learnings + entity summaries derived from those ` +
+        `sessions may be missing.`,
+      );
+    }
+
+    return lines.join('\n');
+  } catch {
+    return null;
+  }
+}
+
+/** Format a millisecond duration as a compact human string (e.g. "12m", "3h", "2d"). */
+function formatAgeMs(ms: number): string {
+  if (!Number.isFinite(ms)) return 'unknown';
+  const seconds = Math.floor(ms / 1000);
+  if (seconds < 60) return `${seconds}s`;
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return `${minutes}m`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 48) return `${hours}h`;
+  const days = Math.floor(hours / 24);
+  return `${days}d`;
 }
 
 /**
@@ -362,71 +509,78 @@ export function formatGsdSection(gsd: GsdState | null): string | null {
 }
 
 /**
- * Priority 2.5: Session continuity — compressed handoff + latest session log.
- * Reads ACTIVE.md and the most recent session log, compresses into ~300 tokens.
- * Returns null if no handoff exists (cost: 0). Non-throwing.
+ * Priority 2.5: Session continuity — ACTIVE.md as sole source of truth.
+ *
+ * Sources every field from `context/handoffs/ACTIVE.md`: the frontmatter
+ * `status` + `phase` + `summary` form the authoritative "Where we are"
+ * surface, and the locked body schema (`**What we found:** ...`,
+ * `**What we decided:** ...`, `**What's next:** ...`, `**Where to look:** ...`,
+ * plus an optional `## Operator Gates` bulleted list) drives the rest.
+ *
+ * Phase 13.1 substrate-readout test (2026-05-15) caught the prior shape
+ * extracting a `**Left off:**` line from the latest file in `sessionsDir/`.
+ * That file was a transcript log, not a handoff artifact; whatever framing
+ * the prior session opened with would persist as today's "Left off" — at
+ * test time it surfaced a 9-plans-stale "tomorrow's first command:
+ * /auto-orchestrate ..." directive that directly contradicted ACTIVE.md.
+ * Session logs no longer feed this section. The `sessionsDir` parameter
+ * is kept for caller signature stability but ignored.
+ *
+ * Returns null when ACTIVE.md is absent, frontmatter fails validation, or
+ * `status: archived`. Non-throwing.
  */
-export function renderSessionContinuity(handoffPath?: string, sessionsDir?: string): string | null {
+export function renderSessionContinuity(handoffPath?: string, _sessionsDir?: string): string | null {
   try {
-    let handoffContent: string | null = null;
-    let sessionContent: string | null = null;
+    if (!handoffPath) return null;
 
-    // 1. Read handoff
-    if (handoffPath) {
-      try {
-        if (fs.existsSync(handoffPath)) {
-          handoffContent = normalizeText(fs.readFileSync(handoffPath, 'utf-8'));
-        }
-      } catch { /* skip */ }
-    }
+    let handoffContent: string;
+    try {
+      if (!fs.existsSync(handoffPath)) return null;
+      handoffContent = normalizeText(fs.readFileSync(handoffPath, 'utf-8'));
+    } catch { return null; }
 
-    // 2. Read most recent session log (by filename sort, descending)
-    if (sessionsDir) {
-      try {
-        if (fs.existsSync(sessionsDir)) {
-          const files = fs.readdirSync(sessionsDir)
-            .filter(f => f.endsWith('.md') && !f.includes('compact'))
-            .sort();
-          if (files.length > 0) {
-            const latestFile = files[files.length - 1];
-            sessionContent = normalizeText(fs.readFileSync(path.join(sessionsDir, latestFile), 'utf-8'));
-          }
-        }
-      } catch { /* skip */ }
-    }
-
-    if (!handoffContent && !sessionContent) return null;
+    const header = parseHandoffHeader(handoffContent);
+    if (!header) return null;
+    if (header.status === 'archived') return null;
 
     const parts: string[] = ['## Session Continuity'];
 
-    // Extract current task from handoff (first heading after "What I Was Working On" or "Current State")
-    if (handoffContent) {
-      const taskLine = extractSection(handoffContent, ['## Current State', '## What I Was Working On', '# Handoff:']);
-      if (taskLine) {
-        parts.push(`**Task:** ${taskLine}`);
-      }
+    // Status + phase line — drawn from frontmatter, not derived. The phase
+    // tag is the canonical "where" — keep it visible above the prose so
+    // the agent's first hook into "left off" is the right number, not a
+    // body line that could be stale relative to the header.
+    const statusLine = header.status === 'paused'
+      ? `**Status:** paused at phase ${header.phase}`
+      : `**Status:** active, phase ${header.phase}`;
+    parts.push(statusLine);
+    if (header.topic) parts.push(`**Topic:** ${header.topic}`);
 
-      // Extract progress from handoff (checkbox items from "COMPLETED" or numbered items)
-      const progress = extractProgress(handoffContent);
-      if (progress.length > 0) {
-        parts.push('**Progress:**');
-        for (const item of progress.slice(0, 5)) {
-          parts.push(`- ${item}`);
-        }
-      }
-
-      // Extract pending decisions
-      const pending = extractSection(handoffContent, ['## DEFERRED', '## Key Decisions']);
-      if (pending) {
-        parts.push(`**Pending:** ${pending}`);
-      }
+    // Summary is the canonical "left off" — written authoritatively by the
+    // operator each handoff cycle. Drop the historical session-log extraction.
+    if (header.summary) {
+      parts.push(`**Summary:** ${header.summary}`);
     }
 
-    // Extract "Where We Left Off" from session log
-    if (sessionContent) {
-      const whereLeftOff = extractSection(sessionContent, ['## Where We Left Off', '## Notes for Next Session']);
-      if (whereLeftOff) {
-        parts.push(`**Left off:** ${whereLeftOff}`);
+    // Body extractions — locked handoff schema (handoff-writer.ts L177-182).
+    // What's next + Where to look are the action-shaped fields that load
+    // resumption. What we found / decided are descriptive, dropped here to
+    // keep the section under its ~300-token cap.
+    const whatsNext = extractInlineField(handoffContent, "**What's next:**");
+    if (whatsNext) parts.push(`**What's next:** ${whatsNext}`);
+    const whereToLook = extractInlineField(handoffContent, '**Where to look:**');
+    if (whereToLook) parts.push(`**Where to look:** ${whereToLook}`);
+
+    // Phase 13.1 Fix #3 — Operator Gates section. Preserves explicit
+    // "walk through together before applying" / "operator-gated read-first"
+    // constraints across sessions. Convention: a `## Operator Gates`
+    // section in the ACTIVE.md body with `-` bullet lines. The substrate
+    // surfaces them verbatim; the agent must honor them before acting on
+    // the corresponding queued item.
+    const gates = extractBulletedSection(handoffContent, '## Operator Gates');
+    if (gates.length > 0) {
+      parts.push('**Operator gates** (honor before acting on the listed work):');
+      for (const gate of gates.slice(0, 5)) {
+        parts.push(`- ${gate}`);
       }
     }
 
@@ -440,84 +594,57 @@ export function renderSessionContinuity(handoffPath?: string, sessionsDir?: stri
     }
 
     // Wrap in data boundary — content is derived from project files (C3)
-    return wrapFileContent(result, 'session-continuity (handoff + session logs)');
+    return wrapFileContent(result, 'session-continuity (ACTIVE.md)');
   } catch {
     return null;
   }
 }
 
 /**
- * Extracts the first non-empty paragraph after a matching heading.
- * Looks for the first match among headingPrefixes, then returns
- * the first 2 content lines after that heading (trimmed, joined).
- * Returns null if no heading matches. Non-throwing.
+ * Extract the inline value of a `**Label:**` field from the handoff body.
+ * Handles the locked handoff schema where each field is a single paragraph
+ * starting with `**Label:**` followed by free prose until the next blank
+ * line or `**` marker.
  */
-function extractSection(content: string, headingPrefixes: string[]): string | null {
-  try {
-    const lines = content.split('\n');
-    for (const prefix of headingPrefixes) {
-      const idx = lines.findIndex(l => l.trim().startsWith(prefix));
-      if (idx === -1) continue;
-      // Collect up to 2 non-empty content lines after the heading
-      const collected: string[] = [];
-      for (let i = idx + 1; i < lines.length && collected.length < 2; i++) {
-        const line = lines[i].trim();
-        if (!line) continue;
-        // Stop at next heading
-        if (line.startsWith('#')) break;
-        // Skip front-matter markers and tables
-        if (line.startsWith('---') || line.startsWith('|')) continue;
-        collected.push(line);
-      }
-      if (collected.length > 0) return collected.join(' ');
+function extractInlineField(content: string, label: string): string | null {
+  const lines = content.split('\n');
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    const idx = line.indexOf(label);
+    if (idx === -1) continue;
+    let body = line.slice(idx + label.length).trim();
+    // Continue collecting on subsequent non-blank lines until the next
+    // blank line or the next `**` field marker.
+    for (let j = i + 1; j < lines.length; j++) {
+      const nxt = lines[j].trim();
+      if (nxt.length === 0) break;
+      if (/^\*\*[A-Za-z]/.test(nxt)) break;
+      if (nxt.startsWith('#')) break;
+      body += ' ' + nxt;
     }
-    return null;
-  } catch {
-    return null;
+    return body.trim() || null;
   }
+  return null;
 }
 
 /**
- * Extracts progress items from handoff content.
- * Looks for completed checkbox items `- [x]` and recent bullet items from
- * sections titled "COMPLETED" or "Progress Made".
- * Returns array of progress strings (max 5). Non-throwing.
+ * Extract the bullet items under a `## Heading` section. Returns each
+ * bullet (without the leading `- `) as a separate string. Stops at the
+ * next `##` heading or EOF.
  */
-function extractProgress(content: string): string[] {
-  try {
-    const results: string[] = [];
-    const lines = content.split('\n');
-
-    // Strategy 1: Find [x] checkbox items
-    for (const line of lines) {
-      const trimmed = line.trim();
-      if (trimmed.startsWith('- [x]') || trimmed.startsWith('- [X]')) {
-        results.push(trimmed.replace(/^- \[[xX]\]\s*/, ''));
-        if (results.length >= 5) return results;
-      }
-    }
-
-    // Strategy 2: Find items under "COMPLETED" or "Progress" heading
-    if (results.length === 0) {
-      const headingIdx = lines.findIndex(l => {
-        const t = l.trim().toUpperCase();
-        return t.includes('COMPLETED') || t.includes('PROGRESS MADE') || t.includes('PROGRESS');
-      });
-      if (headingIdx >= 0) {
-        for (let i = headingIdx + 1; i < lines.length && results.length < 5; i++) {
-          const line = lines[i].trim();
-          if (line.startsWith('#')) break;
-          if (line.startsWith('- ')) {
-            results.push(line.replace(/^- /, ''));
-          }
-        }
-      }
-    }
-
-    return results;
-  } catch {
-    return [];
+function extractBulletedSection(content: string, heading: string): string[] {
+  const lines = content.split('\n');
+  const headingIdx = lines.findIndex(l => l.trim() === heading);
+  if (headingIdx === -1) return [];
+  const out: string[] = [];
+  for (let i = headingIdx + 1; i < lines.length; i++) {
+    const line = lines[i];
+    const trimmed = line.trim();
+    if (trimmed.startsWith('## ')) break;
+    if (!trimmed.startsWith('- ')) continue;
+    out.push(trimmed.replace(/^- /, '').trim());
   }
+  return out;
 }
 
 /** Formats a duration in seconds as a human-readable string (e.g., "2h14m", "45m", "3m"). */

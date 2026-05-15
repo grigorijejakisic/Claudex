@@ -33,12 +33,24 @@ CREATE TABLE IF NOT EXISTS session_highlights (
   created_at_epoch_ms INTEGER NOT NULL, re_extracted_at_epoch_ms INTEGER,
   UNIQUE(session_id, project)
 );
+CREATE TABLE IF NOT EXISTS sessions (
+  session_id TEXT PRIMARY KEY,
+  project TEXT,
+  status TEXT DEFAULT 'active',
+  created_at_epoch INTEGER DEFAULT 0
+);
 `;
 
 function makeDb(): DatabaseType {
   const db = new Database(':memory:');
   db.exec(V33_SCHEMA);
   return db;
+}
+
+// Phase 13.1 Fix #4 (2026-05-15): getLatestHighlights now JOINs sessions, so
+// tests must seed a sessions row for any highlight they expect to retrieve.
+function seedSession(db: DatabaseType, session_id: string, project: string): void {
+  db.prepare(`INSERT INTO sessions (session_id, project) VALUES (?, ?)`).run(session_id, project);
 }
 
 describe('nowIso — timestamp format injected at every turn', () => {
@@ -58,6 +70,9 @@ describe('getLatestHighlights — assembly read path', () => {
   beforeEach(() => { db = makeDb(); });
 
   it('returns rows DESC by created_at_epoch_ms (latest first)', () => {
+    seedSession(db, 's1', 'p1');
+    seedSession(db, 's2', 'p1');
+    seedSession(db, 's3', 'p1');
     upsertHighlights(db, { session_id: 's1', project: 'p1', mental_model: 'model-1', created_at_epoch_ms: 1000 });
     upsertHighlights(db, { session_id: 's2', project: 'p1', mental_model: 'model-2', created_at_epoch_ms: 2000 });
     upsertHighlights(db, { session_id: 's3', project: 'p1', mental_model: 'model-3', created_at_epoch_ms: 3000 });

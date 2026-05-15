@@ -376,127 +376,137 @@ describe('formatTopicPivotSection', () => {
 });
 
 // --- renderSessionContinuity ---
+//
+// Phase 13.1 Fix #1 + Fix #3 (2026-05-15): the function is now sourced
+// entirely from ACTIVE.md (frontmatter status/phase/summary + body inline
+// fields + `## Operator Gates` bullet section). The session-log
+// "Where We Left Off" extraction has been removed because it surfaced
+// stale prior-session framings as today's "Left off".
+
+function writeActiveMd(handoffPath: string, frontmatter: Record<string, string>, body: string): void {
+  const fm = Object.entries(frontmatter)
+    .map(([k, v]) => `${k}: ${v}`)
+    .join('\n');
+  fs.writeFileSync(handoffPath, `---\n${fm}\n---\n${body}`, 'utf-8');
+}
 
 describe('renderSessionContinuity', () => {
-  it('returns null when no handoff and no sessions dir', () => {
+  it('returns null when no handoff path is given', () => {
     expect(renderSessionContinuity()).toBeNull();
     expect(renderSessionContinuity(undefined, undefined)).toBeNull();
   });
 
-  it('returns null when handoff path does not exist', () => {
+  it('returns null when handoff file does not exist', () => {
     expect(renderSessionContinuity('/nonexistent/ACTIVE.md')).toBeNull();
   });
 
-  it('returns null when sessions dir does not exist', () => {
-    expect(renderSessionContinuity(undefined, '/nonexistent/sessions')).toBeNull();
+  it('returns null when frontmatter is missing or invalid', () => {
+    const dir = mkDir('cont-no-fm');
+    const handoffPath = path.join(dir, 'ACTIVE.md');
+    fs.writeFileSync(handoffPath, `# Just a body\n\nNo frontmatter here.\n`, 'utf-8');
+    expect(renderSessionContinuity(handoffPath)).toBeNull();
   });
 
-  it('extracts task from handoff Current State section', () => {
-    const dir = mkDir('cont-task');
+  it('returns null when status is archived', () => {
+    const dir = mkDir('cont-archived');
     const handoffPath = path.join(dir, 'ACTIVE.md');
-    fs.writeFileSync(handoffPath, `# Handoff: Build Pipeline\n\n## Current State\n\nAll 11 phases implemented. Build clean.\n\n## Other\nStuff`, 'utf-8');
+    writeActiveMd(handoffPath,
+      { status: 'archived', phase: '5', summary: 'old work' },
+      `# Old Work\n\n**What's next:** nothing\n`,
+    );
+    expect(renderSessionContinuity(handoffPath)).toBeNull();
+  });
+
+  it('renders status + phase + topic + summary from frontmatter', () => {
+    const dir = mkDir('cont-frontmatter');
+    const handoffPath = path.join(dir, 'ACTIVE.md');
+    writeActiveMd(handoffPath,
+      {
+        status: 'active',
+        phase: '"13.1"',
+        topic: '2026-05-15-phase-13-shipped',
+        summary: 'Phase 13 shipped, character file test pending.',
+      },
+      `# Body\n\n**What's next:** disposition test\n`,
+    );
     const result = renderSessionContinuity(handoffPath);
     expect(result).not.toBeNull();
     expect(result).toContain('## Session Continuity');
-    expect(result).toContain('**Task:**');
-    expect(result).toContain('All 11 phases implemented');
+    expect(result).toContain('**Status:** active, phase 13.1');
+    expect(result).toContain('**Topic:** 2026-05-15-phase-13-shipped');
+    expect(result).toContain('**Summary:** Phase 13 shipped, character file test pending.');
   });
 
-  it('extracts progress from completed checkbox items', () => {
-    const dir = mkDir('cont-progress');
+  it('renders status paused phrasing when status: paused', () => {
+    const dir = mkDir('cont-paused');
     const handoffPath = path.join(dir, 'ACTIVE.md');
-    fs.writeFileSync(handoffPath, `# Handoff\n\n## Current State\nWorking on things\n\n## Done\n- [x] Phase 1 complete\n- [x] Phase 2 complete\n- [ ] Phase 3 pending\n`, 'utf-8');
+    writeActiveMd(handoffPath,
+      { status: 'paused', phase: '7', summary: 'paused mid-phase' },
+      `body`,
+    );
     const result = renderSessionContinuity(handoffPath);
-    expect(result).not.toBeNull();
-    expect(result).toContain('**Progress:**');
-    expect(result).toContain('Phase 1 complete');
-    expect(result).toContain('Phase 2 complete');
-    // Should not include unchecked items
-    expect(result).not.toContain('Phase 3 pending');
+    expect(result).toContain('**Status:** paused at phase 7');
   });
 
-  it('extracts where we left off from session log', () => {
-    const dir = mkDir('cont-session');
-    const sessionsDir = path.join(dir, 'sessions');
-    fs.mkdirSync(sessionsDir, { recursive: true });
-    fs.writeFileSync(
-      path.join(sessionsDir, '2026-03-13_session-1.md'),
-      `# Session 1\n\n## Where We Left Off\nFinished the assembler refactor. Next: write tests.\n\n## Other\nStuff`,
-      'utf-8'
-    );
-    const result = renderSessionContinuity(undefined, sessionsDir);
-    expect(result).not.toBeNull();
-    expect(result).toContain('**Left off:**');
-    expect(result).toContain('Finished the assembler refactor');
-  });
-
-  it('reads the most recent session log by filename sort', () => {
-    const dir = mkDir('cont-recent');
-    const sessionsDir = path.join(dir, 'sessions');
-    fs.mkdirSync(sessionsDir, { recursive: true });
-    fs.writeFileSync(
-      path.join(sessionsDir, '2026-03-12_session-1.md'),
-      `# Old Session\n\n## Where We Left Off\nOld session work.\n`,
-      'utf-8'
-    );
-    fs.writeFileSync(
-      path.join(sessionsDir, '2026-03-13_session-2.md'),
-      `# New Session\n\n## Where We Left Off\nNew session work.\n`,
-      'utf-8'
-    );
-    const result = renderSessionContinuity(undefined, sessionsDir);
-    expect(result).toContain('New session work');
-    expect(result).not.toContain('Old session work');
-  });
-
-  it('skips compact files in session directory', () => {
-    const dir = mkDir('cont-compact');
-    const sessionsDir = path.join(dir, 'sessions');
-    fs.mkdirSync(sessionsDir, { recursive: true });
-    // Only a compact file — should be skipped
-    fs.writeFileSync(
-      path.join(sessionsDir, '2026-03-13_compact-1.md'),
-      `# Compact\n\n## Where We Left Off\nCompact data.\n`,
-      'utf-8'
-    );
-    fs.writeFileSync(
-      path.join(sessionsDir, '2026-03-12_session-1.md'),
-      `# Session\n\n## Where We Left Off\nReal session.\n`,
-      'utf-8'
-    );
-    const result = renderSessionContinuity(undefined, sessionsDir);
-    expect(result).toContain('Real session');
-    expect(result).not.toContain('Compact data');
-  });
-
-  it('combines handoff and session log data', () => {
-    const dir = mkDir('cont-combined');
+  it("extracts **What's next:** and **Where to look:** from body", () => {
+    const dir = mkDir('cont-body-fields');
     const handoffPath = path.join(dir, 'ACTIVE.md');
-    fs.writeFileSync(handoffPath, `# Handoff\n\n## Current State\nBuilding v3 context system.\n\n- [x] Phase 1 done\n- [x] Phase 2 done\n`, 'utf-8');
+    writeActiveMd(handoffPath,
+      { status: 'active', phase: '8', summary: 's' },
+      `# Body\n\n**What's next:** Run the disposition test on tomorrow's first session.\n\n**Where to look:** \`context/handoffs/ACTIVE.md\` and the new character file.\n`,
+    );
+    const result = renderSessionContinuity(handoffPath);
+    expect(result).toContain("**What's next:** Run the disposition test on tomorrow's first session.");
+    expect(result).toContain('**Where to look:** `context/handoffs/ACTIVE.md` and the new character file.');
+  });
+
+  it('extracts ## Operator Gates section as bullet list, capped at 5', () => {
+    const dir = mkDir('cont-gates');
+    const handoffPath = path.join(dir, 'ACTIVE.md');
+    writeActiveMd(handoffPath,
+      { status: 'active', phase: '9', summary: 's' },
+      `# Body\n\n## Operator Gates\n\n- **Gate A**: walk through patches together.\n- **Gate B**: confirm trims first.\n- **Gate C**: do not push autonomously.\n- **Gate D**: wait for disposition test.\n- **Gate E**: review the auto-written feedback memory.\n- **Gate F**: this one gets dropped past the cap.\n\n## Other\n`,
+    );
+    const result = renderSessionContinuity(handoffPath);
+    expect(result).toContain('**Operator gates**');
+    expect(result).toContain('**Gate A**: walk through patches together.');
+    expect(result).toContain('**Gate E**: review the auto-written feedback memory.');
+    expect(result).not.toContain('Gate F');
+  });
+
+  it('Phase 13.1 regression — does NOT surface session log left-off', () => {
+    // The bug the readout test caught: the latest file in sessionsDir/
+    // is a transcript whose first heading can mislead the agent into
+    // treating it as today's "Left off". Confirm that path is dead.
+    const dir = mkDir('cont-no-session-log');
+    const handoffPath = path.join(dir, 'ACTIVE.md');
+    writeActiveMd(handoffPath,
+      { status: 'active', phase: '10', summary: 'correct summary' },
+      `body`,
+    );
     const sessionsDir = path.join(dir, 'sessions');
     fs.mkdirSync(sessionsDir, { recursive: true });
     fs.writeFileSync(
-      path.join(sessionsDir, '2026-03-13_session-1.md'),
-      `# Session\n\n## Where We Left Off\nAssembler tests passing.\n`,
-      'utf-8'
+      path.join(sessionsDir, '2026-05-14_stale.md'),
+      `# Stale\n\n## Where We Left Off\nA 9-PLANS-OLD instruction the substrate must not surface.\n`,
+      'utf-8',
     );
     const result = renderSessionContinuity(handoffPath, sessionsDir);
-    expect(result).toContain('**Task:**');
-    expect(result).toContain('Building v3 context system');
-    expect(result).toContain('**Progress:**');
-    expect(result).toContain('**Left off:**');
-    expect(result).toContain('Assembler tests passing');
+    expect(result).toContain('correct summary');
+    expect(result).not.toContain('9-PLANS-OLD');
+    expect(result).not.toContain('**Left off:**');
   });
 
   it('caps output at ~1200 chars', () => {
     const dir = mkDir('cont-cap');
     const handoffPath = path.join(dir, 'ACTIVE.md');
-    // Create a very long handoff
-    const longContent = `# Handoff\n\n## Current State\n${'A'.repeat(500)}\n\n- [x] ${'B'.repeat(200)}\n- [x] ${'C'.repeat(200)}\n- [x] ${'D'.repeat(200)}\n- [x] ${'E'.repeat(200)}\n- [x] ${'F'.repeat(200)}\n`;
-    fs.writeFileSync(handoffPath, longContent, 'utf-8');
+    writeActiveMd(handoffPath,
+      { status: 'active', phase: '11', summary: 'X'.repeat(800) },
+      `# Body\n\n**What's next:** ${'Y'.repeat(800)}\n\n**Where to look:** ${'Z'.repeat(800)}\n`,
+    );
     const result = renderSessionContinuity(handoffPath);
     expect(result).not.toBeNull();
-    // 1200 char cap + data boundary wrapper overhead (~155 chars)
+    // 1200 char cap + data boundary wrapper overhead (~150 chars)
     expect(result!.length).toBeLessThanOrEqual(1400);
   });
 

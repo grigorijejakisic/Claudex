@@ -284,7 +284,8 @@ export function loadCheckpoint(
   db: Database | null,
   projectDir: string,
   preset?: SelectiveLoadPreset,
-  project?: string
+  project?: string,
+  minCreatedAtEpoch?: number,
 ): CheckpointV3 | null {
   try {
     let checkpoint: CheckpointV3 | null = null;
@@ -293,6 +294,19 @@ export function loadCheckpoint(
     if (db) {
       try {
         let row: CheckpointMeta | undefined;
+
+        // Phase 13.1 Fix #6 (2026-05-15): optional freshness floor. When the
+        // caller passes ACTIVE.md's `created_at_epoch_ms / 1000`, checkpoints
+        // older than the most recent handoff rewrite are excluded. The
+        // handoff IS the operator's "new state begins here" marker — any
+        // earlier checkpoint describes pre-pivot work and would surface stale
+        // objectives into post-pivot sessions (the 2026-05-15 readout test
+        // caught this with a "mark work conclusions somehow" objective from
+        // a persona-tuning lock-in moment that had been superseded by the
+        // disposition-test scope).
+        const freshnessClause = minCreatedAtEpoch !== undefined
+          ? `AND cm.created_at_epoch >= ${Math.floor(minCreatedAtEpoch)}`
+          : '';
 
         if (project) {
           // Filter: observation_count > 0 excludes phantom sessions (e.g. Angel CLI
@@ -304,6 +318,7 @@ export function loadCheckpoint(
                WHERE cm.status IN ('committed', 'mirrored')
                  AND s.project = ?
                  AND s.observation_count > 0
+                 ${freshnessClause}
                ORDER BY cm.created_at_epoch DESC LIMIT 1`
             )
             .get(project) as CheckpointMeta | undefined;
@@ -314,6 +329,7 @@ export function loadCheckpoint(
                JOIN sessions s ON cm.session_id = s.session_id
                WHERE cm.status IN ('committed', 'mirrored')
                  AND s.observation_count > 0
+                 ${freshnessClause}
                ORDER BY cm.created_at_epoch DESC LIMIT 1`
             )
             .get() as CheckpointMeta | undefined;

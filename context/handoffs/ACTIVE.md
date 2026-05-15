@@ -28,10 +28,21 @@ If no → the character file needs revision before the ritual goes.
 Engineering — separate track from the persona-tuning work above:
 
 - **Phase 13.1 W3** — Sessions/ privacy posture decision (write-time scrub vs `.cursorignore` vs per-session opt-out) + frontmatter mutation audit (`pointer-recall.ts`, `lesson-writer.ts` — are mutations additive or destructive?)
-- **Phase 2 hang root cause** — Angel's `heartbeatTick` hangs in `extractDirectivesFromSession` or `classifySessionDomains` (Phase 2 trace stops at `pre-pattern-extraction`). Watchdog protects the loop; root cause still unknown. Instrumentation is in place — next localization just needs per-session logs inside the for-loop.
-- **Phase A** — apply the auto-* block-gate patches at `src/skills/auto/auto-{discuss,plan,execute}-phase-patch.md` to global `~/.claude/skills/auto-{discuss,plan,execute}-phase/SKILL.md`. Operator wants to walk through these before applying.
-- **Phase C / Phase D** — `tob-*` trim (keep only `tob-second-opinion`) + project-memory-clutter cleanup (`auth`, `desktop-01dcc792`, `lacuna-betting-9f1d552c`, `performance`, `testing`). Mechanical deletions; not authorized yet.
-- **Push** — 5 commits from today's Phase 13.1 work are local: `571491f`, `f5eeb0e`, `7f1b525`, `3e0da89`, `01e49fc`, `e23a723`. Operator-gated; push when ready.
+- **Phase 2 hang root cause** — Angel's `heartbeatTick` hangs in `extractDirectivesFromSession` or `classifySessionDomains` (Phase 2 trace stops at `pre-pattern-extraction`). Watchdog protects the loop; root cause still unknown. Instrumentation is in place — next localization just needs per-session logs inside the for-loop. Phase 2 instrumentation logs (`pre-pattern-extraction`, `phase2 session=… START`, `extractDirectives START/OK/ERR`, `classifyDomains START/OK/ERR`) are already in `src/angel/heartbeat.ts` — one tick will pinpoint the hang without re-instrumenting.
+- **Phase A** — apply the auto-* block-gate patches at `src/skills/auto/auto-{discuss,plan,execute}-phase-patch.md` to global `~/.claude/skills/auto-{discuss,plan,execute}-phase/SKILL.md`.
+- **Phase C / Phase D** — `tob-*` trim (keep only `tob-second-opinion`) + project-memory-clutter cleanup (`auth`, `desktop-01dcc792`, `lacuna-betting-9f1d552c`, `performance`, `testing`).
+- **Push** — 5 commits from today's Phase 13.1 work are local: `571491f`, `f5eeb0e`, `7f1b525`, `3e0da89`, `01e49fc`, `e23a723`.
+- **Phase 12 + Phase 13 external review carry an asterisk** — both shipped as Gemini-only SIGNOFF because `external-review-gate.cjs` was using the wrong Codex invocation. Fixed at `571491f`; the next phase will get genuine cross-family review. Don't represent v6.5.0 as fully externally reviewed without the qualifier.
+- **`feedback_reach_for_memory_on_memory_shaped_questions.md`** — written autonomously last night without operator review. The persona-tuning-manual-track rule explicitly says behavioral memories should be operator-Claude collaboration. Sign-off or rewrite pending.
+
+## Operator Gates
+
+Honor each gate before acting on the corresponding queued item. New gates added here propagate into every session-start via `renderSessionContinuity` (Phase 13.1 Fix #3, 2026-05-15).
+
+- **Phase A apply auto-\* block-gate patches**: walk through all three patches together with operator before applying. Global `~/.claude/skills/` mutation — once shipped, every project's autonomous pipeline picks it up. Operator agreement explicit 2026-05-14 21:40.
+- **Phase C / Phase D mechanical trims**: confirm scope with operator before executing the deletions. The `tob-*` trim is small but irreversible; the project-memory cleanup touches five projects.
+- **Push of local Phase 13.1 commits**: operator-gated; do not push autonomously.
+- **`/handoff` skill deletion**: gate on the disposition test passing across 2-3 fresh sessions. Substrate + character file are intended to replace it, but don't remove the safety net until the disposition is confirmed.
 
 ## Substrate health
 

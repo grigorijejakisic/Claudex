@@ -19,6 +19,7 @@ import {
   formatIdentitySection,
   formatClaudexReadySection,
   formatRerankerHealthSection,
+  formatSubstrateHealthSection,
   formatFrameExtractionDegradedSection,
   formatRecentSessionFramesSection,
   formatProvenPrinciplesSection,
@@ -65,6 +66,7 @@ import type { HandleSet } from '../core/cross-project-equivalence.js';
 import { getPressureZone, scaleBudget, GLOBAL_PROJECT_SCOPE } from '../shared/constants.js';
 import { getHandoffsDir, getSessionsDir } from '../shared/paths.js';
 import * as path from 'path';
+import * as fs from 'fs';
 import type { Database } from 'better-sqlite3';
 import type { ArtifactRow } from '../core/artifacts.js';
 import type { GaugeTimingContext } from './sections.js';
@@ -140,6 +142,35 @@ export interface TopicPivotParams {
 }
 
 const EMPTY_PAYLOAD: InjectPayload = { content: '', tokenEstimate: 0, sources: [] };
+
+/**
+ * Phase 13.1 Fix #6 (2026-05-15): single source of truth for "when did the
+ * current handoff begin?" Reads `created_at_epoch_ms` from the ACTIVE.md
+ * frontmatter and returns both ms and seconds variants. The handoff frontmatter
+ * is hand-written by the operator at each significant pivot; anything (frames,
+ * checkpoints) older than that timestamp describes pre-pivot work that should
+ * not crowd post-pivot session-start.
+ *
+ * Non-throwing: returns `{}` when ACTIVE.md is missing, frontmatter absent,
+ * or `created_at_epoch_ms` not parseable. The two callers (highlights / checkpoint)
+ * fall back to their default unfiltered queries when the floor is undefined.
+ */
+function readActiveHandoffFloor(projectDir: string): { floorMs?: number; floorSec?: number } {
+  try {
+    const handoffPath = path.join(getHandoffsDir(projectDir), 'ACTIVE.md');
+    if (!fs.existsSync(handoffPath)) return {};
+    const raw = fs.readFileSync(handoffPath, 'utf-8');
+    const fmMatch = raw.match(/^---\s*\n([\s\S]*?)\n---/);
+    if (!fmMatch) return {};
+    const epochMatch = fmMatch[1].match(/^created_at_epoch_ms:\s*(\d+)\s*$/m);
+    if (!epochMatch) return {};
+    const ms = Number(epochMatch[1]);
+    if (!Number.isFinite(ms) || ms <= 0) return {};
+    return { floorMs: ms, floorSec: Math.floor(ms / 1000) };
+  } catch {
+    return {};
+  }
+}
 
 /**
  * Cache-stable version of `shortenPath` (CACH-03).
@@ -295,6 +326,15 @@ export function assembleFullContext(params: FullAssemblyParams): InjectPayload {
     const sections: string[] = [];
     const sources: string[] = [];
 
+    // Phase 13.1 Fix #6 (2026-05-15): single-read ACTIVE.md freshness floor.
+    // Threaded into Recent Session Frames (ms) and the Checkpoint section
+    // (seconds) so neither can surface pre-handoff state into post-handoff
+    // sessions. Reading once here (instead of per-section) keeps both
+    // surfaces consistent on the same `created_at_epoch_ms` marker even if
+    // the operator rewrites ACTIVE.md mid-cascade somehow.
+    const { floorMs: activeFloorEpochMs, floorSec: activeFloorEpochSec } =
+      readActiveHandoffFloor(params.projectDir);
+
     // Post-compaction skips identity, project, and session continuity sections —
     // these are already in the LLM's context from the system prompt (CLAUDE.md, /starthere).
     // Saves ~780 tokens per compaction recovery.
@@ -334,6 +374,21 @@ export function assembleFullContext(params: FullAssemblyParams): InjectPayload {
         sources.push('reranker_health');
       }
 
+      // Priority 1.3: Substrate health (Phase 13.1 Fix #5 — 2026-05-15).
+      // Probes Angel heartbeat freshness + session_highlights extraction
+      // lag. Returns null when both are within threshold (happy path adds
+      // zero tokens). When degraded, bypasses the budget cap because the
+      // surface is the only way to know that downstream injections are
+      // stale. Mirrors reranker-health framing: descriptive note, not
+      // imperative directive.
+      try {
+        const substrateHealth = formatSubstrateHealthSection(params.db, params.project);
+        if (substrateHealth) {
+          sections.push(substrateHealth);
+          sources.push('substrate_health');
+        }
+      } catch { /* non-fatal — health surface never blocks assembly */ }
+
       // Priority 1.5: Experience pattern warnings auto-surface — REMOVED in
       // Phase 5 Plan 05 (Tier C). renderExperienceWarnings + applyEffects
       // remain callable; Plan 08 wires them to UPS explicit-query and
@@ -372,7 +427,12 @@ export function assembleFullContext(params: FullAssemblyParams): InjectPayload {
       // budget (per 13-CONTEXT.md). Degraded health line bypasses the budget cap
       // — degraded-mode visibility is mandatory, same posture as reranker health.
       try {
-        const latestHighlights = getLatestHighlights(params.db, params.project, 3);
+        const latestHighlights = getLatestHighlights(
+          params.db,
+          params.project,
+          3,
+          activeFloorEpochMs,
+        );
         const degraded = formatFrameExtractionDegradedSection(latestHighlights);
         if (degraded) {
           sections.push(degraded);
@@ -394,8 +454,14 @@ export function assembleFullContext(params: FullAssemblyParams): InjectPayload {
       } catch { /* non-fatal — section is advisory, never blocks assembly */ }
     }
 
-    // Priority 3: Checkpoint — skipLearnings because Priority 4 injects them separately
-    const checkpoint = loadCheckpoint(params.db, params.projectDir, undefined, params.project);
+    // Priority 3: Checkpoint — skipLearnings because Priority 4 injects them separately.
+    // Phase 13.1 Fix #6 (2026-05-15): apply the ACTIVE.md freshness floor
+    // (`activeFloorEpochSec`, read once at the top of this assembler call)
+    // so a stale prior-phase checkpoint can't surface a pre-pivot "Current
+    // Objective" into a post-pivot session. Post-compaction path keeps the
+    // floor too — the operator's last handoff is still the boundary, and
+    // a checkpoint older than that handoff is stale in either path.
+    const checkpoint = loadCheckpoint(params.db, params.projectDir, undefined, params.project, activeFloorEpochSec);
     const checkpointSection = formatCheckpointSection(checkpoint, { skipLearnings: true });
     if (checkpointSection) {
       const cost = estimateTokens(checkpointSection);

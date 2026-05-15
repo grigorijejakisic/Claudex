@@ -135,6 +135,31 @@ const main = wrapHook('SessionStart', async (input, ctx) => {
     ]);
   } catch { /* indexer failure non-fatal — Angel will catch up later */ }
 
+  // Phase 13.1 Fix #2 (2026-05-15): defensive MEMORY.md regeneration.
+  // The Angel-driven heartbeat owns curation, but when it hangs (Phase 13.1
+  // W2 root cause), MEMORY.md surfaces (notably ## Handoff) go stale and
+  // contradict ACTIVE.md — the 2026-05-15 substrate-readout test caught
+  // MEMORY.md still pointing at a 5-day-old phase header. curateMemoryMd
+  // has an idempotent sentinel fast-path (memory-md-writer.ts L723), so
+  // calling it every session-start is cheap when nothing changed and
+  // converges MEMORY.md to ACTIVE.md when something did.
+  //
+  // Guard: skip when the DB context has no `artifact` rows. computeMemoryMd
+  // resolves the project ID to a real `~/.claude/projects/<slug>/MEMORY.md`
+  // path via the Claudex project registry, so it writes to the LIVE file
+  // even from a temporary smoke-test DB (CLAUDEX_DB_PATH=<tmpdb>). Without
+  // this guard, smoke tests wipe `## Active Projects` against the empty
+  // temp DB. The guard is a sentinel for "this DB has enough state to
+  // generate a meaningful index" — production DBs always have artifact
+  // rows; smoke/CI temp DBs do not.
+  try {
+    const probe = ctx.db.prepare(`SELECT 1 FROM artifact LIMIT 1`).get();
+    if (probe) {
+      const { curateMemoryMd } = await import('../../angel/memory-md-writer.js');
+      curateMemoryMd(ctx.db, ctx.project);
+    }
+  } catch { /* non-fatal — MEMORY.md is an advisory index, and `artifact` may not exist on pre-V17 DBs */ }
+
   // Write CLAUDE_ENV_FILE — inject env flags for CC's bash environment.
   // X3: CC sources this file before every BashTool command for the session.
   // T1/T2: Disable CC auto-memory (~11K tokens/turn saved).

@@ -306,6 +306,76 @@ describe('loadCheckpoint', () => {
     const result = loadCheckpoint(db, '/nonexistent', undefined, 'projectX');
     expect(result).toBeNull();
   });
+
+  // -----------------------------------------------------------------------
+  // Phase 13.1 Fix #6 (2026-05-15): minCreatedAtEpoch freshness floor
+  // -----------------------------------------------------------------------
+  it('drops checkpoints older than minCreatedAtEpoch (project filtered)', () => {
+    ensureSession(db, 's-old', 'projA');
+    ensureSession(db, 's-new', 'projA');
+
+    const cpOld = makeCheckpoint({ meta: { ...makeCheckpoint().meta, checkpoint_id: 'CP_OLD' } });
+    const cpNew = makeCheckpoint({ meta: { ...makeCheckpoint().meta, checkpoint_id: 'CP_NEW' } });
+
+    db.prepare(
+      `INSERT INTO checkpoint_meta (checkpoint_id, session_id, trigger, status, data, created_at_epoch, updated_at_epoch)
+       VALUES (?, ?, 'session_end', 'mirrored', ?, ?, ?)`
+    ).run('CP_OLD', 's-old', JSON.stringify(cpOld), 1000, 1000);
+    db.prepare(
+      `INSERT INTO checkpoint_meta (checkpoint_id, session_id, trigger, status, data, created_at_epoch, updated_at_epoch)
+       VALUES (?, ?, 'session_end', 'mirrored', ?, ?, ?)`
+    ).run('CP_NEW', 's-new', JSON.stringify(cpNew), 5000, 5000);
+
+    // Floor at 3000 — CP_OLD (epoch 1000) should drop, CP_NEW (epoch 5000) survives.
+    const result = loadCheckpoint(db, '/nonexistent', undefined, 'projA', 3000);
+    expect(result).not.toBeNull();
+    expect(result!.meta.checkpoint_id).toBe('CP_NEW');
+  });
+
+  it('drops checkpoints older than minCreatedAtEpoch (no project filter)', () => {
+    ensureSession(db, 's-old');
+    ensureSession(db, 's-new');
+
+    const cpOld = makeCheckpoint({ meta: { ...makeCheckpoint().meta, checkpoint_id: 'CP_OLD' } });
+    const cpNew = makeCheckpoint({ meta: { ...makeCheckpoint().meta, checkpoint_id: 'CP_NEW' } });
+
+    db.prepare(
+      `INSERT INTO checkpoint_meta (checkpoint_id, session_id, trigger, status, data, created_at_epoch, updated_at_epoch)
+       VALUES (?, ?, 'session_end', 'mirrored', ?, ?, ?)`
+    ).run('CP_OLD', 's-old', JSON.stringify(cpOld), 1000, 1000);
+    db.prepare(
+      `INSERT INTO checkpoint_meta (checkpoint_id, session_id, trigger, status, data, created_at_epoch, updated_at_epoch)
+       VALUES (?, ?, 'session_end', 'mirrored', ?, ?, ?)`
+    ).run('CP_NEW', 's-new', JSON.stringify(cpNew), 5000, 5000);
+
+    const result = loadCheckpoint(db, '/nonexistent', undefined, undefined, 3000);
+    expect(result).not.toBeNull();
+    expect(result!.meta.checkpoint_id).toBe('CP_NEW');
+  });
+
+  it('returns null when ALL checkpoints are older than the floor (project)', () => {
+    ensureSession(db, 's-old', 'projA');
+    const cp = makeCheckpoint();
+    db.prepare(
+      `INSERT INTO checkpoint_meta (checkpoint_id, session_id, trigger, status, data, created_at_epoch, updated_at_epoch)
+       VALUES (?, ?, 'session_end', 'mirrored', ?, ?, ?)`
+    ).run('cp1', 's-old', JSON.stringify(cp), 1000, 1000);
+
+    const result = loadCheckpoint(db, '/nonexistent', undefined, 'projA', 9999);
+    expect(result).toBeNull();
+  });
+
+  it('keeps default behavior when minCreatedAtEpoch is undefined', () => {
+    ensureSession(db, 's-old', 'projA');
+    const cp = makeCheckpoint();
+    db.prepare(
+      `INSERT INTO checkpoint_meta (checkpoint_id, session_id, trigger, status, data, created_at_epoch, updated_at_epoch)
+       VALUES (?, ?, 'session_end', 'mirrored', ?, ?, ?)`
+    ).run('cp1', 's-old', JSON.stringify(cp), 1000, 1000);
+
+    const result = loadCheckpoint(db, '/nonexistent', undefined, 'projA');
+    expect(result).not.toBeNull();
+  });
 });
 
 describe('selective loading', () => {

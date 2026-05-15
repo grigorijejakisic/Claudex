@@ -28,6 +28,7 @@
 
 import type { Database } from 'better-sqlite3';
 import { cachedPrepare } from '../core/stmt-cache.js';
+import { emitTelemetry, sanitizeErrorForTelemetry } from '../observability/telemetry.js';
 import type { AngelConfig } from './types.js';
 import { getIdleSessions, getUnprocessedSessions, hasIdleWarning, getEscalatedIdleSessions, detectStuckSession } from './session-monitor.js';
 import { sendIdleWarning, sendMessage } from './message-sender.js';
@@ -295,11 +296,23 @@ export async function heartbeatTick(ctx: HeartbeatContext): Promise<TickResult> 
     // Phase 2: Process completed sessions (pattern extraction)
     // Process up to 5 sessions when running autonomously (no active sessions),
     // or 3 when the user is working (save resources for hook responsiveness).
+    //
+    // Phase 13.1 Fix #7 (2026-05-15): finer trace lines around the two
+    // synchronous DB queries between `pre-pattern-extraction` and the
+    // for-loop. The 2026-05-15 readout hand-off noted the trace stopped
+    // at `pre-pattern-extraction` without ever printing `phase2 session=…
+    // START` — meaning either `hasActiveSessions` or `getUnprocessedSessions`
+    // is the spot, but the prior instrumentation can't tell us which.
+    // Naming both helps the next live tick localize without re-instrumenting.
+    console.log(`[hb-trace] phase2 querying hasActiveSessions ${Date.now() - start}ms`);
     const hasActiveSessions = (cachedPrepare(ctx.db,
       `SELECT COUNT(*) as c FROM sessions WHERE status = 'active'`
     ).get() as { c: number }).c > 0;
+    console.log(`[hb-trace] phase2 hasActiveSessions=${hasActiveSessions} ${Date.now() - start}ms`);
     const batchSize = hasActiveSessions ? 3 : 5;
+    console.log(`[hb-trace] phase2 querying getUnprocessedSessions(batchSize=${batchSize}) ${Date.now() - start}ms`);
     const unprocessed = getUnprocessedSessions(ctx.db, batchSize);
+    console.log(`[hb-trace] phase2 unprocessed.length=${unprocessed.length} ${Date.now() - start}ms`);
 
     // Phase 13.1: per-await timeouts. Either of the awaits below can hang
     // indefinitely on an unresponsive Ollama call. Without timeouts, a single
@@ -344,7 +357,23 @@ export async function heartbeatTick(ctx: HeartbeatContext): Promise<TickResult> 
           result.directives_errors = (result.directives_errors ?? 0) + dirResult.errors;
         }
       } catch (e) {
-        console.log(`[hb-trace] phase2 session=${sid} extractDirectives ERR ${(e as Error).message}`);
+        const msg = (e as Error).message;
+        console.log(`[hb-trace] phase2 session=${sid} extractDirectives ERR ${msg}`);
+        // Phase 13.1 Fix #7 (2026-05-15): persist localization to telemetry
+        // so the next session-start can surface "phase 2 hung on session X
+        // in function extractDirectives at HH:MM" via Substrate Health,
+        // instead of operator hunting through Angel log files. The catch
+        // is wide on purpose — every Phase-2 failure is worth localizing,
+        // not just the timeout path; the detail.reason marks which kind.
+        try {
+          emitTelemetry(ctx.db, 'angel-heartbeat', 'error', {
+            subsystem: 'heartbeat/phase2_extract_directives_failed',
+            error: sanitizeErrorForTelemetry(e),
+            fallback: 'skip-session',
+            session_id_short: sid,
+            reason: msg.startsWith('phase2-timeout:') ? 'timeout' : 'other',
+          });
+        } catch { /* telemetry must never escalate */ }
         // Non-fatal — session is still marked processed by the existing
         // pattern-extractor post-condition below.
       }
@@ -372,7 +401,17 @@ export async function heartbeatTick(ctx: HeartbeatContext): Promise<TickResult> 
         console.log(`[hb-trace] phase2 session=${sid} classifyDomains OK domains=${domains}`);
         result.domains_classified += domains;
       } catch (e) {
-        console.log(`[hb-trace] phase2 session=${sid} classifyDomains ERR ${(e as Error).message}`);
+        const msg = (e as Error).message;
+        console.log(`[hb-trace] phase2 session=${sid} classifyDomains ERR ${msg}`);
+        try {
+          emitTelemetry(ctx.db, 'angel-heartbeat', 'error', {
+            subsystem: 'heartbeat/phase2_classify_domains_failed',
+            error: sanitizeErrorForTelemetry(e),
+            fallback: 'skip-session',
+            session_id_short: sid,
+            reason: msg.startsWith('phase2-timeout:') ? 'timeout' : 'other',
+          });
+        } catch { /* telemetry must never escalate */ }
         // Individual session processing failure — continue with others
       }
     }
