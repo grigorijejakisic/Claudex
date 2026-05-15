@@ -78,8 +78,8 @@ describe('V31→V32 migration (Phase 8 — v6 transcript ingestion substrate)', 
   beforeEach(() => { db = new Database(':memory:'); });
   afterEach(() => { db.close(); });
 
-  it('TARGET_USER_VERSION is 32', () => {
-    expect(TARGET_USER_VERSION).toBe(32);
+  it('TARGET_USER_VERSION is 34', () => {
+    expect(TARGET_USER_VERSION).toBe(34);
   });
 
   describe('migrateV31toV32 — base-table fresh-DB', () => {
@@ -89,7 +89,7 @@ describe('V31→V32 migration (Phase 8 — v6 transcript ingestion substrate)', 
         .all() as Array<{ name: string; type: string; notnull: number }>;
       const names = cols.map(c => c.name);
       expect(names).toEqual([
-        'id', 'session_id', 'project_id', 'turn_index', 'sub_index',
+        'id', 'session_id', 'project', 'turn_index', 'sub_index',
         'role', 'provenance', 'body', 'created_at_epoch_ms', 'wrapper_redacted',
       ]);
     });
@@ -120,7 +120,7 @@ describe('V31→V32 migration (Phase 8 — v6 transcript ingestion substrate)', 
       initializeSchema(db);
       expect(() =>
         db.prepare(
-          `INSERT INTO transcript_chunk_v6 (session_id, project_id, turn_index, role, provenance, body, created_at_epoch_ms)
+          `INSERT INTO transcript_chunk_v6 (session_id, project, turn_index, role, provenance, body, created_at_epoch_ms)
              VALUES (?, ?, ?, ?, ?, ?, ?)`
         ).run('s1', 'p1', 0, 'bogus', 'organic', 'b', Date.now())
       ).toThrow(/CHECK constraint failed/);
@@ -130,7 +130,7 @@ describe('V31→V32 migration (Phase 8 — v6 transcript ingestion substrate)', 
       initializeSchema(db);
       expect(() =>
         db.prepare(
-          `INSERT INTO transcript_chunk_v6 (session_id, project_id, turn_index, role, provenance, body, created_at_epoch_ms)
+          `INSERT INTO transcript_chunk_v6 (session_id, project, turn_index, role, provenance, body, created_at_epoch_ms)
              VALUES (?, ?, ?, ?, ?, ?, ?)`
         ).run('s1', 'p1', 0, 'user', 'bogus', 'b', Date.now())
       ).toThrow(/CHECK constraint failed/);
@@ -141,17 +141,17 @@ describe('V31→V32 migration (Phase 8 — v6 transcript ingestion substrate)', 
       for (const p of ['organic', 'injected', 'tool_result', 'environmental']) {
         expect(() =>
           db.prepare(
-            `INSERT INTO transcript_chunk_v6 (session_id, project_id, turn_index, role, provenance, body, created_at_epoch_ms)
+            `INSERT INTO transcript_chunk_v6 (session_id, project, turn_index, role, provenance, body, created_at_epoch_ms)
                VALUES (?, ?, ?, ?, ?, ?, ?)`
           ).run(`s-${p}`, 'p1', 0, 'user', p, 'b', Date.now())
         ).not.toThrow();
       }
     });
 
-    it('user_version reports 32 after fresh init', () => {
+    it('user_version reports 34 after fresh init', () => {
       initializeSchema(db);
       const uv = (db.pragma('user_version') as Array<{ user_version: number }>)[0].user_version;
-      expect(uv).toBe(32);
+      expect(uv).toBe(34);
     });
   });
 
@@ -162,7 +162,7 @@ describe('V31→V32 migration (Phase 8 — v6 transcript ingestion substrate)', 
       db.pragma('user_version = 31');
       runMigrations(db);
       const uv = (db.pragma('user_version') as Array<{ user_version: number }>)[0].user_version;
-      expect(uv).toBe(32);
+      expect(uv).toBe(34);
 
       // transcript_chunk_v6 exists.
       const tc = db.prepare(
@@ -228,7 +228,7 @@ describe('V31→V32 migration (Phase 8 — v6 transcript ingestion substrate)', 
       const freshDb = new Database(':memory:');
       initializeSchema(freshDb);
       const freshUv = (freshDb.pragma('user_version') as Array<{ user_version: number }>)[0].user_version;
-      expect(freshUv).toBe(32);
+      expect(freshUv).toBe(34);
       const freshShape = freshDb.prepare(
         "SELECT sql FROM sqlite_master WHERE name='transcript_chunk_v6'"
       ).get() as { sql: string };
@@ -243,7 +243,7 @@ describe('V31→V32 migration (Phase 8 — v6 transcript ingestion substrate)', 
       incDb.pragma('user_version = 31');
       runMigrations(incDb);
       const incUv = (incDb.pragma('user_version') as Array<{ user_version: number }>)[0].user_version;
-      expect(incUv).toBe(32);
+      expect(incUv).toBe(34);
       const incShape = incDb.prepare(
         "SELECT sql FROM sqlite_master WHERE name='transcript_chunk_v6'"
       ).get() as { sql: string };

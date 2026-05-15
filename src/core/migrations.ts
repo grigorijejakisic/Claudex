@@ -188,8 +188,11 @@ export function runMigrations(db: Database): void {
       try {
         migrate();
         lastSuccessfulVersion = fromVersion + 1;
-      } catch {
+      } catch (err) {
         // Stop at first failure — don't skip broken migrations
+        if (process.env.DEBUG_MIGRATIONS) {
+          console.error(`[migrations] step [${fromVersion}→${fromVersion+1}] failed:`, err);
+        }
         break;
       }
     }

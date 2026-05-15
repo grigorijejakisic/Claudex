@@ -2370,8 +2370,17 @@ export function migrateV31toV32(db: Database): boolean {
  * migrations bump user_version + add a schema_versions row.
  */
 export function migrateV33toV34(db: Database): void {
-  db.exec(`ALTER TABLE artifact RENAME COLUMN project_id TO project`);
-  db.exec(`ALTER TABLE transcript_chunk_v6 RENAME COLUMN project_id TO project`);
+  // Guard: only rename if the old column name still exists.
+  // If applyV17DDL was already updated to use `project` (fresh-DB or test fixture),
+  // the rename is a no-op. hasColumn check prevents "no such column" throws.
+  if (hasColumn(db, 'artifact', 'project_id')) {
+    db.exec(`ALTER TABLE artifact RENAME COLUMN project_id TO project`);
+  }
+  const tcHasProjectId = (db.pragma('table_info(transcript_chunk_v6)') as Array<{ name: string }>)
+    .some(c => c.name === 'project_id');
+  if (tcHasProjectId) {
+    db.exec(`ALTER TABLE transcript_chunk_v6 RENAME COLUMN project_id TO project`);
+  }
 
   // Audit indexes — drop any that reference project_id.
   const idxRows = db.prepare(
@@ -2426,8 +2435,21 @@ export function migrateV33toV34(db: Database): void {
   }
 
   db.pragma('user_version = 34');
-  db.exec(`INSERT OR IGNORE INTO schema_versions(version, applied_at_epoch)
-           VALUES (34, unixepoch())`);
+  // schema_versions may or may not exist, and may have different column layouts
+  // depending on the migration path (SCHEMA_V3 path vs legacy path). Use a
+  // compatible insert that only specifies `version` (always present).
+  try {
+    db.exec(`CREATE TABLE IF NOT EXISTS schema_versions (
+      version        INTEGER PRIMARY KEY,
+      applied_at_epoch INTEGER
+    )`);
+    const svCols = (db.pragma('table_info(schema_versions)') as Array<{ name: string }>).map(c => c.name);
+    if (svCols.includes('applied_at_epoch')) {
+      db.exec(`INSERT OR IGNORE INTO schema_versions(version, applied_at_epoch) VALUES (34, unixepoch())`);
+    } else {
+      db.exec(`INSERT OR IGNORE INTO schema_versions(version) VALUES (34)`);
+    }
+  } catch { /* schema_versions tracking is non-critical — continue */ }
 }
 
 export function migrateV34toV33(db: Database): void {
