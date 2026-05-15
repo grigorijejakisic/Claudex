@@ -79,7 +79,7 @@ Promoted to standard practice 2026-05-05. Mandatory for v6 P9 empirical phase an
 
 - Plan 14-01 (handoff schema): COMPLETE — commit `see 14-01-SUMMARY.md`
 - Plan 14-02 (project_id→project): COMPLETE — commit `see 14-02-SUMMARY.md`
-- Plan 14-03 (experience_tier cursor): IN PLAN
+- Plan 14-03 (isSubstantive predicate + experience-tier filter): **COMPLETE 2026-05-16** — noise 83% → 18% (AC-3 PASS). isSubstantive() + substantiveSqlClause() in src/core/artifact-filters.ts. Experience-tier candidate pool uses SQL clause. JS-vs-SQL lockstep enforced by 40-test suite. Commits: d1c826c, 3c1ee7b, b126132, 09fadc8, d8f2ac3, cfdf4b2.
 - Plan 14-04 (session-signals audit): IN PLAN
 - Plan 14-05 (Wave 1 integration): IN PLAN
 - Plan 14-06 (epoch-ms canonicalization): **COMPLETE 2026-05-16** — V35 migration + 166 files canonicalized. Starting failures: 38 files / 171 tests. Final: 5 files / 31 tests (all pre-existing). Commits: 05e9594, 0276a78. Key decisions: TARGET_USER_VERSION=35; WHERE guard `< 1e12`; cutoffMs() vs cutoff() distinction preserved.
@@ -88,6 +88,7 @@ Promoted to standard practice 2026-05-05. Mandatory for v6 P9 empirical phase an
 ### Decisions
 
 - 2026-05-16: V35 epoch-ms canonicalization — 16 tables renamed `*_epoch → *_epoch_ms`, scaled sec→ms. 10 tables intentionally excluded (experience_patterns, session_events, etc.). topicalRelevance cap in computeArtifactScore deferred (unimplemented Phase 12 feature).
+- 2026-05-16: Plan 14-03 isSubstantive — SQL clause targets legacy artifacts table only (no `kind`). flow type certified-substantive even with short summaries (domain affinity deferred). cross-project-search.ts exception documented. AC-3 PASS at 18% noise rate.
 
 ## Accumulated Context
 
