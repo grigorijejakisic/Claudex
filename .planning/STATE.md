@@ -9,14 +9,14 @@ See: `.planning/PROJECT.md` (updated 2026-05-08 after v5 closure + v6 milestone 
 
 ## Current Position
 
-**Current Milestone:** v6 — Deliberation Surfacing — **REOPENED 2026-05-09 for Phase 11 polish.** Pre-push Gemini consultation surfaced verdict-invalidating P9 methodology defects + 13+ critical code regressions across P8/P10. v6.0.0 local tag stays unpushed; will be delete-and-retagged at Phase 11 close-out with corrected annotation reflecting actual rebound verdict (positive / kill receipt / inconclusive).
-**Phase:** Phase 11 — Polish (started 2026-05-09; not yet planned)
-**Plan:** —
-**Status:** Phase 11 spec committed at `.planning/research/2026-05-09-v6-polish.md` (commit `a9fa77e`). 6 user-locked decisions: (1) Phase numbering = Phase 11; (2) cross-corpus = big-mozzy-v2 primary; (3) judge ensemble = Gemini-3-Flash + Claude Opus 4.7 + GLM-5.1 + Kimi-K2.6 (3-of-4 majority, 3-of-3 fallback if any errors >10%); (4) v6.0.0 tag kept until polish completes then delete + retag; (5) audit trail at `.planning/audits/2026-05-09-v6-gemini-reviews/`; (6) external-review gate baked into auto-orchestrate. Three internal waves: W1 code regressions, W2 methodology fix + skill update, W3 re-bind + cross-corpus + conditional ship. Audit trail (5 Gemini reviews + 5 prompts + README + finding-to-task index) committed at `a9fa77e`.
+**Current Milestone:** **v6.6.0 SHIPPED 2026-05-16** (Phase 14 Substrate Coherence — 8/8 plans landed). Local annotated tag pending. Next: v7.0.0 milestone (Plan 14-07 V17 ↔ legacy `artifacts` migration); spec authoring scheduled for next session per operator instruction 2026-05-16 00:52.
+**Phase:** Phase 14 — Substrate Coherence (SHIPPED). Phase 11 + Phase 12 + Phase 13 remain SHIPPED per Roadmap.
+**Plan:** All 8 v6.6.0 plans landed. Plan 14-07 (V17 migration) deferred to v7.0.0.
+**Status:** v6.6.0 milestone close at `.planning/phases/14-substrate-coherence/14-CLOSE.md`. AC-3 PASS — cross-project equivalence noise rate 83% → 18%. AC-1 PASS — synthesized big-mozzy fixture surfaces canonical entry through P2.7. Zero new regressions outside the 31-failure v4-debt baseline (llama-server-supervisor, llama-client, phase-5-full-gate, phase-12-retrieval-ranking-rebalance, phase-6-5-cross-project-vesna). Schema migrations V33→V36 forward+reverse paired (project naming + epoch ms + session_end_action telemetry enum).
 
-**Last activity:** 2026-05-15 — Phase 14 Wave 1 in progress. Plan 14-02 (project_id→project column unification) COMPLETE. V33→V34 migration shipped: artifact.project_id + transcript_chunk_v6.project_id renamed to project. Reversible migration with column-existence guards + view/trigger/index audit. Comprehensive caller sweep (30+ files). production-shape-v32.db rebuilt at V34. 10 new migration tests. Branch: phase-14/01-handoff-schema. Key decisions: hasColumn guard for idempotency; schema_versions column-aware INSERT; view audit pattern for learnings VIEW; EXPRESSION_INDEXES_DDL updated to match fresh-DB column name.
+**Last activity:** 2026-05-16 — Phase 14 v6.6.0 closed. Eight contract-tightening fixes shipped across 4 waves (parallel 3 → 1 → parallel 2 → 1). 75+ production files + 120+ test files touched cumulatively. Standing operator directive: ship v6.6.0; v7.0.0 plans (14-07 V17 migration spec, possibly split into 14-07a DDL+ID-map / 14-07b caller migration / 14-07c cutover+benchmark) authored next session.
 
-**2026-05-09 note (preserved):** Phase 11 polish spec + Gemini audit trail committed. Standing user directive: autonomous through milestone end (Phase 11 is part of v6); operator-confirmed push at v6.0.0 retagged tag. Phase 11 ready for `/auto-orchestrate --from-phase 11` or `/gsd:plan-phase 11`.
+**2026-05-09 note (preserved):** Phase 11 polish spec + Gemini audit trail committed. v6.0.0 retag still pending — Phase 11 closed but v6.0.0 push gate carries forward through v6.6.0 close.
 
 ## v5 Verdict Log (CLOSED 2026-05-08)
 
