@@ -35,10 +35,10 @@ CREATE TABLE IF NOT EXISTS observations (
   content TEXT NOT NULL,
   importance INTEGER NOT NULL CHECK (importance BETWEEN 1 AND 5),
   files_modified TEXT NOT NULL DEFAULT '[]' CHECK (json_valid(files_modified)),
-  timestamp_epoch INTEGER NOT NULL DEFAULT (unixepoch()),
+  timestamp_epoch_ms INTEGER NOT NULL DEFAULT (unixepoch() * 1000),
   access_count INTEGER NOT NULL DEFAULT 0,
-  last_accessed_at_epoch INTEGER,
-  deleted_at_epoch INTEGER DEFAULT NULL,
+  last_accessed_at_epoch_ms INTEGER,
+  deleted_at_epoch_ms INTEGER DEFAULT NULL,
   consumed INTEGER NOT NULL DEFAULT 0,
   obs_type TEXT,
   stability_class TEXT DEFAULT 'standard'
@@ -81,26 +81,26 @@ END;
 -- Observation indexes (single-column)
 CREATE INDEX IF NOT EXISTS idx_obs_session ON observations(session_id);
 CREATE INDEX IF NOT EXISTS idx_obs_project ON observations(project);
-CREATE INDEX IF NOT EXISTS idx_obs_timestamp ON observations(timestamp_epoch DESC);
+CREATE INDEX IF NOT EXISTS idx_obs_timestamp ON observations(timestamp_epoch_ms DESC);
 CREATE INDEX IF NOT EXISTS idx_obs_importance ON observations(importance DESC);
-CREATE INDEX IF NOT EXISTS idx_obs_deleted ON observations(deleted_at_epoch);
+CREATE INDEX IF NOT EXISTS idx_obs_deleted ON observations(deleted_at_epoch_ms);
 
 -- Composite indexes for hot query paths
--- Dedup query in extraction dispatcher: WHERE tool_name=? AND category=? AND project=? AND session_id=? AND timestamp_epoch>?
+-- Dedup query in extraction dispatcher: WHERE tool_name=? AND category=? AND project=? AND session_id=? AND timestamp_epoch_ms>?
 CREATE INDEX IF NOT EXISTS idx_obs_dedup
-  ON observations(tool_name, category, project, session_id, timestamp_epoch DESC);
+  ON observations(tool_name, category, project, session_id, timestamp_epoch_ms DESC);
 
--- getObservationsByProject + pruneObservations: WHERE project=? AND deleted_at_epoch IS NULL ORDER BY timestamp_epoch DESC
+-- getObservationsByProject + pruneObservations: WHERE project=? AND deleted_at_epoch_ms IS NULL ORDER BY timestamp_epoch_ms DESC
 CREATE INDEX IF NOT EXISTS idx_obs_project_active
-  ON observations(project, deleted_at_epoch, timestamp_epoch DESC);
+  ON observations(project, deleted_at_epoch_ms, timestamp_epoch_ms DESC);
 
--- pruneObservations candidate selection + applyRetentionPolicy: WHERE project=? AND deleted_at_epoch IS NULL AND importance<?
+-- pruneObservations candidate selection + applyRetentionPolicy: WHERE project=? AND deleted_at_epoch_ms IS NULL AND importance<?
 CREATE INDEX IF NOT EXISTS idx_obs_project_importance
-  ON observations(project, deleted_at_epoch, importance);
+  ON observations(project, deleted_at_epoch_ms, importance);
 
 -- Consumed observations index (post-compaction filtering)
 CREATE INDEX IF NOT EXISTS idx_obs_consumed
-  ON observations(project, consumed, timestamp_epoch DESC);
+  ON observations(project, consumed, timestamp_epoch_ms DESC);
 
 -- sessions
 CREATE TABLE IF NOT EXISTS sessions (
@@ -112,8 +112,8 @@ CREATE TABLE IF NOT EXISTS sessions (
   status TEXT NOT NULL DEFAULT 'active'
     CHECK (status IN ('active', 'completed', 'failed', 'transferred')),
   observation_count INTEGER NOT NULL DEFAULT 0,
-  created_at_epoch INTEGER NOT NULL DEFAULT (unixepoch()),
-  ended_at_epoch INTEGER,
+  created_at_epoch_ms INTEGER NOT NULL DEFAULT (unixepoch() * 1000),
+  ended_at_epoch_ms INTEGER,
   adapter TEXT DEFAULT 'unknown',
   session_summary TEXT,
   name TEXT,
@@ -123,9 +123,9 @@ CREATE TABLE IF NOT EXISTS sessions (
   last_jsonl_write_ts INTEGER
 );
 
--- getActiveSession: WHERE status='active' AND project=? ORDER BY created_at_epoch DESC
+-- getActiveSession: WHERE status='active' AND project=? ORDER BY created_at_epoch_ms DESC
 CREATE INDEX IF NOT EXISTS idx_sessions_active
-  ON sessions(status, project, created_at_epoch DESC);
+  ON sessions(status, project, created_at_epoch_ms DESC);
 
 -- V5 Phase 6 (EBD-05): per-(project, session_id) crash-replay cursor for
 -- the boundary detector. last_processed_jsonl_offset advances as the
@@ -175,7 +175,7 @@ CREATE TABLE IF NOT EXISTS pressure_scores (
   raw_pressure REAL NOT NULL DEFAULT 0.0,
   temperature TEXT NOT NULL DEFAULT 'COLD'
     CHECK (temperature IN ('HOT', 'COLD')),
-  last_touched_epoch INTEGER NOT NULL DEFAULT (unixepoch()),
+  last_touched_epoch_ms INTEGER NOT NULL DEFAULT (unixepoch() * 1000),  -- ms-precision (V35+)
   decay_rate REAL NOT NULL DEFAULT 0.1,
   PRIMARY KEY (file_path, project)
 );
@@ -192,9 +192,9 @@ CREATE TABLE IF NOT EXISTS learnings (
   fingerprint TEXT NOT NULL,
   content TEXT NOT NULL,
   promotion_count INTEGER NOT NULL DEFAULT 1,
-  first_seen_epoch INTEGER NOT NULL DEFAULT (unixepoch()),
-  last_promoted_epoch INTEGER NOT NULL DEFAULT (unixepoch()),
-  updated_at_epoch INTEGER NOT NULL DEFAULT (unixepoch()),
+  first_seen_epoch_ms INTEGER NOT NULL DEFAULT (unixepoch() * 1000),
+  last_promoted_epoch_ms INTEGER NOT NULL DEFAULT (unixepoch() * 1000),
+  updated_at_epoch_ms INTEGER NOT NULL DEFAULT (unixepoch() * 1000),
   provenance TEXT NOT NULL DEFAULT 'organic'
     CHECK (provenance IN ('organic','injected','tool_result','environmental')),
   UNIQUE(project, agent_id, fingerprint)
@@ -269,7 +269,7 @@ CREATE TABLE IF NOT EXISTS checkpoint_tracking (
 -- schema_versions
 CREATE TABLE IF NOT EXISTS schema_versions (
   version INTEGER PRIMARY KEY,
-  applied_at_epoch INTEGER NOT NULL DEFAULT (unixepoch())
+  applied_at_epoch_ms INTEGER NOT NULL DEFAULT (unixepoch() * 1000)
 );
 
 -- checkpoint_meta
@@ -282,14 +282,14 @@ CREATE TABLE IF NOT EXISTS checkpoint_meta (
   data TEXT,
   mirror_path TEXT,
   error TEXT,
-  created_at_epoch INTEGER NOT NULL DEFAULT (unixepoch()),
-  updated_at_epoch INTEGER NOT NULL DEFAULT (unixepoch())
+  created_at_epoch_ms INTEGER NOT NULL DEFAULT (unixepoch() * 1000),
+  updated_at_epoch_ms INTEGER NOT NULL DEFAULT (unixepoch() * 1000)
 );
 
 CREATE INDEX IF NOT EXISTS idx_cpmeta_session
-  ON checkpoint_meta(session_id, created_at_epoch DESC);
+  ON checkpoint_meta(session_id, created_at_epoch_ms DESC);
 CREATE INDEX IF NOT EXISTS idx_cpmeta_status
-  ON checkpoint_meta(status, updated_at_epoch);
+  ON checkpoint_meta(status, updated_at_epoch_ms);
 
 -- session_journal: flow breadcrumbs, milestones, session summaries
 CREATE TABLE IF NOT EXISTS session_journal (
@@ -521,7 +521,7 @@ CREATE TABLE IF NOT EXISTS retrieval_events (
   query_text TEXT,
   was_referenced INTEGER,
   correction_followed INTEGER,
-  timestamp_epoch INTEGER NOT NULL DEFAULT (unixepoch())
+  timestamp_epoch_ms INTEGER NOT NULL DEFAULT (unixepoch() * 1000)
 );
 CREATE INDEX IF NOT EXISTS idx_retrieval_artifact ON retrieval_events(artifact_id);
 CREATE INDEX IF NOT EXISTS idx_retrieval_session ON retrieval_events(session_id);
@@ -584,14 +584,14 @@ CREATE TABLE IF NOT EXISTS session_messages (
   priority TEXT NOT NULL DEFAULT 'normal'
     CHECK (priority IN ('normal', 'urgent', 'advisory')),
   request_id TEXT,
-  created_at_epoch INTEGER NOT NULL DEFAULT (unixepoch()),
-  delivered_at_epoch INTEGER,
+  created_at_epoch_ms INTEGER NOT NULL DEFAULT (unixepoch() * 1000),
+  delivered_at_epoch_ms INTEGER,
   acknowledged INTEGER NOT NULL DEFAULT 0
 );
 CREATE INDEX IF NOT EXISTS idx_sessmsg_target
-  ON session_messages(target_session, delivered_at_epoch, priority);
+  ON session_messages(target_session, delivered_at_epoch_ms, priority);
 CREATE INDEX IF NOT EXISTS idx_sessmsg_sender
-  ON session_messages(sender, created_at_epoch DESC);
+  ON session_messages(sender, created_at_epoch_ms DESC);
 
 -- V12: angel_opinions — CARA reasoning layer (Hindsight-inspired)
 CREATE TABLE IF NOT EXISTS angel_opinions (
@@ -649,14 +649,14 @@ CREATE TABLE IF NOT EXISTS session_signals (
     CHECK (signal_type IN ('wip', 'failure', 'danger', 'claim', 'discovery')),
   target TEXT NOT NULL,
   detail TEXT,
-  created_at_epoch INTEGER NOT NULL DEFAULT (unixepoch()),
-  expires_at_epoch INTEGER,
-  cleared_at_epoch INTEGER
+  created_at_epoch_ms INTEGER NOT NULL DEFAULT (unixepoch() * 1000),
+  expires_at_epoch_ms INTEGER,
+  cleared_at_epoch_ms INTEGER
 );
 CREATE INDEX IF NOT EXISTS idx_signals_project_type
-  ON session_signals(project, signal_type, cleared_at_epoch);
+  ON session_signals(project, signal_type, cleared_at_epoch_ms);
 CREATE INDEX IF NOT EXISTS idx_signals_session
-  ON session_signals(session_id, cleared_at_epoch);
+  ON session_signals(session_id, cleared_at_epoch_ms);
 
 -- V11: artifact_access_log — enables proper ACT-R multi-access BLL
 CREATE TABLE IF NOT EXISTS artifact_access_log (
@@ -856,12 +856,12 @@ CREATE TABLE IF NOT EXISTS telemetry (
   )),
   detail TEXT NOT NULL DEFAULT '{}' CHECK (json_valid(detail)),
   latency_ms REAL,
-  timestamp_epoch INTEGER NOT NULL DEFAULT (unixepoch()),
+  timestamp_epoch_ms INTEGER NOT NULL DEFAULT (unixepoch() * 1000),
   adapter TEXT DEFAULT 'unknown'
 );
 
-CREATE INDEX IF NOT EXISTS idx_telemetry_session ON telemetry(session_id, timestamp_epoch DESC);
-CREATE INDEX IF NOT EXISTS idx_telemetry_kind ON telemetry(event_kind, timestamp_epoch DESC);
+CREATE INDEX IF NOT EXISTS idx_telemetry_session ON telemetry(session_id, timestamp_epoch_ms DESC);
+CREATE INDEX IF NOT EXISTS idx_telemetry_kind ON telemetry(event_kind, timestamp_epoch_ms DESC);
 `;
 
 /**

@@ -53,8 +53,8 @@ CREATE TABLE IF NOT EXISTS artifact (
   scope             TEXT,
   status            TEXT NOT NULL DEFAULT 'active',
   confidence        REAL,
-  created_at_epoch  INTEGER NOT NULL,
-  updated_at_epoch  INTEGER NOT NULL,
+  created_at_epoch_ms  INTEGER NOT NULL,
+  updated_at_epoch_ms  INTEGER NOT NULL,
   session_id        TEXT,
   project           TEXT,
   embedding_ref     INTEGER,
@@ -63,9 +63,9 @@ CREATE TABLE IF NOT EXISTS artifact (
 );
 
 CREATE INDEX IF NOT EXISTS idx_artifact_kind
-  ON artifact(kind, created_at_epoch DESC);
+  ON artifact(kind, created_at_epoch_ms DESC);
 CREATE INDEX IF NOT EXISTS idx_artifact_project
-  ON artifact(project, kind, created_at_epoch DESC);
+  ON artifact(project, kind, created_at_epoch_ms DESC);
 CREATE INDEX IF NOT EXISTS idx_artifact_status
   ON artifact(status, kind);
 `;
@@ -93,7 +93,7 @@ CREATE TRIGGER IF NOT EXISTS artifact_register_kind
 AFTER INSERT ON artifact
 BEGIN
   INSERT INTO kind_registry(kind, first_seen_epoch, last_seen_epoch)
-    VALUES (NEW.kind, NEW.created_at_epoch, NEW.created_at_epoch)
+    VALUES (NEW.kind, NEW.created_at_epoch_ms, NEW.created_at_epoch_ms)
   ON CONFLICT(kind) DO UPDATE SET last_seen_epoch = excluded.last_seen_epoch;
 END;
 `;
@@ -112,10 +112,10 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_artifact_decision
   ON artifact(session_id, json_extract(data, '$.fingerprint'))
   WHERE kind = 'decision';
 CREATE INDEX IF NOT EXISTS idx_artifact_decision_session
-  ON artifact(session_id, created_at_epoch DESC)
+  ON artifact(session_id, created_at_epoch_ms DESC)
   WHERE kind = 'decision';
 CREATE INDEX IF NOT EXISTS idx_artifact_decision_project
-  ON artifact(project, created_at_epoch DESC)
+  ON artifact(project, created_at_epoch_ms DESC)
   WHERE kind = 'decision';
 
 -- experience_patterns (2 indexes)

@@ -342,7 +342,7 @@ export function initializeSchema(db: Database): void {
   // we need this guard so the INSERT below has a target table.
   db.exec(`CREATE TABLE IF NOT EXISTS schema_versions (
     version INTEGER PRIMARY KEY,
-    applied_at_epoch INTEGER NOT NULL DEFAULT (unixepoch())
+    applied_at_epoch_ms INTEGER NOT NULL DEFAULT (unixepoch() * 1000)
   );`);
 
   // Record schema version
