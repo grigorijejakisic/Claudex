@@ -56,7 +56,7 @@ CREATE TABLE IF NOT EXISTS artifact (
   created_at_epoch  INTEGER NOT NULL,
   updated_at_epoch  INTEGER NOT NULL,
   session_id        TEXT,
-  project_id        TEXT,
+  project           TEXT,
   embedding_ref     INTEGER,
   supersedes_id     TEXT REFERENCES artifact(id),
   data              TEXT NOT NULL DEFAULT '{}' CHECK(json_valid(data))
@@ -65,7 +65,7 @@ CREATE TABLE IF NOT EXISTS artifact (
 CREATE INDEX IF NOT EXISTS idx_artifact_kind
   ON artifact(kind, created_at_epoch DESC);
 CREATE INDEX IF NOT EXISTS idx_artifact_project
-  ON artifact(project_id, kind, created_at_epoch DESC);
+  ON artifact(project, kind, created_at_epoch DESC);
 CREATE INDEX IF NOT EXISTS idx_artifact_status
   ON artifact(status, kind);
 `;
