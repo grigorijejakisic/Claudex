@@ -9,6 +9,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
+import Database from 'better-sqlite3';
 
 import {
   HandoffHeader,
@@ -294,4 +295,166 @@ describe('round-trip render→parse', () => {
       expect(parsed!.created_at_epoch_ms).toBe(input.created_at_epoch_ms);
     });
   }
+});
+
+// ---------------------------------------------------------------------------
+// Group 6 — Phase 14-01 telemetry-on-rejection (parseHandoffHeader overload)
+// ---------------------------------------------------------------------------
+
+/**
+ * Helper: create a minimal in-memory DB with the telemetry table seeded,
+ * including the handoff_parse_failed event_kind in the CHECK constraint.
+ */
+function makeTestDb(): Database.Database {
+  const db = new Database(':memory:');
+  db.exec(`
+    CREATE TABLE telemetry (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      session_id TEXT NOT NULL,
+      event_kind TEXT NOT NULL CHECK (event_kind IN (
+        'hook_invocation', 'injection', 'observation_capture', 'decision_capture',
+        'checkpoint_write', 'enrichment', 'topic_shift', 'dedup', 'decay_prune', 'error',
+        'reranker_fallback', 'cross_project_ambiguous', 'cross_project_query_expansion',
+        'episodic_write_failure', 'signal_reread_after_surface', 'signal_retrieval_fallback',
+        'signal_transcript_injection_acceptance', 'signal_retrieved_but_unapplied',
+        'handoff_parse_failed'
+      )),
+      detail TEXT NOT NULL DEFAULT '{}' CHECK (json_valid(detail)),
+      latency_ms REAL,
+      timestamp_epoch INTEGER NOT NULL DEFAULT (unixepoch()),
+      adapter TEXT DEFAULT 'unknown'
+    );
+  `);
+  return db;
+}
+
+/**
+ * Helper: count handoff_parse_failed rows in the test DB.
+ */
+function countFailures(db: Database.Database): number {
+  const row = db.prepare(
+    `SELECT COUNT(*) AS n FROM telemetry WHERE event_kind = 'handoff_parse_failed'`
+  ).get() as { n: number };
+  return row.n;
+}
+
+/**
+ * Helper: get the first handoff_parse_failed row's parsed detail.
+ */
+function getFailureDetail(db: Database.Database): { reason: string; source_path: string | null } | null {
+  const row = db.prepare(
+    `SELECT detail FROM telemetry WHERE event_kind = 'handoff_parse_failed' ORDER BY id LIMIT 1`
+  ).get() as { detail: string } | undefined;
+  if (!row) return null;
+  return JSON.parse(row.detail);
+}
+
+/**
+ * Helper: get the first handoff_parse_failed row's session_id.
+ */
+function getFailureSessionId(db: Database.Database): string | null {
+  const row = db.prepare(
+    `SELECT session_id FROM telemetry WHERE event_kind = 'handoff_parse_failed' ORDER BY id LIMIT 1`
+  ).get() as { session_id: string } | undefined;
+  return row?.session_id ?? null;
+}
+
+describe('parseHandoffHeader — Phase 14 telemetry on rejection', () => {
+
+  it('test 1: db not supplied — existing single-arg behavior unchanged, no telemetry', () => {
+    // Single-arg invocation should still return null and not throw.
+    const raw = `---\nstatus: bogus\nphase: 5\n---\n`;
+    const result = parseHandoffHeader(raw);
+    expect(result).toBeNull();
+    // No db available — just confirm no exception is thrown.
+  });
+
+  it('test 2: no frontmatter — emits handoff_parse_failed with reason=no_frontmatter', () => {
+    const db = makeTestDb();
+    const raw = `# Just a heading\n\nSome body content with no frontmatter block.`;
+    const result = parseHandoffHeader(raw, { db });
+    expect(result).toBeNull();
+    expect(countFailures(db)).toBe(1);
+    const detail = getFailureDetail(db);
+    expect(detail?.reason).toBe('no_frontmatter');
+    db.close();
+  });
+
+  it('test 3: frontmatter missing status — emits with reason=missing_status', () => {
+    const db = makeTestDb();
+    const raw = `---\nphase: 5\n---\n# title\n`;
+    const result = parseHandoffHeader(raw, { db });
+    expect(result).toBeNull();
+    expect(countFailures(db)).toBe(1);
+    const detail = getFailureDetail(db);
+    expect(detail?.reason).toBe('missing_status');
+    db.close();
+  });
+
+  it('test 4: frontmatter status=invalid — emits with reason=invalid_status', () => {
+    const db = makeTestDb();
+    const raw = `---\nstatus: ACTIVE\nphase: 5\n---\n# title\n`;
+    const result = parseHandoffHeader(raw, { db });
+    expect(result).toBeNull();
+    expect(countFailures(db)).toBe(1);
+    const detail = getFailureDetail(db);
+    expect(detail?.reason).toBe('invalid_status');
+    db.close();
+  });
+
+  it('test 5: frontmatter missing phase — emits with reason=missing_phase', () => {
+    const db = makeTestDb();
+    const raw = `---\nstatus: active\n---\n# title\n`;
+    const result = parseHandoffHeader(raw, { db });
+    expect(result).toBeNull();
+    expect(countFailures(db)).toBe(1);
+    const detail = getFailureDetail(db);
+    expect(detail?.reason).toBe('missing_phase');
+    db.close();
+  });
+
+  it('test 6: valid input — emits NO telemetry row', () => {
+    const db = makeTestDb();
+    const raw = `---\nstatus: active\nphase: 5\n---\n# title\n`;
+    const result = parseHandoffHeader(raw, { db });
+    expect(result).not.toBeNull();
+    expect(countFailures(db)).toBe(0);
+    db.close();
+  });
+
+  it('test 7: db write failure (closed db) — does NOT throw; returns null normally', () => {
+    const db = makeTestDb();
+    db.close(); // close before use to simulate DB failure
+    const raw = `---\nstatus: bogus\nphase: 5\n---\n`;
+    let threw = false;
+    let result: ReturnType<typeof parseHandoffHeader> = null;
+    try {
+      result = parseHandoffHeader(raw, { db });
+    } catch {
+      threw = true;
+    }
+    expect(threw).toBe(false);
+    expect(result).toBeNull();
+  });
+
+  it('test 8: sourcePath populated in detail.source_path when supplied', () => {
+    const db = makeTestDb();
+    const raw = `---\nstatus: active\n---\n# title\n`; // missing phase
+    const result = parseHandoffHeader(raw, { db, sourcePath: '/projects/foo/ACTIVE.md' });
+    expect(result).toBeNull();
+    const detail = getFailureDetail(db);
+    expect(detail?.source_path).toBe('/projects/foo/ACTIVE.md');
+    db.close();
+  });
+
+  it('test 9: sessionId populated in row session_id column when supplied', () => {
+    const db = makeTestDb();
+    const raw = `# just body, no frontmatter`;
+    const result = parseHandoffHeader(raw, { db, sessionId: 'sess-abc-123' });
+    expect(result).toBeNull();
+    const sessionId = getFailureSessionId(db);
+    expect(sessionId).toBe('sess-abc-123');
+    db.close();
+  });
+
 });
