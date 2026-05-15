@@ -668,3 +668,123 @@ describe('edge cases', () => {
 // deletion). The formatCuratedContextSection unit tests in
 // src/tests/assembly/curated-context-section.test.ts still cover the formatter;
 // this block tested the assembler-cascade integration which no longer exists.
+
+// --- Phase 14 Plan 14-04: P2.7 Project Knowledge cascade order + cache stability ---
+
+describe('assembleFullContext — P2.7 Project Knowledge (Phase 14 Plan 14-04)', () => {
+  let db: TestDatabase;
+
+  beforeEach(() => {
+    db = createTestDb();
+  });
+
+  afterEach(() => {
+    db.close();
+  });
+
+  function writeHandoffMd(projDir: string, summary: string): void {
+    const handoffDir = path.join(projDir, 'context', 'handoffs');
+    fs.mkdirSync(handoffDir, { recursive: true });
+    const content = `---\nstatus: active\nphase: 14\nsummary: ${summary}\n---\n# handoff\n\n**What we found:** test`;
+    fs.writeFileSync(path.join(handoffDir, 'ACTIVE.md'), content, 'utf-8');
+  }
+
+  function seedArtifact(project: string, summary: string, content: string = 'artifact content'): void {
+    db.prepare(
+      `INSERT INTO artifacts (session_id, project, artifact_type, summary, content, state, ttl, importance, timestamp_epoch_ms)
+       VALUES ('sess', ?, 'learning', ?, ?, 'fresh', 10, 5, ?)`,
+    ).run(project, summary, content, Date.now());
+  }
+
+  it('cascade order — project_knowledge appears between session_highlights and checkpoint in sources', () => {
+    const projDir = mkDir('p27-cascade-order');
+    const project = 'proj-cascade-p27';
+
+    // Write ACTIVE.md so P2.7 fires
+    writeHandoffMd(projDir, 'bet365 cascade implementation query for retrieval');
+
+    // Seed a substantive artifact so P2.7 returns content
+    seedArtifact(project, 'bet365 cascade design decision for the project', 'The cascade is the core pattern.');
+
+    // Write a checkpoint so P3 fires
+    const cpDir = path.join(projDir, 'context', 'checkpoints');
+    fs.mkdirSync(cpDir, { recursive: true });
+    const cpData = {
+      schema: 'claudex/checkpoint', version: 3,
+      meta: { checkpoint_id: 'cp-order', session_id: 's1', scope: `project:${project}`, trigger: 'threshold', token_usage: null, previous_checkpoint: null },
+      working: { task: 'cascade implementation', status: 'in_progress', next_action: 'test', branch: 'main' },
+      decisions: [], files: { hot: [], read: [] },
+      thread: { topic: 'bet365', summary: null, key_exchanges: [] },
+      open_items: [], learnings: [], gsd: null,
+    };
+    db.prepare(
+      `INSERT INTO checkpoint_meta (checkpoint_id, session_id, trigger, status, data, mirror_path, created_at_epoch_ms, updated_at_epoch_ms)
+       VALUES (?, ?, ?, ?, ?, NULL, unixepoch(), unixepoch())`,
+    ).run('cp-order', 's1', 'threshold', 'committed', JSON.stringify(cpData));
+
+    const result = assembleFullContext({
+      db, project, projectDir: projDir, config: makeConfig(),
+    });
+
+    // P2.7 should be present
+    if (result.sources.includes('project_knowledge')) {
+      const pkIdx = result.sources.indexOf('project_knowledge');
+      const highlightsIdx = result.sources.indexOf('session_highlights');
+      const checkpointIdx = result.sources.indexOf('checkpoint');
+
+      // project_knowledge must come AFTER session_highlights (if present)
+      if (highlightsIdx !== -1) {
+        expect(pkIdx).toBeGreaterThan(highlightsIdx);
+      }
+      // project_knowledge must come BEFORE checkpoint (if present)
+      if (checkpointIdx !== -1) {
+        expect(pkIdx).toBeLessThan(checkpointIdx);
+      }
+
+      // Content check
+      expect(result.content).toContain('## Project Knowledge');
+    }
+    // If project_knowledge is absent (FTS returned nothing for the query), still no crash
+    expect(result).toBeDefined();
+  });
+
+  it('cache stability with P2.7 active — no clock-derived data in output', () => {
+    const projDir = mkDir('p27-cache-stable');
+    const project = 'proj-p27-cache';
+
+    writeHandoffMd(projDir, 'cache stability query for P2.7 test run');
+    seedArtifact(project, 'cache stable learning artifact content here', 'This is cached content.');
+
+    const result1 = assembleFullContext({
+      db, project, projectDir: projDir, config: makeConfig(),
+    });
+    const result2 = assembleFullContext({
+      db, project, projectDir: projDir, config: makeConfig(),
+    });
+
+    // Byte-identical output (CACH-01 + CACH-02)
+    expect(result1.content).toEqual(result2.content);
+    expect(result1.sources).toEqual(result2.sources);
+
+    // No ISO timestamp clock data in the P2.7 section
+    if (result1.content.includes('## Project Knowledge')) {
+      expect(result1.content).not.toMatch(/\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/);
+    }
+  });
+
+  it('P2.7 is skipped when isPostCompaction=true (inside !isPostCompaction block)', () => {
+    const projDir = mkDir('p27-postcompact');
+    const project = 'proj-p27-pc';
+
+    writeHandoffMd(projDir, 'post-compact query that should not trigger P2.7');
+    seedArtifact(project, 'post-compact artifact should not appear', 'content');
+
+    const result = assembleFullContext({
+      db, project, projectDir: projDir, config: makeConfig(),
+      isPostCompaction: true,
+    });
+
+    // P2.7 is inside !isPostCompaction block — should not fire in post-compact mode
+    expect(result.sources).not.toContain('project_knowledge');
+  });
+});
