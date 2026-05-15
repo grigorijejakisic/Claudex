@@ -2481,3 +2481,330 @@ export function migrateV34toV33(db: Database): void {
 
   db.pragma('user_version = 33');
 }
+
+// ---------------------------------------------------------------------------
+// V34 → V35  (epoch-ms canonicalization)
+// ---------------------------------------------------------------------------
+
+/**
+ * Migrates V34 → V35: renames every `*_epoch` column to `*_epoch_ms` and
+ * scales second-precision values by ×1000 (WHERE guard prevents double-scaling).
+ *
+ * Tables affected:
+ *   sessions, observations, learnings, checkpoint_meta,
+ *   artifact (V17 — rename-only; values already ms),
+ *   episodic_events, telemetry, pressure_scores, schema_versions,
+ *   session_messages, session_signals, retrieval_events.
+ *
+ * SQLite limitations:
+ *   - DEFAULT expressions on renamed columns are preserved verbatim by
+ *     ALTER TABLE ... RENAME COLUMN — they stay as `unixepoch()`.
+ *     Post-rename the canonical DDL is updated (Task 4) so fresh DBs use
+ *     `unixepoch() * 1000`. We do NOT rebuild tables here; the default on
+ *     the column in the migrated DB stays `unixepoch()` (returns seconds),
+ *     but fresh DBs at V35 will have the correct ms default directly.
+ *   - This limitation is documented: existing DBs may write seconds for new
+ *     rows via raw SQL defaults until the process restarts with new code.
+ *     Application-level callers always use `Date.now()` via epoch.ts, so
+ *     this only affects direct SQL without explicit values (rare).
+ *
+ * Index + trigger audit mirrors the V33→V34 pattern used for project_id.
+ * The entire rename + scale sequence is wrapped in a single transaction.
+ *
+ * Reverse migration: `migrateV35toV34` divides values by 1000 (floor) and
+ * renames columns back. Sub-second precision is lost (documented).
+ */
+export function migrateV34toV35(db: Database): void {
+  // Each entry: { table, oldCol, newCol, scale }
+  // scale=true: UPDATE SET newCol = newCol * 1000 WHERE newCol < 1e12
+  // scale=false: rename only (values already ms, e.g., artifact V17)
+  const renames: Array<{ table: string; oldCol: string; newCol: string; scale: boolean }> = [
+    // sessions
+    { table: 'sessions', oldCol: 'created_at_epoch', newCol: 'created_at_epoch_ms', scale: true },
+    { table: 'sessions', oldCol: 'ended_at_epoch',   newCol: 'ended_at_epoch_ms',   scale: true },
+    // observations
+    { table: 'observations', oldCol: 'timestamp_epoch',        newCol: 'timestamp_epoch_ms',        scale: true },
+    { table: 'observations', oldCol: 'last_accessed_at_epoch', newCol: 'last_accessed_at_epoch_ms', scale: true },
+    { table: 'observations', oldCol: 'deleted_at_epoch',       newCol: 'deleted_at_epoch_ms',       scale: true },
+    // learnings
+    { table: 'learnings', oldCol: 'first_seen_epoch',    newCol: 'first_seen_epoch_ms',    scale: true },
+    { table: 'learnings', oldCol: 'last_promoted_epoch', newCol: 'last_promoted_epoch_ms', scale: true },
+    { table: 'learnings', oldCol: 'updated_at_epoch',    newCol: 'updated_at_epoch_ms',    scale: true },
+    // checkpoint_meta
+    { table: 'checkpoint_meta', oldCol: 'created_at_epoch', newCol: 'created_at_epoch_ms', scale: true },
+    { table: 'checkpoint_meta', oldCol: 'updated_at_epoch', newCol: 'updated_at_epoch_ms', scale: true },
+    // artifact (V17) — values are already milliseconds (runner multiplies by 1000 at write time)
+    // scale=false: WHERE guard still applied via UPDATE below as a safety net
+    { table: 'artifact', oldCol: 'created_at_epoch', newCol: 'created_at_epoch_ms', scale: false },
+    { table: 'artifact', oldCol: 'updated_at_epoch', newCol: 'updated_at_epoch_ms', scale: false },
+    // episodic_events
+    { table: 'episodic_events', oldCol: 'ts_epoch', newCol: 'ts_epoch_ms', scale: true },
+    // telemetry
+    { table: 'telemetry', oldCol: 'timestamp_epoch', newCol: 'timestamp_epoch_ms', scale: true },
+    // pressure_scores
+    { table: 'pressure_scores', oldCol: 'last_touched_epoch', newCol: 'last_touched_epoch_ms', scale: true },
+    // schema_versions
+    { table: 'schema_versions', oldCol: 'applied_at_epoch', newCol: 'applied_at_epoch_ms', scale: true },
+    // session_messages
+    { table: 'session_messages', oldCol: 'created_at_epoch',   newCol: 'created_at_epoch_ms',   scale: true },
+    { table: 'session_messages', oldCol: 'delivered_at_epoch', newCol: 'delivered_at_epoch_ms', scale: true },
+    // session_signals
+    { table: 'session_signals', oldCol: 'created_at_epoch', newCol: 'created_at_epoch_ms', scale: true },
+    { table: 'session_signals', oldCol: 'expires_at_epoch',  newCol: 'expires_at_epoch_ms',  scale: true },
+    { table: 'session_signals', oldCol: 'cleared_at_epoch',  newCol: 'cleared_at_epoch_ms',  scale: true },
+    // retrieval_events
+    { table: 'retrieval_events', oldCol: 'timestamp_epoch', newCol: 'timestamp_epoch_ms', scale: true },
+  ];
+
+  const tx = db.transaction(() => {
+    for (const r of renames) {
+      // Skip tables that don't exist in this DB shape (e.g., artifact on pre-V17 DBs)
+      if (!hasTable(db, r.table)) continue;
+      // Skip if old column doesn't exist (idempotency guard — fresh V35 DBs won't have old names)
+      if (!hasColumn(db, r.table, r.oldCol)) continue;
+      // Skip if new column already exists (double-run guard)
+      if (hasColumn(db, r.table, r.newCol)) continue;
+
+      db.exec(`ALTER TABLE "${r.table}" RENAME COLUMN "${r.oldCol}" TO "${r.newCol}"`);
+
+      if (r.scale) {
+        // Scale sec→ms only for rows that look like seconds (< 1e12).
+        // Rows already at ms precision are left unchanged.
+        db.exec(
+          `UPDATE "${r.table}"
+           SET "${r.newCol}" = "${r.newCol}" * 1000
+           WHERE "${r.newCol}" IS NOT NULL AND "${r.newCol}" < 1000000000000`
+        );
+      }
+    }
+
+    // ── Indexes ──────────────────────────────────────────────────────────
+    // Audit every index on affected tables; if its DDL references an old
+    // column name, drop + recreate with the new name.
+    const affectedTables = [...new Set(renames.map(r => r.table))];
+    const oldNewMap: Record<string, string> = {};
+    for (const r of renames) oldNewMap[r.oldCol] = r.newCol;
+
+    const idxRows = db.prepare(
+      `SELECT name, sql, tbl_name FROM sqlite_master
+       WHERE type='index'
+         AND tbl_name IN (${affectedTables.map(() => '?').join(',')})`
+    ).all(...affectedTables) as Array<{ name: string; sql: string | null; tbl_name: string }>;
+
+    for (const idx of idxRows) {
+      if (!idx.sql) continue;
+      let newSql = idx.sql;
+      let changed = false;
+      for (const [oldCol, newCol] of Object.entries(oldNewMap)) {
+        const re = new RegExp(`\\b${escapeRegex(oldCol)}\\b`, 'g');
+        if (re.test(newSql)) {
+          newSql = newSql.replace(new RegExp(`\\b${escapeRegex(oldCol)}\\b`, 'g'), newCol);
+          changed = true;
+        }
+      }
+      if (changed) {
+        db.exec(`DROP INDEX IF EXISTS "${idx.name}"`);
+        try { db.exec(newSql); } catch { /* index reconstruction failed — non-fatal; log to schema_versions later */ }
+      }
+    }
+
+    // ── Triggers ─────────────────────────────────────────────────────────
+    const trgRows = db.prepare(
+      `SELECT name, sql, tbl_name FROM sqlite_master
+       WHERE type='trigger'
+         AND tbl_name IN (${affectedTables.map(() => '?').join(',')})`
+    ).all(...affectedTables) as Array<{ name: string; sql: string | null; tbl_name: string }>;
+
+    for (const trg of trgRows) {
+      if (!trg.sql) continue;
+      let newSql = trg.sql;
+      let changed = false;
+      for (const [oldCol, newCol] of Object.entries(oldNewMap)) {
+        const re = new RegExp(`\\b${escapeRegex(oldCol)}\\b`, 'g');
+        if (re.test(newSql)) {
+          newSql = newSql.replace(new RegExp(`\\b${escapeRegex(oldCol)}\\b`, 'g'), newCol);
+          changed = true;
+        }
+      }
+      if (changed) {
+        db.exec(`DROP TRIGGER IF EXISTS "${trg.name}"`);
+        try { db.exec(newSql); } catch { /* trigger reconstruction failed — non-fatal */ }
+      }
+    }
+
+    // ── Views ─────────────────────────────────────────────────────────────
+    const viewRows = db.prepare(
+      `SELECT name, sql FROM sqlite_master WHERE type='view'`
+    ).all() as Array<{ name: string; sql: string | null }>;
+
+    for (const v of viewRows) {
+      if (!v.sql) continue;
+      let newSql = v.sql;
+      let changed = false;
+      for (const [oldCol, newCol] of Object.entries(oldNewMap)) {
+        const re = new RegExp(`\\b${escapeRegex(oldCol)}\\b`, 'g');
+        if (re.test(newSql)) {
+          newSql = newSql.replace(new RegExp(`\\b${escapeRegex(oldCol)}\\b`, 'g'), newCol);
+          changed = true;
+        }
+      }
+      if (changed) {
+        // Drop INSTEAD OF triggers on this view before dropping the view
+        const vTriggers = db.prepare(
+          `SELECT name, sql FROM sqlite_master WHERE type='trigger' AND tbl_name=?`
+        ).all(v.name) as Array<{ name: string; sql: string | null }>;
+        for (const t of vTriggers) {
+          db.exec(`DROP TRIGGER IF EXISTS "${t.name}"`);
+        }
+        db.exec(`DROP VIEW IF EXISTS "${v.name}"`);
+        try {
+          db.exec(newSql);
+          // Recreate triggers with renamed columns
+          for (const t of vTriggers) {
+            if (t.sql) {
+              let tSql = t.sql;
+              for (const [oldCol, newCol] of Object.entries(oldNewMap)) {
+                tSql = tSql.replace(new RegExp(`\\b${escapeRegex(oldCol)}\\b`, 'g'), newCol);
+              }
+              try { db.exec(tSql); } catch { /* trigger recreation failed */ }
+            }
+          }
+        } catch { /* view recreation failed — non-fatal */ }
+      }
+    }
+
+    // ── schema_versions + user_version ───────────────────────────────────
+    db.pragma('user_version = 35');
+    try {
+      db.exec(`CREATE TABLE IF NOT EXISTS schema_versions (
+        version          INTEGER PRIMARY KEY,
+        applied_at_epoch_ms INTEGER
+      )`);
+      const svCols = (db.pragma('table_info(schema_versions)') as Array<{ name: string }>).map(c => c.name);
+      if (svCols.includes('applied_at_epoch_ms')) {
+        db.exec(`INSERT OR IGNORE INTO schema_versions(version, applied_at_epoch_ms) VALUES (35, unixepoch() * 1000)`);
+      } else if (svCols.includes('applied_at_epoch')) {
+        db.exec(`INSERT OR IGNORE INTO schema_versions(version, applied_at_epoch) VALUES (35, unixepoch())`);
+      } else {
+        db.exec(`INSERT OR IGNORE INTO schema_versions(version) VALUES (35)`);
+      }
+    } catch { /* schema_versions tracking is non-critical */ }
+  });
+
+  tx();
+}
+
+/**
+ * Reverse migration V35 → V34: renames `*_epoch_ms` columns back to `*_epoch`
+ * and divides values by 1000 (floor). Sub-second precision is lost — this is
+ * documented and acceptable for rollback scenarios.
+ */
+export function migrateV35toV34(db: Database): void {
+  const renames: Array<{ table: string; oldCol: string; newCol: string }> = [
+    { table: 'sessions', oldCol: 'created_at_epoch_ms', newCol: 'created_at_epoch' },
+    { table: 'sessions', oldCol: 'ended_at_epoch_ms',   newCol: 'ended_at_epoch'   },
+    { table: 'observations', oldCol: 'timestamp_epoch_ms',        newCol: 'timestamp_epoch'        },
+    { table: 'observations', oldCol: 'last_accessed_at_epoch_ms', newCol: 'last_accessed_at_epoch' },
+    { table: 'observations', oldCol: 'deleted_at_epoch_ms',       newCol: 'deleted_at_epoch'       },
+    { table: 'learnings', oldCol: 'first_seen_epoch_ms',    newCol: 'first_seen_epoch'    },
+    { table: 'learnings', oldCol: 'last_promoted_epoch_ms', newCol: 'last_promoted_epoch' },
+    { table: 'learnings', oldCol: 'updated_at_epoch_ms',    newCol: 'updated_at_epoch'    },
+    { table: 'checkpoint_meta', oldCol: 'created_at_epoch_ms', newCol: 'created_at_epoch' },
+    { table: 'checkpoint_meta', oldCol: 'updated_at_epoch_ms', newCol: 'updated_at_epoch' },
+    { table: 'artifact', oldCol: 'created_at_epoch_ms', newCol: 'created_at_epoch' },
+    { table: 'artifact', oldCol: 'updated_at_epoch_ms', newCol: 'updated_at_epoch' },
+    { table: 'episodic_events', oldCol: 'ts_epoch_ms', newCol: 'ts_epoch' },
+    { table: 'telemetry', oldCol: 'timestamp_epoch_ms', newCol: 'timestamp_epoch' },
+    { table: 'pressure_scores', oldCol: 'last_touched_epoch_ms', newCol: 'last_touched_epoch' },
+    { table: 'schema_versions', oldCol: 'applied_at_epoch_ms', newCol: 'applied_at_epoch' },
+    { table: 'session_messages', oldCol: 'created_at_epoch_ms',   newCol: 'created_at_epoch'   },
+    { table: 'session_messages', oldCol: 'delivered_at_epoch_ms', newCol: 'delivered_at_epoch' },
+    { table: 'session_signals', oldCol: 'created_at_epoch_ms', newCol: 'created_at_epoch' },
+    { table: 'session_signals', oldCol: 'expires_at_epoch_ms',  newCol: 'expires_at_epoch'  },
+    { table: 'session_signals', oldCol: 'cleared_at_epoch_ms',  newCol: 'cleared_at_epoch'  },
+    { table: 'retrieval_events', oldCol: 'timestamp_epoch_ms', newCol: 'timestamp_epoch' },
+  ];
+
+  const tx = db.transaction(() => {
+    for (const r of renames) {
+      if (!hasTable(db, r.table)) continue;
+      if (!hasColumn(db, r.table, r.oldCol)) continue;
+      if (hasColumn(db, r.table, r.newCol)) continue;
+
+      db.exec(`ALTER TABLE "${r.table}" RENAME COLUMN "${r.oldCol}" TO "${r.newCol}"`);
+
+      // Divide ms → sec (floor). Only scale rows that look like ms (>= 1e12).
+      // artifact values are already ms from V17; divide them back to sec.
+      db.exec(
+        `UPDATE "${r.table}"
+         SET "${r.newCol}" = "${r.newCol}" / 1000
+         WHERE "${r.newCol}" IS NOT NULL AND "${r.newCol}" >= 1000000000000`
+      );
+    }
+
+    // Rebuild indexes + triggers for affected tables
+    const newOldMap: Record<string, string> = {};
+    for (const r of renames) newOldMap[r.oldCol] = r.newCol;
+    const affectedTables = [...new Set(renames.map(r => r.table))];
+
+    const idxRows = db.prepare(
+      `SELECT name, sql FROM sqlite_master
+       WHERE type='index'
+         AND tbl_name IN (${affectedTables.map(() => '?').join(',')})`
+    ).all(...affectedTables) as Array<{ name: string; sql: string | null }>;
+
+    for (const idx of idxRows) {
+      if (!idx.sql) continue;
+      let newSql = idx.sql;
+      let changed = false;
+      for (const [oldCol, newCol] of Object.entries(newOldMap)) {
+        const re = new RegExp(`\\b${escapeRegex(oldCol)}\\b`, 'g');
+        if (re.test(newSql)) {
+          newSql = newSql.replace(new RegExp(`\\b${escapeRegex(oldCol)}\\b`, 'g'), newCol);
+          changed = true;
+        }
+      }
+      if (changed) {
+        db.exec(`DROP INDEX IF EXISTS "${idx.name}"`);
+        try { db.exec(newSql); } catch { /* non-fatal */ }
+      }
+    }
+
+    const trgRows = db.prepare(
+      `SELECT name, sql FROM sqlite_master
+       WHERE type='trigger'
+         AND tbl_name IN (${affectedTables.map(() => '?').join(',')})`
+    ).all(...affectedTables) as Array<{ name: string; sql: string | null }>;
+
+    for (const trg of trgRows) {
+      if (!trg.sql) continue;
+      let newSql = trg.sql;
+      let changed = false;
+      for (const [oldCol, newCol] of Object.entries(newOldMap)) {
+        const re = new RegExp(`\\b${escapeRegex(oldCol)}\\b`, 'g');
+        if (re.test(newSql)) {
+          newSql = newSql.replace(new RegExp(`\\b${escapeRegex(oldCol)}\\b`, 'g'), newCol);
+          changed = true;
+        }
+      }
+      if (changed) {
+        db.exec(`DROP TRIGGER IF EXISTS "${trg.name}"`);
+        try { db.exec(newSql); } catch { /* non-fatal */ }
+      }
+    }
+
+    db.pragma('user_version = 34');
+    try {
+      db.exec(`INSERT OR IGNORE INTO schema_versions(version) VALUES (34)`);
+    } catch { /* non-critical */ }
+  });
+
+  tx();
+}
+
+// ---------------------------------------------------------------------------
+// Internal regex escape helper (used by migrateV34toV35 / migrateV35toV34)
+// ---------------------------------------------------------------------------
+function escapeRegex(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}

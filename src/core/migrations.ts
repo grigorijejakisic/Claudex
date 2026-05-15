@@ -54,6 +54,7 @@ import {
   migrateV31toV32,
   migrateV32toV33,
   migrateV33toV34,
+  migrateV34toV35,
   migrateSchemaFixes,
   cleanupOrphanTables,
   upgradeV2SchemaInPlace,
@@ -99,6 +100,7 @@ export { migrateV14toV15 };
  *   32 — v6 Phase 8: transcript_chunk_v6 + vec_transcript_chunks_v6 (TRX-05)
  *   33 — v6 Phase 13 Plan 03: session_highlights table (per-session frame artifacts)
  *   34 — Phase 14 Plan 14-02: project_id → project column rename on artifact + transcript_chunk_v6
+ *   35 — Phase 14 Plan 14-06: *_epoch → *_epoch_ms rename + sec→ms scaling across all project tables
  *
  * Dual version tracking:
  * Both `PRAGMA user_version` and `schema_versions` table are needed:
@@ -113,7 +115,7 @@ export { migrateV14toV15 };
  * `claudex doctor` (DIAG-05) reads this to verify the on-disk DB is in sync.
  * Bumping a migration must bump this constant in lockstep.
  */
-export const TARGET_USER_VERSION = 34;
+export const TARGET_USER_VERSION = 35;
 
 export function runMigrations(db: Database): void {
   const row = db.pragma('user_version') as Array<{ user_version: number }>;
@@ -163,6 +165,7 @@ export function runMigrations(db: Database): void {
     [31, () => { migrateV31toV32(db); }],
     [32, () => { migrateV32toV33(db); }],
     [33, () => { migrateV33toV34(db); }],
+    [34, () => { migrateV34toV35(db); }],
   ];
 
   // Handle special cases for version 0 and 1
@@ -447,6 +450,14 @@ export function initializeSchema(db: Database): void {
       // Fresh DB or already-renamed DB — just bump the version.
       db.pragma('user_version = 34');
     }
+  }
+
+  // Phase 14 Plan 14-06 (V35): rename every *_epoch column to *_epoch_ms and
+  // scale second-precision values by ×1000 across all project tables.
+  // Idempotent: hasColumn guard in migrateV34toV35 skips already-renamed cols.
+  // Fresh DBs at V35 come up with the new column names directly (Task 4 DDL).
+  if (currentUv < 35) {
+    migrateV34toV35(db);
   }
 
   // Phase 4 (V28): per-connection sidecar + TEMP TRIGGER guarding writes
