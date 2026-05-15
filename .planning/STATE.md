@@ -75,6 +75,20 @@ Promoted to standard practice 2026-05-05. Mandatory for v6 P9 empirical phase an
 - Standing user directive 2026-05-08: autonomous through v6 milestone end; operator-confirms public push at v6.0.0 tag (same pattern as v5). v6 milestone now CLOSED; next operator action is the public push.
 - v6.x or v7+ deferred ideas: per-kind routing weight tuning, cross-encoder re-bind on grown corpus, default tuning from production telemetry, kind-a/kind-c null-result investigation, retention policy (forgetting-curve), cross-harness transcript sources. See CHANGELOG [6.0.0] § Deferred and 10-CONTEXT.md § Deferred Ideas.
 
+## Phase 14 Progress (Substrate Coherence)
+
+- Plan 14-01 (handoff schema): COMPLETE — commit `see 14-01-SUMMARY.md`
+- Plan 14-02 (project_id→project): COMPLETE — commit `see 14-02-SUMMARY.md`
+- Plan 14-03 (experience_tier cursor): IN PLAN
+- Plan 14-04 (session-signals audit): IN PLAN
+- Plan 14-05 (Wave 1 integration): IN PLAN
+- Plan 14-06 (epoch-ms canonicalization): **COMPLETE 2026-05-16** — V35 migration + 166 files canonicalized. Starting failures: 38 files / 171 tests. Final: 5 files / 31 tests (all pre-existing). Commits: 05e9594, 0276a78. Key decisions: TARGET_USER_VERSION=35; WHERE guard `< 1e12`; cutoffMs() vs cutoff() distinction preserved.
+- Plan 14-08 (Wave 2 integration): COMPLETE — see 14-08-SUMMARY.md
+
+### Decisions
+
+- 2026-05-16: V35 epoch-ms canonicalization — 16 tables renamed `*_epoch → *_epoch_ms`, scaled sec→ms. 10 tables intentionally excluded (experience_patterns, session_events, etc.). topicalRelevance cap in computeArtifactScore deferred (unimplemented Phase 12 feature).
+
 ## Accumulated Context
 
 ### Roadmap Evolution
