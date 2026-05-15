@@ -100,13 +100,13 @@ function seedActiveProjects(
   // reflect these. Use unique IDs to satisfy the PRIMARY KEY on V17.artifact.
   let seq = 0;
   const stmt = d.prepare(
-    `INSERT INTO artifact (id, kind, title, body, status, created_at_epoch, updated_at_epoch, project_id, data)
+    `INSERT INTO artifact (id, kind, title, body, status, created_at_epoch, updated_at_epoch, project, data)
      VALUES (?, 'test_seed', ?, 'body', 'active', ?, ?, ?, '{}')`,
   );
   for (const row of rows) {
     for (let i = 0; i < row.edits; i++) {
       const id = `seed-ap-${row.project_id}-${seq++}`;
-      stmt.run(id, `t${seq}`, now(), row.last_touch ?? now(), row.project_id);
+      stmt.run(id, `t${seq}`, now(), row.last_touch ?? now(), row.project_id); // JS prop → project column
     }
   }
 }
@@ -118,7 +118,7 @@ function seedTranscriptChunks(
 ): void {
   let seq = 0;
   const stmt = d.prepare(
-    `INSERT INTO artifact (id, kind, title, body, status, created_at_epoch, updated_at_epoch, project_id, session_id, data)
+    `INSERT INTO artifact (id, kind, title, body, status, created_at_epoch, updated_at_epoch, project, session_id, data)
      VALUES (?, 'transcript_chunk', ?, 'chunk body', 'active', ?, ?, ?, ?, ?)`,
   );
   for (const c of chunks) {

@@ -49,12 +49,12 @@ describe('V17 learnings view — kernel + INSTEAD OF', () => {
       VALUES (?, ?, ?, ?)
     `).run('claudex-v3', 'crux', 'fp-1', 'test lesson');
 
-    const art = db.prepare('SELECT id, kind, body, project_id FROM artifact').get() as {
-      id: string; kind: string; body: string; project_id: string;
+    const art = db.prepare('SELECT id, kind, body, project FROM artifact').get() as {
+      id: string; kind: string; body: string; project: string;
     };
     expect(art.kind).toBe('learning');
     expect(art.body).toBe('test lesson');
-    expect(art.project_id).toBe('claudex-v3');
+    expect(art.project).toBe('claudex-v3');
 
     const map = db.prepare('SELECT legacy_table, legacy_id, new_uuid FROM legacy_id_map').get() as {
       legacy_table: string; legacy_id: number; new_uuid: string;

@@ -144,12 +144,12 @@ describe('directive-detector integration with Angel heartbeat', () => {
 
     const tick = await heartbeatTick(mkCtx(db));
 
-    const rows = db.prepare(`SELECT id, scope, project_id, session_id FROM artifact WHERE kind='directive_rule'`).all() as Array<{ id: string; scope: string; project_id: string; session_id: string }>;
+    const rows = db.prepare(`SELECT id, scope, project, session_id FROM artifact WHERE kind='directive_rule'`).all() as Array<{ id: string; scope: string; project: string; session_id: string }>;
     expect(rows.length).toBe(2);
     const scopes = rows.map(r => r.scope).sort();
     expect(scopes).toEqual(['project', 'session']);
     for (const r of rows) {
-      expect(r.project_id).toBe(project);
+      expect(r.project).toBe(project);
       expect(r.session_id).toBe(sessionId);
     }
 

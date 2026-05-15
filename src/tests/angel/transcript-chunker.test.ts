@@ -62,7 +62,7 @@ interface ChunkRow {
   body: string;
   data: string;
   session_id: string | null;
-  project_id: string | null;
+  project: string | null;
   embedding_ref: number | null;
   created_at_epoch: number;
 }
@@ -70,7 +70,7 @@ interface ChunkRow {
 function listChunks(db: TestDatabase, sessionId: string): ChunkRow[] {
   return db
     .prepare(
-      `SELECT id, kind, title, body, data, session_id, project_id, embedding_ref, created_at_epoch
+      `SELECT id, kind, title, body, data, session_id, project, embedding_ref, created_at_epoch
          FROM artifact
         WHERE kind = 'transcript_chunk' AND session_id = ?
         ORDER BY json_extract(data, '$.turn_range[0]') ASC`,
@@ -111,7 +111,7 @@ describe('chunkSessionTranscript', () => {
     db.prepare(
       `INSERT INTO artifact(
          id, kind, title, body, scope, status, confidence,
-         created_at_epoch, updated_at_epoch, session_id, project_id, data
+         created_at_epoch, updated_at_epoch, session_id, project, data
        ) VALUES ('pre', 'transcript_chunk', 'seed', 'pre-body', NULL, 'active', NULL,
                  1000, 1000, ?, ?, '{}')`,
     ).run(sessionId, project);
@@ -155,7 +155,7 @@ describe('chunkSessionTranscript', () => {
     expect(chunks[0].title).toBe('setup');
     expect(chunks[0].embedding_ref).toBeNull();
     expect(chunks[0].session_id).toBe(sessionId);
-    expect(chunks[0].project_id).toBe(project);
+    expect(chunks[0].project).toBe(project);
     const data = JSON.parse(chunks[0].data) as { turn_range: number[]; topic_label: string };
     expect(data.turn_range).toEqual([1, 3]);
     expect(data.topic_label).toBe('setup');
