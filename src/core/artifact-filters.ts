@@ -150,13 +150,19 @@ export function isSubstantive(artifact: ArtifactSubstanceShape): boolean {
  * Returns a SQL WHERE-clause fragment (no leading WHERE keyword) that encodes
  * the same predicate as `isSubstantive`, scoped to the supplied table alias.
  *
+ * **Target table:** the legacy `artifacts` table, which has `artifact_type`
+ * but NOT `kind`. The V17 `artifact` table has `kind` but not `artifact_type`.
+ * This clause is written for the legacy table. V17 queries must build their
+ * own clause using `kind` in place of `artifact_type` — or use `isSubstantive`
+ * (the JS predicate) after materializing rows.
+ *
  * Example:
  * ```ts
  * const sql = `SELECT * FROM artifacts a WHERE ${substantiveSqlClause('a')}`;
  * ```
  *
  * The fragment assumes the table has at minimum these columns:
- *   - `artifact_type TEXT` (legacy) or `kind TEXT` (V17)
+ *   - `artifact_type TEXT` (legacy artifacts table)
  *   - `summary TEXT`
  *   - `importance INTEGER`
  *
@@ -183,7 +189,8 @@ export function substantiveSqlClause(tableAlias: string): string {
 
   const a = tableAlias;
 
-  // Certified-substantive type list (legacy artifact_type).
+  // Certified-substantive type list (legacy artifact_type values).
+  // `observation` is intentionally absent — observations must pass the gate below.
   const legacyTypes = [
     "'learning'",
     "'decision'",
@@ -194,27 +201,9 @@ export function substantiveSqlClause(tableAlias: string): string {
     "'handoff'",
   ].join(', ');
 
-  // Certified-substantive kind list (V17).
-  const v17Kinds = [
-    "'learning'",
-    "'decision'",
-    "'memory_file'",
-    "'flow'",
-    "'milestone'",
-    "'entity_summary'",
-    "'handoff'",
-    "'mental_model'",
-    "'directive_rule'",
-    "'critical_rule'",
-    "'angel_opinion'",
-    "'experience_pattern'",
-  ].join(', ');
-
-  // Noise prefix GLOB pattern (SQLite GLOB is case-sensitive, unlike LIKE).
-  // We match any summary that starts with one of the CC verb prefixes.
-  // SQLite GLOB '*' matches any sequence; we match prefix via [A-Z]* pattern.
-  // Pattern: 'Read: *' etc — using GLOB for prefix match (case-sensitive).
-  // We use the OR chain because GLOB doesn't support alternation natively.
+  // Noise prefix GLOB patterns (SQLite GLOB is case-sensitive, unlike LIKE).
+  // These match tool-call-trace summaries that start with a CC verb + colon.
+  // The OR chain is necessary because SQLite GLOB does not support alternation.
   const noiseGlobCondition = [
     `${a}.summary GLOB 'Read: *'`,
     `${a}.summary GLOB 'Edit: *'`,
@@ -228,14 +217,13 @@ export function substantiveSqlClause(tableAlias: string): string {
   ].join(' OR ');
 
   return (
-    // Not a noise prefix
+    // Rule (b): Not a noise prefix
     `NOT (${noiseGlobCondition})` +
-    // AND (is a certified-substantive legacy type OR V17 kind OR passes observation gate)
+    // Rules (a) + (c): is a certified-substantive legacy type OR passes observation gate
     ` AND (` +
       `${a}.artifact_type IN (${legacyTypes})` +
-      ` OR ${a}.kind IN (${v17Kinds})` +
       ` OR (` +
-        `(${a}.artifact_type = 'observation' OR ${a}.kind = 'observation')` +
+        `${a}.artifact_type = 'observation'` +
         ` AND ${a}.importance >= 4` +
         ` AND LENGTH(${a}.summary) >= 60` +
       `)` +

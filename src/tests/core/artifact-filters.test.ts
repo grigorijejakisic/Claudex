@@ -324,14 +324,17 @@ describe('substantiveSqlClause — SQL fragment', () => {
     expect(clause).toContain('>= 60');
   });
 
-  it('clause contains certified-substantive type list', () => {
+  it('clause contains certified-substantive legacy type list (no V17 kinds — legacy table only)', () => {
     const clause = substantiveSqlClause('a');
+    // Legacy types that must be present
     expect(clause).toContain("'learning'");
     expect(clause).toContain("'decision'");
     expect(clause).toContain("'memory_file'");
     expect(clause).toContain("'handoff'");
-    expect(clause).toContain("'mental_model'");
-    expect(clause).toContain("'angel_opinion'");
+    // V17 kinds are JS-only; the SQL clause targets the legacy artifacts table
+    // which does not have a `kind` column. Document this intentional design:
+    expect(clause).not.toContain("'mental_model'");
+    expect(clause).not.toContain("'angel_opinion'");
   });
 });
 
@@ -345,17 +348,29 @@ describe('substantiveSqlClause — SQL fragment', () => {
  *
  * This is the contract guarantor: any change to either the JS predicate or
  * the SQL clause that causes divergence will fail this test.
+ *
+ * Scope note: `substantiveSqlClause` targets the legacy `artifacts` table
+ * which has `artifact_type` but NOT `kind`. The lockstep test therefore only
+ * includes fixtures that use `artifact_type` (legacy schema). Fixtures with
+ * only `kind` set (V17-style rows like mental_model, angel_opinion) are
+ * tested in the JS truth-table describe block above; the SQL clause does not
+ * cover them because it cannot reference the V17 `kind` column.
  */
 describe('JS ↔ SQL lockstep', () => {
+  /**
+   * Fixtures that can be represented in the legacy artifacts schema.
+   * These have `artifact_type` set (not V17-kind-only).
+   */
+  const LEGACY_FIXTURES = FIXTURES.filter(f => f.artifact_type !== undefined);
+
   function buildLockstepDb(): Database.Database {
     const db = new Database(':memory:');
     // Create a minimal test_artifacts table matching the legacy artifacts shape.
-    // Both artifact_type (legacy) and kind (V17) columns included.
+    // Note: no `kind` column — legacy schema only.
     db.exec(`
       CREATE TABLE test_artifacts (
         id INTEGER PRIMARY KEY,
         artifact_type TEXT,
-        kind TEXT,
         summary TEXT,
         importance INTEGER
       )
@@ -363,20 +378,19 @@ describe('JS ↔ SQL lockstep', () => {
     return db;
   }
 
-  it('JS predicate and SQL clause agree on all fixture rows', () => {
+  it('JS predicate and SQL clause agree on all legacy-schema fixture rows', () => {
     const db = buildLockstepDb();
 
-    // Insert all fixtures.
+    // Insert legacy-compatible fixtures.
     const insert = db.prepare(
-      `INSERT INTO test_artifacts (id, artifact_type, kind, summary, importance)
-       VALUES (?, ?, ?, ?, ?)`
+      `INSERT INTO test_artifacts (id, artifact_type, summary, importance)
+       VALUES (?, ?, ?, ?)`
     );
 
-    for (const f of FIXTURES) {
+    for (const f of LEGACY_FIXTURES) {
       insert.run(
         f.id,
         f.artifact_type ?? null,
-        f.kind ?? null,
         f.summary ?? null,
         f.importance ?? null,
       );
@@ -390,9 +404,9 @@ describe('JS ↔ SQL lockstep', () => {
 
     const sqlIds = new Set(sqlRows.map(r => r.id));
 
-    // Compute expected IDs from JS predicate.
+    // Compute expected IDs from JS predicate (same input as SQL).
     const jsIds = new Set(
-      FIXTURES.filter(f => isSubstantive(f)).map(f => f.id)
+      LEGACY_FIXTURES.filter(f => isSubstantive(f)).map(f => f.id)
     );
 
     // Both sets must match exactly.
@@ -417,8 +431,8 @@ describe('JS ↔ SQL lockstep', () => {
   it('adding a row with a new noise prefix is rejected by both JS and SQL', () => {
     const db = buildLockstepDb();
     db.prepare(
-      `INSERT INTO test_artifacts (id, artifact_type, kind, summary, importance)
-       VALUES (999, 'learning', NULL, 'Glob: src/**/*.ts', 5)`
+      `INSERT INTO test_artifacts (id, artifact_type, summary, importance)
+       VALUES (999, 'learning', 'Glob: src/**/*.ts', 5)`
     ).run();
 
     // JS predicate: Glob: prefix is rejected
@@ -440,8 +454,8 @@ describe('JS ↔ SQL lockstep', () => {
     expect(longSummary.length).toBeGreaterThan(60);
 
     db.prepare(
-      `INSERT INTO test_artifacts (id, artifact_type, kind, summary, importance)
-       VALUES (998, 'observation', NULL, ?, 4)`
+      `INSERT INTO test_artifacts (id, artifact_type, summary, importance)
+       VALUES (998, 'observation', ?, 4)`
     ).run(longSummary);
 
     // JS predicate: should pass

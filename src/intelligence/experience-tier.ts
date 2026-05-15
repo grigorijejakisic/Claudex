@@ -25,6 +25,7 @@ import { estimateTokens } from '../shared/text-utils.js';
 import { scaleBudget } from '../shared/constants.js';
 import { stageOneHandleOverlap, type HandleSet } from '../core/cross-project-equivalence.js';
 import { formatExperienceTierSection, type ExperienceTierItem } from '../assembly/sections.js';
+import { substantiveSqlClause } from '../core/artifact-filters.js';
 
 export const TIER_BUDGET = 200;
 export const TOP_K = 3;
@@ -100,7 +101,7 @@ function fetchCandidatePool(
        INNER JOIN artifact_task_pattern atp ON atp.artifact_id = a.id
       WHERE atp.task_pattern != '__abstain__'
         AND a.project != ?
-        AND a.artifact_type IN ('learning', 'observation', 'memory_file', 'flow', 'milestone')
+        AND ${substantiveSqlClause('a')}
       ORDER BY a.timestamp_epoch_ms DESC
       LIMIT ?`
   ).all(RECENCY_DAYS, currentProject, poolLimit) as CandidateRow[];

@@ -336,3 +336,78 @@ describe('assembleExperienceTier — abstain rows excluded', () => {
     db.close();
   });
 });
+
+describe('assembleExperienceTier — substantive filter (Plan 14-03)', () => {
+  it('noise observations (Read: prefix) do NOT surface in the candidate pool', () => {
+    const db = makeDb();
+    seedSession(db, 's', 'lacuna-betting');
+    // Noise: observation with 'Read:' prefix — even with importance=5 and high content
+    seedArtifact(
+      db, 900, 's', 'lacuna-betting', 'observation',
+      'Read: config.ts', 'some content here',
+      'auth-flow-design', 1.0, 0,
+    );
+    // Only substantive learning alongside the noise observation
+    seedArtifact(
+      db, 901, 's', 'lacuna-betting', 'learning',
+      'auth flow decision', 'login session token handling',
+      'auth-flow-design', 1.0, 0,
+    );
+    const r = assembleExperienceTier(
+      db, 'sess', 1, 'big-mozzy-v2',
+      emptyHandles({ user_framing_tokens: ['auth', 'flow', 'design'] }),
+    );
+    expect(r).not.toBeNull();
+    // Must NOT include the noise observation
+    expect(r!.injectedArtifactIds).not.toContain(900);
+    // Must include the substantive learning
+    expect(r!.injectedArtifactIds).toContain(901);
+    db.close();
+  });
+
+  it('high-importance long-summary observations DO surface (they pass the substance gate)', () => {
+    const db = makeDb();
+    seedSession(db, 's', 'lacuna-betting');
+    // Substantive observation: importance=4, summary >= 60 chars, no noise prefix
+    const longSummary = 'Cascade failure in bet365 pipeline traced to connection pool exhaustion at 22:00 UTC; root cause was a network partition that was not properly handled by the retry logic.';
+    seedArtifact(
+      db, 950, 's', 'lacuna-betting', 'observation',
+      longSummary, 'detailed investigation content',
+      'auth-flow-design', 1.0, 0,
+    );
+    // Override importance to 4 (seedArtifact hardcodes importance=3, update via direct SQL)
+    db.prepare(`UPDATE artifacts SET importance = 4 WHERE id = 950`).run();
+
+    const r = assembleExperienceTier(
+      db, 'sess', 1, 'big-mozzy-v2',
+      emptyHandles({ user_framing_tokens: ['auth', 'flow', 'design'] }),
+    );
+    expect(r).not.toBeNull();
+    // The substantive observation should surface
+    expect(r!.injectedArtifactIds).toContain(950);
+    db.close();
+  });
+
+  it('low-importance short-summary observations do NOT surface (below substance gate)', () => {
+    const db = makeDb();
+    seedSession(db, 's', 'lacuna-betting');
+    // Noise-shaped observation: importance=3 (below threshold), short summary
+    seedArtifact(
+      db, 960, 's', 'lacuna-betting', 'observation',
+      'Edit: auth.ts', 'content',
+      'auth-flow-design', 1.0, 0,
+    );
+    const r = assembleExperienceTier(
+      db, 'sess', 1, 'big-mozzy-v2',
+      emptyHandles({ user_framing_tokens: ['auth', 'flow', 'design'] }),
+    );
+    // Pool empty → null (or if null because no candidates score positively)
+    // Either way, the noise observation should NOT be injected
+    if (r !== null) {
+      expect(r.injectedArtifactIds).not.toContain(960);
+    } else {
+      expect(r).toBeNull(); // null is fine — no substantive candidates
+    }
+    db.close();
+  });
+});
