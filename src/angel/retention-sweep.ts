@@ -41,6 +41,11 @@ function cutoff(days: number): number {
   return Math.floor(Date.now() / 1000) - days * 86_400;
 }
 
+/** Returns Unix epoch (milliseconds) for `now - days`. Used for *_epoch_ms columns. */
+function cutoffMs(days: number): number {
+  return Date.now() - days * 86_400_000;
+}
+
 const EMPTY_RESULT: RetentionSweepResult = {
   conversation_turns_skeletal: 0,
   conversation_turns_deleted: 0,
@@ -73,8 +78,8 @@ export function pruneConversationTurns(
   config: RetentionConfig,
 ): { skeletal: number; deleted: number } {
   try {
-    const fullCutoff = cutoff(config.conversationTurnsFullDays);
-    const skeletalCutoff = cutoff(config.conversationTurnsSkeletalDays);
+    const fullCutoffMs = cutoffMs(config.conversationTurnsFullDays);
+    const skeletalCutoffMs = cutoffMs(config.conversationTurnsSkeletalDays);
 
     // Skeletal tier: sessions older than fullDays but newer than skeletalDays
     // NULL out assistant_text — keep user_text for reference
@@ -85,8 +90,8 @@ export function pruneConversationTurns(
         AND session_id IN (
           SELECT s.session_id
           FROM sessions s
-          WHERE s.ended_at_epoch < ?
-            AND s.ended_at_epoch >= ?
+          WHERE s.ended_at_epoch_ms < ?
+            AND s.ended_at_epoch_ms >= ?
             AND EXISTS (
               SELECT 1 FROM session_events se
               WHERE se.session_id = s.session_id
@@ -94,7 +99,7 @@ export function pruneConversationTurns(
             )
         )
       LIMIT ?
-    `).run(fullCutoff, skeletalCutoff, BATCH_LIMIT);
+    `).run(fullCutoffMs, skeletalCutoffMs, BATCH_LIMIT);
 
     // Delete tier: sessions older than skeletalDays
     const deleteResult = cachedPrepare(db, `
@@ -102,7 +107,7 @@ export function pruneConversationTurns(
       WHERE session_id IN (
         SELECT s.session_id
         FROM sessions s
-        WHERE s.ended_at_epoch < ?
+        WHERE s.ended_at_epoch_ms < ?
           AND EXISTS (
             SELECT 1 FROM session_events se
             WHERE se.session_id = s.session_id
@@ -110,7 +115,7 @@ export function pruneConversationTurns(
           )
       )
       LIMIT ?
-    `).run(skeletalCutoff, BATCH_LIMIT);
+    `).run(skeletalCutoffMs, BATCH_LIMIT);
 
     // FTS5 sync: the DELETE trigger handles hard deletes automatically, but the
     // UPDATE (nulling assistant_text) has no trigger. Rebuild the affected FTS
@@ -168,47 +173,47 @@ export function pruneArtifacts(db: Database, config: RetentionConfig): number {
 
   try {
     // Target 1: superseded artifacts past their grace period
-    const supersededCutoff = cutoff(config.artifactSupersededDeleteDays);
+    const supersededCutoffMs = cutoffMs(config.artifactSupersededDeleteDays);
     const superseded = cachedPrepare(db, `
       DELETE FROM artifacts
       WHERE superseded_by IS NOT NULL
-        AND timestamp_epoch < ?
+        AND timestamp_epoch_ms < ?
         AND importance < 5
       LIMIT ?
-    `).run(supersededCutoff, BATCH_LIMIT);
+    `).run(supersededCutoffMs, BATCH_LIMIT);
     total += superseded.changes;
   } catch { /* non-fatal */ }
 
   try {
     // Target 2: cold unaccessed packed artifacts
     // packed + importance < 3 + old enough + no retrieval events in last coldDeleteDays days
-    const coldCutoff = cutoff(config.artifactColdDeleteDays);
+    const coldCutoffMs = cutoffMs(config.artifactColdDeleteDays);
     const cold = cachedPrepare(db, `
       DELETE FROM artifacts
       WHERE state = 'packed'
         AND importance < 3
-        AND timestamp_epoch < ?
+        AND timestamp_epoch_ms < ?
         AND importance < 5
         AND id NOT IN (
           SELECT DISTINCT artifact_id
           FROM retrieval_events
-          WHERE timestamp_epoch > ?
+          WHERE timestamp_epoch_ms > ?
         )
       LIMIT ?
-    `).run(coldCutoff, coldCutoff, BATCH_LIMIT);
+    `).run(coldCutoffMs, cutoffMs(config.artifactColdDeleteDays), BATCH_LIMIT);
     total += cold.changes;
   } catch { /* non-fatal */ }
 
   try {
     // Target 3: ancient packed artifacts with low-moderate importance
-    const ancientCutoff = cutoff(90);
+    const ancientCutoffMs = cutoffMs(90);
     const ancient = cachedPrepare(db, `
       DELETE FROM artifacts
       WHERE state = 'packed'
-        AND timestamp_epoch < ?
+        AND timestamp_epoch_ms < ?
         AND importance < 4
       LIMIT ?
-    `).run(ancientCutoff, BATCH_LIMIT);
+    `).run(ancientCutoffMs, BATCH_LIMIT);
     total += ancient.changes;
   } catch { /* non-fatal */ }
 
@@ -230,22 +235,22 @@ export function pruneSessionJournal(db: Database, config: RetentionConfig): numb
   let total = 0;
 
   try {
-    const flowCutoff = cutoff(config.journalFlowRetentionDays);
+    const flowCutoff = cutoffMs(config.journalFlowRetentionDays);
     const flow = cachedPrepare(db, `
       DELETE FROM session_journal
       WHERE entry_type = 'flow'
-        AND timestamp_epoch < ?
+        AND timestamp_epoch_ms < ?
       LIMIT ?
     `).run(flowCutoff, BATCH_LIMIT);
     total += flow.changes;
   } catch { /* non-fatal */ }
 
   try {
-    const milestoneCutoff = cutoff(config.journalMilestoneRetentionDays);
+    const milestoneCutoff = cutoffMs(config.journalMilestoneRetentionDays);
     const milestone = cachedPrepare(db, `
       DELETE FROM session_journal
       WHERE entry_type = 'milestone'
-        AND timestamp_epoch < ?
+        AND timestamp_epoch_ms < ?
       LIMIT ?
     `).run(milestoneCutoff, BATCH_LIMIT);
     total += milestone.changes;
@@ -294,9 +299,9 @@ export function pruneRetrievalEvents(db: Database, config: RetentionConfig): num
     const retrievalCutoff = cutoff(config.retrievalEventsRetentionDays);
     const result = cachedPrepare(db, `
       DELETE FROM retrieval_events
-      WHERE timestamp_epoch < ?
+      WHERE timestamp_epoch_ms < ?
       LIMIT ?
-    `).run(retrievalCutoff, BATCH_LIMIT);
+    `).run(cutoffMs(config.retrievalEventsRetentionDays), BATCH_LIMIT);
     return result.changes;
   } catch {
     return 0;
@@ -350,20 +355,20 @@ export function pruneArtifactLinks(db: Database, _config: RetentionConfig): numb
  * Prune verified_facts for sessions that ended long ago.
  *
  * verified_facts has created_at_epoch but not timestamp_epoch. Session age is
- * determined by joining to sessions.ended_at_epoch.
+ * determined by joining to sessions.ended_at_epoch_ms.
  */
 export function pruneVerifiedFacts(db: Database, config: RetentionConfig): number {
   try {
-    const factsCutoff = cutoff(config.verifiedFactsRetentionDays);
+    const factsCutoffMs = cutoffMs(config.verifiedFactsRetentionDays);
     const result = cachedPrepare(db, `
       DELETE FROM verified_facts
       WHERE session_id IN (
         SELECT session_id
         FROM sessions
-        WHERE ended_at_epoch < ?
+        WHERE ended_at_epoch_ms < ?
       )
       LIMIT ?
-    `).run(factsCutoff, BATCH_LIMIT);
+    `).run(factsCutoffMs, BATCH_LIMIT);
     return result.changes;
   } catch {
     return 0;
@@ -377,18 +382,18 @@ export function pruneVerifiedFacts(db: Database, config: RetentionConfig): numbe
 /**
  * Prune delivered session_messages older than 7 days.
  *
- * "delivered" is indicated by delivered_at_epoch IS NOT NULL (schema has no
- * boolean 'delivered' column — delivery is tracked by delivered_at_epoch).
+ * "delivered" is indicated by delivered_at_epoch_ms IS NOT NULL (schema has no
+ * boolean 'delivered' column — delivery is tracked by delivered_at_epoch_ms).
  */
 export function pruneSessionMessages(db: Database, _config: RetentionConfig): number {
   try {
-    const msgCutoff = cutoff(7);
+    const msgCutoffMs = cutoffMs(7);
     const result = cachedPrepare(db, `
       DELETE FROM session_messages
-      WHERE delivered_at_epoch IS NOT NULL
-        AND created_at_epoch < ?
+      WHERE delivered_at_epoch_ms IS NOT NULL
+        AND created_at_epoch_ms < ?
       LIMIT ?
-    `).run(msgCutoff, BATCH_LIMIT);
+    `).run(msgCutoffMs, BATCH_LIMIT);
     return result.changes;
   } catch {
     return 0;
@@ -410,19 +415,19 @@ export function pruneSessionMessages(db: Database, _config: RetentionConfig): nu
  */
 function resolveContradictions(db: Database): number {
   try {
-    const ninetyCutoff = Math.floor(Date.now() / 1000) - 90 * 86400;
+    const ninetyCutoffMs = Date.now() - 90 * 86_400_000;
     const projects = cachedPrepare(db,
       `SELECT DISTINCT project FROM observations
-       WHERE consumed = 0 AND timestamp_epoch > ? AND project IS NOT NULL`
-    ).all(ninetyCutoff) as Array<{ project: string }>;
+       WHERE consumed = 0 AND timestamp_epoch_ms > ? AND project IS NOT NULL`
+    ).all(ninetyCutoffMs) as Array<{ project: string }>;
 
     let superseded = 0;
     for (const { project } of projects) {
       const obs = cachedPrepare(db,
-        `SELECT id, content, session_id, timestamp_epoch FROM observations
-         WHERE project = ? AND consumed = 0 AND timestamp_epoch > ?
-         ORDER BY timestamp_epoch DESC LIMIT 50`
-      ).all(project, ninetyCutoff) as Array<{ id: number; content: string; session_id: string; timestamp_epoch: number }>;
+        `SELECT id, content, session_id, timestamp_epoch_ms FROM observations
+         WHERE project = ? AND consumed = 0 AND timestamp_epoch_ms > ?
+         ORDER BY timestamp_epoch_ms DESC LIMIT 50`
+      ).all(project, ninetyCutoffMs) as Array<{ id: number; content: string; session_id: string; timestamp_epoch_ms: number }>;
 
       for (let i = 0; i < obs.length; i++) {
         for (let j = i + 1; j < obs.length; j++) {
@@ -458,7 +463,6 @@ function resolveContradictions(db: Database): number {
  */
 export function pruneObservations(db: Database, config: RetentionConfig): { deleted: number; superseded: number } {
   try {
-    const now = Math.floor(Date.now() / 1000);
     let totalDeleted = 0;
 
     // A3: Contradiction-aware pre-sweep — resolve contradictions before age-based pruning.
@@ -466,36 +470,36 @@ export function pruneObservations(db: Database, config: RetentionConfig): { dele
     const superseded = resolveContradictions(db);
 
     // Tier 1: Low importance (1-2), older than config days
-    const lowCutoff = now - (config.observationLowImpRetentionDays ?? 30) * 86400;
+    const lowCutoffMs = cutoffMs(config.observationLowImpRetentionDays ?? 30);
     const lowResult = cachedPrepare(db,
       `DELETE FROM observations
        WHERE importance <= 2
-         AND timestamp_epoch < ?
+         AND timestamp_epoch_ms < ?
          AND id NOT IN (SELECT CAST(a.artifact_ref AS INTEGER) FROM artifacts a JOIN retrieval_events re ON a.id = re.artifact_id WHERE a.artifact_type = 'observation')
        LIMIT 500`
-    ).run(lowCutoff);
+    ).run(lowCutoffMs);
     totalDeleted += lowResult.changes;
 
     // Tier 2: Medium importance (3), older than config days
-    const medCutoff = now - (config.observationMedImpRetentionDays ?? 90) * 86400;
+    const medCutoffMs = cutoffMs(config.observationMedImpRetentionDays ?? 90);
     const medResult = cachedPrepare(db,
       `DELETE FROM observations
        WHERE importance = 3
-         AND timestamp_epoch < ?
+         AND timestamp_epoch_ms < ?
          AND id NOT IN (SELECT CAST(a.artifact_ref AS INTEGER) FROM artifacts a JOIN retrieval_events re ON a.id = re.artifact_id WHERE a.artifact_type = 'observation')
        LIMIT 500`
-    ).run(medCutoff);
+    ).run(medCutoffMs);
     totalDeleted += medResult.changes;
 
     // Tier 3: High importance (4-5), older than config days
-    const highCutoff = now - (config.observationHighImpRetentionDays ?? 180) * 86400;
+    const highCutoffMs = cutoffMs(config.observationHighImpRetentionDays ?? 180);
     const highResult = cachedPrepare(db,
       `DELETE FROM observations
        WHERE importance >= 4
-         AND timestamp_epoch < ?
+         AND timestamp_epoch_ms < ?
          AND id NOT IN (SELECT CAST(a.artifact_ref AS INTEGER) FROM artifacts a JOIN retrieval_events re ON a.id = re.artifact_id WHERE a.artifact_type = 'observation')
        LIMIT 500`
-    ).run(highCutoff);
+    ).run(highCutoffMs);
     totalDeleted += highResult.changes;
 
     return { deleted: totalDeleted, superseded };

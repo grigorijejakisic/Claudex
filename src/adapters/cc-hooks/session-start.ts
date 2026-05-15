@@ -206,14 +206,15 @@ const main = wrapHook('SessionStart', async (input, ctx) => {
   // is a crash/disconnect victim. Retroactively close it with a summary so the
   // data isn't lost. Runs before checkpoint recovery to avoid stale state.
   try {
-    const now = Math.floor(Date.now() / 1000);
-    const cutoff = now - 3600;
+    const nowMs = Date.now();
+    const now = Math.floor(nowMs / 1000);
+    const cutoffMs = nowMs - 3600000;
     // Close ALL orphaned active sessions across all projects — not just the current one.
     // Cross-project cleanup prevents stale sessions from accumulating (e.g. Oracle/Nexus
     // sessions that were never closed because the user switched projects).
     const orphans = cachedPrepare(ctx.db,
-      `SELECT session_id, project FROM sessions WHERE status = 'active' AND created_at_epoch < ? AND session_id != ?`
-    ).all(cutoff, input.session_id) as Array<{ session_id: string; project: string | null }>;
+      `SELECT session_id, project FROM sessions WHERE status = 'active' AND created_at_epoch_ms < ? AND session_id != ?`
+    ).all(cutoffMs, input.session_id) as Array<{ session_id: string; project: string | null }>;
 
     for (const orphan of orphans) {
       // Generate recall metadata BEFORE closing — captures user framings,
@@ -227,8 +228,8 @@ const main = wrapHook('SessionStart', async (input, ctx) => {
       } catch { /* non-fatal per orphan */ }
 
       cachedPrepare(ctx.db,
-        `UPDATE sessions SET status = 'completed', ended_at_epoch = ? WHERE session_id = ?`
-      ).run(now, orphan.session_id);
+        `UPDATE sessions SET status = 'completed', ended_at_epoch_ms = ? WHERE session_id = ?`
+      ).run(nowMs, orphan.session_id);
     }
 
     if (orphans.length > 0) {

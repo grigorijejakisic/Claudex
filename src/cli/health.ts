@@ -33,10 +33,10 @@ const EXPECTED_TABLES: Record<string, ColumnDef[]> = {
     { name: 'content', notNull: true },
     { name: 'importance', notNull: true },
     { name: 'files_modified', notNull: true, hasDefault: true },
-    { name: 'timestamp_epoch', notNull: true, hasDefault: true },
+    { name: 'timestamp_epoch_ms', notNull: true, hasDefault: true },
     { name: 'access_count', notNull: true, hasDefault: true },
-    { name: 'last_accessed_at_epoch' },
-    { name: 'deleted_at_epoch' },
+    { name: 'last_accessed_at_epoch_ms' },
+    { name: 'deleted_at_epoch_ms' },
     { name: 'consumed', notNull: true, hasDefault: true },
     { name: 'obs_type' },
   ],
@@ -48,8 +48,8 @@ const EXPECTED_TABLES: Record<string, ColumnDef[]> = {
     { name: 'source' },
     { name: 'status', notNull: true, hasDefault: true },
     { name: 'observation_count', notNull: true, hasDefault: true },
-    { name: 'created_at_epoch', notNull: true, hasDefault: true },
-    { name: 'ended_at_epoch' },
+    { name: 'created_at_epoch_ms', notNull: true, hasDefault: true },
+    { name: 'ended_at_epoch_ms' },
     { name: 'adapter' },
   ],
   pressure_scores: [
@@ -57,7 +57,7 @@ const EXPECTED_TABLES: Record<string, ColumnDef[]> = {
     { name: 'project', notNull: true },
     { name: 'raw_pressure', notNull: true, hasDefault: true },
     { name: 'temperature', notNull: true, hasDefault: true },
-    { name: 'last_touched_epoch', notNull: true, hasDefault: true },
+    { name: 'last_touched_epoch_ms', notNull: true, hasDefault: true },
     { name: 'decay_rate', notNull: true, hasDefault: true },
   ],
   learnings: [
@@ -67,9 +67,9 @@ const EXPECTED_TABLES: Record<string, ColumnDef[]> = {
     { name: 'fingerprint', notNull: true },
     { name: 'content', notNull: true },
     { name: 'promotion_count', notNull: true, hasDefault: true },
-    { name: 'first_seen_epoch', notNull: true, hasDefault: true },
-    { name: 'last_promoted_epoch', notNull: true, hasDefault: true },
-    { name: 'updated_at_epoch', notNull: true, hasDefault: true },
+    { name: 'first_seen_epoch_ms', notNull: true, hasDefault: true },
+    { name: 'last_promoted_epoch_ms', notNull: true, hasDefault: true },
+    { name: 'updated_at_epoch_ms', notNull: true, hasDefault: true },
   ],
   decisions: [
     { name: 'id', notNull: true },
@@ -105,8 +105,8 @@ const EXPECTED_TABLES: Record<string, ColumnDef[]> = {
     { name: 'data' },
     { name: 'mirror_path' },
     { name: 'error' },
-    { name: 'created_at_epoch', notNull: true, hasDefault: true },
-    { name: 'updated_at_epoch', notNull: true, hasDefault: true },
+    { name: 'created_at_epoch_ms', notNull: true, hasDefault: true },
+    { name: 'updated_at_epoch_ms', notNull: true, hasDefault: true },
   ],
   session_journal: [
     { name: 'id', notNull: true },
@@ -114,7 +114,7 @@ const EXPECTED_TABLES: Record<string, ColumnDef[]> = {
     { name: 'project', notNull: true },
     { name: 'entry_type', notNull: true },
     { name: 'content', notNull: true },
-    { name: 'timestamp_epoch', notNull: true, hasDefault: true },
+    { name: 'timestamp_epoch_ms', notNull: true, hasDefault: true },
     { name: 'recall_text' },
     { name: 'embedding' },
   ],
@@ -129,8 +129,8 @@ const EXPECTED_TABLES: Record<string, ColumnDef[]> = {
     { name: 'state', notNull: true, hasDefault: true },
     { name: 'ttl', notNull: true, hasDefault: true },
     { name: 'importance', notNull: true, hasDefault: true },
-    { name: 'timestamp_epoch', notNull: true, hasDefault: true },
-    { name: 'last_materialized_epoch' },
+    { name: 'timestamp_epoch_ms', notNull: true, hasDefault: true },
+    { name: 'last_materialized_epoch_ms' },
     { name: 'embedding' },
     { name: 'activation_score', notNull: true, hasDefault: true },
     { name: 'superseded_by' },
@@ -150,7 +150,7 @@ const EXPECTED_TABLES: Record<string, ColumnDef[]> = {
     { name: 'event_kind', notNull: true },
     { name: 'detail', notNull: true, hasDefault: true },
     { name: 'latency_ms' },
-    { name: 'timestamp_epoch', notNull: true, hasDefault: true },
+    { name: 'timestamp_epoch_ms', notNull: true, hasDefault: true },
     { name: 'adapter' },
   ],
   schema_versions: [
@@ -213,7 +213,7 @@ const EXPECTED_TABLES: Record<string, ColumnDef[]> = {
     { name: 'query_text' },
     { name: 'was_referenced' },
     { name: 'correction_followed' },
-    { name: 'timestamp_epoch', notNull: true, hasDefault: true },
+    { name: 'timestamp_epoch_ms', notNull: true, hasDefault: true },
   ],
   capability_boundaries: [
     { name: 'id', notNull: true },
@@ -384,7 +384,7 @@ export function checkWriteRead(db: Database.Database): CheckResult {
       VALUES ('__health_check__', 'health', 'other', 'test', 'test', 3, '[]', 0)`,
     sessions: `INSERT INTO sessions (session_id, status, observation_count)
       VALUES ('__health_check__', 'active', 0)`,
-    pressure_scores: `INSERT INTO pressure_scores (file_path, project, raw_pressure, temperature, last_touched_epoch, decay_rate)
+    pressure_scores: `INSERT INTO pressure_scores (file_path, project, raw_pressure, temperature, last_touched_epoch_ms, decay_rate)
       VALUES ('__health_check__', '__health__', 0.0, 'COLD', 0, 0.1)`,
     learnings: `INSERT INTO learnings (project, agent_id, fingerprint, content, promotion_count)
       VALUES ('__health__', 'default', '__health_check__', 'test', 1)`,
@@ -497,26 +497,26 @@ export function checkFts5(db: Database.Database): CheckResult {
  */
 export function checkTelemetry(db: Database.Database): CheckResult {
   try {
-    const now = Math.floor(Date.now() / 1000);
-    const fiveMin = now - 300;
-    const oneHour = now - 3600;
-    const twentyFourHour = now - 86400;
+    const nowMs = Date.now();
+    const fiveMin = nowMs - 300_000;
+    const oneHour = nowMs - 3_600_000;
+    const twentyFourHour = nowMs - 86_400_000;
 
     const count5m = (db.prepare(
-      "SELECT COUNT(*) as cnt FROM telemetry WHERE event_kind = 'error' AND timestamp_epoch >= ?"
+      "SELECT COUNT(*) as cnt FROM telemetry WHERE event_kind = 'error' AND timestamp_epoch_ms >= ?"
     ).get(fiveMin) as { cnt: number }).cnt;
 
     const count1h = (db.prepare(
-      "SELECT COUNT(*) as cnt FROM telemetry WHERE event_kind = 'error' AND timestamp_epoch >= ?"
+      "SELECT COUNT(*) as cnt FROM telemetry WHERE event_kind = 'error' AND timestamp_epoch_ms >= ?"
     ).get(oneHour) as { cnt: number }).cnt;
 
     const count24h = (db.prepare(
-      "SELECT COUNT(*) as cnt FROM telemetry WHERE event_kind = 'error' AND timestamp_epoch >= ?"
+      "SELECT COUNT(*) as cnt FROM telemetry WHERE event_kind = 'error' AND timestamp_epoch_ms >= ?"
     ).get(twentyFourHour) as { cnt: number }).cnt;
 
     // Get recent error messages
     const recentErrors = db.prepare(
-      "SELECT detail FROM telemetry WHERE event_kind = 'error' ORDER BY timestamp_epoch DESC LIMIT 3"
+      "SELECT detail FROM telemetry WHERE event_kind = 'error' ORDER BY timestamp_epoch_ms DESC LIMIT 3"
     ).all() as Array<{ detail: string }>;
 
     let message = `${count5m} errors (5m) | ${count1h} errors (1h) | ${count24h} errors (24h)`;
@@ -581,12 +581,12 @@ export function checkScope(cwd: string): CheckResult {
  */
 export function checkSessions(db: Database.Database): CheckResult {
   try {
-    const now = Math.floor(Date.now() / 1000);
-    const oneDayAgo = now - 86400;
+    const nowMs = Date.now();
+    const oneDayAgo = nowMs - 86_400_000;
 
     // Count orphaned sessions (active but older than 24h)
     const orphaned = (db.prepare(
-      "SELECT COUNT(*) as cnt FROM sessions WHERE status = 'active' AND created_at_epoch < ?"
+      "SELECT COUNT(*) as cnt FROM sessions WHERE status = 'active' AND created_at_epoch_ms < ?"
     ).get(oneDayAgo) as { cnt: number }).cnt;
 
     if (orphaned > 0) {
@@ -617,7 +617,7 @@ export function checkSessions(db: Database.Database): CheckResult {
 export function checkStats(db: Database.Database): CheckResult {
   try {
     const obsCount = (db.prepare(
-      "SELECT COUNT(*) as cnt FROM observations WHERE deleted_at_epoch IS NULL"
+      "SELECT COUNT(*) as cnt FROM observations WHERE deleted_at_epoch_ms IS NULL"
     ).get() as { cnt: number }).cnt;
 
     const artifactCount = (db.prepare(

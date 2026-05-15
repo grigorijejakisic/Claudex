@@ -288,10 +288,10 @@ export function getRetrievalScoreMultiplier(
     let hoursSinceLastSession = 0;
     try {
       const prev = cachedPrepare(db,
-        `SELECT ended_at_epoch FROM sessions WHERE status != 'active' ORDER BY ended_at_epoch DESC LIMIT 1`
-      ).get() as { ended_at_epoch: number } | undefined;
-      if (prev?.ended_at_epoch) {
-        hoursSinceLastSession = (Math.floor(Date.now() / 1000) - prev.ended_at_epoch) / 3600;
+        `SELECT ended_at_epoch_ms FROM sessions WHERE status != 'active' ORDER BY ended_at_epoch_ms DESC LIMIT 1`
+      ).get() as { ended_at_epoch_ms: number } | undefined;
+      if (prev?.ended_at_epoch_ms) {
+        hoursSinceLastSession = (Date.now() - prev.ended_at_epoch_ms) / 3600000;
       }
     } catch { /* non-critical */ }
     const context = {

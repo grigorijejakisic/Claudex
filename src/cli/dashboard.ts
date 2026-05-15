@@ -63,8 +63,8 @@ export interface LearningResult {
   content: string;
   project: string;
   promotion_count: number;
-  first_seen_epoch: number;
-  last_promoted_epoch: number;
+  first_seen_epoch_ms: number;
+  last_promoted_epoch_ms: number;
 }
 
 export interface DecisionResult {
@@ -81,7 +81,7 @@ export interface StatsResult {
   total_learnings: number;
   total_sessions: number;
   top_categories: Array<{ category: string; count: number }>;
-  recent_sessions: Array<{ session_id: string; project: string | null; status: string; created_at_epoch: number; observation_count: number }>;
+  recent_sessions: Array<{ session_id: string; project: string | null; status: string; created_at_epoch_ms: number; observation_count: number }>;
 }
 
 export interface TopicResult {
@@ -100,7 +100,7 @@ export function queryLearnings(db: Database.Database, project?: string): Learnin
     if (project) {
       return db
         .prepare(
-          `SELECT content, project, promotion_count, first_seen_epoch, last_promoted_epoch
+          `SELECT content, project, promotion_count, first_seen_epoch_ms, last_promoted_epoch_ms
            FROM learnings
            WHERE project = ? OR project = '__global__'
            ORDER BY promotion_count DESC
@@ -110,7 +110,7 @@ export function queryLearnings(db: Database.Database, project?: string): Learnin
     }
     return db
       .prepare(
-        `SELECT content, project, promotion_count, first_seen_epoch, last_promoted_epoch
+        `SELECT content, project, promotion_count, first_seen_epoch_ms, last_promoted_epoch_ms
          FROM learnings
          ORDER BY promotion_count DESC
          LIMIT 50`
@@ -184,7 +184,7 @@ export function queryStats(db: Database.Database, project?: string): StatsResult
 
   try {
     const projectFilter = project ? `WHERE project = ?` : '';
-    const projectFilterObs = project ? `WHERE project = ? AND deleted_at_epoch IS NULL` : `WHERE deleted_at_epoch IS NULL`;
+    const projectFilterObs = project ? `WHERE project = ? AND deleted_at_epoch_ms IS NULL` : `WHERE deleted_at_epoch_ms IS NULL`;
     const params = project ? [project] : [];
 
     const obsCount = db
@@ -216,10 +216,10 @@ export function queryStats(db: Database.Database, project?: string): StatsResult
 
     const recentSessions = db
       .prepare(
-        `SELECT session_id, project, status, created_at_epoch, observation_count
+        `SELECT session_id, project, status, created_at_epoch_ms, observation_count
          FROM sessions
          ${projectFilter}
-         ORDER BY created_at_epoch DESC
+         ORDER BY created_at_epoch_ms DESC
          LIMIT 10`
       )
       .all(...params) as StatsResult['recent_sessions'];
@@ -279,6 +279,14 @@ function formatEpoch(epoch: number): string {
   }
 }
 
+function formatEpochMs(epochMs: number): string {
+  try {
+    return new Date(epochMs).toISOString().replace('T', ' ').slice(0, 19);
+  } catch {
+    return 'unknown';
+  }
+}
+
 export function formatLearnings(learnings: LearningResult[]): string {
   if (learnings.length === 0) return 'No learnings found.';
 
@@ -286,7 +294,7 @@ export function formatLearnings(learnings: LearningResult[]): string {
   for (const l of learnings) {
     lines.push(`[${l.project}] (promoted ${l.promotion_count}x)`);
     lines.push(`  ${l.content}`);
-    lines.push(`  First seen: ${formatEpoch(l.first_seen_epoch)} | Last promoted: ${formatEpoch(l.last_promoted_epoch)}`);
+    lines.push(`  First seen: ${formatEpochMs(l.first_seen_epoch_ms)} | Last promoted: ${formatEpochMs(l.last_promoted_epoch_ms)}`);
     lines.push('');
   }
   return lines.join('\n');
@@ -325,7 +333,7 @@ export function formatStats(stats: StatsResult): string {
     lines.push('', '--- Recent Sessions ---');
     for (const s of stats.recent_sessions) {
       const proj = s.project ?? '(none)';
-      lines.push(`  ${s.session_id} | ${proj} | ${s.status} | obs: ${s.observation_count} | ${formatEpoch(s.created_at_epoch)}`);
+      lines.push(`  ${s.session_id} | ${proj} | ${s.status} | obs: ${s.observation_count} | ${formatEpochMs(s.created_at_epoch_ms)}`);
     }
   }
 

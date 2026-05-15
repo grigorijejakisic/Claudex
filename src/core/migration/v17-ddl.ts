@@ -72,9 +72,9 @@ CREATE INDEX IF NOT EXISTS idx_artifact_status
 
 export const KIND_REGISTRY_DDL = `
 CREATE TABLE IF NOT EXISTS kind_registry (
-  kind             TEXT PRIMARY KEY,
-  first_seen_epoch INTEGER NOT NULL,
-  last_seen_epoch  INTEGER NOT NULL
+  kind                TEXT PRIMARY KEY,
+  first_seen_epoch_ms INTEGER NOT NULL,
+  last_seen_epoch_ms  INTEGER NOT NULL
 );
 `;
 
@@ -92,9 +92,9 @@ export const KERNEL_TRIGGERS_DDL = `
 CREATE TRIGGER IF NOT EXISTS artifact_register_kind
 AFTER INSERT ON artifact
 BEGIN
-  INSERT INTO kind_registry(kind, first_seen_epoch, last_seen_epoch)
+  INSERT INTO kind_registry(kind, first_seen_epoch_ms, last_seen_epoch_ms)
     VALUES (NEW.kind, NEW.created_at_epoch_ms, NEW.created_at_epoch_ms)
-  ON CONFLICT(kind) DO UPDATE SET last_seen_epoch = excluded.last_seen_epoch;
+  ON CONFLICT(kind) DO UPDATE SET last_seen_epoch_ms = excluded.last_seen_epoch_ms;
 END;
 `;
 

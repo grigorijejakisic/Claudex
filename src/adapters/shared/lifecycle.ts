@@ -1148,7 +1148,7 @@ export async function runCompactionSequence(params: CompactionParams): Promise<v
       // Source 2: Discovery observations (rare but high-value)
       const discoveries = cachedPrepare(params.db,
         `SELECT DISTINCT title FROM observations
-         WHERE session_id = ? AND project = ? AND deleted_at_epoch IS NULL
+         WHERE session_id = ? AND project = ? AND deleted_at_epoch_ms IS NULL
            AND obs_type = 'discovery'
            AND title IS NOT NULL AND LENGTH(title) > 10
          ORDER BY importance DESC
@@ -1320,7 +1320,7 @@ export async function runSessionEndCleanup(params: SessionEndParams): Promise<vo
       }
       const discoveries = cachedPrepare(params.db,
         `SELECT DISTINCT title FROM observations
-         WHERE session_id = ? AND project = ? AND deleted_at_epoch IS NULL
+         WHERE session_id = ? AND project = ? AND deleted_at_epoch_ms IS NULL
            AND obs_type = 'discovery' AND title IS NOT NULL AND LENGTH(title) > 10
          ORDER BY importance DESC LIMIT 5`
       ).all(params.sessionId, params.project) as Array<{ title: string }>;
@@ -1483,7 +1483,7 @@ export async function matchPreAssembly(
       `SELECT id, content, embedding FROM artifacts
        WHERE project = ? AND artifact_ref LIKE 'pre_assembly:%'
        AND state != 'packed' AND embedding IS NOT NULL
-       ORDER BY timestamp_epoch DESC
+       ORDER BY timestamp_epoch_ms DESC
        LIMIT 1`
     ).get(project) as {
       id: number;

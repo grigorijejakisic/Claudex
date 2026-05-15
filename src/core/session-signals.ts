@@ -26,9 +26,9 @@ export interface SessionSignal {
   signal_type: SignalType;
   target: string;
   detail: string | null;
-  created_at_epoch: number;
-  expires_at_epoch: number | null;
-  cleared_at_epoch: number | null;
+  created_at_epoch_ms: number;
+  expires_at_epoch_ms: number | null;
+  cleared_at_epoch_ms: number | null;
 }
 
 /** Default TTL in seconds per signal type. */
@@ -52,12 +52,12 @@ export function createSignal(
   detail?: string,
 ): number {
   try {
-    const now = Math.floor(Date.now() / 1000);
+    const nowMs = Date.now();
     const ttl = SIGNAL_TTL[signalType];
-    const expires = ttl ? now + ttl : null;
+    const expires = ttl ? nowMs + ttl * 1000 : null;
 
     const result = cachedPrepare(db,
-      `INSERT INTO session_signals (session_id, project, signal_type, target, detail, expires_at_epoch)
+      `INSERT INTO session_signals (session_id, project, signal_type, target, detail, expires_at_epoch_ms)
        VALUES (?, ?, ?, ?, ?, ?)`
     ).run(sessionId, project, signalType, target, detail ?? null, expires);
 
@@ -73,7 +73,7 @@ export function createSignal(
 export function clearSignal(db: Database, signalId: number): void {
   try {
     cachedPrepare(db,
-      `UPDATE session_signals SET cleared_at_epoch = unixepoch() WHERE id = ?`
+      `UPDATE session_signals SET cleared_at_epoch_ms = (unixepoch() * 1000) WHERE id = ?`
     ).run(signalId);
   } catch { /* non-throwing */ }
 }
@@ -89,13 +89,13 @@ export function clearSessionSignals(
   try {
     if (signalType) {
       cachedPrepare(db,
-        `UPDATE session_signals SET cleared_at_epoch = unixepoch()
-         WHERE session_id = ? AND signal_type = ? AND cleared_at_epoch IS NULL`
+        `UPDATE session_signals SET cleared_at_epoch_ms = (unixepoch() * 1000)
+         WHERE session_id = ? AND signal_type = ? AND cleared_at_epoch_ms IS NULL`
       ).run(sessionId, signalType);
     } else {
       cachedPrepare(db,
-        `UPDATE session_signals SET cleared_at_epoch = unixepoch()
-         WHERE session_id = ? AND cleared_at_epoch IS NULL`
+        `UPDATE session_signals SET cleared_at_epoch_ms = (unixepoch() * 1000)
+         WHERE session_id = ? AND cleared_at_epoch_ms IS NULL`
       ).run(sessionId);
     }
   } catch { /* non-throwing */ }
@@ -111,21 +111,21 @@ export function getActiveSignals(
   excludeSessionId?: string,
 ): SessionSignal[] {
   try {
-    const now = Math.floor(Date.now() / 1000);
+    const nowMs = Date.now();
     const query = excludeSessionId
       ? `SELECT * FROM session_signals
-         WHERE project = ? AND cleared_at_epoch IS NULL
-           AND (expires_at_epoch IS NULL OR expires_at_epoch > ?)
+         WHERE project = ? AND cleared_at_epoch_ms IS NULL
+           AND (expires_at_epoch_ms IS NULL OR expires_at_epoch_ms > ?)
            AND session_id != ?
-         ORDER BY created_at_epoch DESC LIMIT 20`
+         ORDER BY created_at_epoch_ms DESC LIMIT 20`
       : `SELECT * FROM session_signals
-         WHERE project = ? AND cleared_at_epoch IS NULL
-           AND (expires_at_epoch IS NULL OR expires_at_epoch > ?)
-         ORDER BY created_at_epoch DESC LIMIT 20`;
+         WHERE project = ? AND cleared_at_epoch_ms IS NULL
+           AND (expires_at_epoch_ms IS NULL OR expires_at_epoch_ms > ?)
+         ORDER BY created_at_epoch_ms DESC LIMIT 20`;
 
     const params = excludeSessionId
-      ? [project, now, excludeSessionId]
-      : [project, now];
+      ? [project, nowMs, excludeSessionId]
+      : [project, nowMs];
 
     return cachedPrepare(db, query).all(...params) as SessionSignal[];
   } catch {
@@ -138,11 +138,11 @@ export function getActiveSignals(
  */
 export function sweepExpiredSignals(db: Database): number {
   try {
-    const now = Math.floor(Date.now() / 1000);
+    const nowMs = Date.now();
     const result = cachedPrepare(db,
-      `UPDATE session_signals SET cleared_at_epoch = ?
-       WHERE cleared_at_epoch IS NULL AND expires_at_epoch IS NOT NULL AND expires_at_epoch <= ?`
-    ).run(now, now);
+      `UPDATE session_signals SET cleared_at_epoch_ms = ?
+       WHERE cleared_at_epoch_ms IS NULL AND expires_at_epoch_ms IS NOT NULL AND expires_at_epoch_ms <= ?`
+    ).run(nowMs, nowMs);
     return result.changes;
   } catch {
     return 0;
@@ -155,12 +155,12 @@ export function sweepExpiredSignals(db: Database): number {
 export function formatSignalsForInjection(signals: SessionSignal[]): string {
   if (signals.length === 0) return '';
 
-  const now = Math.floor(Date.now() / 1000);
+  const nowMs = Date.now();
   const lines = signals.map(s => {
-    const age = now - s.created_at_epoch;
-    const ageStr = age < 60 ? `${age}s ago`
-      : age < 3600 ? `${Math.round(age / 60)}m ago`
-      : `${Math.round(age / 3600)}h ago`;
+    const ageSec = Math.floor((nowMs - s.created_at_epoch_ms) / 1000);
+    const ageStr = ageSec < 60 ? `${ageSec}s ago`
+      : ageSec < 3600 ? `${Math.round(ageSec / 60)}m ago`
+      : `${Math.round(ageSec / 3600)}h ago`;
     const detail = s.detail ? ` — ${s.detail}` : '';
     return `- [${s.signal_type}] ${s.target}${detail} (${ageStr})`;
   });

@@ -33,8 +33,8 @@ export interface ArtifactRow {
   ttl: number;
   importance: number;
   retrieval_score: number;
-  timestamp_epoch: number;
-  last_materialized_epoch: number | null;
+  timestamp_epoch_ms: number;
+  last_materialized_epoch_ms: number | null;
   /** V9: embedding BLOB for vector search fallback */
   embedding?: Buffer | null;
   /** V9: ACT-R activation score (replaces flat TTL decay) */
@@ -132,7 +132,7 @@ export function getArtifactsByProject(
     return cachedPrepare(db,
       `SELECT * FROM artifacts
        WHERE project = ? AND state = ? AND artifact_type = ?
-       ORDER BY importance DESC, timestamp_epoch DESC
+       ORDER BY importance DESC, timestamp_epoch_ms DESC
        LIMIT ?`
     ).all(project, opts.state, opts.type, limit) as ArtifactRow[];
   }
@@ -141,7 +141,7 @@ export function getArtifactsByProject(
     return cachedPrepare(db,
       `SELECT * FROM artifacts
        WHERE project = ? AND state = ?
-       ORDER BY importance DESC, timestamp_epoch DESC
+       ORDER BY importance DESC, timestamp_epoch_ms DESC
        LIMIT ?`
     ).all(project, opts.state, limit) as ArtifactRow[];
   }
@@ -150,7 +150,7 @@ export function getArtifactsByProject(
     return cachedPrepare(db,
       `SELECT * FROM artifacts
        WHERE project = ? AND artifact_type = ?
-       ORDER BY importance DESC, timestamp_epoch DESC
+       ORDER BY importance DESC, timestamp_epoch_ms DESC
        LIMIT ?`
     ).all(project, opts.type, limit) as ArtifactRow[];
   }
@@ -158,7 +158,7 @@ export function getArtifactsByProject(
   return cachedPrepare(db,
     `SELECT * FROM artifacts
      WHERE project = ?
-     ORDER BY importance DESC, timestamp_epoch DESC
+     ORDER BY importance DESC, timestamp_epoch_ms DESC
      LIMIT ?`
   ).all(project, limit) as ArtifactRow[];
 }
@@ -189,7 +189,7 @@ export function getPackedArtifacts(
          ELSE 6
        END,
        importance DESC,
-       timestamp_epoch DESC,
+       timestamp_epoch_ms DESC,
        id ASC
      LIMIT ?`
   ).all(project, limit ?? 100) as ArtifactRow[];
@@ -214,14 +214,14 @@ export function getMaterializedArtifacts(
        WHERE state IN ('fresh', 'materialized')
        ORDER BY
          CASE WHEN project = ? THEN 0 ELSE 1 END,
-         importance DESC, timestamp_epoch DESC, id ASC
+         importance DESC, timestamp_epoch_ms DESC, id ASC
        LIMIT 20`
     ).all(project) as ArtifactRow[];
   }
   return cachedPrepare(db,
     `SELECT * FROM artifacts
      WHERE project = ? AND state IN ('fresh', 'materialized')
-     ORDER BY importance DESC, timestamp_epoch DESC, id ASC`
+     ORDER BY importance DESC, timestamp_epoch_ms DESC, id ASC`
   ).all(project) as ArtifactRow[];
 }
 
@@ -252,7 +252,7 @@ export function materializeArtifacts(
     // Only materialize same-project artifacts — prevents cross-project state contamination
     const stmt = cachedPrepare(db,
       `UPDATE artifacts
-       SET state = 'materialized', ttl = 2, last_materialized_epoch = unixepoch()
+       SET state = 'materialized', ttl = 2, last_materialized_epoch_ms = unixepoch() * 1000
        WHERE id = ? AND project = ?`
     );
     for (const id of artifactIds) {
@@ -262,7 +262,7 @@ export function materializeArtifacts(
   } else {
     const stmt = cachedPrepare(db,
       `UPDATE artifacts
-       SET state = 'materialized', ttl = 2, last_materialized_epoch = unixepoch()
+       SET state = 'materialized', ttl = 2, last_materialized_epoch_ms = unixepoch() * 1000
        WHERE id = ?`
     );
     for (const id of artifactIds) {
@@ -372,7 +372,7 @@ function searchArtifactsInternal(
            ${projectFilter}
            AND observations_fts MATCH ?
          ORDER BY ${orderPrefix}
-           a.importance DESC, a.retrieval_score DESC, a.timestamp_epoch DESC
+           a.importance DESC, a.retrieval_score DESC, a.timestamp_epoch_ms DESC
          LIMIT ?`;
 
       const params = globalScope
@@ -428,7 +428,7 @@ function searchArtifactsInternal(
       const sql = `SELECT * FROM artifacts
          WHERE ${projectWhere} (${conditions})
          ORDER BY ${orderPrefixLike}
-           importance DESC, retrieval_score DESC, timestamp_epoch DESC
+           importance DESC, retrieval_score DESC, timestamp_epoch_ms DESC
          LIMIT ?`;
       const params = globalScope
         ? [...likeParams, currentProject, limit]
@@ -540,7 +540,7 @@ export function flagSupersededArtifacts(
     const flagStmt = cachedPrepare(db,
       `UPDATE artifacts
        SET superseded_by = ?, valid_until = ?
-       WHERE id = ? AND superseded_by IS NULL AND timestamp_epoch < ?`
+       WHERE id = ? AND superseded_by IS NULL AND timestamp_epoch_ms < ?`
     );
 
     for (const candidate of candidates) {
@@ -781,14 +781,14 @@ export async function linkArtifactToRelated(
   try {
     // Load the new artifact
     const newArtifact = cachedPrepare(db,
-      'SELECT id, artifact_ref, summary, content, embedding, timestamp_epoch FROM artifacts WHERE id = ?'
+      'SELECT id, artifact_ref, summary, content, embedding, timestamp_epoch_ms FROM artifacts WHERE id = ?'
     ).get(artifactId) as {
       id: number;
       artifact_ref: string | null;
       summary: string;
       content: string | null;
       embedding: Buffer | null;
-      timestamp_epoch: number;
+      timestamp_epoch_ms: number;
     } | undefined;
 
     if (!newArtifact) return 0;
@@ -836,10 +836,10 @@ export async function linkArtifactToRelated(
     if (candidates.length === 0) {
       try {
         const rows = cachedPrepare(db,
-          `SELECT id, artifact_ref, summary, content, embedding, timestamp_epoch
+          `SELECT id, artifact_ref, summary, content, embedding, timestamp_epoch_ms
            FROM artifacts
            WHERE project = ? AND id != ? AND embedding IS NOT NULL
-           ORDER BY timestamp_epoch DESC
+           ORDER BY timestamp_epoch_ms DESC
            LIMIT 20`
         ).all(project, artifactId) as Array<{
           id: number;
@@ -847,7 +847,7 @@ export async function linkArtifactToRelated(
           summary: string;
           content: string | null;
           embedding: Buffer;
-          timestamp_epoch: number;
+          timestamp_epoch_ms: number;
         }>;
 
         for (const row of rows) {
@@ -876,13 +876,13 @@ export async function linkArtifactToRelated(
 
       // Load candidate artifact for contradiction/supersedes detection
       const oldArtifact = cachedPrepare(db,
-        'SELECT id, artifact_ref, summary, content, timestamp_epoch FROM artifacts WHERE id = ?'
+        'SELECT id, artifact_ref, summary, content, timestamp_epoch_ms FROM artifacts WHERE id = ?'
       ).get(candidate.id) as {
         id: number;
         artifact_ref: string | null;
         summary: string;
         content: string | null;
-        timestamp_epoch: number;
+        timestamp_epoch_ms: number;
       } | undefined;
 
       if (!oldArtifact) continue;
@@ -895,7 +895,7 @@ export async function linkArtifactToRelated(
       if (detectContradiction(newArtifact, oldArtifact)) {
         linkType = 'contradicts';
         // Active forgetting: deprioritize the older artifact (4.2)
-        const newerIsNew = newArtifact.timestamp_epoch >= oldArtifact.timestamp_epoch;
+        const newerIsNew = newArtifact.timestamp_epoch_ms >= oldArtifact.timestamp_epoch_ms;
         if (newerIsNew) {
           applyActiveForgetting(db, oldArtifact.id);
         } else {

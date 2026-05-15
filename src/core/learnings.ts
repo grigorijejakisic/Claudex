@@ -15,9 +15,9 @@ export interface LearningRow {
   fingerprint: string;
   content: string;
   promotion_count: number;
-  first_seen_epoch: number;
-  last_promoted_epoch: number;
-  updated_at_epoch: number;
+  first_seen_epoch_ms: number;
+  last_promoted_epoch_ms: number;
+  updated_at_epoch_ms: number;
   provenance: LearningProvenance;
 }
 
@@ -66,8 +66,8 @@ export function upsertLearning(
     cachedPrepare(db,
       `UPDATE learnings SET
          promotion_count = promotion_count + 1,
-         last_promoted_epoch = unixepoch(),
-         updated_at_epoch = unixepoch()
+         last_promoted_epoch_ms = (unixepoch() * 1000),
+         updated_at_epoch_ms = (unixepoch() * 1000)
        WHERE id = ?`
     ).run(existing.id);
     return;

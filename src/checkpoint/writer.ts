@@ -161,8 +161,8 @@ export async function writeCheckpoint(
     // Step 1: INSERT pending record BEFORE reads — if a read throws, the pending
     // row remains for failure traceability (catch block can UPDATE its status).
     cachedPrepare(db,
-      `INSERT INTO checkpoint_meta (checkpoint_id, session_id, trigger, status, created_at_epoch, updated_at_epoch)
-       VALUES (?, ?, ?, 'pending', unixepoch(), unixepoch())`
+      `INSERT INTO checkpoint_meta (checkpoint_id, session_id, trigger, status, created_at_epoch_ms, updated_at_epoch_ms)
+       VALUES (?, ?, ?, 'pending', unixepoch() * 1000, unixepoch() * 1000)`
     ).run(checkpointId, sessionId, trigger);
 
     // Step 2: Read current state from DB
@@ -178,9 +178,9 @@ export async function writeCheckpoint(
       const rows = db
         .prepare(
           `SELECT file_path FROM (
-             SELECT json_each.value AS file_path, MAX(observations.timestamp_epoch) AS last_seen
+             SELECT json_each.value AS file_path, MAX(observations.timestamp_epoch_ms) AS last_seen
              FROM observations, json_each(observations.files_modified)
-             WHERE observations.session_id = ? AND observations.deleted_at_epoch IS NULL
+             WHERE observations.session_id = ? AND observations.deleted_at_epoch_ms IS NULL
              GROUP BY json_each.value
            ) ORDER BY last_seen DESC LIMIT 20`
         )
@@ -197,7 +197,7 @@ export async function writeCheckpoint(
           `SELECT checkpoint_id FROM checkpoint_meta
            WHERE session_id = ? AND status IN ('committed', 'mirrored')
            AND checkpoint_id != ?
-           ORDER BY created_at_epoch DESC LIMIT 1`
+           ORDER BY created_at_epoch_ms DESC LIMIT 1`
         )
         .get(sessionId, checkpointId) as { checkpoint_id: string } | undefined;
       if (prev) {
@@ -293,7 +293,7 @@ export async function writeCheckpoint(
 
     // Step 4: UPDATE committed (pending row already exists from step 1)
     cachedPrepare(db,
-      `UPDATE checkpoint_meta SET status = 'committed', data = ?, updated_at_epoch = unixepoch()
+      `UPDATE checkpoint_meta SET status = 'committed', data = ?, updated_at_epoch_ms = unixepoch() * 1000
        WHERE checkpoint_id = ?`
     ).run(JSON.stringify(checkpoint), checkpointId);
 
@@ -325,7 +325,7 @@ export async function writeCheckpoint(
           if (merged.key_exchanges) checkpoint.thread.key_exchanges = merged.key_exchanges;
 
           cachedPrepare(db,
-            `UPDATE checkpoint_meta SET data = ?, updated_at_epoch = unixepoch()
+            `UPDATE checkpoint_meta SET data = ?, updated_at_epoch_ms = unixepoch() * 1000
              WHERE checkpoint_id = ?`
           ).run(JSON.stringify(checkpoint), checkpointId);
 
@@ -348,7 +348,7 @@ export async function writeCheckpoint(
 
     if (!writeOk) {
       cachedPrepare(db,
-        `UPDATE checkpoint_meta SET error = 'File write failed', updated_at_epoch = unixepoch()
+        `UPDATE checkpoint_meta SET error = 'File write failed', updated_at_epoch_ms = unixepoch() * 1000
          WHERE checkpoint_id = ?`
       ).run(checkpointId);
       return {
@@ -365,12 +365,12 @@ export async function writeCheckpoint(
     // Step 9: UPDATE mirrored (only if latest.yaml also written successfully)
     if (latestOk) {
       cachedPrepare(db,
-        `UPDATE checkpoint_meta SET status = 'mirrored', mirror_path = ?, updated_at_epoch = unixepoch()
+        `UPDATE checkpoint_meta SET status = 'mirrored', mirror_path = ?, updated_at_epoch_ms = unixepoch() * 1000
          WHERE checkpoint_id = ?`
       ).run(filePath, checkpointId);
     } else {
       cachedPrepare(db,
-        `UPDATE checkpoint_meta SET mirror_path = ?, updated_at_epoch = unixepoch()
+        `UPDATE checkpoint_meta SET mirror_path = ?, updated_at_epoch_ms = unixepoch() * 1000
          WHERE checkpoint_id = ?`
       ).run(filePath, checkpointId);
     }
@@ -399,7 +399,7 @@ export async function writeCheckpoint(
     try {
       const msg = err instanceof Error ? err.message : 'Unknown error';
       cachedPrepare(db,
-        `UPDATE checkpoint_meta SET error = ?, updated_at_epoch = unixepoch()
+        `UPDATE checkpoint_meta SET error = ?, updated_at_epoch_ms = unixepoch() * 1000
          WHERE checkpoint_id = ?`
       ).run(msg, checkpointId);
     } catch {

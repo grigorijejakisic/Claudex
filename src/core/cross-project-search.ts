@@ -99,7 +99,7 @@ function fetchCrossProjectCandidatePool(
               a.ttl AS ttl,
               a.importance AS importance,
               a.retrieval_score AS retrieval_score,
-              a.timestamp_epoch AS timestamp_epoch,
+              a.timestamp_epoch_ms AS timestamp_epoch_ms,
               a.activation_score AS activation_score,
               a.confidence AS confidence,
               a.novelty_score AS novelty_score,
@@ -109,13 +109,13 @@ function fetchCrossProjectCandidatePool(
         WHERE atp.task_pattern != '__abstain__'
           AND a.project != ?
           AND a.artifact_type IN ('learning', 'observation', 'memory_file', 'flow', 'milestone')
-        ORDER BY a.timestamp_epoch DESC
+        ORDER BY a.timestamp_epoch_ms DESC
         LIMIT ?`
     ).all(currentProject, poolSize) as Array<{
       artifact_id: number; session_id: string; project: string; artifact_type: string;
       artifact_ref: string | null; summary: string; content: string | null;
       state: string; ttl: number; importance: number; retrieval_score: number;
-      timestamp_epoch: number; activation_score: number; confidence: number;
+      timestamp_epoch_ms: number; activation_score: number; confidence: number;
       novelty_score: number; task_pattern: string;
     }>;
 
@@ -148,7 +148,7 @@ function fetchCrossProjectCandidatePool(
         ttl: r.ttl,
         importance: r.importance,
         retrieval_score: r.retrieval_score,
-        timestamp_epoch: r.timestamp_epoch,
+        timestamp_epoch_ms: r.timestamp_epoch_ms,
         activation_score: r.activation_score,
         confidence: r.confidence,
         novelty_score: r.novelty_score,

@@ -213,7 +213,7 @@ export function renderEntities(db: Database, project: string): string {
        WHERE artifact_type = 'entity_summary'
          AND project = ?
          AND state IN ('packed','fresh','materialized')
-       ORDER BY importance DESC, timestamp_epoch DESC, id ASC
+       ORDER BY importance DESC, timestamp_epoch_ms DESC, id ASC
        LIMIT ${MAX_ENTITIES}`,
     ).all(project) as typeof rows;
   } catch {

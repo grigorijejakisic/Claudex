@@ -179,9 +179,9 @@ const DEFAULT_WEIGHTS: Required<ScoringWeights> = {
  * Returns value in [0, 1] range.
  */
 export function computeRecencyScore(artifact: ArtifactRow): number {
-  const now = Math.floor(Date.now() / 1000);
-  const lastAccess = artifact.last_materialized_epoch ?? artifact.timestamp_epoch;
-  const hoursSinceAccess = Math.max(0, (now - lastAccess) / 3600);
+  const nowMs = Date.now();
+  const lastAccessMs = artifact.last_materialized_epoch_ms ?? artifact.timestamp_epoch_ms;
+  const hoursSinceAccess = Math.max(0, (nowMs - lastAccessMs) / 3600000);
   return Math.exp(-0.995 * hoursSinceAccess);
 }
 
@@ -461,7 +461,7 @@ function searchLikeFallback(
        ${projectFilter}
        ${supersededFilter}
      ORDER BY ${orderPrefix}
-       a.importance DESC, a.timestamp_epoch DESC
+       a.importance DESC, a.timestamp_epoch_ms DESC
      LIMIT ?`;
 
   const params = globalScope
@@ -560,7 +560,7 @@ function searchRecencyChannel(
          ${projectFilter}
          ${supersededFilter}
        ORDER BY ${orderPrefix}
-         timestamp_epoch DESC
+         timestamp_epoch_ms DESC
        LIMIT ?`;
 
     const params = globalScope
@@ -806,8 +806,8 @@ export async function hybridSearchAsync(
         const temporalProject = globalScope ? '' : 'AND project = ?';
         const temporalSql = `SELECT * FROM artifacts
            WHERE 1=1 ${temporalProject} ${temporalSuperseded}
-             AND timestamp_epoch >= ? AND timestamp_epoch <= ?
-           ORDER BY importance DESC, timestamp_epoch DESC
+             AND timestamp_epoch_ms >= ? AND timestamp_epoch_ms <= ?
+           ORDER BY importance DESC, timestamp_epoch_ms DESC
            LIMIT ?`;
         const temporalParams = globalScope
           ? [timeRange.start, timeRange.end, limit]
@@ -1078,9 +1078,9 @@ export async function hybridSearchAsync(
  * - Uses a base access count of 1 (creation = 1 access)
  */
 export function computeActivation(artifact: ArtifactRow): number {
-  const now = Math.floor(Date.now() / 1000);
-  const lastAccess = artifact.last_materialized_epoch ?? artifact.timestamp_epoch;
-  const hoursSinceAccess = Math.max(0, (now - lastAccess) / 3600);
+  const nowMs = Date.now();
+  const lastAccessMs = artifact.last_materialized_epoch_ms ?? artifact.timestamp_epoch_ms;
+  const hoursSinceAccess = Math.max(0, (nowMs - lastAccessMs) / 3600000);
 
   // Approximate access count: 1 (creation) + materializations
   // Materialized artifacts were accessed at least once more
@@ -1109,14 +1109,14 @@ export function decayActivationScores(
   try {
     // Batch read + JS compute (SQLite doesn't have LN())
     const artifacts = cachedPrepare(db,
-      `SELECT id, importance, timestamp_epoch, last_materialized_epoch, state
+      `SELECT id, importance, timestamp_epoch_ms, last_materialized_epoch_ms, state
        FROM artifacts
        WHERE project = ? AND state != 'packed'`
     ).all(project) as Array<{
       id: number;
       importance: number;
-      timestamp_epoch: number;
-      last_materialized_epoch: number | null;
+      timestamp_epoch_ms: number;
+      last_materialized_epoch_ms: number | null;
       state: string;
     }>;
 
@@ -1163,15 +1163,13 @@ export function recordArtifactAccess(
   artifactId: number,
 ): void {
   try {
-    const now = Math.floor(Date.now() / 1000);
-
     // Re-compute activation with fresh access data
     const art = cachedPrepare(db,
-      'SELECT importance, timestamp_epoch, last_materialized_epoch FROM artifacts WHERE id = ?'
+      'SELECT importance, timestamp_epoch_ms, last_materialized_epoch_ms FROM artifacts WHERE id = ?'
     ).get(artifactId) as {
       importance: number;
-      timestamp_epoch: number;
-      last_materialized_epoch: number | null;
+      timestamp_epoch_ms: number;
+      last_materialized_epoch_ms: number | null;
     } | undefined;
 
     if (!art) return;
@@ -1184,9 +1182,9 @@ export function recordArtifactAccess(
 
     cachedPrepare(db,
       `UPDATE artifacts
-       SET activation_score = ?, last_materialized_epoch = ?
+       SET activation_score = ?, last_materialized_epoch_ms = ?
        WHERE id = ?`
-    ).run(activation, now, artifactId);
+    ).run(activation, Date.now(), artifactId);
   } catch {
     // Non-throwing
   }

@@ -103,10 +103,10 @@ export function harvestTelemetry(db: Database, sessionId: string): TelemetryHand
 
   // duration_min from sessions table
   const sessionRow = cachedPrepare(db,
-    `SELECT created_at_epoch, ended_at_epoch FROM sessions WHERE session_id = ?`,
-  ).get(sessionId) as { created_at_epoch: number; ended_at_epoch: number | null } | undefined;
-  const durationMin = sessionRow && sessionRow.ended_at_epoch
-    ? Math.round((sessionRow.ended_at_epoch - sessionRow.created_at_epoch) / 60)
+    `SELECT created_at_epoch_ms, ended_at_epoch_ms FROM sessions WHERE session_id = ?`,
+  ).get(sessionId) as { created_at_epoch_ms: number; ended_at_epoch_ms: number | null } | undefined;
+  const durationMin = sessionRow && sessionRow.ended_at_epoch_ms
+    ? Math.round((sessionRow.ended_at_epoch_ms - sessionRow.created_at_epoch_ms) / 60000)
     : 0;
 
   // correction_count from session_events

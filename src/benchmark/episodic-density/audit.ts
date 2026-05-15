@@ -375,7 +375,7 @@ export function renderAuditJson(
 /* ------------------------------------------------------------------ */
 
 const RAW_CONTENT_LOOKUP = `
-  SELECT id, content, project, ts_epoch, metadata_json
+  SELECT id, content, project, ts_epoch_ms AS ts_epoch, metadata_json
     FROM episodic_events
    WHERE id IN (__IDS__)
 `;

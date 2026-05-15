@@ -536,7 +536,7 @@ export function getSessionsPendingCuratedExtraction(
              WHERE e.session_id = s.session_id
                AND e.event_type = 'curated_context_extracted'
           )
-        ORDER BY s.ended_at_epoch DESC NULLS LAST, s.created_at_epoch DESC
+        ORDER BY s.ended_at_epoch_ms DESC NULLS LAST, s.created_at_epoch_ms DESC
         LIMIT ?`,
     ).all(batchSize) as Array<{ session_id: string; project: string }>;
   } catch {

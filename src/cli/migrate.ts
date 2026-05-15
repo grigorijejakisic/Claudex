@@ -148,7 +148,7 @@ export function verifyMigration(
   // 5. Schema version
   try {
     const row = targetDb
-      .prepare('SELECT version FROM schema_versions ORDER BY applied_at_epoch DESC LIMIT 1')
+      .prepare('SELECT MAX(version) AS version FROM schema_versions')
       .get() as { version: number } | undefined;
     const version = row?.version ?? 0;
     checks.push({

@@ -52,7 +52,7 @@ export interface ProjectsTouchedResult {
 export function findLatestSessionId(db: Database.Database): string | null {
   try {
     const row = cachedPrepare(db,
-      'SELECT session_id FROM sessions ORDER BY created_at_epoch DESC LIMIT 1')
+      'SELECT session_id FROM sessions ORDER BY created_at_epoch_ms DESC LIMIT 1')
       .get() as { session_id: string } | undefined;
     return row ? row.session_id : null;
   } catch (err) {

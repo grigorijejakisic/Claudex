@@ -46,7 +46,7 @@ interface CandidateRow {
   content: string | null;
   task_pattern: string;
   classifier_confidence: number;
-  timestamp_epoch: number;
+  timestamp_epoch_ms: number;
   recent: 0 | 1;
   helpful_yn: number | null;
   artifact_kind: string;       // 'artifact' or 'lesson_pointer' (for diagnostics)
@@ -92,8 +92,8 @@ function fetchCandidatePool(
             a.content AS content,
             atp.task_pattern AS task_pattern,
             atp.classifier_confidence AS classifier_confidence,
-            a.timestamp_epoch AS timestamp_epoch,
-            CASE WHEN a.timestamp_epoch >= unixepoch('now', '-' || ? || ' days') THEN 1 ELSE 0 END AS recent,
+            a.timestamp_epoch_ms AS timestamp_epoch_ms,
+            CASE WHEN a.timestamp_epoch_ms >= (unixepoch('now', '-' || ? || ' days') * 1000) THEN 1 ELSE 0 END AS recent,
             NULL AS helpful_yn,
             'artifact' AS artifact_kind
        FROM artifacts a
@@ -101,7 +101,7 @@ function fetchCandidatePool(
       WHERE atp.task_pattern != '__abstain__'
         AND a.project != ?
         AND a.artifact_type IN ('learning', 'observation', 'memory_file', 'flow', 'milestone')
-      ORDER BY a.timestamp_epoch DESC
+      ORDER BY a.timestamp_epoch_ms DESC
       LIMIT ?`
   ).all(RECENCY_DAYS, currentProject, poolLimit) as CandidateRow[];
 }

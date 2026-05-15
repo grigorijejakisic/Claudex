@@ -27,13 +27,14 @@ export function emitCleanEndsessionClose(
   project: string,
 ): void {
   try {
-    const now = Math.floor(Date.now() / 1000);
+    const nowMs = Date.now();
+    const now = Math.floor(nowMs / 1000);
 
     const sessRow = cachedPrepare(db,
-      `SELECT created_at_epoch FROM sessions WHERE session_id = ?`
-    ).get(sessionId) as { created_at_epoch: number | null } | undefined;
-    const durationSeconds = sessRow?.created_at_epoch
-      ? Math.max(0, now - sessRow.created_at_epoch)
+      `SELECT created_at_epoch_ms FROM sessions WHERE session_id = ?`
+    ).get(sessionId) as { created_at_epoch_ms: number | null } | undefined;
+    const durationSeconds = sessRow?.created_at_epoch_ms
+      ? Math.max(0, Math.floor((nowMs - sessRow.created_at_epoch_ms) / 1000))
       : 0;
 
     const content = `Episode closed: clean_endsession`;
@@ -48,9 +49,9 @@ export function emitCleanEndsessionClose(
         `UPDATE sessions
             SET last_heartbeat_ts = ?,
                 status = 'completed',
-                ended_at_epoch = COALESCE(ended_at_epoch, ?)
+                ended_at_epoch_ms = COALESCE(ended_at_epoch_ms, ?)
           WHERE session_id = ?`
-      ).run(now, now, sessionId);
+      ).run(now, nowMs, sessionId);
 
       const ev = cachedPrepare(db,
         `INSERT INTO episodic_events

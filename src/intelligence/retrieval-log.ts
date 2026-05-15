@@ -184,7 +184,7 @@ export function distinctiveTokens(text: string | null | undefined): Set<string> 
  *     If resolution fails, fall back to tokens of the `query` column —
  *     a query echo in assistant output is also a weak usage signal.
  *   - Distinctive tokens from up to 5 transcript-chunk artifacts whose
- *     `created_at_epoch >= retrieval.invoked_at_epoch_ms` (both ms).
+ *     `created_at_epoch_ms >= retrieval.invoked_at_epoch_ms` (both ms).
  *     `transcript_chunk` rows are stored in the `artifact` table with
  *     `kind='transcript_chunk'`. They contain joined turn text per the
  *     Phase 4.1 chunker (`user_text\nassistant_text`).
@@ -260,8 +260,8 @@ export function reconcileUsedInOutput(
             `SELECT body FROM artifact
               WHERE kind = 'transcript_chunk'
                 AND session_id = ?
-                AND created_at_epoch >= ?
-              ORDER BY created_at_epoch ASC
+                AND created_at_epoch_ms >= ?
+              ORDER BY created_at_epoch_ms ASC
               LIMIT 5`
           ).all(sessionId, row.invoked_at_epoch_ms) as Array<{ body?: string }>;
           for (const c of chunks) {

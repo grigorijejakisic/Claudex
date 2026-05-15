@@ -73,7 +73,7 @@ async function main() {
     const sn = parseInt(sk.split('_')[1]);
     const turns = conv.conversation[sk] as LoCoMoTurn[];
     const sid = `${conv.sample_id}_${sk}`;
-    cachedPrepare(db, `INSERT OR IGNORE INTO sessions (session_id, project, status, created_at_epoch) VALUES (?, ?, 'completed', ?)`).run(sid, conv.sample_id, sn * 86400);
+    cachedPrepare(db, `INSERT OR IGNORE INTO sessions (session_id, project, status, created_at_epoch_ms) VALUES (?, ?, 'completed', ?)`).run(sid, conv.sample_id, sn * 86400000);
     for (const turn of turns) {
       cachedPrepare(db, `INSERT INTO observations (session_id, project, tool_name, category, title, content, importance, timestamp_epoch) VALUES (?, ?, 'dialog', 'other', ?, ?, 3, ?)`).run(sid, conv.sample_id, `${turn.speaker} [${turn.dia_id}]`, turn.text, sn * 86400 + parseInt(turn.dia_id.split(':')[1] || '0'));
     }

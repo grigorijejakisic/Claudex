@@ -337,13 +337,13 @@ export async function backfillEmbeddings(
     // 1. Artifacts without embeddings (highest priority)
     if (remaining > 0 && charBudget > 0) {
       const unembedded = db.prepare(
-        `SELECT id, content, summary, project, artifact_type, importance, session_id, timestamp_epoch
+        `SELECT id, content, summary, project, artifact_type, importance, session_id, timestamp_epoch_ms
          FROM artifacts
          WHERE embedding IS NULL AND state != 'packed' AND content IS NOT NULL
          LIMIT ?`
       ).all(remaining) as Array<{
         id: number; content: string; summary: string; project: string;
-        artifact_type: string; importance: number; session_id: string; timestamp_epoch: number;
+        artifact_type: string; importance: number; session_id: string; timestamp_epoch_ms: number;
       }>;
 
       for (const art of unembedded) {
@@ -358,7 +358,7 @@ export async function backfillEmbeddings(
             importance: art.importance,
             session_id: art.session_id,
             summary: (art.summary || '').slice(0, 500),
-            timestamp_epoch: art.timestamp_epoch,
+            timestamp_epoch: art.timestamp_epoch_ms,
           });
           if (ok) { result.artifacts++; remaining--; }
         } catch { result.errors++; }
@@ -368,12 +368,12 @@ export async function backfillEmbeddings(
     // 2. Journal entries without embeddings
     if (remaining > 0 && charBudget > 0) {
       const unembedded = db.prepare(
-        `SELECT id, content, project, session_id, timestamp_epoch
+        `SELECT id, content, project, session_id, timestamp_epoch_ms
          FROM session_journal
          WHERE embedding IS NULL AND content IS NOT NULL
          LIMIT ?`
       ).all(remaining) as Array<{
-        id: number; content: string; project: string; session_id: string; timestamp_epoch: number;
+        id: number; content: string; project: string; session_id: string; timestamp_epoch_ms: number;
       }>;
 
       for (const entry of unembedded) {

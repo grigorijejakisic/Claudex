@@ -56,8 +56,8 @@ interface CandidateRow {
   session_id: string;
   project: string;
   status: string;
-  created_at_epoch: number;
-  ended_at_epoch: number | null;
+  created_at_epoch_ms: number;
+  ended_at_epoch_ms: number | null;
   adapter: string | null;
   last_heartbeat_ts: number | null;
   last_jsonl_write_ts: number | null;
@@ -116,7 +116,7 @@ function emitReopenEvent(
                ))`
     ).run(c.session_id, c.project, content, contentHash, gapSeconds, c.last_close_event_id);
     db.prepare(
-      `UPDATE sessions SET status = 'active', ended_at_epoch = NULL WHERE session_id = ?`
+      `UPDATE sessions SET status = 'active', ended_at_epoch_ms = NULL WHERE session_id = ?`
     ).run(c.session_id);
     db.prepare(
       `INSERT INTO episode_boundary_cursor
@@ -202,7 +202,7 @@ export function runBoundaryTick(
   // row OR with cursor.last_close_event_id IS NULL but status='active' also
   // qualify (first-time close detection).
   const candidates = db.prepare(
-    `SELECT s.session_id, s.project, s.status, s.created_at_epoch, s.ended_at_epoch,
+    `SELECT s.session_id, s.project, s.status, s.created_at_epoch_ms, s.ended_at_epoch_ms,
             s.adapter, s.last_heartbeat_ts, s.last_jsonl_write_ts,
             c.last_processed_jsonl_offset,
             c.last_processed_event_ts_epoch,
@@ -266,8 +266,8 @@ export function runBoundaryTick(
       if (cls.state === 'alive' || cls.state === 'dormant') continue;
       if (cls.close_reason === 'clean_endsession') continue;
 
-      const durationSeconds = c.created_at_epoch
-        ? Math.max(0, now - c.created_at_epoch)
+      const durationSeconds = c.created_at_epoch_ms
+        ? Math.max(0, now - Math.floor(c.created_at_epoch_ms / 1000))
         : 0;
 
       const out = commitBoundaryTick(db, {

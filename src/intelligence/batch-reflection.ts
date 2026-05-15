@@ -169,16 +169,14 @@ export function shouldRunReflection(db: Database, project: string): boolean {
       'SELECT last_checkpoint_epoch FROM checkpoint_tracking WHERE session_id = ?'
     ).get(guardKey) as { last_checkpoint_epoch: number | null } | undefined;
 
-    const lastReflectionEpoch = guard?.last_checkpoint_epoch ?? 0;
+    const lastReflectionEpochMs = (guard?.last_checkpoint_epoch ?? 0) * 1000; // guard uses seconds
 
-    // Count sessions for this project since last reflection.
-    // Filter out sessions with corrupted millisecond epochs (> year 2100 in seconds).
-    // Historical bug: some sessions stored Date.now() (ms) instead of seconds.
-    const MAX_SANE_EPOCH = 4_102_444_800; // 2100-01-01 in seconds
+    // Count sessions for this project since last reflection (ms precision).
+    const MAX_SANE_EPOCH_MS = 4_102_444_800_000; // 2100-01-01 in ms
     const countResult = cachedPrepare(db,
       `SELECT COUNT(*) as cnt FROM sessions
-       WHERE project = ? AND created_at_epoch > ? AND created_at_epoch < ?`
-    ).get(project, lastReflectionEpoch, MAX_SANE_EPOCH) as { cnt: number };
+       WHERE project = ? AND created_at_epoch_ms > ? AND created_at_epoch_ms < ?`
+    ).get(project, lastReflectionEpochMs, MAX_SANE_EPOCH_MS) as { cnt: number };
 
     return countResult.cnt >= REFLECTION_INTERVAL;
   } catch {

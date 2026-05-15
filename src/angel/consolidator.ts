@@ -89,8 +89,8 @@ export function getUnconsolidatedObservations(
       `SELECT * FROM observations
        WHERE consumed = 0
          AND consolidated_into IS NULL
-         AND deleted_at_epoch IS NULL
-       ORDER BY timestamp_epoch ASC
+         AND deleted_at_epoch_ms IS NULL
+       ORDER BY timestamp_epoch_ms ASC
        LIMIT ?`
     ).all(batchSize) as ObservationRow[];
   } catch {
@@ -359,7 +359,7 @@ async function mergePair(
   pair: ObservationRow[],
 ): Promise<number> {
   // Sort by timestamp — newer first
-  const sorted = [...pair].sort((a, b) => b.timestamp_epoch - a.timestamp_epoch);
+  const sorted = [...pair].sort((a, b) => b.timestamp_epoch_ms - a.timestamp_epoch_ms);
   const newer = sorted[0];
   const older = sorted[1];
 

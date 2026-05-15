@@ -1142,7 +1142,7 @@ export function formatFlowSection(entries: JournalEntry[]): string | null {
     if (!entries || entries.length === 0) return null;
 
     // Sort chronologically (oldest first) for narrative flow
-    const sorted = [...entries].sort((a, b) => a.timestamp_epoch - b.timestamp_epoch);
+    const sorted = [...entries].sort((a, b) => a.timestamp_epoch_ms - b.timestamp_epoch_ms);
 
     const bullets = sorted.map((e, i) => {
       const prefix = e.entry_type !== 'flow' ? `[${e.entry_type}] ` : '';

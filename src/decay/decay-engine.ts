@@ -50,7 +50,8 @@ export function computeEI(obs: {
 }): number {
   const baseWeight = BASE_WEIGHTS[obs.importance] ?? 0.2;
   const accessFactor = 1 + Math.log2(1 + obs.accessCount);
-  const ageDays = Math.max(0, (Date.now() / 1000 - obs.timestampEpoch) / 86400);
+  // timestampEpoch is now ms (epoch_ms canonical after V35 migration)
+  const ageDays = Math.max(0, (Date.now() - obs.timestampEpoch) / 86400000);
 
   // Resolve stability class with backward-compatible fallback
   // Delegate to memory policy for half-life lookup
@@ -103,12 +104,12 @@ export function getCoOccurrences(
     const stmt = project != null
       ? cachedPrepare(db,
           `SELECT id FROM observations
-           WHERE id != ? AND deleted_at_epoch IS NULL AND project = ? AND files_modified LIKE ? ESCAPE '\\'
+           WHERE id != ? AND deleted_at_epoch_ms IS NULL AND project = ? AND files_modified LIKE ? ESCAPE '\\'
            LIMIT 6`
         )
       : cachedPrepare(db,
           `SELECT id FROM observations
-           WHERE id != ? AND deleted_at_epoch IS NULL AND files_modified LIKE ? ESCAPE '\\'
+           WHERE id != ? AND deleted_at_epoch_ms IS NULL AND files_modified LIKE ? ESCAPE '\\'
            LIMIT 6`
         );
 
@@ -147,26 +148,26 @@ export function pruneObservations(
     const pruneThreshold = opts?.pruneThreshold ?? 1000;
     const pruneCount = opts?.pruneCount ?? 50;
 
-    const countRow = cachedPrepare(db, 'SELECT COUNT(*) as cnt FROM observations WHERE project = ? AND deleted_at_epoch IS NULL')
+    const countRow = cachedPrepare(db, 'SELECT COUNT(*) as cnt FROM observations WHERE project = ? AND deleted_at_epoch_ms IS NULL')
       .get(project) as { cnt: number };
 
     if (countRow.cnt <= pruneThreshold) return 0;
 
-    const immunityEpoch = Math.floor(Date.now() / 1000) - IMMUNITY_ACCESS_DAYS * 86400;
+    const immunityEpoch = Date.now() - IMMUNITY_ACCESS_DAYS * 86400000;
 
     const candidates = cachedPrepare(db,
-        `SELECT id, importance, access_count, last_accessed_at_epoch, timestamp_epoch, files_modified, stability_class
+        `SELECT id, importance, access_count, last_accessed_at_epoch_ms, timestamp_epoch_ms, files_modified, stability_class
          FROM observations
-         WHERE project = ? AND deleted_at_epoch IS NULL
+         WHERE project = ? AND deleted_at_epoch_ms IS NULL
            AND importance < 5
-           AND NOT (access_count >= ? AND last_accessed_at_epoch IS NOT NULL AND last_accessed_at_epoch > ?)`
+           AND NOT (access_count >= ? AND last_accessed_at_epoch_ms IS NOT NULL AND last_accessed_at_epoch_ms > ?)`
       )
       .all(project, IMMUNITY_ACCESS_COUNT, immunityEpoch) as Array<{
         id: number;
         importance: number;
         access_count: number;
-        last_accessed_at_epoch: number | null;
-        timestamp_epoch: number;
+        last_accessed_at_epoch_ms: number | null;
+        timestamp_epoch_ms: number;
         files_modified: string;
         stability_class: string | null;
       }>;
@@ -183,8 +184,8 @@ export function pruneObservations(
       ei: computeEI({
         importance: c.importance,
         accessCount: c.access_count,
-        lastAccessedAtEpoch: c.last_accessed_at_epoch,
-        timestampEpoch: c.timestamp_epoch,
+        lastAccessedAtEpoch: c.last_accessed_at_epoch_ms,
+        timestampEpoch: c.timestamp_epoch_ms,
         coOccurrences: getCoOccurrences(db, c.id, c.files_modified, project),
         stabilityClass: c.stability_class ?? 'standard',
       }),
@@ -196,7 +197,7 @@ export function pruneObservations(
     // Soft-delete the lowest pruneCount
     const toPrune = scored.slice(0, pruneCount);
     const softDelete = cachedPrepare(db,
-      'UPDATE observations SET deleted_at_epoch = unixepoch() WHERE id = ?'
+      'UPDATE observations SET deleted_at_epoch_ms = (unixepoch() * 1000) WHERE id = ?'
     );
 
     const doDelete = db.transaction(() => {
@@ -225,22 +226,23 @@ export function applyRetentionPolicy(
 ): number {
   try {
     const days = retentionDays ?? 90;
-    const threshold = days * 86400;
+    const thresholdMs = days * 86400000;
+    const cutoffMs = Date.now() - thresholdMs;
 
     const r1 = cachedPrepare(db,
         `DELETE FROM observations
-         WHERE project = ? AND deleted_at_epoch IS NOT NULL
-           AND deleted_at_epoch < unixepoch() - ?`
+         WHERE project = ? AND deleted_at_epoch_ms IS NOT NULL
+           AND deleted_at_epoch_ms < ?`
       )
-      .run(project, threshold);
+      .run(project, cutoffMs);
 
     const r2 = cachedPrepare(db,
         `DELETE FROM observations
-         WHERE project = ? AND deleted_at_epoch IS NULL
-           AND timestamp_epoch < unixepoch() - ?
+         WHERE project = ? AND deleted_at_epoch_ms IS NULL
+           AND timestamp_epoch_ms < ?
            AND importance < 5`
       )
-      .run(project, threshold);
+      .run(project, cutoffMs);
 
     return r1.changes + r2.changes;
   } catch {

@@ -85,20 +85,20 @@ interface OrganicRow {
 interface V4ArtifactRow {
   id: number;
   project: string;
-  timestamp_epoch: number;
+  timestamp_epoch_ms: number;
   content: string;
 }
 
 const ORGANIC_SELECT = `
-  SELECT id, project, ts_epoch, content, metadata_json
+  SELECT id, project, ts_epoch_ms AS ts_epoch, content, metadata_json
     FROM episodic_events
    WHERE provenance = 'tool_result'
-     AND ts_epoch >= ?
+     AND ts_epoch_ms >= ?
    ORDER BY id ASC
 `;
 
 const V4_SELECT = `
-  SELECT id, project, timestamp_epoch, content
+  SELECT id, project, timestamp_epoch_ms, content
     FROM artifacts
    WHERE artifact_type = 'observation'
      AND content IS NOT NULL
@@ -292,12 +292,13 @@ export function backfillV4Artifacts(
       // v4 artifacts are always classified as 'v4_backfill' regardless
       // of timestamp (CONTEXT.md decision 1c — phase-anchoring applies to
       // organic rows only; v4 is its own tier).
-      const v4Origin = classifyCorpusOrigin('environmental', row.timestamp_epoch ?? 0);
+      const tsEpochSec = Math.floor((row.timestamp_epoch_ms ?? 0) / 1000);
+      const v4Origin = classifyCorpusOrigin('environmental', tsEpochSec);
       const tx = db.transaction(() => {
         db.prepare(SIDECAR_DELETE_BY_EVENT).run(shadowId, v4Origin);
         const insert = db.prepare(SIDECAR_INSERT);
         for (const shingle of fp.shingles) {
-          insert.run(shingle, shadowId, row.timestamp_epoch ?? 0, row.project, v4Origin);
+          insert.run(shingle, shadowId, tsEpochSec, row.project, v4Origin);
           counters.sidecar_writes++;
         }
       });

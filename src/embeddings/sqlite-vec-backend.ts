@@ -322,7 +322,7 @@ export async function searchArtifactsVec(
         a.confidence AS confidence,
         a.activation_score AS activation_score,
         a.session_id AS session_id,
-        a.timestamp_epoch AS timestamp_epoch,
+        a.timestamp_epoch_ms AS timestamp_epoch_ms,
         a.superseded_by AS superseded_by,
         a.summary AS summary
       FROM vec_artifacts v
@@ -345,7 +345,7 @@ export async function searchArtifactsVec(
       confidence: number;
       activation_score: number;
       session_id: string;
-      timestamp_epoch: number;
+      timestamp_epoch_ms: number;
       superseded_by: number | null;
       summary: string;
     }>;
@@ -361,7 +361,7 @@ export async function searchArtifactsVec(
         confidence: r.confidence,
         activation_score: r.activation_score,
         session_id: r.session_id,
-        timestamp_epoch: r.timestamp_epoch,
+        timestamp_epoch: r.timestamp_epoch_ms,
         superseded: r.superseded_by != null,
         summary: r.summary,
       },
@@ -507,7 +507,7 @@ export async function searchJournalVec(
         j.entry_type AS entry_type,
         j.recall_text AS recall_text,
         j.content AS content,
-        j.timestamp_epoch AS timestamp_epoch
+        j.timestamp_epoch_ms AS timestamp_epoch_ms
       FROM vec_journal v
       JOIN session_journal j ON j.id = v.rowid
       WHERE v.embedding MATCH ?
@@ -525,7 +525,7 @@ export async function searchJournalVec(
       entry_type: string;
       recall_text: string | null;
       content: string;
-      timestamp_epoch: number;
+      timestamp_epoch_ms: number;
     }>;
 
     return rows.map(r => ({
@@ -538,7 +538,7 @@ export async function searchJournalVec(
         entry_type: r.entry_type,
         recall_text: r.recall_text,
         content: r.content,
-        timestamp_epoch: r.timestamp_epoch,
+        timestamp_epoch: r.timestamp_epoch_ms,
       },
     }));
   }, []);
@@ -564,7 +564,7 @@ export async function searchConversationsVec(
         ct.user_text AS user_text,
         ct.assistant_text AS assistant_text,
         ct.turn_number AS turn_number,
-        ct.timestamp_epoch AS timestamp_epoch
+        ct.timestamp_epoch_ms AS timestamp_epoch_ms
       FROM vec_conversations v
       JOIN conversation_turns ct ON ct.id = v.rowid
       WHERE v.embedding MATCH ?
@@ -582,7 +582,7 @@ export async function searchConversationsVec(
       user_text: string | null;
       assistant_text: string | null;
       turn_number: number;
-      timestamp_epoch: number;
+      timestamp_epoch_ms: number;
     }>;
 
     return rows.map(r => ({
@@ -595,7 +595,7 @@ export async function searchConversationsVec(
         user_text: r.user_text,
         assistant_text: r.assistant_text,
         turn_number: r.turn_number,
-        timestamp_epoch: r.timestamp_epoch,
+        timestamp_epoch: r.timestamp_epoch_ms,
       },
     }));
   }, []);

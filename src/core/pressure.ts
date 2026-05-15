@@ -11,7 +11,7 @@ export interface PressureRow {
   project: string;
   raw_pressure: number;
   temperature: string;
-  last_touched_epoch: number;
+  last_touched_epoch_ms: number;
   decay_rate: number;
 }
 
@@ -31,12 +31,12 @@ export function updatePressureScore(
   rawPressureIncrement: number
 ): void {
   cachedPrepare(db,
-    `INSERT INTO pressure_scores (file_path, project, raw_pressure, temperature, last_touched_epoch)
-     VALUES (?, ?, ?, CASE WHEN ? > ${HOT_THRESHOLD} THEN 'HOT' ELSE 'COLD' END, unixepoch())
+    `INSERT INTO pressure_scores (file_path, project, raw_pressure, temperature, last_touched_epoch_ms)
+     VALUES (?, ?, ?, CASE WHEN ? > ${HOT_THRESHOLD} THEN 'HOT' ELSE 'COLD' END, (unixepoch() * 1000))
      ON CONFLICT(file_path, project) DO UPDATE SET
        raw_pressure = raw_pressure + ?,
        temperature = CASE WHEN raw_pressure + ? > ${HOT_THRESHOLD} THEN 'HOT' ELSE 'COLD' END,
-       last_touched_epoch = unixepoch()`
+       last_touched_epoch_ms = (unixepoch() * 1000)`
   ).run(
     filePath,
     project,

@@ -233,7 +233,7 @@ export function getLastSessionSummary(db: Database, project: string): string | n
     const row = cachedPrepare(db,
       `SELECT session_summary FROM sessions
        WHERE project = ? AND session_summary IS NOT NULL
-       ORDER BY created_at_epoch DESC LIMIT 1`
+       ORDER BY created_at_epoch_ms DESC LIMIT 1`
     ).get(project) as { session_summary: string } | undefined;
     return row?.session_summary ?? null;
   } catch {

@@ -47,7 +47,7 @@ interface ConvTurn {
   turn_number: number;
   user_text: string | null;
   assistant_text: string | null;
-  timestamp_epoch: number;
+  timestamp_epoch_ms: number;
 }
 
 interface Segment {
@@ -293,9 +293,8 @@ export function enforceBounds(
  * - `body`  = joined full text of all turns in the segment
  *             (`user_text\nassistant_text` per turn; turns separated by `\n\n`).
  *             NOT truncated — full text is the source of truth for embeds.
- * - `created_at_epoch` = last in-segment turn's `timestamp_epoch * 1000` (ms).
- *   conversation_turns stores seconds via unixepoch(); we upscale on write
- *   per Phase 4.1 CUR-14 lock (artifact.created_at_epoch is ms-precision).
+ * - `created_at_epoch_ms` = last in-segment turn's `timestamp_epoch_ms` (already ms).
+ *   conversation_turns.timestamp_epoch_ms stores milliseconds (V35 migration).
  * - `data` = `{turn_range:[start,end], topic_label}`.
  * - `embedding_ref` left null — Phase 6b's backfill picks these up.
  *
@@ -316,7 +315,7 @@ function insertChunks(
   const stmt = db.prepare(
     `INSERT INTO artifact(
        id, kind, title, body, scope, status, confidence,
-       created_at_epoch, updated_at_epoch, session_id, project, data
+       created_at_epoch_ms, updated_at_epoch_ms, session_id, project, data
      ) VALUES (?, 'transcript_chunk', ?, ?, NULL, 'active', NULL, ?, ?, ?, ?, ?)`,
   );
 
@@ -332,12 +331,9 @@ function insertChunks(
     const body = segTurns
       .map(t => [t.user_text, t.assistant_text].filter((s): s is string => !!s).join('\n'))
       .join('\n\n');
-    // conversation_turns.timestamp_epoch is unixepoch() (seconds, 10-digit).
-    // Phase 4.1 lock: artifact.created_at_epoch is ms-precision (13-digit).
-    // Convert at write time per CONTEXT.md decision (no data migration; only
-    // the writer changes). Read-time normalization for legacy seconds-precision
-    // rows is via src/shared/epoch-utils.ts:normalizeEpochMs.
-    const lastTs = segTurns[segTurns.length - 1].timestamp_epoch * 1000;
+    // conversation_turns.timestamp_epoch_ms is milliseconds (13-digit).
+    // artifact.created_at_epoch_ms is also ms-precision (13-digit).
+    const lastTs = segTurns[segTurns.length - 1].timestamp_epoch_ms;
     const data = JSON.stringify({
       turn_range: [seg.start, seg.end],
       topic_label: seg.topic_label,
@@ -380,7 +376,7 @@ export async function chunkSessionTranscript(
   try {
     const turns = cachedPrepare(
       db,
-      `SELECT turn_number, user_text, assistant_text, timestamp_epoch
+      `SELECT turn_number, user_text, assistant_text, timestamp_epoch_ms
          FROM conversation_turns
         WHERE session_id = ?
         ORDER BY turn_number ASC`,

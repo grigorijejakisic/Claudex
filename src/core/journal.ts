@@ -53,7 +53,7 @@ export interface JournalEntry {
   content: string;
   metadata: string | null;
   recall_text: string | null;
-  timestamp_epoch: number;
+  timestamp_epoch_ms: number;
 }
 
 /** Parsed journal entry with typed metadata. */
@@ -172,7 +172,7 @@ export function getJournalBySession(
     return cachedPrepare(db,
       `SELECT * FROM session_journal
        WHERE session_id = ? AND entry_type = ?
-       ORDER BY timestamp_epoch DESC
+       ORDER BY timestamp_epoch_ms DESC
        LIMIT ?`
     ).all(sessionId, options.entryType, limit) as JournalEntry[];
   }
@@ -180,7 +180,7 @@ export function getJournalBySession(
   return cachedPrepare(db,
     `SELECT * FROM session_journal
      WHERE session_id = ?
-     ORDER BY timestamp_epoch DESC
+     ORDER BY timestamp_epoch_ms DESC
      LIMIT ?`
   ).all(sessionId, limit) as JournalEntry[];
 }
@@ -198,7 +198,7 @@ export function getRecentFlow(
   return cachedPrepare(db,
     `SELECT * FROM session_journal
      WHERE project = ? AND entry_type = 'flow'
-     ORDER BY timestamp_epoch DESC
+     ORDER BY timestamp_epoch_ms DESC
      LIMIT ?`
   ).all(project, limit ?? 20) as JournalEntry[];
 }
@@ -215,7 +215,7 @@ export function getSessionMilestones(
   return cachedPrepare(db,
     `SELECT * FROM session_journal
      WHERE session_id = ? AND entry_type = 'milestone'
-     ORDER BY timestamp_epoch DESC
+     ORDER BY timestamp_epoch_ms DESC
      LIMIT ?`
   ).all(sessionId, limit ?? 50) as JournalEntry[];
 }

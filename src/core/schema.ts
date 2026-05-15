@@ -300,14 +300,14 @@ CREATE TABLE IF NOT EXISTS session_journal (
   content TEXT NOT NULL,
   metadata TEXT,
   recall_text TEXT,
-  timestamp_epoch INTEGER NOT NULL DEFAULT (unixepoch()),
+  timestamp_epoch_ms INTEGER NOT NULL DEFAULT (unixepoch() * 1000),
   embedding BLOB
 );
 
 CREATE INDEX IF NOT EXISTS idx_journal_session
-  ON session_journal(session_id, timestamp_epoch DESC);
+  ON session_journal(session_id, timestamp_epoch_ms DESC);
 CREATE INDEX IF NOT EXISTS idx_journal_project_type
-  ON session_journal(project, entry_type, timestamp_epoch DESC);
+  ON session_journal(project, entry_type, timestamp_epoch_ms DESC);
 
 -- FTS5 for session_journal — enables associative recall search
 CREATE VIRTUAL TABLE IF NOT EXISTS session_journal_fts USING fts5(
@@ -351,8 +351,8 @@ CREATE TABLE IF NOT EXISTS artifacts (
   ttl INTEGER NOT NULL DEFAULT 3,
   importance INTEGER NOT NULL DEFAULT 3 CHECK (importance BETWEEN 1 AND 5),
   retrieval_score REAL NOT NULL DEFAULT 1.0,
-  timestamp_epoch INTEGER NOT NULL DEFAULT (unixepoch()),
-  last_materialized_epoch INTEGER,
+  timestamp_epoch_ms INTEGER NOT NULL DEFAULT (unixepoch() * 1000),
+  last_materialized_epoch_ms INTEGER,
   embedding BLOB,
   activation_score REAL NOT NULL DEFAULT 1.0,
   superseded_by INTEGER,
@@ -362,11 +362,11 @@ CREATE TABLE IF NOT EXISTS artifacts (
 );
 
 CREATE INDEX IF NOT EXISTS idx_artifacts_project_state
-  ON artifacts(project, state, importance DESC, timestamp_epoch DESC);
+  ON artifacts(project, state, importance DESC, timestamp_epoch_ms DESC);
 CREATE INDEX IF NOT EXISTS idx_artifacts_type_importance
-  ON artifacts(project, artifact_type, importance DESC, timestamp_epoch DESC);
+  ON artifacts(project, artifact_type, importance DESC, timestamp_epoch_ms DESC);
 CREATE INDEX IF NOT EXISTS idx_artifacts_session
-  ON artifacts(session_id, timestamp_epoch DESC);
+  ON artifacts(session_id, timestamp_epoch_ms DESC);
 
 -- artifacts_fts: full-text search on artifact summary + content (Claudex Recall)
 -- bm25() returns negative values (more negative = better match).
@@ -545,13 +545,13 @@ CREATE TABLE IF NOT EXISTS conversation_turns (
   turn_number INTEGER NOT NULL DEFAULT 0,
   user_text TEXT,
   assistant_text TEXT,
-  timestamp_epoch INTEGER NOT NULL DEFAULT (unixepoch()),
+  timestamp_epoch_ms INTEGER NOT NULL DEFAULT (unixepoch() * 1000),
   embedding BLOB
 );
 CREATE INDEX IF NOT EXISTS idx_convturns_session
   ON conversation_turns(session_id, turn_number);
 CREATE INDEX IF NOT EXISTS idx_convturns_project
-  ON conversation_turns(project, timestamp_epoch DESC);
+  ON conversation_turns(project, timestamp_epoch_ms DESC);
 
 -- FTS5 for conversation_turns — enables full dialogue search
 CREATE VIRTUAL TABLE IF NOT EXISTS conversation_turns_fts USING fts5(

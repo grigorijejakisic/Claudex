@@ -124,7 +124,7 @@ export interface HarnessRunResult {
 }
 
 const CORPUS_LOAD_SQL = `
-  SELECT id, project, ts_epoch, session_id, content, metadata_json
+  SELECT id, project, ts_epoch_ms AS ts_epoch, session_id, content, metadata_json
     FROM episodic_events
    WHERE metadata_json IS NOT NULL
      AND json_extract(metadata_json, '$.error_fingerprint') IS NOT NULL

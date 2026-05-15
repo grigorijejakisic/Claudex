@@ -192,8 +192,8 @@ export function processToolObservation(input: ProcessToolObservationInput): numb
     const obsType = classifyObservationType(redactedContent, toolName, exitCode);
     const adjustedImportance = applyTypePrior(importance, obsType);
 
-    // 7. Dedup — skip if same tool+file+category+project+session within 5 minutes (300 seconds)
-    const fiveMinutesAgo = Math.floor(Date.now() / 1000) - 300;
+    // 7. Dedup — skip if same tool+file+category+project+session within 5 minutes
+    const fiveMinutesAgo = Date.now() - 300_000; // ms
     // Sort files for order-independent dedup (same set in different order = same observation)
     const sortedFiles = [...sanitizedFiles].sort();
 
@@ -204,8 +204,8 @@ export function processToolObservation(input: ProcessToolObservationInput): numb
         .prepare(
           `SELECT id FROM observations
            WHERE tool_name = ? AND category = ? AND project = ? AND session_id = ?
-             AND timestamp_epoch > ? AND files_modified = ?
-             AND deleted_at_epoch IS NULL
+             AND timestamp_epoch_ms > ? AND files_modified = ?
+             AND deleted_at_epoch_ms IS NULL
            LIMIT 1`
         )
         .get(toolName, category, project, sessionId, fiveMinutesAgo, JSON.stringify(sortedFiles)) as { id: number } | undefined;
@@ -225,9 +225,9 @@ export function processToolObservation(input: ProcessToolObservationInput): numb
           `SELECT id FROM observations
            WHERE tool_name = ? AND category = ? AND project = ? AND session_id = ?
              AND content = ? AND title = ?
-             AND timestamp_epoch > ?
+             AND timestamp_epoch_ms > ?
              AND files_modified = '[]'
-             AND deleted_at_epoch IS NULL
+             AND deleted_at_epoch_ms IS NULL
            LIMIT 1`
         )
         .get(toolName, category, project, sessionId, canonContent, canonTitle, fiveMinutesAgo) as { id: number } | undefined;
@@ -312,8 +312,8 @@ export async function processToolObservationAsync(input: ProcessToolObservationI
     const obsType = classifyObservationType(redactedContent, toolName, exitCode);
     const adjustedImportance = applyTypePrior(importance, obsType);
 
-    // 7. Dedup — skip if same tool+file+category+project+session within 5 minutes (300 seconds)
-    const fiveMinutesAgo = Math.floor(Date.now() / 1000) - 300;
+    // 7. Dedup — skip if same tool+file+category+project+session within 5 minutes
+    const fiveMinutesAgo = Date.now() - 300_000; // ms
     const sortedFiles = [...sanitizedFiles].sort();
 
     let existing: { id: number } | undefined;
@@ -322,8 +322,8 @@ export async function processToolObservationAsync(input: ProcessToolObservationI
         .prepare(
           `SELECT id FROM observations
            WHERE tool_name = ? AND category = ? AND project = ? AND session_id = ?
-             AND timestamp_epoch > ? AND files_modified = ?
-             AND deleted_at_epoch IS NULL
+             AND timestamp_epoch_ms > ? AND files_modified = ?
+             AND deleted_at_epoch_ms IS NULL
            LIMIT 1`
         )
         .get(toolName, category, project, sessionId, fiveMinutesAgo, JSON.stringify(sortedFiles)) as { id: number } | undefined;
@@ -338,9 +338,9 @@ export async function processToolObservationAsync(input: ProcessToolObservationI
           `SELECT id FROM observations
            WHERE tool_name = ? AND category = ? AND project = ? AND session_id = ?
              AND content = ? AND title = ?
-             AND timestamp_epoch > ?
+             AND timestamp_epoch_ms > ?
              AND files_modified = '[]'
-             AND deleted_at_epoch IS NULL
+             AND deleted_at_epoch_ms IS NULL
            LIMIT 1`
         )
         .get(toolName, category, project, sessionId, canonContent, canonTitle, fiveMinutesAgo) as { id: number } | undefined;

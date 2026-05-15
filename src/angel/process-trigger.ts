@@ -115,11 +115,11 @@ export function evaluateProcessTriggers(db: Database, sessionId: string): Proces
       `SELECT COUNT(*) AS cnt FROM conversation_turns WHERE session_id = ?`,
     ).get(sessionId) as { cnt: number };
     const sessionRow = cachedPrepare(db,
-      `SELECT created_at_epoch, ended_at_epoch FROM sessions WHERE session_id = ?`,
-    ).get(sessionId) as { created_at_epoch: number; ended_at_epoch: number | null } | undefined;
+      `SELECT created_at_epoch_ms, ended_at_epoch_ms FROM sessions WHERE session_id = ?`,
+    ).get(sessionId) as { created_at_epoch_ms: number; ended_at_epoch_ms: number | null } | undefined;
 
-    if (sessionRow && sessionRow.ended_at_epoch && turnCntRow.cnt >= 20) {
-      const durationMin = (sessionRow.ended_at_epoch - sessionRow.created_at_epoch) / 60;
+    if (sessionRow && sessionRow.ended_at_epoch_ms && turnCntRow.cnt >= 20) {
+      const durationMin = (sessionRow.ended_at_epoch_ms - sessionRow.created_at_epoch_ms) / 60000;
       const actionRow = cachedPrepare(db,
         `SELECT COUNT(*) AS cnt FROM session_events
          WHERE session_id = ?

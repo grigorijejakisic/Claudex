@@ -109,13 +109,13 @@ export function readRecentPhase2Failures(
   try {
     const rows = cachedPrepare(
       db,
-      `SELECT detail, timestamp_epoch
+      `SELECT detail, timestamp_epoch_ms
        FROM telemetry
        WHERE event_kind = 'error'
          AND json_extract(detail, '$.subsystem') LIKE 'heartbeat/phase2_%'
-         AND timestamp_epoch >= unixepoch() - ?
-       ORDER BY timestamp_epoch DESC`,
-    ).all(windowSeconds) as Array<{ detail: string; timestamp_epoch: number }>;
+         AND timestamp_epoch_ms >= (unixepoch() - ?) * 1000
+       ORDER BY timestamp_epoch_ms DESC`,
+    ).all(windowSeconds) as Array<{ detail: string; timestamp_epoch_ms: number }>;
     if (rows.length === 0) return empty;
 
     const subsystems = new Set<string>();

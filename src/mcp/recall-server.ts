@@ -67,7 +67,7 @@ function _resolveActiveSessionId(database: Database.Database, project: string): 
              FROM session_events GROUP BY session_id
          ) e ON e.session_id = s.session_id
         WHERE s.project = ? AND s.status = 'active'
-        ORDER BY COALESCE(e.last_activity, s.created_at_epoch) DESC LIMIT 1`,
+        ORDER BY COALESCE(e.last_activity, s.created_at_epoch_ms) DESC LIMIT 1`,
     ).get(project) as { session_id: string } | undefined;
     if (active?.session_id) return active.session_id;
   } catch { /* fall through */ }
@@ -217,7 +217,7 @@ server.registerTool(
                  FROM session_events GROUP BY session_id
              ) e ON e.session_id = s.session_id
             WHERE s.project = ? AND s.status = 'active'
-            ORDER BY COALESCE(e.last_activity, s.created_at_epoch) DESC LIMIT 1`,
+            ORDER BY COALESCE(e.last_activity, s.created_at_epoch_ms) DESC LIMIT 1`,
         ).get(proj) as { session_id: string } | undefined;
         if (active?.session_id) activeSessionId = active.session_id;
       } catch { /* fall back to mcp:<project> */ }
@@ -283,7 +283,7 @@ server.registerTool(
         const ftsQuery = keywords.join(' OR ');
         const convHits = cachedPrepare(getDb(),
           `SELECT ct.id, ct.session_id, ct.turn_number, ct.user_text, ct.assistant_text,
-                  ct.project, ct.timestamp_epoch, bm25(conversation_turns_fts) as rank
+                  ct.project, ct.timestamp_epoch_ms, bm25(conversation_turns_fts) as rank
            FROM conversation_turns ct
            JOIN conversation_turns_fts fts ON fts.rowid = ct.id
            WHERE conversation_turns_fts MATCH ?
@@ -293,7 +293,7 @@ server.registerTool(
         ).all(ftsQuery, proj, offset + limit) as Array<{
           id: number; session_id: string; turn_number: number;
           user_text: string | null; assistant_text: string | null;
-          project: string; timestamp_epoch: number; rank: number;
+          project: string; timestamp_epoch_ms: number; rank: number;
         }>;
 
         conversationResults = convHits.map((c, i) => ({
@@ -551,7 +551,7 @@ server.registerTool(
           const active = cachedPrepare(getDb(),
             `SELECT s.session_id FROM sessions s
               WHERE s.project = ? AND s.status = 'active'
-              ORDER BY s.created_at_epoch DESC LIMIT 1`,
+              ORDER BY s.created_at_epoch_ms DESC LIMIT 1`,
           ).get(proj) as { session_id: string } | undefined;
           if (active?.session_id) cpSessionId = active.session_id;
         } catch { /* fall back to mcp:<project> */ }
@@ -765,13 +765,13 @@ server.registerTool(
     // Fall back to latest active session across all projects.
     const proj = project ?? defaultProject;
     let session = cachedPrepare(getDb(),
-      `SELECT session_id FROM sessions WHERE project = ? ORDER BY created_at_epoch DESC LIMIT 1`
+      `SELECT session_id FROM sessions WHERE project = ? ORDER BY created_at_epoch_ms DESC LIMIT 1`
     ).get(proj) as { session_id: string } | undefined;
 
     if (!session) {
       // Fallback: latest active session across ALL projects
       session = cachedPrepare(getDb(),
-        `SELECT session_id FROM sessions WHERE status = 'active' ORDER BY created_at_epoch DESC LIMIT 1`
+        `SELECT session_id FROM sessions WHERE status = 'active' ORDER BY created_at_epoch_ms DESC LIMIT 1`
       ).get() as { session_id: string } | undefined;
     }
 
@@ -888,7 +888,7 @@ server.registerTool(
              FROM session_events GROUP BY session_id
            ) e ON e.session_id = s.session_id
            WHERE s.project = ? AND s.status = 'active'
-           ORDER BY COALESCE(e.last_activity, s.created_at_epoch) DESC LIMIT 1`
+           ORDER BY COALESCE(e.last_activity, s.created_at_epoch_ms) DESC LIMIT 1`
         ).get(defaultProject) as { session_id: string } | undefined;
         sessionId = active?.session_id ?? `mcp:${defaultProject}`;
       } catch {

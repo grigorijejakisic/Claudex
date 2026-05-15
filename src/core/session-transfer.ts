@@ -99,14 +99,14 @@ export function packageSessionContext(
     const failures = cachedPrepare(db,
       `SELECT target, detail FROM session_signals
        WHERE session_id = ? AND signal_type = 'failure'
-       ORDER BY created_at_epoch DESC LIMIT 5`
+       ORDER BY created_at_epoch_ms DESC LIMIT 5`
     ).all(sourceSessionId) as Array<{ target: string; detail: string | null }>;
 
     // Recommendation: derive next steps from claimed tasks + last assistant message
     const claimedTasks = cachedPrepare(db,
       `SELECT target, detail FROM session_signals
-       WHERE session_id = ? AND signal_type = 'claim' AND cleared_at_epoch IS NULL
-       ORDER BY created_at_epoch DESC LIMIT 5`
+       WHERE session_id = ? AND signal_type = 'claim' AND cleared_at_epoch_ms IS NULL
+       ORDER BY created_at_epoch_ms DESC LIMIT 5`
     ).all(sourceSessionId) as Array<{ target: string; detail: string | null }>;
 
     const nextSteps: string[] = [];

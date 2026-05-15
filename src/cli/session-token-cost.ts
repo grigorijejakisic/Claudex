@@ -63,7 +63,7 @@ export function readSessionStartCost(
         WHERE session_id = ?
           AND event_kind = 'injection'
           AND json_extract(detail, '$.trigger') = 'session_start'
-        ORDER BY timestamp_epoch ASC LIMIT 1`,
+        ORDER BY timestamp_epoch_ms ASC LIMIT 1`,
     ).get(sessionId) as { detail: string } | undefined;
     if (!row) return { label: 'session-start', tokens: null };
     const d = JSON.parse(row.detail) as InjectionDetail;

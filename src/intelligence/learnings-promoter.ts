@@ -82,7 +82,7 @@ export function promoteLearnings(params: {
         `DELETE FROM learnings WHERE id IN (
           SELECT id FROM learnings
           WHERE project = ?
-          ORDER BY promotion_count ASC, last_promoted_epoch ASC
+          ORDER BY promotion_count ASC, last_promoted_epoch_ms ASC
           LIMIT ?
         )`
       ).run(project, excess);

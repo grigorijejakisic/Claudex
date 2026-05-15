@@ -188,9 +188,9 @@ export function commitBoundaryTick(
         db.prepare(
           `UPDATE sessions
               SET status = 'completed',
-                  ended_at_epoch = COALESCE(ended_at_epoch, ?)
+                  ended_at_epoch_ms = COALESCE(ended_at_epoch_ms, ?)
             WHERE session_id = ?`
-        ).run(payload.lastEventTsEpoch, payload.sessionId);
+        ).run(payload.lastEventTsEpoch * 1000, payload.sessionId);
 
         db.prepare(
           `INSERT INTO episode_boundary_cursor

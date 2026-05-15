@@ -111,7 +111,7 @@ function predictLayer0(db: Database, project: string, sessionId: string): Predic
        WHERE message_type = 'advisory'
          AND acknowledged = 0
          AND (target_session = ? OR target_session = ?)
-       ORDER BY priority DESC, created_at_epoch DESC
+       ORDER BY priority DESC, created_at_epoch_ms DESC
        LIMIT 1`
     ).get(sessionId, project) as { content: string } | undefined;
 
@@ -149,13 +149,13 @@ function predictLayer1(db: Database, project: string): PredictionResult | null {
 
     // Compute hours since last session
     const lastSession = cachedPrepare(db,
-      `SELECT created_at_epoch, session_summary FROM sessions
+      `SELECT created_at_epoch_ms, session_summary FROM sessions
        WHERE project = ? AND status = 'completed'
-       ORDER BY created_at_epoch DESC LIMIT 1`
-    ).get(project) as { created_at_epoch: number; session_summary: string | null } | undefined;
+       ORDER BY created_at_epoch_ms DESC LIMIT 1`
+    ).get(project) as { created_at_epoch_ms: number; session_summary: string | null } | undefined;
 
     const hoursSinceLast = lastSession
-      ? (now - lastSession.created_at_epoch) / 3600
+      ? (now - lastSession.created_at_epoch_ms / 1000) / 3600
       : Infinity;
 
     // Short gap → continuation (high probability)
@@ -166,7 +166,7 @@ function predictLayer1(db: Database, project: string): PredictionResult | null {
          WHERE session_id = (
            SELECT session_id FROM sessions
            WHERE project = ? AND status = 'completed'
-           ORDER BY created_at_epoch DESC LIMIT 1
+           ORDER BY created_at_epoch_ms DESC LIMIT 1
          )`
       ).get(project) as { topic: string | null } | undefined;
 
@@ -246,7 +246,7 @@ function predictLayer2(db: Database, project: string): PredictionResult | null {
        WHERE project = ? AND session_id = (
          SELECT session_id FROM sessions
          WHERE project = ? AND status = 'completed'
-         ORDER BY created_at_epoch DESC LIMIT 1
+         ORDER BY created_at_epoch_ms DESC LIMIT 1
        )
        ORDER BY timestamp_epoch DESC LIMIT 3`
     ).all(project, project) as Array<{ event_type: string }>;
@@ -489,19 +489,19 @@ export function updateTemporalProfile(
     // Compute avg session duration for this specific time slot (hour_bucket + day_of_week).
     // Falls back to project-wide average if no sessions exist for this slot.
     const slotAvg = cachedPrepare(db,
-      `SELECT AVG(ended_at_epoch - created_at_epoch) as avg_sec
+      `SELECT AVG((ended_at_epoch_ms - created_at_epoch_ms) / 1000.0) as avg_sec
        FROM sessions
-       WHERE project = ? AND ended_at_epoch IS NOT NULL
-         AND created_at_epoch > 0 AND ended_at_epoch > created_at_epoch
-         AND CAST((CAST(created_at_epoch % 86400 AS REAL) / 3600 / 4) AS INTEGER) = ?
-         AND CAST(((created_at_epoch / 86400 + 4) % 7) AS INTEGER) = ?`
+       WHERE project = ? AND ended_at_epoch_ms IS NOT NULL
+         AND created_at_epoch_ms > 0 AND ended_at_epoch_ms > created_at_epoch_ms
+         AND CAST((CAST((created_at_epoch_ms / 1000) % 86400 AS REAL) / 3600 / 4) AS INTEGER) = ?
+         AND CAST((((created_at_epoch_ms / 1000) / 86400 + 4) % 7) AS INTEGER) = ?`
     ).get(project, hourBucket, dayOfWeek) as { avg_sec: number | null } | undefined;
 
     const globalAvg = slotAvg?.avg_sec ? null : cachedPrepare(db,
-      `SELECT AVG(ended_at_epoch - created_at_epoch) as avg_sec
+      `SELECT AVG((ended_at_epoch_ms - created_at_epoch_ms) / 1000.0) as avg_sec
        FROM sessions
-       WHERE project = ? AND ended_at_epoch IS NOT NULL
-         AND created_at_epoch > 0 AND ended_at_epoch > created_at_epoch`
+       WHERE project = ? AND ended_at_epoch_ms IS NOT NULL
+         AND created_at_epoch_ms > 0 AND ended_at_epoch_ms > created_at_epoch_ms`
     ).get(project) as { avg_sec: number | null } | undefined;
 
     const avgDurationSec = slotAvg?.avg_sec ?? globalAvg?.avg_sec ?? null;

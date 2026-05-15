@@ -58,6 +58,8 @@ import {
   migrateSchemaFixes,
   cleanupOrphanTables,
   upgradeV2SchemaInPlace,
+  hasTable,
+  hasColumn,
 } from './migration-steps.js';
 import { loadSqliteVec } from './sqlite-vec-loader.js';
 
@@ -254,6 +256,17 @@ export function initializeSchema(db: Database): void {
 
     // FTS5: detect stale v2 index with wrong column count and rebuild
     rebuildStaleFts5(db);
+
+    // Pre-flight: if a legacy sessions table exists with pre-V35 column names,
+    // rename them now so SCHEMA_V3's index DDL (which uses _ms names) succeeds.
+    if (hasTable(db, 'sessions')) {
+      if (hasColumn(db, 'sessions', 'created_at_epoch') && !hasColumn(db, 'sessions', 'created_at_epoch_ms')) {
+        db.exec('ALTER TABLE sessions RENAME COLUMN created_at_epoch TO created_at_epoch_ms');
+      }
+      if (hasColumn(db, 'sessions', 'ended_at_epoch') && !hasColumn(db, 'sessions', 'ended_at_epoch_ms')) {
+        db.exec('ALTER TABLE sessions RENAME COLUMN ended_at_epoch TO ended_at_epoch_ms');
+      }
+    }
 
     db.exec(SCHEMA_V3);
     db.exec(TELEMETRY_SCHEMA);
@@ -519,20 +532,45 @@ export function migrateFromV2(db: Database, v2DbPath: string): void {
         const row = db.prepare("SELECT 1 FROM v2.sqlite_master WHERE type='table' AND name = ?").get(tableName) as { 1: number } | undefined;
         return row != null;
       };
+      const v2HasColumn = (tableName: string, colName: string): boolean => {
+        const cols = db.pragma(`v2.table_info(${tableName})`) as Array<{ name: string }>;
+        return cols.some(c => c.name === colName);
+      };
 
       if (v2HasTable('observations')) {
-        db.exec(`INSERT OR IGNORE INTO observations (id, session_id, project, tool_name, category, title, content, importance, files_modified, timestamp_epoch, access_count, last_accessed_at_epoch, deleted_at_epoch)
-          SELECT id, session_id, project, tool_name, category, title, content, importance, CASE WHEN json_valid(files_modified) THEN files_modified ELSE '[]' END, timestamp_epoch, access_count, last_accessed_at_epoch, deleted_at_epoch FROM v2.observations`);
+        // Source may have old (timestamp_epoch) or new (timestamp_epoch_ms) names after schema upgrade
+        const tsCol = v2HasColumn('observations', 'timestamp_epoch_ms') ? 'timestamp_epoch_ms' : 'timestamp_epoch * 1000';
+        const laCol = v2HasColumn('observations', 'last_accessed_at_epoch_ms') ? 'last_accessed_at_epoch_ms' : 'last_accessed_at_epoch * 1000';
+        const delCol = v2HasColumn('observations', 'deleted_at_epoch_ms') ? 'deleted_at_epoch_ms' : 'deleted_at_epoch * 1000';
+        db.exec(`INSERT OR IGNORE INTO observations (id, session_id, project, tool_name, category, title, content, importance, files_modified, timestamp_epoch_ms, access_count, last_accessed_at_epoch_ms, deleted_at_epoch_ms)
+          SELECT id, session_id, project, tool_name, category, title, content, importance, CASE WHEN json_valid(files_modified) THEN files_modified ELSE '[]' END, ${tsCol}, access_count, ${laCol}, ${delCol} FROM v2.observations`);
       }
 
       if (v2HasTable('sessions')) {
-        db.exec(`INSERT OR IGNORE INTO sessions (session_id, scope, project, cwd, source, status, observation_count, created_at_epoch, ended_at_epoch)
-          SELECT session_id, scope, project, cwd, source, status, observation_count, created_at_epoch, ended_at_epoch FROM v2.sessions`);
+        // Source may have started_at_epoch, created_at_epoch, or created_at_epoch_ms
+        const createdCol = v2HasColumn('sessions', 'created_at_epoch_ms') ? 'created_at_epoch_ms'
+          : v2HasColumn('sessions', 'created_at_epoch') ? 'created_at_epoch * 1000'
+          : v2HasColumn('sessions', 'started_at_epoch') ? 'started_at_epoch * 1000'
+          : 'unixepoch() * 1000';
+        const endedCol = v2HasColumn('sessions', 'ended_at_epoch_ms') ? 'ended_at_epoch_ms'
+          : v2HasColumn('sessions', 'ended_at_epoch') ? 'ended_at_epoch * 1000'
+          : 'NULL';
+        // source column may vary; include source only if it exists
+        const hasSource = v2HasColumn('sessions', 'source');
+        if (hasSource) {
+          db.exec(`INSERT OR IGNORE INTO sessions (session_id, scope, project, cwd, source, status, observation_count, created_at_epoch_ms, ended_at_epoch_ms)
+            SELECT session_id, scope, project, cwd, source, status, observation_count, ${createdCol}, ${endedCol} FROM v2.sessions`);
+        } else {
+          db.exec(`INSERT OR IGNORE INTO sessions (session_id, scope, project, cwd, status, observation_count, created_at_epoch_ms, ended_at_epoch_ms)
+            SELECT session_id, scope, project, cwd, status, observation_count, ${createdCol}, ${endedCol} FROM v2.sessions`);
+        }
       }
 
       if (v2HasTable('pressure_scores')) {
-        db.exec(`INSERT OR IGNORE INTO pressure_scores (file_path, project, raw_pressure, temperature, last_touched_epoch, decay_rate)
-          SELECT file_path, project, raw_pressure, CASE WHEN temperature IN ('HOT', 'COLD') THEN temperature ELSE 'COLD' END, last_touched_epoch, decay_rate FROM v2.pressure_scores`);
+        // Source may have last_touched_epoch or last_touched_epoch_ms
+        const ltCol = v2HasColumn('pressure_scores', 'last_touched_epoch_ms') ? 'last_touched_epoch_ms' : 'last_touched_epoch * 1000';
+        db.exec(`INSERT OR IGNORE INTO pressure_scores (file_path, project, raw_pressure, temperature, last_touched_epoch_ms, decay_rate)
+          SELECT file_path, project, raw_pressure, CASE WHEN temperature IN ('HOT', 'COLD') THEN temperature ELSE 'COLD' END, ${ltCol}, decay_rate FROM v2.pressure_scores`);
       }
 
       const v2Tables = db.prepare("SELECT name FROM v2.sqlite_master WHERE type='table' AND name NOT IN ('observations', 'sessions', 'pressure_scores', 'sqlite_sequence')").all() as Array<{ name: string }>;

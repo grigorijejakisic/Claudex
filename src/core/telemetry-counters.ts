@@ -73,7 +73,7 @@ export function readRerankerFallbackCount(
       db,
       `SELECT COUNT(*) AS n FROM telemetry
        WHERE event_kind = 'reranker_fallback'
-         AND timestamp_epoch >= unixepoch() - ?`,
+         AND timestamp_epoch_ms >= (unixepoch() - ?) * 1000`,
     ).get(windowSeconds) as { n: number } | undefined;
     return row?.n ?? 0;
   } catch {

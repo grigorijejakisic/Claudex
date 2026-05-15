@@ -99,7 +99,7 @@ export async function buildHandoffReadCue(
        FROM artifacts
        WHERE (summary LIKE ? OR summary LIKE ?)
          AND state != 'packed'
-       ORDER BY importance DESC, timestamp_epoch DESC
+       ORDER BY importance DESC, timestamp_epoch_ms DESC
        LIMIT ?`,
     ).all(`%${slug}%`, '%handoff%', MAX_RESULTS) as Array<{
       id: number;
@@ -121,7 +121,7 @@ export async function buildHandoffReadCue(
          FROM artifacts
          WHERE session_id = ?
            AND state != 'packed'
-         ORDER BY timestamp_epoch DESC
+         ORDER BY timestamp_epoch_ms DESC
          LIMIT ?`,
       ).all(sessionId, limit + 2) as Array<{
         id: number;
@@ -172,7 +172,7 @@ export async function buildDecisionLockCue(
        WHERE artifact_type IN ('decision', 'learning')
          AND (summary LIKE ? OR summary LIKE ?)
          AND state != 'packed'
-       ORDER BY importance DESC, timestamp_epoch DESC
+       ORDER BY importance DESC, timestamp_epoch_ms DESC
        LIMIT ?`,
     ).all(`%${basename}%`, '%UNVALIDATED%', MAX_RESULTS) as Array<{
       id: number;
@@ -229,7 +229,7 @@ export async function buildWaitForDirectionCue(
        WHERE session_id = ?
          AND artifact_type IN ('observation', 'learning', 'decision')
          AND state != 'packed'
-       ORDER BY timestamp_epoch DESC
+       ORDER BY timestamp_epoch_ms DESC
        LIMIT ?`,
     ).all(sessionId, MAX_RESULTS) as Array<{
       id: number;

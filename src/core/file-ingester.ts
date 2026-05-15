@@ -202,19 +202,19 @@ async function scanCrossProjectUserMemories(
 
 /**
  * Loads existing file artifact timestamps for mtime comparison.
- * Returns a map of artifact_ref → timestamp_epoch (in ms).
+ * Returns a map of artifact_ref → timestamp_epoch_ms (in ms).
  */
 function loadExistingTimestamps(db: Database, project: string): Map<string, number> {
   try {
     const rows = cachedPrepare(db,
-      `SELECT artifact_ref, timestamp_epoch FROM artifacts
+      `SELECT artifact_ref, timestamp_epoch_ms FROM artifacts
        WHERE project = ? AND artifact_type IN ('memory_file', 'session_log', 'handoff')
          AND artifact_ref IS NOT NULL`
-    ).all(project) as Array<{ artifact_ref: string; timestamp_epoch: number }>;
+    ).all(project) as Array<{ artifact_ref: string; timestamp_epoch_ms: number }>;
 
     const map = new Map<string, number>();
     for (const row of rows) {
-      map.set(row.artifact_ref, row.timestamp_epoch * 1000); // epoch seconds → ms
+      map.set(row.artifact_ref, row.timestamp_epoch_ms); // already in ms
     }
     return map;
   } catch {
@@ -280,10 +280,8 @@ async function processFile(
   if (stat.size < MIN_CONTENT_LENGTH) return null;
 
   // Mtime check — skip if file hasn't changed since last ingestion.
-  // timestamp_epoch stores floor(file_mtime_ms / 1000) — second precision.
-  // existingTs = timestamp_epoch * 1000 — back to ms but truncated to second boundary.
-  // File mtimeMs has full ms precision, so we compare with +1000 to cover the
-  // truncation gap (same second = unchanged).
+  // timestamp_epoch_ms stores file mtimeMs directly (ms precision).
+  // We compare with +1000 buffer to handle minor filesystem timestamp variation.
   const existingTs = existingTimestamps.get(filePath);
   if (existingTs !== undefined && stat.mtimeMs < existingTs + 1000) return null;
 
@@ -360,10 +358,10 @@ export async function ingestFileArtifacts(
     const ingestTx = db.transaction(() => {
       for (const src of sources) {
         try {
-          // Store file's actual mtime as timestamp_epoch (not Date.now()).
+          // Store file's actual mtime as timestamp_epoch_ms (ms precision).
           // This makes the mtime comparison in scanDirectory accurate:
-          // file.mtimeMs vs artifact.timestamp_epoch*1000 is apples-to-apples.
-          const fileMtimeEpoch = Math.floor(src.mtimeMs / 1000);
+          // file.mtimeMs vs artifact.timestamp_epoch_ms is apples-to-apples.
+          const fileMtimeEpoch = src.mtimeMs;
 
           // Cross-project user memories use __global__ scope so they're
           // visible from any project's hybrid retrieval.
@@ -379,12 +377,12 @@ export async function ingestFileArtifacts(
 
           if (existing) {
             cachedPrepare(db,
-              `UPDATE artifacts SET summary = ?, content = ?, timestamp_epoch = ?, importance = ?
+              `UPDATE artifacts SET summary = ?, content = ?, timestamp_epoch_ms = ?, importance = ?
                WHERE id = ?`
             ).run(src.summary, src.content, fileMtimeEpoch, targetImportance, existing.id);
           } else {
             cachedPrepare(db,
-              `INSERT INTO artifacts (session_id, project, artifact_type, artifact_ref, summary, content, state, ttl, importance, timestamp_epoch)
+              `INSERT INTO artifacts (session_id, project, artifact_type, artifact_ref, summary, content, state, ttl, importance, timestamp_epoch_ms)
                VALUES (?, ?, ?, ?, ?, ?, 'packed', 0, ?, ?)`
             ).run(sessionId, targetProject, src.type, src.path, src.summary, src.content, targetImportance, fileMtimeEpoch);
           }

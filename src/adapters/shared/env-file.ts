@@ -70,12 +70,12 @@ export function detectCcMemoryConflict(
 
     // Get last session's start time as baseline
     const lastSession = cachedPrepare(db,
-      `SELECT created_at_epoch FROM sessions WHERE project = ? AND session_id != ? ORDER BY created_at_epoch DESC LIMIT 1`
-    ).get(project, sessionId) as { created_at_epoch: number } | undefined;
+      `SELECT created_at_epoch_ms FROM sessions WHERE project = ? AND session_id != ? ORDER BY created_at_epoch_ms DESC LIMIT 1`
+    ).get(project, sessionId) as { created_at_epoch_ms: number } | undefined;
 
     if (!lastSession) return [];
 
-    const baselineMs = lastSession.created_at_epoch * 1000;
+    const baselineMs = lastSession.created_at_epoch_ms;
     const entries = fs.readdirSync(ccAutoMemDir).filter(f => f.endsWith('.md'));
     const newFiles = entries.filter(f => {
       try {

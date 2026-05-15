@@ -254,9 +254,9 @@ function seedDbForCandidate(candidate: FixtureCandidate): Database.Database {
     turn_number INTEGER NOT NULL,
     user_text TEXT,
     assistant_text TEXT,
-    timestamp_epoch INTEGER NOT NULL DEFAULT 0
+    timestamp_epoch_ms INTEGER NOT NULL DEFAULT 0
   )`);
-  const insert = db.prepare(`INSERT INTO conversation_turns(session_id, project, turn_number, user_text, assistant_text, timestamp_epoch) VALUES (?, ?, ?, ?, ?, ?)`);
+  const insert = db.prepare(`INSERT INTO conversation_turns(session_id, project, turn_number, user_text, assistant_text, timestamp_epoch_ms) VALUES (?, ?, ?, ?, ?, ?)`);
   for (const t of allContextTurns(candidate)) {
     insert.run(candidate.session_id, 'harness', t.turn_idx, t.user_text, t.assistant_text, 1000 + t.turn_idx);
   }

@@ -18,7 +18,7 @@ export interface DiscoveredSession {
   name: string | null;
   project: string | null;
   topic: string | null;
-  created_at_epoch: number;
+  created_at_epoch_ms_ms: number;
   match_type: 'exact_name' | 'fuzzy_name' | 'topic' | 'project';
 }
 
@@ -44,7 +44,7 @@ export function resolveSession(
     // 0. Direct session_id match (UUID format)
     if (trimmed.length > 30 && trimmed.includes('-')) {
       const direct = cachedPrepare(db,
-        `SELECT s.session_id, s.name, s.project, ts.topic, s.created_at_epoch
+        `SELECT s.session_id, s.name, s.project, ts.topic, s.created_at_epoch_ms
          FROM sessions s LEFT JOIN thread_state ts ON ts.session_id = s.session_id
          WHERE s.session_id = ? AND s.status = 'active'`
       ).get(trimmed) as DiscoveredSession | undefined;
@@ -55,37 +55,37 @@ export function resolveSession(
 
     // 1. Exact name match
     const exact = cachedPrepare(db,
-      `SELECT s.session_id, s.name, s.project, ts.topic, s.created_at_epoch
+      `SELECT s.session_id, s.name, s.project, ts.topic, s.created_at_epoch_ms
        FROM sessions s LEFT JOIN thread_state ts ON ts.session_id = s.session_id
        WHERE LOWER(s.name) = ? AND s.status = 'active' AND s.session_id != ?
-       ORDER BY s.created_at_epoch DESC LIMIT 1`
+       ORDER BY s.created_at_epoch_ms DESC LIMIT 1`
     ).get(trimmed, exclude) as DiscoveredSession | undefined;
     if (exact) return { ...exact, match_type: 'exact_name' };
 
     // 2. Fuzzy name match
     const fuzzyName = cachedPrepare(db,
-      `SELECT s.session_id, s.name, s.project, ts.topic, s.created_at_epoch
+      `SELECT s.session_id, s.name, s.project, ts.topic, s.created_at_epoch_ms
        FROM sessions s LEFT JOIN thread_state ts ON ts.session_id = s.session_id
        WHERE LOWER(s.name) LIKE ? ESCAPE '\\' AND s.status = 'active' AND s.session_id != ?
-       ORDER BY s.created_at_epoch DESC LIMIT 1`
+       ORDER BY s.created_at_epoch_ms DESC LIMIT 1`
     ).get(`%${safeLike}%`, exclude) as DiscoveredSession | undefined;
     if (fuzzyName) return { ...fuzzyName, match_type: 'fuzzy_name' };
 
     // 3. Topic match
     const topicMatch = cachedPrepare(db,
-      `SELECT s.session_id, s.name, s.project, ts.topic, s.created_at_epoch
+      `SELECT s.session_id, s.name, s.project, ts.topic, s.created_at_epoch_ms
        FROM sessions s JOIN thread_state ts ON ts.session_id = s.session_id
        WHERE LOWER(ts.topic) LIKE ? ESCAPE '\\' AND s.status = 'active' AND s.session_id != ?
-       ORDER BY s.created_at_epoch DESC LIMIT 1`
+       ORDER BY s.created_at_epoch_ms DESC LIMIT 1`
     ).get(`%${safeLike}%`, exclude) as DiscoveredSession | undefined;
     if (topicMatch) return { ...topicMatch, match_type: 'topic' };
 
     // 4. Project match
     const projectMatch = cachedPrepare(db,
-      `SELECT s.session_id, s.name, s.project, ts.topic, s.created_at_epoch
+      `SELECT s.session_id, s.name, s.project, ts.topic, s.created_at_epoch_ms
        FROM sessions s LEFT JOIN thread_state ts ON ts.session_id = s.session_id
        WHERE LOWER(s.project) LIKE ? ESCAPE '\\' AND s.status = 'active' AND s.session_id != ?
-       ORDER BY s.created_at_epoch DESC LIMIT 1`
+       ORDER BY s.created_at_epoch_ms DESC LIMIT 1`
     ).get(`%${safeLike}%`, exclude) as DiscoveredSession | undefined;
     if (projectMatch) return { ...projectMatch, match_type: 'project' };
 
@@ -111,7 +111,7 @@ export function listActiveSessions(
     // as status='completed' in this table. Use last_heartbeat_ts (bumped
     // per CC turn) within the last 10 minutes as the real liveness signal.
     return cachedPrepare(db,
-      `SELECT s.session_id, s.name, s.project, ts.topic, s.created_at_epoch, 'exact_name' as match_type
+      `SELECT s.session_id, s.name, s.project, ts.topic, s.created_at_epoch_ms, 'exact_name' as match_type
        FROM sessions s LEFT JOIN thread_state ts ON ts.session_id = s.session_id
        WHERE (
          s.status = 'active'
@@ -119,7 +119,7 @@ export function listActiveSessions(
              AND s.last_heartbeat_ts > strftime('%s', 'now', '-10 minutes'))
        )
        AND s.session_id != ?
-       ORDER BY COALESCE(s.last_heartbeat_ts, 0) DESC, s.created_at_epoch DESC LIMIT 20`
+       ORDER BY COALESCE(s.last_heartbeat_ts, 0) DESC, s.created_at_epoch_ms DESC LIMIT 20`
     ).all(exclude) as DiscoveredSession[];
   } catch {
     return [];

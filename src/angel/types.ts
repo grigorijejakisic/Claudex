@@ -157,7 +157,7 @@ export interface UnprocessedSession {
   project: string;
   turn_count: number;
   topic: string | null;
-  ended_at_epoch: number;
+  ended_at_epoch_ms: number;
 }
 
 export interface MemoryMigrationStats {

@@ -637,7 +637,7 @@ function writeArtifact(
 
     db.prepare(
       `UPDATE artifact
-          SET updated_at_epoch = ?,
+          SET updated_at_epoch_ms = ?,
               data = json_set(
                        json_set(data, '$.reinforcement_count', ?),
                        '$.reinforcements',
@@ -689,7 +689,7 @@ function writeArtifact(
   db.prepare(
     `INSERT INTO artifact(
        id, kind, title, body, scope, status, confidence,
-       created_at_epoch, updated_at_epoch, session_id, project, data
+       created_at_epoch_ms, updated_at_epoch_ms, session_id, project, data
      ) VALUES (?, 'directive_rule', ?, ?, ?, 'active', ?, ?, ?, ?, ?, ?)`,
   ).run(
     id,

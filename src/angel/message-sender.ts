@@ -41,7 +41,7 @@ export function sendMessage(
     // Dedup on content: identical undelivered messages collapse into one.
     const existing = cachedPrepare(db,
       `SELECT 1 FROM session_messages
-       WHERE target_session = ? AND content = ? AND delivered_at_epoch IS NULL
+       WHERE target_session = ? AND content = ? AND delivered_at_epoch_ms IS NULL
        LIMIT 1`
     ).get(targetSession, content);
     if (existing) return true;
@@ -68,10 +68,10 @@ export function getPendingMessages(
     return cachedPrepare(db,
       `SELECT id, content, message_type, priority, sender, COALESCE(sender_type, 'angel') as sender_type
        FROM session_messages
-       WHERE target_session = ? AND delivered_at_epoch IS NULL
+       WHERE target_session = ? AND delivered_at_epoch_ms IS NULL
        ORDER BY
          CASE priority WHEN 'urgent' THEN 0 WHEN 'normal' THEN 1 ELSE 2 END,
-         created_at_epoch ASC
+         created_at_epoch_ms ASC
        LIMIT 10`
     ).all(sessionId) as Array<{ id: number; content: string; message_type: string; priority: string; sender: string; sender_type: string }>;
   } catch {
@@ -88,12 +88,12 @@ export function markMessagesDelivered(
 ): void {
   if (messageIds.length === 0) return;
   try {
-    const now = Math.floor(Date.now() / 1000);
+    const nowMs = Date.now();
     const placeholders = messageIds.map(() => '?').join(',');
     db.prepare(
-      `UPDATE session_messages SET delivered_at_epoch = ?
+      `UPDATE session_messages SET delivered_at_epoch_ms = ?
        WHERE id IN (${placeholders})`
-    ).run(now, ...messageIds);
+    ).run(nowMs, ...messageIds);
   } catch {
     // Non-throwing
   }

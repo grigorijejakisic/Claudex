@@ -135,7 +135,7 @@ function enforceRowCap(db: Database, eventKind: string): void {
       db.prepare(
         `DELETE FROM telemetry WHERE rowid IN (
            SELECT rowid FROM telemetry WHERE event_kind = ?
-           ORDER BY timestamp_epoch ASC
+           ORDER BY timestamp_epoch_ms ASC
            LIMIT ?
          )`,
       ).run(eventKind, row.cnt - MAX_ROWS_PER_SIGNAL_KIND);

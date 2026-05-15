@@ -165,14 +165,13 @@ function storeInClaudex(
   type: string,
 ): boolean {
   try {
-    const now = Math.floor(Date.now() / 1000);
     // category CHECK constraint: code|architecture|decision|error|test|config|dependency|documentation|performance|security|other
     const category = type === 'decision' ? 'decision' : 'other';
     const title = content.slice(0, 100).replace(/\n/g, ' ');
     cachedPrepare(db,
-      `INSERT INTO observations (session_id, project, tool_name, category, title, content, importance, timestamp_epoch, obs_type)
+      `INSERT INTO observations (session_id, project, tool_name, category, title, content, importance, timestamp_epoch_ms, obs_type)
        VALUES ('angel-memory-monitor', ?, 'angel-memory-monitor', ?, ?, ?, 4, ?, 'routine')`
-    ).run(project, category, title, content, now);
+    ).run(project, category, title, content, Date.now());
     return true;
   } catch {
     return false;

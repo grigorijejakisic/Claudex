@@ -78,7 +78,7 @@ SELECT
   ${projections.join(',\n  ')}
 FROM artifact
 WHERE kind = '${kind}'
-ORDER BY created_at_epoch;`;
+ORDER BY created_at_epoch_ms;`;
 }
 
 function viewProjectionForCol(legacyTable: LegacyTable, col: LegacyColSpec): string {
@@ -96,8 +96,10 @@ function viewProjectionForCol(legacyTable: LegacyTable, col: LegacyColSpec): str
     // experience_patterns.created_at_epoch + decisions.timestamp_epoch + learnings.updated_at_epoch
     // live in v3 as seconds; kernel stores ms. Divide to restore v3 shape where we know the
     // legacy column name matches 'created_at_epoch' and kernel stored ms.
+    // kind-mapping.col values are still 'created_at_epoch'/'updated_at_epoch' (legacy names);
+    // map to the canonical _ms column names in the artifact kernel.
     if (kernelCol === 'created_at_epoch' || kernelCol === 'updated_at_epoch') {
-      return `CAST(artifact.${kernelCol} / 1000 AS INTEGER) AS ${name}`;
+      return `CAST(artifact.${kernelCol}_ms / 1000 AS INTEGER) AS ${name}`;
     }
     if (kernelCol === 'body' || kernelCol === 'title' || kernelCol === 'id') {
       return `artifact.${kernelCol} AS ${name}`;
@@ -195,7 +197,7 @@ CREATE TRIGGER ${triggerName} INSTEAD OF INSERT ON ${legacyTable}
 BEGIN
   INSERT INTO artifact(
     id, kind, title, body, scope, status, confidence,
-    created_at_epoch, updated_at_epoch, session_id, project, data
+    created_at_epoch_ms, updated_at_epoch_ms, session_id, project, data
   ) VALUES (
     ${idExpr},
     '${kind}',
@@ -358,7 +360,7 @@ function generateUpdateTriggerSql(m: KindMapping): string {
     dataSet = `data = ${expr}`;
   }
 
-  const allSets = [...kernelSets, ...(dataSet ? [dataSet] : []), `updated_at_epoch = unixepoch() * 1000`];
+  const allSets = [...kernelSets, ...(dataSet ? [dataSet] : []), `updated_at_epoch_ms = unixepoch() * 1000`];
 
   const whereClause =
     m.legacyIdType === 'TEXT_UUID'
@@ -380,8 +382,10 @@ function kernelSetClause(m: KindMapping, col: LegacyColSpec): string {
   const legacyName = col.name;
 
   // Time columns in v3 are seconds; kernel is ms. Multiply.
+  // kind-mapping.col values are still 'created_at_epoch'/'updated_at_epoch' (legacy names);
+  // map to the canonical _ms column names in the artifact kernel.
   if (kernelCol === 'created_at_epoch' || kernelCol === 'updated_at_epoch') {
-    return `${kernelCol} = NEW.${legacyName} * 1000`;
+    return `${kernelCol}_ms = NEW.${legacyName} * 1000`;
   }
 
   // Body reconstruction for experience_patterns lesson/anti_pattern

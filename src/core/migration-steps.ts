@@ -114,7 +114,9 @@ export function migrateV1toV2(db: Database): void {
     db.exec('ALTER TABLE observations ADD COLUMN obs_type TEXT');
   }
   ensureAdapterColumns(db);
-  db.exec('CREATE INDEX IF NOT EXISTS idx_obs_consumed ON observations(project, consumed, timestamp_epoch DESC)');
+  // Use _ms name if already present (post-V35 fixture), otherwise legacy name
+  const tsCol = hasColumn(db, 'observations', 'timestamp_epoch_ms') ? 'timestamp_epoch_ms' : 'timestamp_epoch';
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_obs_consumed ON observations(project, consumed, ${tsCol} DESC)`);
 }
 
 // ---------------------------------------------------------------------------
@@ -2119,26 +2121,43 @@ export function migrateV30toV31(db: Database): boolean {
     DROP VIEW IF EXISTS learnings;
   `);
 
+  // Detect column names that depend on migration history:
+  //   - artifact.project_id was renamed to artifact.project in V34 (Plan 14-02)
+  //   - artifact.updated_at_epoch was renamed to artifact.updated_at_epoch_ms in V35 (Plan 14-06)
+  //   - artifact.created_at_epoch was renamed to artifact.created_at_epoch_ms in V35 (Plan 14-06)
+  // V31 runs BEFORE V34 and V35 on legacy DBs, so we must use whichever column names exist now.
+  const artifactProjectCol = hasColumn(db, 'artifact', 'project') ? 'project' : 'project_id';
+  const artifactUpdatedCol = hasColumn(db, 'artifact', 'updated_at_epoch_ms') ? 'updated_at_epoch_ms' : 'updated_at_epoch';
+  const artifactCreatedCol = hasColumn(db, 'artifact', 'created_at_epoch_ms') ? 'created_at_epoch_ms' : 'created_at_epoch';
+
   // Recreate view with provenance column projected from artifact.data JSON.
   // COALESCE to 'organic' so existing rows that have no provenance JSON
   // field still satisfy NOT NULL semantics from the consumer's perspective.
   // The actual backfill below populates the JSON for those rows.
+  // The view exposes both legacy (epoch seconds) aliases and _ms aliases so that
+  // both pre-V35 and post-V35 production code paths can read/write via the view.
+  // updated_at_epoch_ms and last_promoted_epoch_ms are exposed as primary names
+  // since learnings.ts (updated for Plan 14-06) uses the _ms names; legacy aliases
+  // (updated_at_epoch, last_promoted_epoch) are retained for backwards compat.
   db.exec(`
     CREATE VIEW learnings AS
     SELECT
       CAST((SELECT m.legacy_id FROM legacy_id_map m WHERE m.legacy_table = 'learnings' AND m.new_uuid = artifact.id) AS INTEGER) AS id,
-      CAST(artifact.project_id AS TEXT) AS project,
+      CAST(artifact.${artifactProjectCol} AS TEXT) AS project,
       CAST(json_extract(artifact.data, '$.agent_id') AS TEXT) AS agent_id,
       CAST(json_extract(artifact.data, '$.fingerprint') AS TEXT) AS fingerprint,
       artifact.body AS content,
       CAST(json_extract(artifact.data, '$.promotion_count') AS INTEGER) AS promotion_count,
       CAST(json_extract(artifact.data, '$.first_seen_epoch') AS INTEGER) AS first_seen_epoch,
+      CAST(json_extract(artifact.data, '$.first_seen_epoch') AS INTEGER) AS first_seen_epoch_ms,
       CAST(json_extract(artifact.data, '$.last_promoted_epoch') AS INTEGER) AS last_promoted_epoch,
-      CAST(artifact.updated_at_epoch / 1000 AS INTEGER) AS updated_at_epoch,
+      CAST(json_extract(artifact.data, '$.last_promoted_epoch') AS INTEGER) AS last_promoted_epoch_ms,
+      CAST(artifact.${artifactUpdatedCol} / 1000 AS INTEGER) AS updated_at_epoch,
+      artifact.${artifactUpdatedCol} AS updated_at_epoch_ms,
       COALESCE(CAST(json_extract(artifact.data, '$.provenance') AS TEXT), 'organic') AS provenance
     FROM artifact
     WHERE kind = 'learning'
-    ORDER BY created_at_epoch
+    ORDER BY ${artifactCreatedCol}
   `);
 
   // INSTEAD OF INSERT — accepts NEW.provenance, validates against closed
@@ -2154,7 +2173,7 @@ export function migrateV30toV31(db: Database): boolean {
       END;
       INSERT INTO artifact(
         id, kind, title, body, scope, status, confidence,
-        created_at_epoch, updated_at_epoch, session_id, project_id, data
+        ${artifactCreatedCol}, ${artifactUpdatedCol}, session_id, ${artifactProjectCol}, data
       ) VALUES (
         lower(hex(randomblob(16))),
         'learning',
@@ -2200,17 +2219,17 @@ export function migrateV30toV31(db: Database): boolean {
         THEN RAISE(ABORT, 'CHECK constraint failed: learnings.provenance')
       END;
       UPDATE artifact SET
-        project_id = NEW.project,
+        ${artifactProjectCol} = NEW.project,
         body = NEW.content,
         data = json_set(json_set(json_set(json_set(json_set(json_set(data,
           '$.agent_id', NEW.agent_id),
           '$.fingerprint', NEW.fingerprint),
           '$.promotion_count', NEW.promotion_count),
-          '$.first_seen_epoch', NEW.first_seen_epoch),
-          '$.last_promoted_epoch', NEW.last_promoted_epoch),
+          '$.first_seen_epoch', COALESCE(NEW.first_seen_epoch_ms, NEW.first_seen_epoch, json_extract(data, '$.first_seen_epoch'))),
+          '$.last_promoted_epoch', COALESCE(NEW.last_promoted_epoch_ms, NEW.last_promoted_epoch, json_extract(data, '$.last_promoted_epoch'))),
           '$.provenance', COALESCE(NEW.provenance, json_extract(data, '$.provenance'), 'organic')
         ),
-        updated_at_epoch = unixepoch() * 1000
+        ${artifactUpdatedCol} = COALESCE(NEW.updated_at_epoch_ms, unixepoch() * 1000)
       WHERE id = (SELECT new_uuid FROM legacy_id_map WHERE legacy_table = 'learnings' AND legacy_id = OLD.id);
     END
   `);
@@ -2554,6 +2573,16 @@ export function migrateV34toV35(db: Database): void {
     { table: 'session_signals', oldCol: 'cleared_at_epoch',  newCol: 'cleared_at_epoch_ms',  scale: true },
     // retrieval_events
     { table: 'retrieval_events', oldCol: 'timestamp_epoch', newCol: 'timestamp_epoch_ms', scale: true },
+    // kind_registry (V17 DDL table — passive kind tracking)
+    { table: 'kind_registry', oldCol: 'first_seen_epoch', newCol: 'first_seen_epoch_ms', scale: true },
+    { table: 'kind_registry', oldCol: 'last_seen_epoch',  newCol: 'last_seen_epoch_ms',  scale: true },
+    // session_journal (SCHEMA_V3 table)
+    { table: 'session_journal', oldCol: 'timestamp_epoch', newCol: 'timestamp_epoch_ms', scale: true },
+    // conversation_turns (V10 table)
+    { table: 'conversation_turns', oldCol: 'timestamp_epoch', newCol: 'timestamp_epoch_ms', scale: true },
+    // artifacts (SCHEMA_V3 table — legacy pre-V17 knowledge artifact store)
+    { table: 'artifacts', oldCol: 'timestamp_epoch',         newCol: 'timestamp_epoch_ms',         scale: true },
+    { table: 'artifacts', oldCol: 'last_materialized_epoch', newCol: 'last_materialized_epoch_ms',  scale: true },
   ];
 
   const tx = db.transaction(() => {
@@ -2723,6 +2752,12 @@ export function migrateV35toV34(db: Database): void {
     { table: 'session_signals', oldCol: 'expires_at_epoch_ms',  newCol: 'expires_at_epoch'  },
     { table: 'session_signals', oldCol: 'cleared_at_epoch_ms',  newCol: 'cleared_at_epoch'  },
     { table: 'retrieval_events', oldCol: 'timestamp_epoch_ms', newCol: 'timestamp_epoch' },
+    { table: 'kind_registry', oldCol: 'first_seen_epoch_ms', newCol: 'first_seen_epoch' },
+    { table: 'kind_registry', oldCol: 'last_seen_epoch_ms',  newCol: 'last_seen_epoch'  },
+    { table: 'session_journal', oldCol: 'timestamp_epoch_ms', newCol: 'timestamp_epoch' },
+    { table: 'conversation_turns', oldCol: 'timestamp_epoch_ms', newCol: 'timestamp_epoch' },
+    { table: 'artifacts', oldCol: 'timestamp_epoch_ms',         newCol: 'timestamp_epoch'         },
+    { table: 'artifacts', oldCol: 'last_materialized_epoch_ms', newCol: 'last_materialized_epoch' },
   ];
 
   const tx = db.transaction(() => {
