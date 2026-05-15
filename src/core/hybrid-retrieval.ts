@@ -46,6 +46,7 @@ import {
   type RerankerFallbackReason,
 } from './telemetry-counters.js';
 import type { ArtifactRow } from './artifacts.js';
+import { isSubstantive, substantiveSqlClause } from './artifact-filters.js';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -123,6 +124,20 @@ export interface HybridSearchOptions {
    * callers (recall-server, hooks) thread their session_id through.
    */
   sessionId?: string;
+  /**
+   * Phase 14 Plan 14-04 — P2.7 substantive-only filter.
+   *
+   * When true, restricts candidate selection to substantive artifacts only,
+   * using `substantiveSqlClause` (Plan 14-03) at the DB-layer for legacy
+   * `artifacts` table queries, and `isSubstantive` (Plan 14-03) as a
+   * post-fetch JS predicate for hydrated results that may not have a
+   * `artifact_type` SQL filter applied (e.g. vector channel).
+   *
+   * Default: false — existing callers are unaffected.
+   *
+   * P2.7 Project Knowledge is the only production caller that sets this flag.
+   */
+  substantiveOnly?: boolean;
 }
 
 export interface ScoringWeights {
@@ -372,6 +387,7 @@ function searchFts5Channel(
   limit: number,
   globalScope: boolean,
   excludeSuperseded: boolean,
+  substantiveOnly: boolean = false,
 ): ArtifactRow[] {
   try {
     const keywords = tokenizeQuery(query, 10);
@@ -385,6 +401,9 @@ function searchFts5Channel(
     const ftsQuery = [...new Set(keywords)].join(' OR ');
     const supersededFilter = excludeSuperseded ? 'AND a.superseded_by IS NULL' : '';
     const projectFilter = globalScope ? '' : 'AND a.project = ?';
+    // Phase 14 Plan 14-04: P2.7 substantive-only filter — DB-layer via SQL clause
+    // (legacy artifacts table has artifact_type column; clause is parameterless)
+    const substantiveFilter = substantiveOnly ? `AND ${substantiveSqlClause('a')}` : '';
     const orderPrefix = globalScope
       ? 'CASE WHEN a.project = ? THEN 0 ELSE 1 END,'
       : '';
@@ -397,6 +416,7 @@ function searchFts5Channel(
        WHERE artifacts_fts MATCH ?
          ${projectFilter}
          ${supersededFilter}
+         ${substantiveFilter}
        ORDER BY ${orderPrefix}
          bm25(artifacts_fts, 2.0, 1.0),
          a.importance DESC
@@ -426,7 +446,7 @@ function searchFts5Channel(
   } catch {
     // FTS may fail — fall back to LIKE search
     try {
-      return searchLikeFallback(db, project, query, limit, globalScope, excludeSuperseded);
+      return searchLikeFallback(db, project, query, limit, globalScope, excludeSuperseded, substantiveOnly);
     } catch {
       return [];
     }
@@ -444,6 +464,7 @@ function searchLikeFallback(
   limit: number,
   globalScope: boolean,
   excludeSuperseded: boolean,
+  substantiveOnly: boolean = false,
 ): ArtifactRow[] {
   const keywords = tokenizeQuery(query, 5);
   if (keywords.length === 0) return [];
@@ -452,6 +473,8 @@ function searchLikeFallback(
   const likeParams = keywords.flatMap(k => [`%${k}%`, `%${k}%`]);
   const supersededFilter = excludeSuperseded ? 'AND a.superseded_by IS NULL' : '';
   const projectFilter = globalScope ? '' : 'AND a.project = ?';
+  // Phase 14 Plan 14-04: P2.7 substantive-only filter
+  const substantiveFilter = substantiveOnly ? `AND ${substantiveSqlClause('a')}` : '';
   const orderPrefix = globalScope
     ? 'CASE WHEN a.project = ? THEN 0 ELSE 1 END,'
     : '';
@@ -460,6 +483,7 @@ function searchLikeFallback(
      WHERE (${conditions})
        ${projectFilter}
        ${supersededFilter}
+       ${substantiveFilter}
      ORDER BY ${orderPrefix}
        a.importance DESC, a.timestamp_epoch_ms DESC
      LIMIT ?`;
@@ -547,10 +571,17 @@ function searchRecencyChannel(
   limit: number,
   globalScope: boolean,
   excludeSuperseded: boolean,
+  substantiveOnly: boolean = false,
 ): ArtifactRow[] {
   try {
     const supersededFilter = excludeSuperseded ? 'AND superseded_by IS NULL' : '';
     const projectFilter = globalScope ? '' : 'AND project = ?';
+    // Phase 14 Plan 14-04: P2.7 substantive-only filter — DB-layer (no alias needed here)
+    // Note: recency channel doesn't use an alias, so apply clause without alias prefix.
+    // Use alias 'r' to satisfy substantiveSqlClause's alias requirement.
+    const substantiveFilter = substantiveOnly
+      ? `AND ${substantiveSqlClause('artifacts')}`
+      : '';
     const orderPrefix = globalScope
       ? 'CASE WHEN project = ? THEN 0 ELSE 1 END,'
       : '';
@@ -559,6 +590,7 @@ function searchRecencyChannel(
        WHERE state != 'packed'
          ${projectFilter}
          ${supersededFilter}
+         ${substantiveFilter}
        ORDER BY ${orderPrefix}
          timestamp_epoch_ms DESC
        LIMIT ?`;
@@ -655,11 +687,13 @@ export function hybridSearchSync(
 
     if (!query || query.length < 3) return [];
 
+    const substantiveOnly = options.substantiveOnly ?? false;
+
     // Channel 1: FTS5
-    const fts5Results = searchFts5Channel(db, project, query, limit * 2, globalScope, excludeSuperseded);
+    const fts5Results = searchFts5Channel(db, project, query, limit * 2, globalScope, excludeSuperseded, substantiveOnly);
 
     // Channel 3: Recency
-    const recencyResults = searchRecencyChannel(db, project, limit, globalScope, excludeSuperseded);
+    const recencyResults = searchRecencyChannel(db, project, limit, globalScope, excludeSuperseded, substantiveOnly);
 
     // Convert to channel results for RRF
     const fts5Channel: ChannelResult[] = fts5Results.map((a, i) => ({
@@ -781,8 +815,10 @@ export async function hybridSearchAsync(
 
     if (!query || query.length < 3) return [];
 
+    const substantiveOnly = options.substantiveOnly ?? false;
+
     // Channel 1: FTS5 (sync)
-    const fts5Results = searchFts5Channel(db, project, query, limit * 2, globalScope, excludeSuperseded);
+    const fts5Results = searchFts5Channel(db, project, query, limit * 2, globalScope, excludeSuperseded, substantiveOnly);
 
     // Channel 2: Qdrant vector search (async, graceful degradation)
     let vectorResults: { artifact: ArtifactRow; score: number }[] = [];
@@ -791,11 +827,16 @@ export async function hybridSearchAsync(
       const queryEmbedding = await embedQuery(query);
       if (queryEmbedding) {
         vectorResults = await searchVectorChannel(db, project, queryEmbedding, limit, options);
+        // Phase 14 Plan 14-04: P2.7 substantive-only filter applied post-fetch for
+        // vector results (they're hydrated from artifacts by ID; SQL filter not applicable here).
+        if (substantiveOnly) {
+          vectorResults = vectorResults.filter(r => isSubstantive(r.artifact));
+        }
       }
     } catch { /* Qdrant/embeddings unavailable — degrade to 2-channel */ }
 
     // Channel 3: Recency (sync)
-    const recencyResults = searchRecencyChannel(db, project, limit, globalScope, excludeSuperseded);
+    const recencyResults = searchRecencyChannel(db, project, limit, globalScope, excludeSuperseded, substantiveOnly);
 
     // Channel 5: Temporal (sync) — time-range search when query contains temporal expressions
     let temporalResults: ArtifactRow[] = [];

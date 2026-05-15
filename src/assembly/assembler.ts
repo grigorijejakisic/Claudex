@@ -62,6 +62,7 @@ import { getCheckpointTracking } from '../core/checkpoint-tracking.js';
 import { readGsdState } from '../gsd/state-reader.js';
 import { assembleCriticalReminders } from '../intelligence/critical-reminders.js';
 import { assembleExperienceTier, TIER_BUDGET as EXPERIENCE_TIER_BUDGET } from '../intelligence/experience-tier.js';
+import { formatProjectKnowledgeSectionSync } from './project-knowledge.js';
 import type { HandleSet } from '../core/cross-project-equivalence.js';
 import { getPressureZone, scaleBudget, GLOBAL_PROJECT_SCOPE } from '../shared/constants.js';
 import { getHandoffsDir, getSessionsDir } from '../shared/paths.js';
@@ -452,6 +453,29 @@ export function assembleFullContext(params: FullAssemblyParams): InjectPayload {
             sections.push(framesSection);
             budget -= cost;
             sources.push('session_highlights');
+          }
+        }
+      } catch { /* non-fatal — section is advisory, never blocks assembly */ }
+
+      // Priority 2.7 (Phase 14 Plan 14-04 — 2026-05-16): Project Knowledge surface.
+      // Same-project hybrid retrieval against ACTIVE.md `summary` with substantive-
+      // only filter (Plan 14-03's isSubstantive). Closes the same-project starvation
+      // gap left by Experience Tier (cross-project only) and Recent Session Frames
+      // (highlight-dependent). Returns null when ACTIVE.md absent or summary empty.
+      // Token cap: 800. Cache-stable: no clock-derived data.
+      try {
+        const projectKnowledge = formatProjectKnowledgeSectionSync(
+          params.db,
+          params.project,
+          params.projectDir,
+          Math.min(800, budget),
+        );
+        if (projectKnowledge) {
+          const cost = estimateTokens(projectKnowledge);
+          if (cost <= budget) {
+            sections.push(projectKnowledge);
+            budget -= cost;
+            sources.push('project_knowledge');
           }
         }
       } catch { /* non-fatal — section is advisory, never blocks assembly */ }
