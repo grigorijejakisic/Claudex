@@ -476,6 +476,19 @@ export function initializeSchema(db: Database): void {
     migrateV34toV35(db);
   }
 
+  // Phase 14 Plan 14-05 (V36): extend telemetry.event_kind CHECK constraint to
+  // include 'session_end_action'. SQLite table-recreate pattern (cannot ALTER
+  // CHECK constraints). Fresh DBs already use TELEMETRY_SCHEMA which includes
+  // 'session_end_action', so migrateV35toV36 no-ops on them — but we must still
+  // stamp user_version = 36 so fresh DBs are not endlessly re-migrated.
+  if (currentUv < 36) {
+    if (hasTable(db, 'telemetry')) {
+      migrateV35toV36(db); // idempotent: no-op if already accepts session_end_action
+    }
+    db.pragma('user_version = 36');
+    try { db.exec(`INSERT OR IGNORE INTO schema_versions(version) VALUES (36)`); } catch { /* non-critical */ }
+  }
+
   // Phase 4 (V28): per-connection sidecar + TEMP TRIGGER guarding writes
   // to the legacy `experience_patterns` table. Both objects live in the
   // `temp` schema because (a) SQLite forbids a permanent-schema trigger

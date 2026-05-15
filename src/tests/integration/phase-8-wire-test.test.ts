@@ -126,7 +126,7 @@ describe('WIR-01 — upsertChunk against base-table fresh-DB', () => {
   it('writes a chunk through V32 fresh schema and round-trips it', () => {
     const db = new Database(':memory:');
     initializeSchema(db);
-    expect(db.pragma('user_version', { simple: true })).toBe(35);
+    expect(db.pragma('user_version', { simple: true })).toBe(36);
 
     const chunk: ChunkV6 = { ...validChunkFixture, session_id: 'sess-base-1' };
     upsertChunk(db, chunk);
@@ -150,7 +150,7 @@ describe('WIR-01 — upsertChunk against V17-collapsed DB', () => {
     buildV17V32Fixture(db);
     db.pragma('user_version = 31');
     runMigrations(db);
-    expect(db.pragma('user_version', { simple: true })).toBe(35);
+    expect(db.pragma('user_version', { simple: true })).toBe(36);
 
     // Confirm the legacy V17 `learnings` view is untouched (still a view).
     const learningsView = db.prepare(
@@ -174,7 +174,7 @@ describe('WIR-01 — ingestSession end-to-end on both fixture shapes', () => {
   it('base-table fresh-DB: 5-turn JSONL ingests 5 chunks idempotently', async () => {
     const db = new Database(':memory:');
     initializeSchema(db);
-    expect(db.pragma('user_version', { simple: true })).toBe(35);
+    expect(db.pragma('user_version', { simple: true })).toBe(36);
 
     const project = 'p-base';
     const sessionId = 's-base';
@@ -204,7 +204,7 @@ describe('WIR-01 — ingestSession end-to-end on both fixture shapes', () => {
     buildV17V32Fixture(db);
     db.pragma('user_version = 31');
     runMigrations(db);
-    expect(db.pragma('user_version', { simple: true })).toBe(35);
+    expect(db.pragma('user_version', { simple: true })).toBe(36);
 
     const project = 'p-v17';
     const sessionId = 's-v17';
