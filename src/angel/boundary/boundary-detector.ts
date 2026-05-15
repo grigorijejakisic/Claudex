@@ -28,6 +28,7 @@ import { isPidAlive } from './pid-liveness.js';
 import { classifySession, type SessionLivenessRow } from './composition-rule.js';
 import { commitBoundaryTick, resetCursor, loadCursor } from './cursor.js';
 import type { BoundaryThresholds } from './thresholds.js';
+import { recordSessionEndAction } from '../../observability/telemetry.js';
 
 const DEFAULT_SWEEP_LIMIT = 25;
 
@@ -170,6 +171,266 @@ function isCleanEndsession(db: Database, closeEventId: number | null): boolean {
   ).get(closeEventId) as { metadata_json: string | null } | undefined;
   if (!ev?.metadata_json) return false;
   return ev.metadata_json.includes('"clean_endsession"');
+}
+
+// ---------------------------------------------------------------------------
+// Phase 14 Plan 14-05 — Single-owner session-end promotion
+// ---------------------------------------------------------------------------
+
+export type SessionEndReason = 'idle_terminated' | 'crash_recovered' | 'explicit_close';
+
+/**
+ * Single-owner session-end promotion.
+ *
+ * Idempotent: returns early if the session is already completed.
+ * On promotion: writes status + ended_at_epoch_ms (using Date.now() — ms precision,
+ * NOT Math.floor(Date.now() / 1000)), then fires the ordered action chain via
+ * fireEndOfSessionActions.
+ *
+ * CRITICAL: This is the SOLE writer of sessions.status='completed' for TERMINATED
+ * sessions. No other code path should write status='completed' for idle/dead sessions.
+ * The clean_endsession path (session-end-close-marker.ts) is the separate gate
+ * for explicit operator-driven closes and is not managed here.
+ *
+ * Caller (heartbeat) invokes this when boundary-detector decides the session
+ * is TERMINATED. The idempotency guard prevents double-promotion on repeated
+ * TERMINATED detections across heartbeat ticks.
+ */
+export async function promoteSessionToCompleted(
+  db: Database,
+  sessionId: string,
+  reason: SessionEndReason,
+): Promise<void> {
+  // Idempotency check — check if actions have already been fired for this session.
+  // We track this by presence of a 'session_summary' session_end_action telemetry row.
+  const actionsFired = db.prepare(
+    `SELECT 1 FROM telemetry
+     WHERE session_id = ? AND event_kind = 'session_end_action'
+       AND json_extract(detail, '$.action') = 'session_summary'
+     LIMIT 1`
+  ).get(sessionId);
+  if (actionsFired) return; // Already promoted — idempotency guard
+
+  // Check status to decide whether we need to write it or just fire actions.
+  const existing = db.prepare(
+    `SELECT status, ended_at_epoch_ms FROM sessions WHERE session_id = ?`
+  ).get(sessionId) as { status: string; ended_at_epoch_ms: number | null } | undefined;
+
+  let endedAt: number;
+  if (existing?.status === 'completed' && existing.ended_at_epoch_ms != null) {
+    // Status already written (e.g., by cursor.ts commitBoundaryTick) — only fire actions.
+    endedAt = existing.ended_at_epoch_ms;
+  } else {
+    // Write status='completed' + ended_at_epoch_ms (ms-precision, NOT Math.floor(Date.now()/1000)).
+    endedAt = Date.now();
+    db.prepare(
+      `UPDATE sessions SET status = 'completed', ended_at_epoch_ms = ? WHERE session_id = ?`
+    ).run(endedAt, sessionId);
+  }
+
+  await fireEndOfSessionActions(db, sessionId, endedAt, reason);
+}
+
+/**
+ * Fire the 5 ordered end-of-session actions with per-action try/catch isolation
+ * and per-action telemetry (event_kind='session_end_action').
+ *
+ * Action order (per plan 14-05 must_haves.truths):
+ *   1. session_summary write (if absent — preserves existing summaries)
+ *   2. final pattern-extractor pass (one-shot, idempotent on already-extracted)
+ *   3. highlights extraction (triggered explicitly, not opportunistically)
+ *   4. MEMORY.md regeneration (curateMemoryMd)
+ *   5. lesson-pointer index update (ensure new lesson files are registered)
+ *
+ * Each action:
+ *   - Runs in its own try/catch: failure of action N does NOT abort N+1..5.
+ *   - Records a telemetry row with outcome ∈ {'ok','failed','skipped'} + metadata.
+ *   - Is idempotent (e.g., saveSessionSummary is upsert; curateMemoryMd has
+ *     sentinel guard; ensurePointerId is INSERT OR IGNORE).
+ */
+export async function fireEndOfSessionActions(
+  db: Database,
+  sessionId: string,
+  endedAt: number,
+  reason: SessionEndReason,
+): Promise<void> {
+  // Determine project for this session (needed by multiple actions).
+  const sessRow = db.prepare(
+    `SELECT project FROM sessions WHERE session_id = ?`
+  ).get(sessionId) as { project: string } | undefined;
+  const project = sessRow?.project ?? '__global__';
+
+  // --- Action 1: session_summary write ---
+  const a1Start = Date.now();
+  let a1Outcome: 'ok' | 'failed' | 'skipped' = 'ok';
+  let a1Error: string | undefined;
+  let a1Skip: string | undefined;
+  try {
+    const { getSessionEvents, synthesizeSessionSummary, saveSessionSummary } =
+      await import('../../core/session-events.js');
+    // Check if summary already exists (preserve existing).
+    const existing = db.prepare(
+      `SELECT session_summary FROM sessions WHERE session_id = ?`
+    ).get(sessionId) as { session_summary: string | null } | undefined;
+    if (existing?.session_summary) {
+      a1Outcome = 'skipped';
+      a1Skip = 'summary_already_exists';
+    } else {
+      const events = getSessionEvents(db, sessionId);
+      const summary = synthesizeSessionSummary(events);
+      if (summary) {
+        saveSessionSummary(db, sessionId, summary);
+      } else {
+        a1Outcome = 'skipped';
+        a1Skip = 'no_events_to_summarize';
+      }
+    }
+  } catch (err) {
+    a1Outcome = 'failed';
+    a1Error = (err as Error).message?.slice(0, 300);
+  }
+  recordSessionEndAction(db, {
+    session_id: sessionId,
+    action: 'session_summary',
+    outcome: a1Outcome,
+    duration_ms: Date.now() - a1Start,
+    reason,
+    error_message: a1Error,
+    skip_reason: a1Skip,
+  });
+
+  // --- Action 2: final pattern-extractor pass ---
+  const a2Start = Date.now();
+  let a2Outcome: 'ok' | 'failed' | 'skipped' = 'ok';
+  let a2Error: string | undefined;
+  try {
+    const { extractDirectivesFromSession } = await import('../../intelligence/directive-detector.js');
+    const { classifySessionDomains } = await import('../domain-classifier.js');
+    // Both are idempotent: directive-detector has its own cursor;
+    // classifySessionDomains is content-deterministic.
+    await extractDirectivesFromSession(db, sessionId, project);
+    await classifySessionDomains(db, sessionId, project);
+  } catch (err) {
+    a2Outcome = 'failed';
+    a2Error = (err as Error).message?.slice(0, 300);
+  }
+  recordSessionEndAction(db, {
+    session_id: sessionId,
+    action: 'pattern_extraction',
+    outcome: a2Outcome,
+    duration_ms: Date.now() - a2Start,
+    reason,
+    error_message: a2Error,
+  });
+
+  // --- Action 3: highlights extraction ---
+  const a3Start = Date.now();
+  let a3Outcome: 'ok' | 'failed' | 'skipped' = 'ok';
+  let a3Error: string | undefined;
+  let a3Skip: string | undefined;
+  try {
+    const { extractHighlightsForSession } = await import('../highlights-extractor.js');
+    const { getRegisteredProjectDirs } = await import('../sessions-indexer.js');
+    // Resolve projectDir for this session's project.
+    const dirs = getRegisteredProjectDirs();
+    const entry = dirs.find(d => d.projectId === project);
+    if (!entry) {
+      a3Outcome = 'skipped';
+      a3Skip = 'no_sessions_file';
+    } else {
+      // Check if a Sessions/ file exists for this session.
+      const sessionsDir = (await import('node:path')).join(entry.projectDir, 'Sessions');
+      let hasFile = false;
+      try {
+        const files = (await import('node:fs')).readdirSync(sessionsDir);
+        hasFile = files.some((f: string) => f.endsWith(`_${sessionId}.md`));
+      } catch { /* directory missing — treat as no file */ }
+      if (!hasFile) {
+        a3Outcome = 'skipped';
+        a3Skip = 'no_sessions_file';
+      } else {
+        // Load config from environment — highlights-extractor needs it for localModel.
+        const { loadConfig } = await import('../../shared/config.js');
+        const config = loadConfig();
+        await extractHighlightsForSession({
+          db,
+          sessionId,
+          project,
+          projectDir: entry.projectDir,
+          config,
+        });
+      }
+    }
+  } catch (err) {
+    a3Outcome = 'failed';
+    a3Error = (err as Error).message?.slice(0, 300);
+  }
+  recordSessionEndAction(db, {
+    session_id: sessionId,
+    action: 'highlights_extraction',
+    outcome: a3Outcome,
+    duration_ms: Date.now() - a3Start,
+    reason,
+    error_message: a3Error,
+    skip_reason: a3Skip,
+  });
+
+  // --- Action 4: MEMORY.md regeneration ---
+  const a4Start = Date.now();
+  let a4Outcome: 'ok' | 'failed' | 'skipped' = 'ok';
+  let a4Error: string | undefined;
+  let a4Skip: string | undefined;
+  try {
+    const { curateMemoryMd } = await import('../memory-md-writer.js');
+    const result = curateMemoryMd(db, project);
+    if (!result.written && result.reason === 'no_project_dir') {
+      a4Outcome = 'skipped';
+      a4Skip = 'no_project_dir';
+    }
+  } catch (err) {
+    a4Outcome = 'failed';
+    a4Error = (err as Error).message?.slice(0, 300);
+  }
+  recordSessionEndAction(db, {
+    session_id: sessionId,
+    action: 'memory_md_regeneration',
+    outcome: a4Outcome,
+    duration_ms: Date.now() - a4Start,
+    reason,
+    error_message: a4Error,
+    skip_reason: a4Skip,
+  });
+
+  // --- Action 5: lesson-pointer index update ---
+  const a5Start = Date.now();
+  let a5Outcome: 'ok' | 'failed' | 'skipped' = 'ok';
+  let a5Error: string | undefined;
+  let a5Skip: string | undefined;
+  try {
+    const { listLessonsForProject } = await import('../lesson-reader.js');
+    const { ensurePointerId } = await import('../pointer-recall.js');
+    const lessons = listLessonsForProject(project);
+    if (lessons.length === 0) {
+      a5Outcome = 'skipped';
+      a5Skip = 'no_lesson_files';
+    } else {
+      for (const lesson of lessons) {
+        ensurePointerId(db, project, lesson.filename, 'lesson');
+      }
+    }
+  } catch (err) {
+    a5Outcome = 'failed';
+    a5Error = (err as Error).message?.slice(0, 300);
+  }
+  recordSessionEndAction(db, {
+    session_id: sessionId,
+    action: 'lesson_pointer_update',
+    outcome: a5Outcome,
+    duration_ms: Date.now() - a5Start,
+    reason,
+    error_message: a5Error,
+    skip_reason: a5Skip,
+  });
 }
 
 export function runBoundaryTick(

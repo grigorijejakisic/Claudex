@@ -79,6 +79,16 @@ export interface EnrichmentDetail {
   error?: string;
 }
 
+export interface SessionEndActionDetail {
+  session_id: string;
+  action: string;
+  outcome: 'ok' | 'failed' | 'skipped';
+  duration_ms: number;
+  reason?: string;
+  error_message?: string;
+  skip_reason?: string;
+}
+
 /** Discriminated union of all telemetry event detail types. */
 export type TelemetryDetail =
   | HookInvocationDetail
@@ -104,7 +114,8 @@ export type EventKind =
   | 'dedup'
   | 'decay_prune'
   | 'unverified_patterns'
-  | 'error';
+  | 'error'
+  | 'session_end_action';
 
 /** Type mapping from EventKind to its detail type. */
 export interface EventKindDetailMap {
@@ -119,4 +130,5 @@ export interface EventKindDetailMap {
   decay_prune: DecayPruneDetail;
   unverified_patterns: Record<string, unknown>;
   error: ErrorDetail;
+  session_end_action: SessionEndActionDetail;
 }

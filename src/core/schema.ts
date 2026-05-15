@@ -852,7 +852,8 @@ CREATE TABLE IF NOT EXISTS telemetry (
     'episodic_write_failure',
     'signal_reread_after_surface', 'signal_retrieval_fallback',
     'signal_transcript_injection_acceptance', 'signal_retrieved_but_unapplied',
-    'handoff_parse_failed'
+    'handoff_parse_failed',
+    'session_end_action'
   )),
   detail TEXT NOT NULL DEFAULT '{}' CHECK (json_valid(detail)),
   latency_ms REAL,

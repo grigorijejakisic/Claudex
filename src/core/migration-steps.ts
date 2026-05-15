@@ -2843,3 +2843,130 @@ export function migrateV35toV34(db: Database): void {
 function escapeRegex(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
+
+// ---------------------------------------------------------------------------
+// V35 → V36: extend telemetry event_kind CHECK to include 'session_end_action'
+// ---------------------------------------------------------------------------
+
+/**
+ * Probe whether the current telemetry CHECK constraint admits 'session_end_action'.
+ * Used as the idempotency guard in migrateV35toV36.
+ */
+function telemetryAcceptsSessionEndAction(db: Database): boolean {
+  if (!hasTable(db, 'telemetry')) return false;
+  const row = db.prepare(
+    `SELECT sql FROM sqlite_master WHERE type='table' AND name='telemetry'`
+  ).get() as { sql?: string } | undefined;
+  return !!row?.sql && row.sql.includes("'session_end_action'");
+}
+
+/**
+ * V35→V36: Phase 14 Plan 14-05 — extend telemetry.event_kind CHECK constraint
+ * to include 'session_end_action'.
+ *
+ * SQLite cannot ALTER a CHECK constraint, so the standard rebuild-and-copy
+ * pattern is used (mirrors V19→V20, V20→V21, etc.).
+ *
+ * Steps (single transaction):
+ *   1. Rename existing `telemetry` to `telemetry_v35`.
+ *   2. Drop old indexes.
+ *   3. Recreate `telemetry` with the V36 enum (TELEMETRY_SCHEMA).
+ *   4. Copy rows back (all existing event kinds remain valid).
+ *   5. Drop `telemetry_v35`.
+ *   6. Stamp user_version = 36.
+ *
+ * Idempotent: if telemetry already accepts 'session_end_action', no-op.
+ * Additive: pre-V36 DBs silently swallow INSERT (try/catch in recordSessionEndAction).
+ */
+export function migrateV35toV36(db: Database): boolean {
+  if (!hasTable(db, 'telemetry')) return true;
+  if (!hasColumn(db, 'telemetry', 'event_kind')) return true;
+  if (telemetryAcceptsSessionEndAction(db)) return true;
+
+  const tx = db.transaction(() => {
+    db.exec(`ALTER TABLE telemetry RENAME TO telemetry_v35;`);
+    db.exec(`DROP INDEX IF EXISTS idx_telemetry_session;`);
+    db.exec(`DROP INDEX IF EXISTS idx_telemetry_kind;`);
+
+    db.exec(TELEMETRY_SCHEMA);
+
+    // Copy rows — old column name in V35 is timestamp_epoch_ms (already renamed by V35 migration)
+    db.exec(`
+      INSERT INTO telemetry (id, session_id, event_kind, detail, latency_ms, timestamp_epoch_ms, adapter)
+      SELECT id, session_id, event_kind, detail, latency_ms, timestamp_epoch_ms, adapter
+      FROM telemetry_v35;
+    `);
+
+    db.exec(`DROP TABLE telemetry_v35;`);
+
+    db.pragma('user_version = 36');
+    try {
+      db.exec(`INSERT OR IGNORE INTO schema_versions(version) VALUES (36)`);
+    } catch { /* non-critical */ }
+  });
+
+  tx();
+  return true;
+}
+
+/**
+ * Reverse migration V36 → V35: removes 'session_end_action' from the
+ * telemetry CHECK constraint by recreating the table with the V35 enum.
+ *
+ * Rows with event_kind='session_end_action' are dropped (no V35 constraint
+ * admission). This matches the documented rollback behavior for additive
+ * telemetry extensions.
+ */
+export function migrateV36toV35(db: Database): boolean {
+  if (!hasTable(db, 'telemetry')) return true;
+  if (!telemetryAcceptsSessionEndAction(db)) return true;
+
+  const tx = db.transaction(() => {
+    db.exec(`ALTER TABLE telemetry RENAME TO telemetry_v36;`);
+    db.exec(`DROP INDEX IF EXISTS idx_telemetry_session;`);
+    db.exec(`DROP INDEX IF EXISTS idx_telemetry_kind;`);
+
+    // Recreate with V35 schema (without session_end_action).
+    // Import TELEMETRY_SCHEMA_V35 inline by re-declaring the V35 DDL.
+    db.exec(`
+CREATE TABLE IF NOT EXISTS telemetry (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  session_id TEXT NOT NULL,
+  event_kind TEXT NOT NULL CHECK (event_kind IN (
+    'hook_invocation', 'injection', 'observation_capture', 'decision_capture',
+    'checkpoint_write', 'enrichment', 'topic_shift', 'dedup', 'decay_prune', 'error',
+    'reranker_fallback',
+    'cross_project_ambiguous', 'cross_project_query_expansion',
+    'episodic_write_failure',
+    'signal_reread_after_surface', 'signal_retrieval_fallback',
+    'signal_transcript_injection_acceptance', 'signal_retrieved_but_unapplied',
+    'handoff_parse_failed'
+  )),
+  detail TEXT NOT NULL DEFAULT '{}' CHECK (json_valid(detail)),
+  latency_ms REAL,
+  timestamp_epoch_ms INTEGER NOT NULL DEFAULT (unixepoch() * 1000),
+  adapter TEXT DEFAULT 'unknown'
+);
+CREATE INDEX IF NOT EXISTS idx_telemetry_session ON telemetry(session_id, timestamp_epoch_ms DESC);
+CREATE INDEX IF NOT EXISTS idx_telemetry_kind ON telemetry(event_kind, timestamp_epoch_ms DESC);
+    `);
+
+    // Copy back only rows with V35-admissible event kinds (drops session_end_action rows)
+    db.exec(`
+      INSERT INTO telemetry (id, session_id, event_kind, detail, latency_ms, timestamp_epoch_ms, adapter)
+      SELECT id, session_id, event_kind, detail, latency_ms, timestamp_epoch_ms, adapter
+      FROM telemetry_v36
+      WHERE event_kind != 'session_end_action';
+    `);
+
+    db.exec(`DROP TABLE telemetry_v36;`);
+
+    db.pragma('user_version = 35');
+    try {
+      db.exec(`INSERT OR IGNORE INTO schema_versions(version) VALUES (35)`);
+    } catch { /* non-critical */ }
+  });
+
+  tx();
+  return true;
+}

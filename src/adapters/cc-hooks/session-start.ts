@@ -216,6 +216,9 @@ const main = wrapHook('SessionStart', async (input, ctx) => {
       `SELECT session_id, project FROM sessions WHERE status = 'active' AND created_at_epoch_ms < ? AND session_id != ?`
     ).all(cutoffMs, input.session_id) as Array<{ session_id: string; project: string | null }>;
 
+    // Phase 14 Plan 14-05: delegate session completion to the single owner.
+    // promoteSessionToCompleted writes status='completed' + fires the ordered action chain.
+    const { promoteSessionToCompleted } = await import('../../angel/boundary/boundary-detector.js');
     for (const orphan of orphans) {
       // Generate recall metadata BEFORE closing — captures user framings,
       // topic chain, decisions as searchable recall aliases
@@ -227,9 +230,9 @@ const main = wrapHook('SessionStart', async (input, ctx) => {
         if (summary) saveSessionSummary(ctx.db, orphan.session_id, summary);
       } catch { /* non-fatal per orphan */ }
 
-      cachedPrepare(ctx.db,
-        `UPDATE sessions SET status = 'completed', ended_at_epoch_ms = ? WHERE session_id = ?`
-      ).run(nowMs, orphan.session_id);
+      await promoteSessionToCompleted(ctx.db, orphan.session_id, 'crash_recovered').catch(() => {
+        // Individual orphan promotion failure — non-fatal
+      });
     }
 
     if (orphans.length > 0) {

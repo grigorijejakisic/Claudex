@@ -48,6 +48,12 @@ export function createSession(
 
 /**
  * Ends a session by updating its status and setting ended_at_epoch_ms (ms-precision).
+ *
+ * @deprecated Phase 14 Plan 14-05: use `promoteSessionToCompleted` from
+ * `src/angel/boundary/boundary-detector.ts` for status='completed' transitions.
+ * That function fires the ordered end-of-session action chain with per-action
+ * telemetry. `endSession` is retained for the status='failed' path only until
+ * callers are migrated. No production callers currently use status='completed'.
  */
 export function endSession(
   db: Database,

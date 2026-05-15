@@ -55,6 +55,7 @@ import {
   migrateV32toV33,
   migrateV33toV34,
   migrateV34toV35,
+  migrateV35toV36,
   migrateSchemaFixes,
   cleanupOrphanTables,
   upgradeV2SchemaInPlace,
@@ -103,6 +104,7 @@ export { migrateV14toV15 };
  *   33 — v6 Phase 13 Plan 03: session_highlights table (per-session frame artifacts)
  *   34 — Phase 14 Plan 14-02: project_id → project column rename on artifact + transcript_chunk_v6
  *   35 — Phase 14 Plan 14-06: *_epoch → *_epoch_ms rename + sec→ms scaling across all project tables
+ *   36 — Phase 14 Plan 14-05: telemetry event_kind CHECK + 'session_end_action'
  *
  * Dual version tracking:
  * Both `PRAGMA user_version` and `schema_versions` table are needed:
@@ -117,7 +119,7 @@ export { migrateV14toV15 };
  * `claudex doctor` (DIAG-05) reads this to verify the on-disk DB is in sync.
  * Bumping a migration must bump this constant in lockstep.
  */
-export const TARGET_USER_VERSION = 35;
+export const TARGET_USER_VERSION = 36;
 
 export function runMigrations(db: Database): void {
   const row = db.pragma('user_version') as Array<{ user_version: number }>;
@@ -168,6 +170,7 @@ export function runMigrations(db: Database): void {
     [32, () => { migrateV32toV33(db); }],
     [33, () => { migrateV33toV34(db); }],
     [34, () => { migrateV34toV35(db); }],
+    [35, () => { migrateV35toV36(db); }],
   ];
 
   // Handle special cases for version 0 and 1

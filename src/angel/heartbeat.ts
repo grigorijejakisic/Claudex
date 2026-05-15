@@ -209,11 +209,11 @@ export async function heartbeatTick(ctx: HeartbeatContext): Promise<TickResult> 
           // 2. Capture recall flow entry for future session context
           captureRecallFlowEntry(ctx.db, session.session_id, session.project, events);
 
-          // 3. Close the session
-          const now = Date.now();
-          cachedPrepare(ctx.db,
-            `UPDATE sessions SET status = 'completed', ended_at_epoch_ms = ? WHERE session_id = ?`
-          ).run(now, session.session_id);
+          // 3. Close the session — delegate to promoteSessionToCompleted (single owner).
+          // Phase 14 Plan 14-05: boundary-detector is the sole writer of status='completed'.
+          // This path uses 'explicit_close' reason (operator walked away, Angel auto-closes).
+          const { promoteSessionToCompleted: promoteAC } = await import('./boundary/boundary-detector.js');
+          await promoteAC(ctx.db, session.session_id, 'explicit_close');
 
           // 4. Record the auto-close event
           cachedPrepare(ctx.db,
@@ -539,10 +539,12 @@ export async function heartbeatTick(ctx: HeartbeatContext): Promise<TickResult> 
            WHERE timestamp_epoch_ms > ?
          )`
       ).all(twoHoursAgoMs, twoHoursAgoMs) as Array<{ session_id: string }>;
+      // Phase 14 Plan 14-05: delegate to promoteSessionToCompleted (single owner).
+      const { promoteSessionToCompleted: promoteOrphan } = await import('./boundary/boundary-detector.js');
       for (const o of orphans) {
-        cachedPrepare(ctx.db,
-          `UPDATE sessions SET status = 'completed', ended_at_epoch_ms = ? WHERE session_id = ?`
-        ).run(Date.now(), o.session_id);
+        await promoteOrphan(ctx.db, o.session_id, 'crash_recovered').catch(() => {
+          // Individual orphan promotion failure — continue with others
+        });
       }
     } catch {
       // Guardian duties are non-critical — failures don't break the heartbeat
@@ -1280,7 +1282,7 @@ export async function heartbeatTick(ctx: HeartbeatContext): Promise<TickResult> 
   // Bounded LIMIT 25 inside runBoundaryTick. Failures are caught here so a
   // boundary-tick error never breaks the heartbeat loop.
   try {
-    const { runBoundaryTick } = await import('./boundary/boundary-detector.js');
+    const { runBoundaryTick, promoteSessionToCompleted } = await import('./boundary/boundary-detector.js');
     const { loadThresholds } = await import('./boundary/thresholds.js');
     const boundary = runBoundaryTick(ctx.db, loadThresholds());
     result.boundary_closes_emitted    = boundary.closesEmitted;
@@ -1288,6 +1290,44 @@ export async function heartbeatTick(ctx: HeartbeatContext): Promise<TickResult> 
     result.boundary_reopens_emitted   = boundary.reopensEmitted;
     result.boundary_reopens_anomalous = boundary.reopensAnomalous;
     result.boundary_cursor_replays    = boundary.cursorReplays;
+
+    // Phase 14 Plan 14-05: fire the ordered end-of-session action chain for
+    // sessions that were just TERMINATED this tick. runBoundaryTick (via
+    // cursor.ts commitBoundaryTick) already wrote status='completed';
+    // promoteSessionToCompleted detects this and fires the action chain with
+    // per-action telemetry. Sessions are promoted concurrently (independent
+    // per-session try/catch) so a slow action for session A doesn't block B.
+    if (boundary.closesEmitted > 0) {
+      const fiveMinAgoMs = Date.now() - 5 * 60 * 1000;
+      const justTerminated = cachedPrepare(ctx.db,
+        `SELECT s.session_id FROM sessions s
+         WHERE s.status = 'completed'
+           AND s.ended_at_epoch_ms >= ?
+           AND NOT EXISTS (
+             SELECT 1 FROM telemetry t
+             WHERE t.session_id = s.session_id
+               AND t.event_kind = 'session_end_action'
+               AND json_extract(t.detail, '$.action') = 'session_summary'
+           )
+         LIMIT 25`
+      ).all(fiveMinAgoMs) as Array<{ session_id: string }>;
+
+      await Promise.allSettled(
+        justTerminated.map(row =>
+          promoteSessionToCompleted(ctx.db, row.session_id, 'idle_terminated').catch(err => {
+            try {
+              const message = err instanceof Error ? err.message : String(err);
+              cachedPrepare(ctx.db,
+                `INSERT INTO telemetry (session_id, event_kind, detail, adapter)
+                 VALUES (?, 'episodic_write_failure',
+                         json_object('phase14_05','promoteSessionToCompleted','error_message',?),
+                         'angel-boundary')`
+              ).run(row.session_id, message.slice(0, 500));
+            } catch { /* swallow */ }
+          })
+        )
+      );
+    }
   } catch (err) {
     try {
       const message = err instanceof Error ? err.message : String(err);

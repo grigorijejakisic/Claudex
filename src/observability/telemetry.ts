@@ -5,7 +5,7 @@
 
 import type { Database } from 'better-sqlite3';
 import { DEFAULT_CONFIG } from '../shared/constants.js';
-import type { EventKind, EventKindDetailMap } from './types.js';
+import type { EventKind, EventKindDetailMap, SessionEndActionDetail } from './types.js';
 
 /**
  * Emits a telemetry event. Non-throwing — entire function wrapped in try/catch.
@@ -95,6 +95,40 @@ export function sanitizeErrorForTelemetry(err: unknown): string {
     .replace(/[A-Za-z]:\\[^\s"',;)}\]]+/g, '[path]')
     // Redact Unix absolute paths (/home/..., /tmp/...)
     .replace(/\/(?:home|tmp|usr|var|etc)\/[^\s"',;)}\]]+/g, '[path]');
+}
+
+/**
+ * Records a single session_end_action telemetry row.
+ *
+ * Non-throwing — entire function wrapped in try/catch.
+ * Pre-V36 DBs silently swallow the INSERT (CHECK constraint mismatch caught).
+ * This matches the additive pattern used by handoff_parse_failed (Plan 14-01)
+ * and frame_extraction_fallback (Plan 13 P3).
+ */
+export function recordSessionEndAction(
+  db: Database,
+  params: SessionEndActionDetail & { adapter?: string },
+): void {
+  try {
+    db.prepare(
+      `INSERT INTO telemetry (session_id, event_kind, detail, adapter)
+       VALUES (?, 'session_end_action', ?, ?)`
+    ).run(
+      params.session_id,
+      JSON.stringify({
+        action: params.action,
+        outcome: params.outcome,
+        duration_ms: params.duration_ms,
+        reason: params.reason ?? null,
+        error_message: params.error_message ?? null,
+        skip_reason: params.skip_reason ?? null,
+      }),
+      params.adapter ?? 'angel-boundary',
+    );
+  } catch {
+    // Intentionally swallowed — pre-V36 DBs will reject the CHECK constraint.
+    // Non-throwing per spec.
+  }
 }
 
 /** Tool cost estimate entry. */
