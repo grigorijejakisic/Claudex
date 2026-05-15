@@ -100,7 +100,7 @@ describe('runBackfill', () => {
 
     // Pre-seed transcript_chunk_v6 for s-already.
     db.prepare(
-      `INSERT INTO transcript_chunk_v6 (session_id, project_id, turn_index, role, provenance, body, created_at_epoch_ms)
+      `INSERT INTO transcript_chunk_v6 (session_id, project, turn_index, role, provenance, body, created_at_epoch_ms)
        VALUES ('s-already', 'p1', 0, 'user', 'organic', 'old chunk', 1700000000000)`,
     ).run();
 

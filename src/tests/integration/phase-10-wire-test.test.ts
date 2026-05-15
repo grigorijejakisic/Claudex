@@ -203,7 +203,7 @@ describe('WIR-01 (a) — spans actually retrieved when artifact reference fires'
   for (const fixture of ['base-table', 'v17-collapsed'] as const) {
     it(`routeFromArtifacts returns spans for a real artifact reference on ${fixture}`, async () => {
       const db = fixture === 'base-table' ? freshBaseTableV32Db() : freshV17CollapsedV32Db();
-      expect(db.pragma('user_version', { simple: true })).toBe(32);
+      expect(db.pragma('user_version', { simple: true })).toBe(34);
 
       const sessionId = `wir01-spans-${fixture}`;
       const { artifact } = seedDeliberation(db, sessionId);

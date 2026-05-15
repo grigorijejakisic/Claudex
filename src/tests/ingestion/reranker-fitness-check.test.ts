@@ -36,7 +36,7 @@ beforeEach(() => {
   initializeSchema(db);
   // Seed 50 synthetic chunks
   const ins = db.prepare(
-    `INSERT INTO transcript_chunk_v6 (session_id, project_id, turn_index, sub_index, role, provenance, body, created_at_epoch_ms)
+    `INSERT INTO transcript_chunk_v6 (session_id, project, turn_index, sub_index, role, provenance, body, created_at_epoch_ms)
      VALUES (?, ?, ?, 0, 'user', 'organic', ?, ?)`
   );
   for (let i = 0; i < 50; i++) {

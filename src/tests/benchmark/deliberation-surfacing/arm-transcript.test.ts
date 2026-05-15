@@ -21,7 +21,7 @@ function buildTestDb(seedRowCount = 20): Database.Database {
   db.exec(`
     CREATE TABLE transcript_chunk_v6 (
       session_id TEXT NOT NULL,
-      project_id TEXT NOT NULL,
+      project TEXT NOT NULL,
       turn_index INTEGER NOT NULL,
       sub_index INTEGER NOT NULL,
       role TEXT NOT NULL,
@@ -37,7 +37,7 @@ function buildTestDb(seedRowCount = 20): Database.Database {
   if (seedRowCount > 0) {
     const insertChunk = db.prepare(`
       INSERT INTO transcript_chunk_v6
-      (session_id, project_id, turn_index, sub_index, role, provenance, body, created_at_epoch_ms, wrapper_redacted)
+      (session_id, project, turn_index, sub_index, role, provenance, body, created_at_epoch_ms, wrapper_redacted)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0)
     `);
     const insertVec = db.prepare(`INSERT INTO vec_transcript_chunks_v6(rowid, embedding) VALUES (?, ?)`);

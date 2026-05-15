@@ -48,7 +48,7 @@ describe('arm-transcript — production routing path (POLISH-07)', () => {
       CREATE TABLE transcript_chunk_v6 (
         id INTEGER PRIMARY KEY,
         session_id TEXT NOT NULL,
-        project_id TEXT,
+        project TEXT,
         turn_index INTEGER NOT NULL,
         sub_index INTEGER NOT NULL,
         role TEXT NOT NULL,
@@ -59,7 +59,7 @@ describe('arm-transcript — production routing path (POLISH-07)', () => {
       );
     `);
     db.prepare(`
-      INSERT INTO transcript_chunk_v6 (id, session_id, project_id, turn_index, sub_index, role, body, created_at_epoch_ms, provenance, wrapper_redacted)
+      INSERT INTO transcript_chunk_v6 (id, session_id, project, turn_index, sub_index, role, body, created_at_epoch_ms, provenance, wrapper_redacted)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(1, 'sess-anchor', 'proj-1', 0, 0, 'assistant', 'anchor body', 1_700_000_000_000, 'organic', 0);
 

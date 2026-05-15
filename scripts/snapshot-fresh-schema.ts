@@ -21,7 +21,7 @@ initializeSchema(db);
 const seedTs = 1_700_000_000_000;
 const seedChunk = db.prepare(`
   INSERT INTO transcript_chunk_v6 (
-    session_id, project_id, turn_index, sub_index, role, provenance,
+    session_id, project, turn_index, sub_index, role, provenance,
     body, created_at_epoch_ms, wrapper_redacted
   ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
 `);
