@@ -17,7 +17,7 @@ beforeEach(() => {
   db.exec(`
     CREATE TABLE transcript_chunk_v6 (
       session_id TEXT NOT NULL,
-      project_id TEXT NOT NULL,
+      project TEXT NOT NULL,
       turn_index INTEGER NOT NULL,
       sub_index INTEGER NOT NULL,
       role TEXT NOT NULL,

@@ -509,11 +509,11 @@ describe('batch reflection (4.4)', () => {
 
     it('clusters learnings with keyword overlap', () => {
       const learnings = [
-        { id: 1, content: 'SQLite database schema migration pattern', project, fingerprint: 'f1', agent_id: 'a', promotion_count: 1, first_seen_epoch: 0, last_promoted_epoch: 0, updated_at_epoch: 0 },
-        { id: 2, content: 'SQLite database schema versioning approach', project, fingerprint: 'f2', agent_id: 'a', promotion_count: 1, first_seen_epoch: 0, last_promoted_epoch: 0, updated_at_epoch: 0 },
-        { id: 3, content: 'SQLite database schema backup strategy', project, fingerprint: 'f3', agent_id: 'a', promotion_count: 1, first_seen_epoch: 0, last_promoted_epoch: 0, updated_at_epoch: 0 },
-        { id: 4, content: 'React component rendering hooks lifecycle', project, fingerprint: 'f4', agent_id: 'a', promotion_count: 1, first_seen_epoch: 0, last_promoted_epoch: 0, updated_at_epoch: 0 },
-        { id: 5, content: 'React component rendering optimization lifecycle', project, fingerprint: 'f5', agent_id: 'a', promotion_count: 1, first_seen_epoch: 0, last_promoted_epoch: 0, updated_at_epoch: 0 },
+        { id: 1, content: 'SQLite database schema migration pattern', project, fingerprint: 'f1', agent_id: 'a', promotion_count: 1, first_seen_epoch: 0, last_promoted_epoch: 0, updated_at_epoch_ms: 0 },
+        { id: 2, content: 'SQLite database schema versioning approach', project, fingerprint: 'f2', agent_id: 'a', promotion_count: 1, first_seen_epoch: 0, last_promoted_epoch: 0, updated_at_epoch_ms: 0 },
+        { id: 3, content: 'SQLite database schema backup strategy', project, fingerprint: 'f3', agent_id: 'a', promotion_count: 1, first_seen_epoch: 0, last_promoted_epoch: 0, updated_at_epoch_ms: 0 },
+        { id: 4, content: 'React component rendering hooks lifecycle', project, fingerprint: 'f4', agent_id: 'a', promotion_count: 1, first_seen_epoch: 0, last_promoted_epoch: 0, updated_at_epoch_ms: 0 },
+        { id: 5, content: 'React component rendering optimization lifecycle', project, fingerprint: 'f5', agent_id: 'a', promotion_count: 1, first_seen_epoch: 0, last_promoted_epoch: 0, updated_at_epoch_ms: 0 },
       ];
 
       const clusters = clusterLearnings(learnings);
@@ -525,8 +525,8 @@ describe('batch reflection (4.4)', () => {
 
     it('skips clusters with only 1 item', () => {
       const learnings = [
-        { id: 1, content: 'very unique topic about quantum computing theory', project, fingerprint: 'f1', agent_id: 'a', promotion_count: 1, first_seen_epoch: 0, last_promoted_epoch: 0, updated_at_epoch: 0 },
-        { id: 2, content: 'completely different topic about marine biology', project, fingerprint: 'f2', agent_id: 'a', promotion_count: 1, first_seen_epoch: 0, last_promoted_epoch: 0, updated_at_epoch: 0 },
+        { id: 1, content: 'very unique topic about quantum computing theory', project, fingerprint: 'f1', agent_id: 'a', promotion_count: 1, first_seen_epoch: 0, last_promoted_epoch: 0, updated_at_epoch_ms: 0 },
+        { id: 2, content: 'completely different topic about marine biology', project, fingerprint: 'f2', agent_id: 'a', promotion_count: 1, first_seen_epoch: 0, last_promoted_epoch: 0, updated_at_epoch_ms: 0 },
       ];
 
       const clusters = clusterLearnings(learnings);
@@ -536,8 +536,8 @@ describe('batch reflection (4.4)', () => {
 
     it('generates theme with top keywords', () => {
       const learnings = [
-        { id: 1, content: 'artifact embedding pipeline uses Ollama for vector generation', project, fingerprint: 'f1', agent_id: 'a', promotion_count: 1, first_seen_epoch: 0, last_promoted_epoch: 0, updated_at_epoch: 0 },
-        { id: 2, content: 'artifact embedding storage uses SQLite BLOB for fallback', project, fingerprint: 'f2', agent_id: 'a', promotion_count: 1, first_seen_epoch: 0, last_promoted_epoch: 0, updated_at_epoch: 0 },
+        { id: 1, content: 'artifact embedding pipeline uses Ollama for vector generation', project, fingerprint: 'f1', agent_id: 'a', promotion_count: 1, first_seen_epoch: 0, last_promoted_epoch: 0, updated_at_epoch_ms: 0 },
+        { id: 2, content: 'artifact embedding storage uses SQLite BLOB for fallback', project, fingerprint: 'f2', agent_id: 'a', promotion_count: 1, first_seen_epoch: 0, last_promoted_epoch: 0, updated_at_epoch_ms: 0 },
       ];
 
       const clusters = clusterLearnings(learnings);

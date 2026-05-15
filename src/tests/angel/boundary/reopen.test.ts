@@ -21,7 +21,7 @@ function plantClosedSession(db: Database.Database, opts: {
 }): number {
   db.prepare(
     `INSERT INTO sessions
-       (session_id, project, status, created_at_epoch, ended_at_epoch,
+       (session_id, project, status, created_at_epoch_ms, ended_at_epoch_ms,
         last_heartbeat_ts, last_jsonl_write_ts)
      VALUES (?, ?, 'completed', ?, ?, ?, ?)`
   ).run(opts.sessionId, opts.project, opts.closeAt - 1000, opts.closeAt, opts.closeAt, opts.closeAt);
@@ -79,10 +79,10 @@ describe('boundary detector re-open branches', () => {
     expect(r.reopensEmitted).toBe(1);
     expect(r.reopensAnomalous).toBe(0);
 
-    const sess = db.prepare(`SELECT status, ended_at_epoch FROM sessions WHERE session_id='sess-r'`)
-      .get() as { status: string; ended_at_epoch: number | null };
+    const sess = db.prepare(`SELECT status, ended_at_epoch_ms FROM sessions WHERE session_id='sess-r'`)
+      .get() as { status: string; ended_at_epoch_ms: number | null };
     expect(sess.status).toBe('active');
-    expect(sess.ended_at_epoch).toBeNull();
+    expect(sess.ended_at_epoch_ms).toBeNull();
 
     const cur = db.prepare(`SELECT last_close_event_id FROM episode_boundary_cursor WHERE session_id='sess-r'`)
       .get() as { last_close_event_id: number | null };

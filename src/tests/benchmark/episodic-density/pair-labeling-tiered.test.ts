@@ -67,7 +67,7 @@ async function seedFixtureCorpus(): Promise<void> {
       errorFingerprintEnabled: false,
     });
   }
-  db.prepare(`UPDATE episodic_events SET ts_epoch = ?`).run(PHASE1_SHIP_TS_EPOCH + 60);
+  db.prepare(`UPDATE episodic_events SET ts_epoch_ms = ?`).run(PHASE1_SHIP_TS_EPOCH + 60);
   await runBackfill(db, { dryRun: false });
 }
 
@@ -176,7 +176,7 @@ describe('Relaxed-superset invariant (CONTEXT.md decision 2a — relaxed ⊇ str
     await seedFixtureCorpus();
     const corpus: IndexedEvent[] = [];
     for (const row of db.prepare(`
-      SELECT e.id, e.project, e.ts_epoch, e.session_id, e.content, e.metadata_json,
+      SELECT e.id, e.project, e.ts_epoch_ms AS ts_epoch, e.session_id, e.content, e.metadata_json,
              s.corpus_origin
         FROM episodic_events e
         JOIN episodic_index_error_fingerprint s ON s.episode_event_id = e.id
@@ -282,7 +282,7 @@ describe('n=0 / corpus-too-sparse sentinel (CONTEXT.md decision 6)', () => {
         errorFingerprintEnabled: false,
       });
     }
-    db.prepare(`UPDATE episodic_events SET ts_epoch = ?`).run(PHASE1_SHIP_TS_EPOCH + 60);
+    db.prepare(`UPDATE episodic_events SET ts_epoch_ms = ?`).run(PHASE1_SHIP_TS_EPOCH + 60);
     await runBackfill(db, { dryRun: false });
 
     const result = await runHarnessTiered(db, { seed: 42 });

@@ -66,7 +66,7 @@ function seedLesson(opts: SeedOpts): string {
   const lastFired = opts.lastFired != null ? `\nlast_fired_at_epoch: ${opts.lastFired}` : '';
   const content = `---
 type: ${prefix}
-created_at_epoch: ${created}
+created_at_epoch_ms: ${created}
 telemetry:
   tools_used: [Read]
   files_touched: [src/foo.ts]

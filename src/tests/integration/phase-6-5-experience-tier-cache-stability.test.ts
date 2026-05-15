@@ -32,7 +32,7 @@ function makeSeededDb(): Database.Database {
   // Multiple cross-project candidates with overlapping signals.
   const ts = Math.floor(Date.now() / 1000);
   const insertA = db.prepare(
-    `INSERT INTO artifacts (id, session_id, project, artifact_type, summary, content, importance, timestamp_epoch)
+    `INSERT INTO artifacts (id, session_id, project, artifact_type, summary, content, importance, timestamp_epoch_ms)
        VALUES (?, 'seed', ?, 'learning', ?, ?, 3, ?)`
   );
   const insertATP = db.prepare(
@@ -100,7 +100,7 @@ describe('Phase 6.5 Experience Tier — cache-stability invariance', () => {
     const ts = Math.floor(Date.now() / 1000);
     // Two artifacts with identical scoring potential.
     db.prepare(
-      `INSERT INTO artifacts (id, session_id, project, artifact_type, summary, content, importance, timestamp_epoch)
+      `INSERT INTO artifacts (id, session_id, project, artifact_type, summary, content, importance, timestamp_epoch_ms)
          VALUES (?, 'seed', ?, 'learning', ?, ?, 3, ?)`
     ).run(2002, 'p2', 'auth flow B', 'Decision: design B\nOutcome: ok', ts);
     db.prepare(
@@ -108,7 +108,7 @@ describe('Phase 6.5 Experience Tier — cache-stability invariance', () => {
          VALUES (?, 'auth-flow-design', ?, 1.0, 'write_time')`
     ).run(2002, Date.now());
     db.prepare(
-      `INSERT INTO artifacts (id, session_id, project, artifact_type, summary, content, importance, timestamp_epoch)
+      `INSERT INTO artifacts (id, session_id, project, artifact_type, summary, content, importance, timestamp_epoch_ms)
          VALUES (?, 'seed', ?, 'learning', ?, ?, 3, ?)`
     ).run(2001, 'p1', 'auth flow A', 'Decision: design A\nOutcome: ok', ts);
     db.prepare(
@@ -131,12 +131,12 @@ describe('Phase 6.5 Experience Tier — cache-stability invariance', () => {
   it('section uses no clock-derived strings — output stable across simulated time advance', () => {
     const db = makeSeededDb();
     const r1 = assembleExperienceTier(db, 'sess-A', 1, 'big-mozzy-v2', HANDLES);
-    // Simulate clock advance by recording it via timestamp_epoch on a NEW
+    // Simulate clock advance by recording it via timestamp_epoch_ms on a NEW
     // unrelated row that wouldn't change any scoring (different project still
     // 'big-mozzy-v2', so it shouldn't surface anyway).
     const farFuture = Math.floor(Date.now() / 1000) + 10 * 365 * 86400;
     db.prepare(
-      `INSERT INTO artifacts (id, session_id, project, artifact_type, summary, content, importance, timestamp_epoch)
+      `INSERT INTO artifacts (id, session_id, project, artifact_type, summary, content, importance, timestamp_epoch_ms)
          VALUES (9999, 'seed', 'big-mozzy-v2', 'learning', 'irrelevant', '', 3, ?)`
     ).run(farFuture);
     const r2 = assembleExperienceTier(db, 'sess-A', 1, 'big-mozzy-v2', HANDLES);

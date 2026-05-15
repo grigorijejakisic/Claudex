@@ -44,7 +44,7 @@ CREATE TABLE IF NOT EXISTS sessions (
   session_id TEXT PRIMARY KEY,
   project TEXT,
   status TEXT DEFAULT 'active',
-  created_at_epoch INTEGER DEFAULT 0
+  created_at_epoch_ms INTEGER DEFAULT 0
 );
 `;
 
@@ -64,7 +64,7 @@ function makeDb(): DatabaseType {
  */
 function seedSession(db: DatabaseType, session_id: string, project: string, status: string = 'completed'): void {
   db.prepare(
-    `INSERT INTO sessions (session_id, project, status, created_at_epoch) VALUES (?, ?, ?, 0)`,
+    `INSERT INTO sessions (session_id, project, status, created_at_epoch_ms) VALUES (?, ?, ?, 0)`,
   ).run(session_id, project, status);
 }
 

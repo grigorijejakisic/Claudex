@@ -73,7 +73,7 @@ describe('memory-md-writer ## Lessons section (Phase 4.1 CUR-09/CUR-10)', () => 
         type: 'feedback',
         slug: 'check-deps',
         frontmatter: {
-          created_at_epoch: Date.now(),
+          created_at_epoch_ms: Date.now(),
           telemetry: baseTelemetry(),
           shape: { task_shape: 'code-edit-with-existing-deps' },
         },
@@ -93,7 +93,7 @@ describe('memory-md-writer ## Lessons section (Phase 4.1 CUR-09/CUR-10)', () => 
         type: 'project',
         slug: 'mozzart-429',
         frontmatter: {
-          created_at_epoch: Date.now(),
+          created_at_epoch_ms: Date.now(),
           telemetry: baseTelemetry(),
           // shape omitted = abstain
         },
@@ -111,7 +111,7 @@ describe('memory-md-writer ## Lessons section (Phase 4.1 CUR-09/CUR-10)', () => 
         type: 'feedback',
         slug: 'long-body',
         frontmatter: {
-          created_at_epoch: Date.now(),
+          created_at_epoch_ms: Date.now(),
           telemetry: baseTelemetry(),
         },
         body: longBody,
@@ -131,7 +131,7 @@ describe('memory-md-writer ## Lessons section (Phase 4.1 CUR-09/CUR-10)', () => 
         type: 'feedback',
         slug: 'demoted',
         frontmatter: {
-          created_at_epoch: Date.now(),
+          created_at_epoch_ms: Date.now(),
           telemetry: baseTelemetry(),
           tier: 'background',
         },
@@ -153,7 +153,7 @@ describe('memory-md-writer ## Lessons section (Phase 4.1 CUR-09/CUR-10)', () => 
           type: 'feedback',
           slug: `bulk-${String(i).padStart(2, '0')}`,
           frontmatter: {
-            created_at_epoch: baseEpoch + i * 1000,
+            created_at_epoch_ms: baseEpoch + i * 1000,
             telemetry: baseTelemetry(),
             last_fired_at_epoch: i < 10 ? baseEpoch + i * 1000 : undefined,
           },

@@ -68,7 +68,7 @@ describe('Phase 4.1 behavioral live-fire gate', () => {
       type: 'feedback',
       slug,
       frontmatter: {
-        created_at_epoch: Date.now(),
+        created_at_epoch_ms: Date.now(),
         telemetry: baseTelemetry(),
       },
       body: `# ${salience}\n\nLesson body for session ${sessionId}.\n`,
@@ -159,7 +159,7 @@ describe('Phase 4.1 behavioral live-fire gate', () => {
     db.prepare(
       `INSERT OR REPLACE INTO critical_rules_multi_project (project, normalized_rule_text, multi_project_count, updated_at_epoch)
        VALUES (?, ?, ?, ?)`,
-    ).run(project, 'verify before claiming done', 2, Date.now());
+    ).run(project, 'verify before claiming done', 2, Math.floor(Date.now() / 1000));
 
     const result = assembleCriticalReminders(db, 'sess-x', 1, project, false, []);
     expect(result).not.toBeNull();

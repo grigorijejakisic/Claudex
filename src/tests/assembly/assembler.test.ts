@@ -173,7 +173,7 @@ describe('assembleFullContext', () => {
       open_items: [], learnings: [], gsd: null,
     };
     db.prepare(
-      `INSERT INTO checkpoint_meta (checkpoint_id, session_id, trigger, status, data, mirror_path, created_at_epoch, updated_at_epoch)
+      `INSERT INTO checkpoint_meta (checkpoint_id, session_id, trigger, status, data, mirror_path, created_at_epoch_ms, updated_at_epoch_ms)
        VALUES (?, ?, ?, ?, ?, NULL, unixepoch(), unixepoch())`
     ).run('cp1', 's1', 'threshold', 'committed', JSON.stringify(cpData));
 

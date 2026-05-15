@@ -37,7 +37,7 @@ function insertCriticalRule(
     db.prepare(
       `INSERT INTO critical_rules_multi_project (project, normalized_rule_text, multi_project_count, updated_at_epoch)
        VALUES (?, ?, ?, ?)`,
-    ).run(project, normalizeForMultiProject(ruleText), multiProjectCount, Date.now());
+    ).run(project, normalizeForMultiProject(ruleText), multiProjectCount, Math.floor(Date.now() / 1000));
   }
 }
 

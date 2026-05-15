@@ -10,7 +10,7 @@ import { proposeLessonsForSession, harvestTelemetry } from '../../angel/lesson-p
 function ensureSession(db: Database.Database, sessionId: string, project: string, opts: { ended?: number } = {}): void {
   const created = 1700000000;
   db.prepare(
-    `INSERT OR IGNORE INTO sessions (session_id, project, status, created_at_epoch, ended_at_epoch)
+    `INSERT OR IGNORE INTO sessions (session_id, project, status, created_at_epoch_ms, ended_at_epoch_ms)
      VALUES (?, ?, 'completed', ?, ?)`,
   ).run(sessionId, project, created, opts.ended ?? null);
 }
@@ -116,11 +116,11 @@ describe('lesson-proposer proposeLessonsForSession (Phase 4.1)', () => {
     recordEvt(db, 'sess-telem', project, 'file_edit', 'src/x.ts');
     recordEvt(db, 'sess-telem', project, 'file_edit', 'src/y.ts');
     db.prepare(
-      `INSERT INTO conversation_turns (session_id, project, turn_number, user_text, assistant_text, timestamp_epoch)
+      `INSERT INTO conversation_turns (session_id, project, turn_number, user_text, assistant_text, timestamp_epoch_ms)
        VALUES (?, ?, 1, 'check the dependencies again', 'sure', ?)`,
     ).run('sess-telem', project, 1700000005);
     db.prepare(
-      `INSERT INTO conversation_turns (session_id, project, turn_number, user_text, assistant_text, timestamp_epoch)
+      `INSERT INTO conversation_turns (session_id, project, turn_number, user_text, assistant_text, timestamp_epoch_ms)
        VALUES (?, ?, 2, 'check the dependencies once more', 'ok', ?)`,
     ).run('sess-telem', project, 1700000010);
 

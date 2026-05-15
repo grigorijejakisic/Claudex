@@ -235,7 +235,7 @@ async function seedFloorCorpus(): Promise<void> {
       errorFingerprintEnabled: false,
     });
   }
-  db.prepare(`UPDATE episodic_events SET ts_epoch = ?`).run(PHASE1_SHIP_TS_EPOCH + 60);
+  db.prepare(`UPDATE episodic_events SET ts_epoch_ms = ?`).run(PHASE1_SHIP_TS_EPOCH + 60);
   await runBackfill(db, { dryRun: false });
 }
 

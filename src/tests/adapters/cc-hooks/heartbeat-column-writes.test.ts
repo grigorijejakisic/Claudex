@@ -36,7 +36,7 @@ describe('Phase 6 EBD-02 — heartbeat column writes', () => {
     db = new Database(':memory:');
     initializeSchema(db);
     db.prepare(
-      `INSERT INTO sessions (session_id, project, status, created_at_epoch)
+      `INSERT INTO sessions (session_id, project, status, created_at_epoch_ms)
        VALUES (?, ?, 'active', ?)`
     ).run(sessionId, project, Math.floor(Date.now() / 1000) - 100);
   });
@@ -84,11 +84,11 @@ describe('Phase 6 EBD-02 — heartbeat column writes', () => {
       emitCleanEndsessionClose(db, sessionId, project);
 
       const sess = db.prepare(
-        `SELECT last_heartbeat_ts, status, ended_at_epoch FROM sessions WHERE session_id = ?`
-      ).get(sessionId) as { last_heartbeat_ts: number; status: string; ended_at_epoch: number };
+        `SELECT last_heartbeat_ts, status, ended_at_epoch_ms FROM sessions WHERE session_id = ?`
+      ).get(sessionId) as { last_heartbeat_ts: number; status: string; ended_at_epoch_ms: number };
       expect(sess.last_heartbeat_ts).toBeGreaterThan(0);
       expect(sess.status).toBe('completed');
-      expect(sess.ended_at_epoch).toBeGreaterThan(0);
+      expect(sess.ended_at_epoch_ms).toBeGreaterThan(0);
 
       const ev = db.prepare(
         `SELECT id, type, source, provenance, metadata_json

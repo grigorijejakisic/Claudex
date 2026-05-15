@@ -116,7 +116,7 @@ describe('shouldTriggerCheckpoint', () => {
           thresholds_hit: [0.75],
           observation_count: 10,
           post_compact_pending: 0,
-          updated_at_epoch: 0,
+          updated_at_epoch_ms: 0,
         },
       })
     ).toBe(false);
@@ -139,7 +139,7 @@ describe('shouldTriggerCheckpoint', () => {
           thresholds_hit: [],
           observation_count: 10,
           post_compact_pending: 0,
-          updated_at_epoch: 0,
+          updated_at_epoch_ms: 0,
         },
         debounceSeconds: 60,
       })
@@ -163,7 +163,7 @@ describe('shouldTriggerCheckpoint', () => {
           thresholds_hit: [],
           observation_count: 10,
           post_compact_pending: 0,
-          updated_at_epoch: 0,
+          updated_at_epoch_ms: 0,
         },
         debounceSeconds: 60,
       })

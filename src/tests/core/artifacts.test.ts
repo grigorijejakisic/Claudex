@@ -51,7 +51,7 @@ describe('artifact CRUD', () => {
     expect(rows[0].ttl).toBe(8); // importance 5 → TTL 8
     expect(rows[0].importance).toBe(5);
     expect(rows[0].artifact_ref).toBeNull();
-    expect(rows[0].last_materialized_epoch).toBeNull();
+    expect(rows[0].last_materialized_epoch_ms).toBeNull();
   });
 
   it('getArtifactsByProject returns all artifacts for project', () => {
@@ -205,7 +205,7 @@ describe('artifact materialization', () => {
     const rows = getArtifactsByProject(db, 'myproject');
     expect(rows[0].state).toBe('materialized');
     expect(rows[0].ttl).toBe(2);
-    expect(rows[0].last_materialized_epoch).not.toBeNull();
+    expect(rows[0].last_materialized_epoch_ms).not.toBeNull();
   });
 
   it('materializeArtifacts handles empty array', () => {
@@ -537,25 +537,25 @@ describe('section formatters', () => {
   });
 
   it('formatReferenceLayer renders packed artifact summaries', () => {
-    const now = Math.floor(Date.now() / 1000);
+    const now = Date.now();
     const artifacts: ArtifactRow[] = [
       {
         id: 1, session_id: 's1', project: 'p', artifact_type: 'observation',
         artifact_ref: null, summary: 'API endpoint analysis', content: null,
-        state: 'packed', ttl: 0, importance: 4, timestamp_epoch: now - 7200,
-        last_materialized_epoch: null,
+        state: 'packed', ttl: 0, importance: 4, timestamp_epoch_ms: now - 7200000,
+        last_materialized_epoch_ms: null,
       },
       {
         id: 2, session_id: 's1', project: 'p', artifact_type: 'learning',
         artifact_ref: null, summary: 'Windows paths need normalization', content: null,
-        state: 'packed', ttl: 0, importance: 5, timestamp_epoch: now - 60,
-        last_materialized_epoch: null,
+        state: 'packed', ttl: 0, importance: 5, timestamp_epoch_ms: now - 60000,
+        last_materialized_epoch_ms: null,
       },
       {
         id: 3, session_id: 's1', project: 'p', artifact_type: 'decision',
         artifact_ref: null, summary: 'Use TTL-based lifecycle', content: null,
-        state: 'packed', ttl: 0, importance: 3, timestamp_epoch: now - 3600,
-        last_materialized_epoch: null,
+        state: 'packed', ttl: 0, importance: 3, timestamp_epoch_ms: now - 3600000,
+        last_materialized_epoch_ms: null,
       },
     ];
 
@@ -578,8 +578,8 @@ describe('section formatters', () => {
       {
         id: 1, session_id: 's1', project: 'p', artifact_type: 'observation',
         artifact_ref: null, summary: 'No content', content: null,
-        state: 'fresh', ttl: 3, importance: 4, timestamp_epoch: 0,
-        last_materialized_epoch: null,
+        state: 'fresh', ttl: 3, importance: 4, timestamp_epoch_ms: 0,
+        last_materialized_epoch_ms: null,
       },
     ];
 
@@ -593,16 +593,16 @@ describe('section formatters', () => {
         artifact_ref: null, summary: 'API endpoint analysis',
         content: 'GET /api/threads returns ThreadState with artifacts array.',
         state: 'materialized', ttl: 2, importance: 4,
-        timestamp_epoch: Math.floor(Date.now() / 1000),
-        last_materialized_epoch: Math.floor(Date.now() / 1000),
+        timestamp_epoch_ms: Date.now(),
+        last_materialized_epoch_ms: Date.now(),
       },
       {
         id: 2, session_id: 's1', project: 'p', artifact_type: 'decision',
         artifact_ref: null, summary: 'Use TTL-based lifecycle',
         content: 'Decided during IAM analysis session. TTL replaces consumed flag.',
         state: 'fresh', ttl: 3, importance: 3,
-        timestamp_epoch: Math.floor(Date.now() / 1000),
-        last_materialized_epoch: null,
+        timestamp_epoch_ms: Date.now(),
+        last_materialized_epoch_ms: null,
       },
     ];
 
@@ -622,14 +622,14 @@ describe('section formatters', () => {
         artifact_ref: null, summary: 'Has content',
         content: 'Real content here.',
         state: 'fresh', ttl: 3, importance: 4,
-        timestamp_epoch: 0, last_materialized_epoch: null,
+        timestamp_epoch_ms: 0, last_materialized_epoch_ms: null,
       },
       {
         id: 2, session_id: 's1', project: 'p', artifact_type: 'decision',
         artifact_ref: null, summary: 'No content',
         content: null,
         state: 'fresh', ttl: 3, importance: 3,
-        timestamp_epoch: 0, last_materialized_epoch: null,
+        timestamp_epoch_ms: 0, last_materialized_epoch_ms: null,
       },
     ];
 

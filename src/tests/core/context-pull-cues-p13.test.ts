@@ -37,13 +37,13 @@ CREATE TABLE IF NOT EXISTS session_events (
   entity TEXT,
   action TEXT,
   detail TEXT,
-  timestamp_epoch INTEGER DEFAULT (strftime('%s','now'))
+  timestamp_epoch_ms INTEGER DEFAULT (strftime('%s','now'))
 );
 CREATE TABLE IF NOT EXISTS sessions (
   session_id TEXT PRIMARY KEY,
   project TEXT,
   status TEXT DEFAULT 'active',
-  created_at_epoch INTEGER DEFAULT 0
+  created_at_epoch_ms INTEGER DEFAULT 0
 );
 `;
 

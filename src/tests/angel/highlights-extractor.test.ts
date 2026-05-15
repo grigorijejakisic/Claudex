@@ -44,7 +44,7 @@ CREATE TABLE IF NOT EXISTS telemetry (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   session_id TEXT, event_kind TEXT, detail TEXT,
   latency_ms INTEGER, adapter TEXT,
-  timestamp_epoch INTEGER DEFAULT (strftime('%s','now'))
+  timestamp_epoch_ms INTEGER DEFAULT (strftime('%s','now'))
 );
 `;
 

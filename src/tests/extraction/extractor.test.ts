@@ -211,9 +211,9 @@ describe('processToolObservation', () => {
     }));
     expect(first).not.toBeNull();
 
-    // Manually backdate the timestamp by 6 minutes (360 seconds)
+    // Manually backdate the timestamp by 6 minutes (360 000 ms)
     db.prepare(
-      'UPDATE observations SET timestamp_epoch = timestamp_epoch - 360 WHERE id = ?'
+      'UPDATE observations SET timestamp_epoch_ms = timestamp_epoch_ms - 360000 WHERE id = ?'
     ).run(first!);
 
     // Same tool+file+category but now outside 5-minute window

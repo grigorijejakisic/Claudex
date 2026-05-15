@@ -85,7 +85,7 @@ describe('Backfill integration — three-tier corpus_origin assignment', () => {
   function seedV4ArtifactRow(id: number, ts: number, project: string, content: string): void {
     db.prepare(
       `INSERT INTO artifacts
-         (id, session_id, project, artifact_type, artifact_ref, summary, content, state, ttl, importance, timestamp_epoch)
+         (id, session_id, project, artifact_type, artifact_ref, summary, content, state, ttl, importance, timestamp_epoch_ms)
        VALUES (?, ?, ?, ?, ?, ?, ?, 'fresh', 0, 1, ?)`,
     ).run(id, `old-${id}`, project, 'observation', `old-${id}`, 's', content, ts);
   }
@@ -124,10 +124,10 @@ describe('Backfill integration — three-tier corpus_origin assignment', () => {
     });
     // Force the timestamps deterministically: pre rows below boundary,
     // post row strictly above.
-    db.prepare(`UPDATE episodic_events SET ts_epoch = ? WHERE session_id IN ('pre-1', 'pre-2')`).run(
+    db.prepare(`UPDATE episodic_events SET ts_epoch_ms = ? WHERE session_id IN ('pre-1', 'pre-2')`).run(
       PHASE2_CLOSE_TS_EPOCH - 100,
     );
-    db.prepare(`UPDATE episodic_events SET ts_epoch = ? WHERE session_id = 'post-1'`).run(
+    db.prepare(`UPDATE episodic_events SET ts_epoch_ms = ? WHERE session_id = 'post-1'`).run(
       PHASE2_CLOSE_TS_EPOCH + 100,
     );
 
@@ -178,7 +178,7 @@ describe('Backfill integration — three-tier corpus_origin assignment', () => {
       turnNumber: 0,
       errorFingerprintEnabled: false,
     });
-    db.prepare(`UPDATE episodic_events SET ts_epoch = ?`).run(PHASE1_SHIP_TS_EPOCH + 60);
+    db.prepare(`UPDATE episodic_events SET ts_epoch_ms = ?`).run(PHASE1_SHIP_TS_EPOCH + 60);
     seedV4ArtifactRow(1, 1700000000, 'p', STACK_TRACE);
     await runBackfill(db, { dryRun: false });
 
@@ -210,10 +210,10 @@ describe('Backfill integration — three-tier corpus_origin assignment', () => {
       turnNumber: 1,
       errorFingerprintEnabled: false,
     });
-    db.prepare(`UPDATE episodic_events SET ts_epoch = ? WHERE session_id = 'pre-A'`).run(
+    db.prepare(`UPDATE episodic_events SET ts_epoch_ms = ? WHERE session_id = 'pre-A'`).run(
       PHASE2_CLOSE_TS_EPOCH - 1,
     );
-    db.prepare(`UPDATE episodic_events SET ts_epoch = ? WHERE session_id = 'post-A'`).run(
+    db.prepare(`UPDATE episodic_events SET ts_epoch_ms = ? WHERE session_id = 'post-A'`).run(
       PHASE2_CLOSE_TS_EPOCH + 1,
     );
     seedV4ArtifactRow(1, 1700000000, 'p3', STACK_TRACE);

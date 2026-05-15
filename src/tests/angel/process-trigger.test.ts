@@ -9,10 +9,11 @@ import { evaluateProcessTriggers } from '../../angel/process-trigger.js';
 
 function ensureSession(db: Database.Database, sessionId: string, project: string, opts: { ended?: number } = {}): void {
   // Create a session row covering the test's required fields. Default
-  // ended_at_epoch unset; tests can pass `ended` for T5.
-  const created = 1700000000;
+  // ended_at_epoch_ms unset; tests can pass `ended` for T5.
+  // _epoch_ms columns store milliseconds — multiply seconds constants by 1000.
+  const created = 1700000000 * 1000; // ms
   db.prepare(
-    `INSERT OR IGNORE INTO sessions (session_id, project, status, created_at_epoch, ended_at_epoch)
+    `INSERT OR IGNORE INTO sessions (session_id, project, status, created_at_epoch_ms, ended_at_epoch_ms)
      VALUES (?, ?, 'completed', ?, ?)`,
   ).run(sessionId, project, created, opts.ended ?? null);
 }
@@ -107,14 +108,14 @@ describe('process-trigger evaluateProcessTriggers (Phase 4.1)', () => {
   });
 
   it('T5: 35min duration + 25 turns + low action ratio → long_form.fired = true', () => {
-    const created = 1700000000;
-    const ended = created + 35 * 60; // 35 min
+    const created = 1700000000 * 1000; // ms
+    const ended = created + 35 * 60 * 1000; // 35 min in ms
     ensureSession(db, 'sess-T5', project, { ended });
 
     // Insert 25 conversation turns
     for (let i = 1; i <= 25; i++) {
       db.prepare(
-        `INSERT INTO conversation_turns (session_id, project, turn_number, user_text, assistant_text, timestamp_epoch)
+        `INSERT INTO conversation_turns (session_id, project, turn_number, user_text, assistant_text, timestamp_epoch_ms)
          VALUES (?, ?, ?, ?, ?, ?)`,
       ).run('sess-T5', project, i, `u${i}`, `a${i}`, created + i);
     }
@@ -127,13 +128,13 @@ describe('process-trigger evaluateProcessTriggers (Phase 4.1)', () => {
   });
 
   it('T5 negative: high action ratio → long_form.fired = false', () => {
-    const created = 1700000000;
-    const ended = created + 35 * 60;
+    const created = 1700000000 * 1000; // ms
+    const ended = created + 35 * 60 * 1000; // 35 min in ms
     ensureSession(db, 'sess-T5-neg', project, { ended });
 
     for (let i = 1; i <= 25; i++) {
       db.prepare(
-        `INSERT INTO conversation_turns (session_id, project, turn_number, user_text, assistant_text, timestamp_epoch)
+        `INSERT INTO conversation_turns (session_id, project, turn_number, user_text, assistant_text, timestamp_epoch_ms)
          VALUES (?, ?, ?, ?, ?, ?)`,
       ).run('sess-T5-neg', project, i, `u${i}`, `a${i}`, created + i);
     }
@@ -155,8 +156,8 @@ describe('process-trigger evaluateProcessTriggers (Phase 4.1)', () => {
   });
 
   it('5-of-5 maximum: all triggers fire', () => {
-    const created = 1700000000;
-    const ended = created + 35 * 60;
+    const created = 1700000000 * 1000; // ms
+    const ended = created + 35 * 60 * 1000; // 35 min in ms
     ensureSession(db, 'sess-5of5', project, { ended });
 
     // T1 + T2: 3 corrections + 3 topic_shift events
@@ -172,7 +173,7 @@ describe('process-trigger evaluateProcessTriggers (Phase 4.1)', () => {
     // T5: 25 turns, low action ratio
     for (let i = 1; i <= 25; i++) {
       db.prepare(
-        `INSERT INTO conversation_turns (session_id, project, turn_number, user_text, assistant_text, timestamp_epoch)
+        `INSERT INTO conversation_turns (session_id, project, turn_number, user_text, assistant_text, timestamp_epoch_ms)
          VALUES (?, ?, ?, ?, ?, ?)`,
       ).run('sess-5of5', project, i, `u${i}`, `a${i}`, created + i);
     }

@@ -169,10 +169,10 @@ describe('Phase 4 — extraction-time pattern creation is deleted', () => {
     // would have considered it (had Site A existed). Plan 02 deleted Site A —
     // the loop now only classifies domains. classifySessionDomains is mocked
     // to return 0; the test asserts the row count never moves.
-    db.prepare(`UPDATE sessions SET status='completed', ended_at_epoch=strftime('%s','now') WHERE session_id=?`).run(sessionId);
+    db.prepare(`UPDATE sessions SET status='completed', ended_at_epoch_ms=strftime('%s','now') WHERE session_id=?`).run(sessionId);
 
     db.prepare(`
-      INSERT INTO conversation_turns (session_id, project, turn_number, user_text, assistant_text, timestamp_epoch)
+      INSERT INTO conversation_turns (session_id, project, turn_number, user_text, assistant_text, timestamp_epoch_ms)
       VALUES
         (?, ?, 1, 'Always use bun run test, never use bun test', 'Got it.', strftime('%s','now')),
         (?, ?, 2, 'Stop using sed for file edits — use Edit tool', 'Understood.', strftime('%s','now'))

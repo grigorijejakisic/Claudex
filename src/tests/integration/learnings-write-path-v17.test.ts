@@ -28,8 +28,8 @@ function buildV17ViewModeFixture(db: Database.Database): void {
       scope TEXT,
       status TEXT,
       confidence REAL,
-      created_at_epoch INTEGER NOT NULL,
-      updated_at_epoch INTEGER NOT NULL,
+      created_at_epoch_ms INTEGER NOT NULL,
+      updated_at_epoch_ms INTEGER NOT NULL,
       session_id TEXT,
       project_id TEXT,
       embedding_ref INTEGER,
@@ -53,16 +53,16 @@ function buildV17ViewModeFixture(db: Database.Database): void {
       CAST(json_extract(artifact.data, '$.promotion_count') AS INTEGER) AS promotion_count,
       CAST(json_extract(artifact.data, '$.first_seen_epoch') AS INTEGER) AS first_seen_epoch,
       CAST(json_extract(artifact.data, '$.last_promoted_epoch') AS INTEGER) AS last_promoted_epoch,
-      CAST(artifact.updated_at_epoch / 1000 AS INTEGER) AS updated_at_epoch
+      CAST(artifact.updated_at_epoch_ms / 1000 AS INTEGER) AS updated_at_epoch_ms
     FROM artifact
     WHERE kind = 'learning'
-    ORDER BY created_at_epoch;
+    ORDER BY created_at_epoch_ms;
 
     CREATE TRIGGER learnings_instead_insert INSTEAD OF INSERT ON learnings
     BEGIN
       INSERT INTO artifact(
         id, kind, title, body, scope, status, confidence,
-        created_at_epoch, updated_at_epoch, session_id, project_id, data
+        created_at_epoch_ms, updated_at_epoch_ms, session_id, project_id, data
       ) VALUES (
         lower(hex(randomblob(16))),
         'learning',
@@ -72,7 +72,7 @@ function buildV17ViewModeFixture(db: Database.Database): void {
         'active',
         NULL,
         COALESCE(NEW.first_seen_epoch * 1000, unixepoch() * 1000),
-        COALESCE(NEW.updated_at_epoch * 1000, unixepoch() * 1000),
+        COALESCE(NEW.updated_at_epoch_ms * 1000, unixepoch() * 1000),
         NULL,
         NEW.project,
         json_object(

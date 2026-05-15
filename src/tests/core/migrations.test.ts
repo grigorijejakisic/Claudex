@@ -632,10 +632,10 @@ describe('upgradeV2SchemaInPlace — partial legacy DBs (REC-10)', () => {
 
     expect(() => initializeSchema(db)).not.toThrow();
 
-    // Verify column was renamed
+    // Verify column was renamed (started_at_epoch → created_at_epoch → created_at_epoch_ms via V35)
     const cols = db.pragma('table_info(sessions)') as Array<{ name: string }>;
     const colNames = cols.map(c => c.name);
-    expect(colNames).toContain('created_at_epoch');
+    expect(colNames).toContain('created_at_epoch_ms');
     expect(colNames).not.toContain('started_at_epoch');
     db.close();
   });

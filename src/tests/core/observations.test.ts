@@ -138,7 +138,7 @@ describe('observation CRUD', () => {
       importance: 2,
       files_modified: [],
     });
-    db.prepare('UPDATE observations SET deleted_at_epoch = unixepoch() WHERE id = ?').run(id);
+    db.prepare('UPDATE observations SET deleted_at_epoch_ms = unixepoch() WHERE id = ?').run(id);
 
     const rows = getObservationsByProject(db, 'myapp');
     expect(rows).toHaveLength(0);
@@ -222,7 +222,7 @@ describe('observation CRUD', () => {
     });
     // Set it 60 days old
     const sixtyDaysAgo = Math.floor(Date.now() / 1000) - 60 * 86400;
-    db.prepare('UPDATE observations SET timestamp_epoch = ? WHERE id = ?').run(
+    db.prepare('UPDATE observations SET timestamp_epoch_ms = ? WHERE id = ?').run(
       sixtyDaysAgo,
       oldId
     );

@@ -21,7 +21,7 @@ function createDb(): Database.Database {
   db.pragma('journal_mode = WAL');
   initializeSchema(db);
   db.prepare(
-    `INSERT INTO sessions (session_id, status, observation_count, created_at_epoch)
+    `INSERT INTO sessions (session_id, status, observation_count, created_at_epoch_ms)
      VALUES ('test-sess', 'active', 0, ?)`
   ).run(Math.floor(Date.now() / 1000));
   return db;

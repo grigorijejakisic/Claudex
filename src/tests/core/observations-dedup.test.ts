@@ -236,7 +236,7 @@ describe('insertObservationWithDedup', () => {
   it('falls through to insert when matched observation was deleted from SQLite', async () => {
     // Seed an observation + artifact, then soft-delete the observation
     const { observationId, artifactId } = seedObservationWithArtifact(db, makeObs());
-    db.prepare('UPDATE observations SET deleted_at_epoch = unixepoch() WHERE id = ?')
+    db.prepare('UPDATE observations SET deleted_at_epoch_ms = unixepoch() WHERE id = ?')
       .run(observationId);
 
     mockEmbedText.mockResolvedValue(FAKE_EMBEDDING);

@@ -19,7 +19,7 @@ function createDb(): Database.Database {
 
 function insertSession(db: Database.Database, sessionId: string): void {
   db.prepare(
-    `INSERT INTO sessions (session_id, status, observation_count, created_at_epoch)
+    `INSERT INTO sessions (session_id, status, observation_count, created_at_epoch_ms)
      VALUES (?, 'active', 0, ?)`
   ).run(sessionId, Math.floor(Date.now() / 1000));
 }
@@ -70,7 +70,7 @@ describe('ingestFileArtifacts', () => {
       const r1 = await ingestFileArtifacts(db, 'sess-1', 'test-project', tmpDir);
       expect(r1.ingested).toBe(1);
 
-      // Artifact timestamp_epoch stores the file's mtime (not Date.now())
+      // Artifact timestamp_epoch_ms stores the file's mtime (not Date.now())
       // So re-ingestion with unchanged file should skip it
       const r2 = await ingestFileArtifacts(db, 'sess-1', 'test-project', tmpDir);
       expect(r2.ingested).toBe(0);
@@ -97,7 +97,7 @@ describe('ingestFileArtifacts', () => {
       await ingestFileArtifacts(db, 'sess-1', 'test-project', tmpDir);
 
       // Wait >1 second then modify — mtime comparison has 1-second precision
-      // (timestamp_epoch stores floor(mtimeMs/1000))
+      // (timestamp_epoch_ms stores floor(mtimeMs/1000))
       await new Promise(r => setTimeout(r, 1100));
       fs.writeFileSync(filePath, '# Session 1\nUpdated content with new info.');
       const r2 = await ingestFileArtifacts(db, 'sess-1', 'test-project', tmpDir);

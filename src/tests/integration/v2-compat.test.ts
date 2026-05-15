@@ -49,10 +49,10 @@ function createV2Fixture(): DatabaseType {
       content TEXT NOT NULL,
       importance INTEGER NOT NULL DEFAULT 3,
       files_modified TEXT NOT NULL DEFAULT '',
-      timestamp_epoch INTEGER NOT NULL DEFAULT (unixepoch()),
+      timestamp_epoch_ms INTEGER NOT NULL DEFAULT (unixepoch()),
       access_count INTEGER DEFAULT 0,
-      last_accessed_at_epoch INTEGER,
-      deleted_at_epoch INTEGER DEFAULT NULL
+      last_accessed_at_epoch_ms INTEGER,
+      deleted_at_epoch_ms INTEGER DEFAULT NULL
     );
 
     -- V2 FTS with 4 columns
@@ -89,8 +89,8 @@ function createV2Fixture(): DatabaseType {
       source TEXT DEFAULT 'unknown',
       status TEXT NOT NULL DEFAULT 'active',
       observation_count INTEGER DEFAULT 0,
-      created_at_epoch INTEGER NOT NULL DEFAULT (unixepoch()),
-      ended_at_epoch INTEGER,
+      created_at_epoch_ms INTEGER NOT NULL DEFAULT (unixepoch()),
+      ended_at_epoch_ms INTEGER,
       adapter TEXT DEFAULT 'unknown'
     );
 
@@ -105,7 +105,7 @@ function createV2Fixture(): DatabaseType {
       UNIQUE(file_path, project)
     );
 
-    -- V2 schema_versions (with applied_at TEXT, not applied_at_epoch)
+    -- V2 schema_versions (with applied_at TEXT, not applied_at_epoch_ms)
     CREATE TABLE schema_versions (
       version INTEGER PRIMARY KEY,
       applied_at TEXT NOT NULL DEFAULT (datetime())
@@ -403,7 +403,7 @@ describe('v2 schema compatibility', () => {
       .prepare('SELECT * FROM sessions WHERE session_id = ?')
       .get('e2e-sess') as Record<string, unknown>;
     expect(session.status).toBe('completed');
-    expect(session.ended_at_epoch).not.toBeNull();
+    expect(session.ended_at_epoch_ms).not.toBeNull();
 
     // Verify all data is queryable
     const obs = db

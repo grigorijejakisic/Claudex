@@ -277,7 +277,7 @@ describe('retrieval-log helpers', () => {
     // Insert a transcript_chunk artifact that echoes 2+ tokens.
     db.prepare(
       `INSERT INTO artifact (kind, title, body, scope, status, confidence,
-                             created_at_epoch, updated_at_epoch, session_id, project, data)
+                             created_at_epoch_ms, updated_at_epoch_ms, session_id, project, data)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     ).run(
       'transcript_chunk',

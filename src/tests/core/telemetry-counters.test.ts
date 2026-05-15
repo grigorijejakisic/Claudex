@@ -78,7 +78,7 @@ describe('incrementRerankerFallbackCounter', () => {
         event_kind TEXT NOT NULL CHECK (event_kind IN ('hook_invocation', 'error')),
         detail TEXT NOT NULL DEFAULT '{}' CHECK (json_valid(detail)),
         latency_ms REAL,
-        timestamp_epoch INTEGER NOT NULL DEFAULT (unixepoch()),
+        timestamp_epoch_ms INTEGER NOT NULL DEFAULT (unixepoch()),
         adapter TEXT DEFAULT 'unknown'
       );
     `);
@@ -122,8 +122,8 @@ describe('readRerankerFallbackCount', () => {
     // Insert one row inside the window (now) and one outside (2 hours ago).
     incrementRerankerFallbackCounter(db, sessionId, 'unreachable');
     db.prepare(
-      `INSERT INTO telemetry (session_id, event_kind, detail, timestamp_epoch, adapter)
-       VALUES (?, 'reranker_fallback', '{"reason":"unreachable"}', unixepoch() - 7200, 'hybrid-retrieval')`,
+      `INSERT INTO telemetry (session_id, event_kind, detail, timestamp_epoch_ms, adapter)
+       VALUES (?, 'reranker_fallback', '{"reason":"unreachable"}', (unixepoch() - 7200) * 1000, 'hybrid-retrieval')`,
     ).run(sessionId);
 
     expect(readRerankerFallbackCount(db, 86400)).toBe(2);

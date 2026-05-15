@@ -71,7 +71,7 @@ function insertTurn(
   assistantText: string | null = null,
 ): void {
   db.prepare(
-    `INSERT INTO conversation_turns(session_id, project, turn_number, user_text, assistant_text, timestamp_epoch)
+    `INSERT INTO conversation_turns(session_id, project, turn_number, user_text, assistant_text, timestamp_epoch_ms)
      VALUES (?, ?, ?, ?, ?, ?)`,
   ).run(sessionId, project, turnNumber, userText, assistantText, 1000 + turnNumber);
 }
@@ -98,7 +98,7 @@ function insertDirectiveArtifact(
   db.prepare(
     `INSERT INTO artifact(
        id, kind, title, body, scope, status, confidence,
-       created_at_epoch, updated_at_epoch, session_id, project, data
+       created_at_epoch_ms, updated_at_epoch_ms, session_id, project, data
      ) VALUES (?, 'directive_rule', ?, ?, ?, 'active', ?, ?, ?, ?, ?, ?)`,
   ).run(
     opts.id,

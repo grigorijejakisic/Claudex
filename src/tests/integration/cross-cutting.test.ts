@@ -321,7 +321,7 @@ describe('Telemetry Queryable (OBSV-03)', () => {
     const q1 = db.prepare(
       `SELECT detail FROM telemetry
        WHERE session_id = ? AND event_kind = 'injection'
-       ORDER BY timestamp_epoch DESC LIMIT 1`
+       ORDER BY timestamp_epoch_ms DESC LIMIT 1`
     ).get('tel-sess') as { detail: string } | undefined;
     expect(q1).toBeDefined();
     const q1Detail = JSON.parse(q1!.detail);
@@ -371,12 +371,12 @@ describe('Telemetry Queryable (OBSV-03)', () => {
       `SELECT
         json_extract(detail, '$.checkpoint_id') as checkpoint_id,
         json_extract(detail, '$.state') as state,
-        timestamp_epoch
+        timestamp_epoch_ms
       FROM telemetry
       WHERE event_kind = 'checkpoint_write'
         AND json_extract(detail, '$.state') != 'mirrored'
-      ORDER BY timestamp_epoch DESC`
-    ).all() as Array<{ checkpoint_id: string; state: string; timestamp_epoch: number }>;
+      ORDER BY timestamp_epoch_ms DESC`
+    ).all() as Array<{ checkpoint_id: string; state: string; timestamp_epoch_ms: number }>;
 
     expect(q4.length).toBe(1);
     expect(q4[0].checkpoint_id).toBe('01TEST');
@@ -436,25 +436,25 @@ describe('Decay Engine Pruning', () => {
   });
 
   it('decay prunes old low-importance observations while retaining important ones', () => {
-    const nowEpoch = Math.floor(Date.now() / 1000);
-    const ninetyDaysAgo = nowEpoch - 90 * 86400;
-    const oneDayAgo = nowEpoch - 1 * 86400;
+    const nowEpoch = Date.now(); // ms — for *_epoch_ms columns
+    const ninetyDaysAgo = nowEpoch - 90 * 86400_000;
+    const oneDayAgo = nowEpoch - 1 * 86400_000;
 
     // Old low-importance observation
     db.prepare(
-      `INSERT INTO observations (session_id, project, tool_name, category, title, content, importance, files_modified, timestamp_epoch)
+      `INSERT INTO observations (session_id, project, tool_name, category, title, content, importance, files_modified, timestamp_epoch_ms)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
     ).run('decay-sess', 'proj', 'Read', 'other', 'Read config', 'Read some config file', 1, '[]', ninetyDaysAgo);
 
     // Old high-importance observation
     db.prepare(
-      `INSERT INTO observations (session_id, project, tool_name, category, title, content, importance, files_modified, timestamp_epoch)
+      `INSERT INTO observations (session_id, project, tool_name, category, title, content, importance, files_modified, timestamp_epoch_ms)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
     ).run('decay-sess', 'proj', 'Edit', 'security', 'Critical security fix', 'Fixed SQL injection vulnerability', 5, '[]', ninetyDaysAgo);
 
     // Recent low-importance observation
     db.prepare(
-      `INSERT INTO observations (session_id, project, tool_name, category, title, content, importance, files_modified, timestamp_epoch)
+      `INSERT INTO observations (session_id, project, tool_name, category, title, content, importance, files_modified, timestamp_epoch_ms)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
     ).run('decay-sess', 'proj', 'Read', 'other', 'Read readme', 'Read some readme file', 2, '[]', oneDayAgo);
 

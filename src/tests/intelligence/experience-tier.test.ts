@@ -49,9 +49,9 @@ function seedArtifact(
   classifierConf: number = 1.0,
   recencyOffsetDays: number = 0,
 ): void {
-  const ts = Math.floor(Date.now() / 1000) - recencyOffsetDays * 86400;
+  const ts = Date.now() - recencyOffsetDays * 86400_000; // ms
   db.prepare(
-    `INSERT INTO artifacts (id, session_id, project, artifact_type, summary, content, importance, timestamp_epoch)
+    `INSERT INTO artifacts (id, session_id, project, artifact_type, summary, content, importance, timestamp_epoch_ms)
        VALUES (?, ?, ?, ?, ?, ?, 3, ?)`
   ).run(id, sessionId, project, type, summary, content, ts);
   db.prepare(

@@ -24,7 +24,7 @@ describe('boundary cursor module', () => {
     db = new Database(':memory:');
     initializeSchema(db);
     db.prepare(
-      `INSERT INTO sessions (session_id, project, status, created_at_epoch)
+      `INSERT INTO sessions (session_id, project, status, created_at_epoch_ms)
        VALUES (?, ?, 'active', ?)`
     ).run(sessionId, project, 1000);
   });
@@ -93,10 +93,10 @@ describe('boundary cursor module', () => {
     expect(ev.metadata_json).toContain('idle_timeout');
 
     const sess = db.prepare(
-      `SELECT status, ended_at_epoch FROM sessions WHERE session_id = ?`
-    ).get(sessionId) as { status: string; ended_at_epoch: number };
+      `SELECT status, ended_at_epoch_ms FROM sessions WHERE session_id = ?`
+    ).get(sessionId) as { status: string; ended_at_epoch_ms: number };
     expect(sess.status).toBe('completed');
-    expect(sess.ended_at_epoch).toBe(3000);
+    expect(sess.ended_at_epoch_ms).toBe(3000 * 1000);
 
     const cur = loadCursor(db, project, sessionId)!;
     expect(cur.last_close_event_id).toBe(out.closeEventId);

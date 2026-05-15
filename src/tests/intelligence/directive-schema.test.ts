@@ -49,7 +49,7 @@ function insertTurn(
   userText: string,
 ): void {
   db.prepare(
-    `INSERT INTO conversation_turns(session_id, project, turn_number, user_text, timestamp_epoch)
+    `INSERT INTO conversation_turns(session_id, project, turn_number, user_text, timestamp_epoch_ms)
      VALUES (?, ?, ?, ?, ?)`,
   ).run(sessionId, project, turnNumber, userText, 1000 + turnNumber);
 }
@@ -72,7 +72,7 @@ function seedExistingRule(
   db.prepare(
     `INSERT INTO artifact(
        id, kind, title, body, scope, status, confidence,
-       created_at_epoch, updated_at_epoch, session_id, project, data
+       created_at_epoch_ms, updated_at_epoch_ms, session_id, project, data
      ) VALUES (?, 'directive_rule', ?, ?, ?, 'active', ?, ?, ?, ?, ?, ?)`,
   ).run(
     id, title, body, scope, 0.9, 500, 500, 'ds-sess', project,
@@ -97,7 +97,7 @@ function seedExistingRule(
 
 function getDirectiveRows(db: TestDatabase): Array<{ id: string; data: Record<string, unknown>; title: string | null; body: string; scope: string }> {
   const rows = db
-    .prepare(`SELECT id, title, body, scope, data FROM artifact WHERE kind='directive_rule' ORDER BY created_at_epoch ASC, id ASC`)
+    .prepare(`SELECT id, title, body, scope, data FROM artifact WHERE kind='directive_rule' ORDER BY created_at_epoch_ms ASC, id ASC`)
     .all() as Array<{ id: string; title: string | null; body: string; scope: string; data: string }>;
   return rows.map(r => ({ ...r, data: JSON.parse(r.data) as Record<string, unknown> }));
 }

@@ -73,9 +73,9 @@ describe('curated-context-extractor', () => {
   describe('findSignalCandidates', () => {
     it('returns only turns containing signals', () => {
       const turns: ConversationTurn[] = [
-        { id: 1, session_id: 's', project: 'p', turn_number: 1, user_text: 'add logging to parser', assistant_text: 'done', timestamp_epoch: 1 },
-        { id: 2, session_id: 's', project: 'p', turn_number: 2, user_text: "we're actually racing the stale feed", assistant_text: 'got it', timestamp_epoch: 2 },
-        { id: 3, session_id: 's', project: 'p', turn_number: 3, user_text: 'run tests', assistant_text: 'passed', timestamp_epoch: 3 },
+        { id: 1, session_id: 's', project: 'p', turn_number: 1, user_text: 'add logging to parser', assistant_text: 'done', timestamp_epoch_ms: 1 },
+        { id: 2, session_id: 's', project: 'p', turn_number: 2, user_text: "we're actually racing the stale feed", assistant_text: 'got it', timestamp_epoch_ms: 2 },
+        { id: 3, session_id: 's', project: 'p', turn_number: 3, user_text: 'run tests', assistant_text: 'passed', timestamp_epoch_ms: 3 },
       ];
       const candidates = findSignalCandidates(turns);
       expect(candidates.length).toBe(1);
@@ -84,14 +84,14 @@ describe('curated-context-extractor', () => {
 
     it('matches on assistant text too', () => {
       const turns: ConversationTurn[] = [
-        { id: 1, session_id: 's', project: 'p', turn_number: 1, user_text: 'what do you think', assistant_text: 'turns out the problem is different', timestamp_epoch: 1 },
+        { id: 1, session_id: 's', project: 'p', turn_number: 1, user_text: 'what do you think', assistant_text: 'turns out the problem is different', timestamp_epoch_ms: 1 },
       ];
       expect(findSignalCandidates(turns).length).toBe(1);
     });
 
     it('returns empty array when no turns match', () => {
       const turns: ConversationTurn[] = [
-        { id: 1, session_id: 's', project: 'p', turn_number: 1, user_text: 'hi', assistant_text: 'hi', timestamp_epoch: 1 },
+        { id: 1, session_id: 's', project: 'p', turn_number: 1, user_text: 'hi', assistant_text: 'hi', timestamp_epoch_ms: 1 },
       ];
       expect(findSignalCandidates(turns).length).toBe(0);
     });

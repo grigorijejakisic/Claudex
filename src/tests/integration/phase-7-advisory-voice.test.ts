@@ -39,7 +39,7 @@ function pattern(overrides: Partial<ExperiencePattern> = {}): ExperiencePattern 
     times_useful: 5,
     source_session: null,
     source_project: 'CLAUDEXv3',
-    created_at_epoch: 1_700_000_000,
+    created_at_epoch_ms: 1_700_000_000,
     last_triggered_epoch: null,
     abstraction_level: 'tip',
     verified: 1,

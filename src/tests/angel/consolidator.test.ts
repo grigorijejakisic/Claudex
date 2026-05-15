@@ -97,7 +97,7 @@ describe('Angel Consolidator', () => {
 
     it('skips soft-deleted observations', () => {
       const id = insertTestObs(db, { title: 'Deleted obs' });
-      db.prepare('UPDATE observations SET deleted_at_epoch = 1000 WHERE id = ?').run(id);
+      db.prepare('UPDATE observations SET deleted_at_epoch_ms = 1000 WHERE id = ?').run(id);
       insertTestObs(db, { title: 'Active obs' });
 
       const results = getUnconsolidatedObservations(db, 50);
@@ -114,12 +114,12 @@ describe('Angel Consolidator', () => {
       expect(results.length).toBe(3);
     });
 
-    it('orders by timestamp_epoch ASC (oldest first)', () => {
+    it('orders by timestamp_epoch_ms ASC (oldest first)', () => {
       const id1 = insertTestObs(db, { title: 'Older obs' });
       const id2 = insertTestObs(db, { title: 'Newer obs' });
       // Manually set timestamps to ensure order
-      db.prepare('UPDATE observations SET timestamp_epoch = 1000 WHERE id = ?').run(id1);
-      db.prepare('UPDATE observations SET timestamp_epoch = 2000 WHERE id = ?').run(id2);
+      db.prepare('UPDATE observations SET timestamp_epoch_ms = 1000 WHERE id = ?').run(id1);
+      db.prepare('UPDATE observations SET timestamp_epoch_ms = 2000 WHERE id = ?').run(id2);
 
       const results = getUnconsolidatedObservations(db, 50);
       expect(results[0].title).toBe('Older obs');

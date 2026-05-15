@@ -37,7 +37,7 @@ function createV2Database(dbPath: string, opts?: { observations?: number; sessio
   const db = new Database(dbPath);
   db.pragma('journal_mode = WAL');
 
-  // v2 schema — uses started_at_epoch (not created_at_epoch), no source column
+  // v2 schema — uses started_at_epoch (not created_at_epoch_ms), no source column
   db.exec(`
     CREATE TABLE observations (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -49,10 +49,10 @@ function createV2Database(dbPath: string, opts?: { observations?: number; sessio
       content TEXT NOT NULL,
       importance INTEGER NOT NULL DEFAULT 3,
       files_modified TEXT NOT NULL DEFAULT '[]',
-      timestamp_epoch INTEGER NOT NULL DEFAULT (unixepoch()),
+      timestamp_epoch_ms INTEGER NOT NULL DEFAULT (unixepoch()),
       access_count INTEGER NOT NULL DEFAULT 0,
-      last_accessed_at_epoch INTEGER,
-      deleted_at_epoch INTEGER DEFAULT NULL
+      last_accessed_at_epoch_ms INTEGER,
+      deleted_at_epoch_ms INTEGER DEFAULT NULL
     );
 
     CREATE TABLE sessions (
@@ -63,7 +63,7 @@ function createV2Database(dbPath: string, opts?: { observations?: number; sessio
       status TEXT NOT NULL DEFAULT 'active',
       observation_count INTEGER NOT NULL DEFAULT 0,
       started_at_epoch INTEGER NOT NULL DEFAULT (unixepoch()),
-      ended_at_epoch INTEGER
+      ended_at_epoch_ms INTEGER
     );
 
     CREATE TABLE pressure_scores (
@@ -78,7 +78,7 @@ function createV2Database(dbPath: string, opts?: { observations?: number; sessio
 
     CREATE TABLE schema_versions (
       version INTEGER PRIMARY KEY,
-      applied_at_epoch INTEGER NOT NULL DEFAULT (unixepoch())
+      applied_at_epoch_ms INTEGER NOT NULL DEFAULT (unixepoch())
     );
 
     INSERT INTO schema_versions (version) VALUES (200);
@@ -212,13 +212,13 @@ describe('verifyMigration', () => {
         id INTEGER PRIMARY KEY, session_id TEXT, project TEXT,
         tool_name TEXT, category TEXT, title TEXT, content TEXT,
         importance INTEGER, files_modified TEXT DEFAULT '[]',
-        timestamp_epoch INTEGER, access_count INTEGER DEFAULT 0,
-        last_accessed_at_epoch INTEGER, deleted_at_epoch INTEGER
+        timestamp_epoch_ms INTEGER, access_count INTEGER DEFAULT 0,
+        last_accessed_at_epoch_ms INTEGER, deleted_at_epoch_ms INTEGER
       );
       CREATE TABLE sessions (
         session_id TEXT PRIMARY KEY, scope TEXT, project TEXT, cwd TEXT,
         source TEXT, status TEXT DEFAULT 'active', observation_count INTEGER DEFAULT 0,
-        created_at_epoch INTEGER, ended_at_epoch INTEGER
+        created_at_epoch_ms INTEGER, ended_at_epoch_ms INTEGER
       );
       CREATE TABLE pressure_scores (
         file_path TEXT NOT NULL, project TEXT NOT NULL,
@@ -227,12 +227,12 @@ describe('verifyMigration', () => {
         PRIMARY KEY (file_path, project)
       );
       CREATE TABLE schema_versions (
-        version INTEGER PRIMARY KEY, applied_at_epoch INTEGER NOT NULL DEFAULT (unixepoch())
+        version INTEGER PRIMARY KEY, applied_at_epoch_ms INTEGER NOT NULL DEFAULT (unixepoch())
       );
     `);
 
-    db.exec(`INSERT INTO observations (id, session_id, tool_name, category, title, content, importance, files_modified, timestamp_epoch) VALUES (1, 's1', 'Read', 'code', 't', 'c', 3, '["a.ts"]', 100)`);
-    db.exec(`INSERT INTO sessions (session_id, status, created_at_epoch) VALUES ('s1', 'active', 100)`);
+    db.exec(`INSERT INTO observations (id, session_id, tool_name, category, title, content, importance, files_modified, timestamp_epoch_ms) VALUES (1, 's1', 'Read', 'code', 't', 'c', 3, '["a.ts"]', 100)`);
+    db.exec(`INSERT INTO sessions (session_id, status, created_at_epoch_ms) VALUES ('s1', 'active', 100)`);
     db.exec(`INSERT INTO pressure_scores (file_path, project, last_touched_epoch) VALUES ('a.ts', 'p', 100)`);
     db.exec(`INSERT INTO schema_versions (version) VALUES (${SCHEMA_VERSION})`);
 
@@ -250,10 +250,10 @@ describe('verifyMigration', () => {
     const dbPath = path.join(tmpDir, 'mismatch.db');
     const db = new Database(dbPath);
     db.exec(`
-      CREATE TABLE observations (id INTEGER PRIMARY KEY, session_id TEXT, tool_name TEXT, category TEXT, title TEXT, content TEXT, importance INTEGER, files_modified TEXT DEFAULT '[]', timestamp_epoch INTEGER, access_count INTEGER DEFAULT 0, last_accessed_at_epoch INTEGER, deleted_at_epoch INTEGER);
-      CREATE TABLE sessions (session_id TEXT PRIMARY KEY, scope TEXT, project TEXT, cwd TEXT, source TEXT, status TEXT DEFAULT 'active', observation_count INTEGER DEFAULT 0, created_at_epoch INTEGER, ended_at_epoch INTEGER);
+      CREATE TABLE observations (id INTEGER PRIMARY KEY, session_id TEXT, tool_name TEXT, category TEXT, title TEXT, content TEXT, importance INTEGER, files_modified TEXT DEFAULT '[]', timestamp_epoch_ms INTEGER, access_count INTEGER DEFAULT 0, last_accessed_at_epoch_ms INTEGER, deleted_at_epoch_ms INTEGER);
+      CREATE TABLE sessions (session_id TEXT PRIMARY KEY, scope TEXT, project TEXT, cwd TEXT, source TEXT, status TEXT DEFAULT 'active', observation_count INTEGER DEFAULT 0, created_at_epoch_ms INTEGER, ended_at_epoch_ms INTEGER);
       CREATE TABLE pressure_scores (file_path TEXT NOT NULL, project TEXT NOT NULL, raw_pressure REAL DEFAULT 0.0, temperature TEXT DEFAULT 'COLD', last_touched_epoch INTEGER, decay_rate REAL DEFAULT 0.1, PRIMARY KEY (file_path, project));
-      CREATE TABLE schema_versions (version INTEGER PRIMARY KEY, applied_at_epoch INTEGER NOT NULL DEFAULT (unixepoch()));
+      CREATE TABLE schema_versions (version INTEGER PRIMARY KEY, applied_at_epoch_ms INTEGER NOT NULL DEFAULT (unixepoch()));
       INSERT INTO schema_versions (version) VALUES (${SCHEMA_VERSION});
     `);
 

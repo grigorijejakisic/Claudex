@@ -83,7 +83,7 @@ function buildV17V32Fixture(db: Database.Database): void {
   db.exec(`
     CREATE TABLE schema_versions (
       version INTEGER PRIMARY KEY,
-      applied_at_epoch INTEGER NOT NULL DEFAULT (unixepoch())
+      applied_at_epoch_ms INTEGER NOT NULL DEFAULT (unixepoch())
     );
     CREATE TABLE artifact (
       id TEXT PRIMARY KEY,
@@ -93,8 +93,8 @@ function buildV17V32Fixture(db: Database.Database): void {
       scope TEXT,
       status TEXT,
       confidence REAL,
-      created_at_epoch INTEGER NOT NULL,
-      updated_at_epoch INTEGER NOT NULL,
+      created_at_epoch_ms INTEGER NOT NULL,
+      updated_at_epoch_ms INTEGER NOT NULL,
       session_id TEXT,
       project_id TEXT,
       embedding_ref INTEGER,
@@ -115,7 +115,7 @@ function buildV17V32Fixture(db: Database.Database): void {
       COALESCE(CAST(json_extract(artifact.data, '$.provenance') AS TEXT), 'organic') AS provenance
     FROM artifact
     WHERE kind = 'learning'
-    ORDER BY created_at_epoch;
+    ORDER BY created_at_epoch_ms;
   `);
 }
 
@@ -203,7 +203,7 @@ describe('WIR-01 (a) — spans actually retrieved when artifact reference fires'
   for (const fixture of ['base-table', 'v17-collapsed'] as const) {
     it(`routeFromArtifacts returns spans for a real artifact reference on ${fixture}`, async () => {
       const db = fixture === 'base-table' ? freshBaseTableV32Db() : freshV17CollapsedV32Db();
-      expect(db.pragma('user_version', { simple: true })).toBe(34);
+      expect(db.pragma('user_version', { simple: true })).toBe(35);
 
       const sessionId = `wir01-spans-${fixture}`;
       const { artifact } = seedDeliberation(db, sessionId);

@@ -14,7 +14,9 @@ function createTestDb(): Database.Database {
 
 describe('Angel Session Monitor', () => {
   let db: Database.Database;
-  const now = Math.floor(Date.now() / 1000);
+  // Use ms precision — _epoch_ms columns store milliseconds.
+  const nowMs = Date.now();
+  const now = Math.floor(nowMs / 1000); // seconds, for threshold comparisons
 
   beforeEach(() => {
     db = createTestDb();
@@ -31,9 +33,9 @@ describe('Angel Session Monitor', () => {
 
     it('returns idle active sessions', () => {
       // Create an active session with old observations
-      const twoHoursAgo = now - 7200;
-      db.prepare(`INSERT INTO sessions (session_id, project, status, created_at_epoch) VALUES (?, ?, 'active', ?)`).run('idle-1', 'test-proj', twoHoursAgo);
-      db.prepare(`INSERT INTO observations (session_id, project, tool_name, category, title, content, importance, timestamp_epoch) VALUES (?, ?, 'Read', 'code', 'test', 'test', 3, ?)`).run('idle-1', 'test-proj', twoHoursAgo);
+      const twoHoursAgoMs = nowMs - 7200_000;
+      db.prepare(`INSERT INTO sessions (session_id, project, status, created_at_epoch_ms) VALUES (?, ?, 'active', ?)`).run('idle-1', 'test-proj', twoHoursAgoMs);
+      db.prepare(`INSERT INTO observations (session_id, project, tool_name, category, title, content, importance, timestamp_epoch_ms) VALUES (?, ?, 'Read', 'code', 'test', 'test', 3, ?)`).run('idle-1', 'test-proj', twoHoursAgoMs);
 
       const idle = getIdleSessions(db, 1800); // 30 min threshold
       expect(idle.length).toBe(1);
@@ -42,16 +44,16 @@ describe('Angel Session Monitor', () => {
     });
 
     it('excludes recently active sessions', () => {
-      db.prepare(`INSERT INTO sessions (session_id, project, status, created_at_epoch) VALUES (?, ?, 'active', ?)`).run('active-1', 'test-proj', now);
-      db.prepare(`INSERT INTO observations (session_id, project, tool_name, category, title, content, importance, timestamp_epoch) VALUES (?, ?, 'Read', 'code', 'test', 'test', 3, ?)`).run('active-1', 'test-proj', now);
+      db.prepare(`INSERT INTO sessions (session_id, project, status, created_at_epoch_ms) VALUES (?, ?, 'active', ?)`).run('active-1', 'test-proj', nowMs);
+      db.prepare(`INSERT INTO observations (session_id, project, tool_name, category, title, content, importance, timestamp_epoch_ms) VALUES (?, ?, 'Read', 'code', 'test', 'test', 3, ?)`).run('active-1', 'test-proj', nowMs);
 
       const idle = getIdleSessions(db, 1800);
       expect(idle.length).toBe(0);
     });
 
     it('excludes completed sessions', () => {
-      const twoHoursAgo = now - 7200;
-      db.prepare(`INSERT INTO sessions (session_id, project, status, created_at_epoch, ended_at_epoch) VALUES (?, ?, 'completed', ?, ?)`).run('done-1', 'test-proj', twoHoursAgo, twoHoursAgo + 3600);
+      const twoHoursAgoMs = nowMs - 7200_000;
+      db.prepare(`INSERT INTO sessions (session_id, project, status, created_at_epoch_ms, ended_at_epoch_ms) VALUES (?, ?, 'completed', ?, ?)`).run('done-1', 'test-proj', twoHoursAgoMs, twoHoursAgoMs + 3600_000);
 
       const idle = getIdleSessions(db, 1800);
       expect(idle.length).toBe(0);
@@ -60,8 +62,8 @@ describe('Angel Session Monitor', () => {
 
   describe('getUnprocessedSessions', () => {
     it('returns completed sessions without angel_processed event', () => {
-      const oneHourAgo = now - 3600;
-      db.prepare(`INSERT INTO sessions (session_id, project, status, created_at_epoch, ended_at_epoch) VALUES (?, ?, 'completed', ?, ?)`).run('completed-1', 'test-proj', oneHourAgo, now);
+      const oneHourAgoMs = nowMs - 3600_000;
+      db.prepare(`INSERT INTO sessions (session_id, project, status, created_at_epoch_ms, ended_at_epoch_ms) VALUES (?, ?, 'completed', ?, ?)`).run('completed-1', 'test-proj', oneHourAgoMs, nowMs);
       db.prepare(`INSERT INTO conversation_turns (session_id, project, turn_number, user_text) VALUES (?, ?, 1, 'hello')`).run('completed-1', 'test-proj');
 
       const unprocessed = getUnprocessedSessions(db);
@@ -70,8 +72,8 @@ describe('Angel Session Monitor', () => {
     });
 
     it('excludes sessions already processed by Angel', () => {
-      const oneHourAgo = now - 3600;
-      db.prepare(`INSERT INTO sessions (session_id, project, status, created_at_epoch, ended_at_epoch) VALUES (?, ?, 'completed', ?, ?)`).run('processed-1', 'test-proj', oneHourAgo, now);
+      const oneHourAgoMs = nowMs - 3600_000;
+      db.prepare(`INSERT INTO sessions (session_id, project, status, created_at_epoch_ms, ended_at_epoch_ms) VALUES (?, ?, 'completed', ?, ?)`).run('processed-1', 'test-proj', oneHourAgoMs, nowMs);
       db.prepare(`INSERT INTO conversation_turns (session_id, project, turn_number, user_text) VALUES (?, ?, 1, 'hello')`).run('processed-1', 'test-proj');
 
       // Mark as processed via raw INSERT (markSessionProcessed was deleted
@@ -86,8 +88,8 @@ describe('Angel Session Monitor', () => {
     });
 
     it('excludes sessions with no conversation turns', () => {
-      const oneHourAgo = now - 3600;
-      db.prepare(`INSERT INTO sessions (session_id, project, status, created_at_epoch, ended_at_epoch) VALUES (?, ?, 'completed', ?, ?)`).run('empty-1', 'test-proj', oneHourAgo, now);
+      const oneHourAgoMs = nowMs - 3600_000;
+      db.prepare(`INSERT INTO sessions (session_id, project, status, created_at_epoch_ms, ended_at_epoch_ms) VALUES (?, ?, 'completed', ?, ?)`).run('empty-1', 'test-proj', oneHourAgoMs, nowMs);
 
       const unprocessed = getUnprocessedSessions(db);
       expect(unprocessed.length).toBe(0);

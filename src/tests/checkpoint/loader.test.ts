@@ -14,7 +14,7 @@ import type { CheckpointV3, CheckpointMeta } from '../../checkpoint/types.js';
 /** Create a session row so loadCheckpoint's JOIN finds a match. */
 function ensureSession(db: TestDatabase, sessionId: string, project: string = 'test', obsCount: number = 5): void {
   db.prepare(
-    `INSERT OR IGNORE INTO sessions (session_id, project, status, observation_count, created_at_epoch)
+    `INSERT OR IGNORE INTO sessions (session_id, project, status, observation_count, created_at_epoch_ms)
      VALUES (?, ?, 'active', ?, unixepoch())`
   ).run(sessionId, project, obsCount);
 }
@@ -63,7 +63,7 @@ describe('recoverFromDb', () => {
     const mirrorPath = path.join(checkpointsDir, 'test_cp.yaml');
 
     db.prepare(
-      `INSERT INTO checkpoint_meta (checkpoint_id, session_id, trigger, status, data, mirror_path, created_at_epoch, updated_at_epoch)
+      `INSERT INTO checkpoint_meta (checkpoint_id, session_id, trigger, status, data, mirror_path, created_at_epoch_ms, updated_at_epoch_ms)
        VALUES (?, ?, ?, 'committed', ?, ?, unixepoch(), unixepoch())`
     ).run('cp1', 's1', 'session_end', JSON.stringify(cp), mirrorPath);
 
@@ -75,7 +75,7 @@ describe('recoverFromDb', () => {
 
   it('deletes pending rows', async () => {
     db.prepare(
-      `INSERT INTO checkpoint_meta (checkpoint_id, session_id, trigger, status, created_at_epoch, updated_at_epoch)
+      `INSERT INTO checkpoint_meta (checkpoint_id, session_id, trigger, status, created_at_epoch_ms, updated_at_epoch_ms)
        VALUES (?, ?, ?, 'pending', unixepoch(), unixepoch())`
     ).run('cp-pending', 's1', 'session_end');
 
@@ -91,7 +91,7 @@ describe('recoverFromDb', () => {
 
   it('is non-throwing on invalid data column', async () => {
     db.prepare(
-      `INSERT INTO checkpoint_meta (checkpoint_id, session_id, trigger, status, data, created_at_epoch, updated_at_epoch)
+      `INSERT INTO checkpoint_meta (checkpoint_id, session_id, trigger, status, data, created_at_epoch_ms, updated_at_epoch_ms)
        VALUES (?, ?, ?, 'committed', ?, unixepoch(), unixepoch())`
     ).run('cp-bad', 's1', 'session_end', 'not-json');
 
@@ -104,7 +104,7 @@ describe('recoverFromDb', () => {
     const badMirrorPath = path.join(tmpDir, 'bad\0path.yaml');
 
     db.prepare(
-      `INSERT INTO checkpoint_meta (checkpoint_id, session_id, trigger, status, data, mirror_path, created_at_epoch, updated_at_epoch)
+      `INSERT INTO checkpoint_meta (checkpoint_id, session_id, trigger, status, data, mirror_path, created_at_epoch_ms, updated_at_epoch_ms)
        VALUES (?, ?, ?, 'committed', ?, ?, unixepoch(), unixepoch())`
     ).run('cp-fail', 's1', 'session_end', JSON.stringify(cp), badMirrorPath);
 
@@ -205,7 +205,7 @@ describe('loadCheckpoint', () => {
     ensureSession(db, 's1');
     const cp = makeCheckpoint();
     db.prepare(
-      `INSERT INTO checkpoint_meta (checkpoint_id, session_id, trigger, status, data, mirror_path, created_at_epoch, updated_at_epoch)
+      `INSERT INTO checkpoint_meta (checkpoint_id, session_id, trigger, status, data, mirror_path, created_at_epoch_ms, updated_at_epoch_ms)
        VALUES (?, ?, ?, 'mirrored', ?, ?, unixepoch(), unixepoch())`
     ).run('cp1', 's1', 'session_end', JSON.stringify(cp), path.join(checkpointsDir, 'cp1.yaml'));
 
@@ -220,7 +220,7 @@ describe('loadCheckpoint', () => {
     const cp = makeCheckpoint();
     const mirrorPath = path.join(checkpointsDir, 'cp1.yaml');
     db.prepare(
-      `INSERT INTO checkpoint_meta (checkpoint_id, session_id, trigger, status, data, mirror_path, created_at_epoch, updated_at_epoch)
+      `INSERT INTO checkpoint_meta (checkpoint_id, session_id, trigger, status, data, mirror_path, created_at_epoch_ms, updated_at_epoch_ms)
        VALUES (?, ?, ?, 'committed', ?, ?, unixepoch(), unixepoch())`
     ).run('cp1', 's1', 'session_end', JSON.stringify(cp), mirrorPath);
 
@@ -266,14 +266,14 @@ describe('loadCheckpoint', () => {
     // Create checkpoint for projectA
     const cpA = makeCheckpoint({ meta: { ...makeCheckpoint().meta, checkpoint_id: 'CPA' } });
     db.prepare(
-      `INSERT INTO checkpoint_meta (checkpoint_id, session_id, trigger, status, data, created_at_epoch, updated_at_epoch)
+      `INSERT INTO checkpoint_meta (checkpoint_id, session_id, trigger, status, data, created_at_epoch_ms, updated_at_epoch_ms)
        VALUES (?, ?, ?, 'mirrored', ?, unixepoch(), unixepoch())`
     ).run('cpA', 's-projA', 'session_end', JSON.stringify(cpA));
 
     // Create checkpoint for projectB
     const cpB = makeCheckpoint({ meta: { ...makeCheckpoint().meta, checkpoint_id: 'CPB' } });
     db.prepare(
-      `INSERT INTO checkpoint_meta (checkpoint_id, session_id, trigger, status, data, created_at_epoch, updated_at_epoch)
+      `INSERT INTO checkpoint_meta (checkpoint_id, session_id, trigger, status, data, created_at_epoch_ms, updated_at_epoch_ms)
        VALUES (?, ?, ?, 'mirrored', ?, unixepoch() + 1, unixepoch() + 1)`
     ).run('cpB', 's-projB', 'session_end', JSON.stringify(cpB));
 
@@ -298,7 +298,7 @@ describe('loadCheckpoint', () => {
     ensureSession(db, 's-projA', 'projectA');
     const cpA = makeCheckpoint();
     db.prepare(
-      `INSERT INTO checkpoint_meta (checkpoint_id, session_id, trigger, status, data, created_at_epoch, updated_at_epoch)
+      `INSERT INTO checkpoint_meta (checkpoint_id, session_id, trigger, status, data, created_at_epoch_ms, updated_at_epoch_ms)
        VALUES (?, ?, ?, 'mirrored', ?, unixepoch(), unixepoch())`
     ).run('cpA', 's-projA', 'session_end', JSON.stringify(cpA));
 
@@ -318,11 +318,11 @@ describe('loadCheckpoint', () => {
     const cpNew = makeCheckpoint({ meta: { ...makeCheckpoint().meta, checkpoint_id: 'CP_NEW' } });
 
     db.prepare(
-      `INSERT INTO checkpoint_meta (checkpoint_id, session_id, trigger, status, data, created_at_epoch, updated_at_epoch)
+      `INSERT INTO checkpoint_meta (checkpoint_id, session_id, trigger, status, data, created_at_epoch_ms, updated_at_epoch_ms)
        VALUES (?, ?, 'session_end', 'mirrored', ?, ?, ?)`
     ).run('CP_OLD', 's-old', JSON.stringify(cpOld), 1000, 1000);
     db.prepare(
-      `INSERT INTO checkpoint_meta (checkpoint_id, session_id, trigger, status, data, created_at_epoch, updated_at_epoch)
+      `INSERT INTO checkpoint_meta (checkpoint_id, session_id, trigger, status, data, created_at_epoch_ms, updated_at_epoch_ms)
        VALUES (?, ?, 'session_end', 'mirrored', ?, ?, ?)`
     ).run('CP_NEW', 's-new', JSON.stringify(cpNew), 5000, 5000);
 
@@ -340,11 +340,11 @@ describe('loadCheckpoint', () => {
     const cpNew = makeCheckpoint({ meta: { ...makeCheckpoint().meta, checkpoint_id: 'CP_NEW' } });
 
     db.prepare(
-      `INSERT INTO checkpoint_meta (checkpoint_id, session_id, trigger, status, data, created_at_epoch, updated_at_epoch)
+      `INSERT INTO checkpoint_meta (checkpoint_id, session_id, trigger, status, data, created_at_epoch_ms, updated_at_epoch_ms)
        VALUES (?, ?, 'session_end', 'mirrored', ?, ?, ?)`
     ).run('CP_OLD', 's-old', JSON.stringify(cpOld), 1000, 1000);
     db.prepare(
-      `INSERT INTO checkpoint_meta (checkpoint_id, session_id, trigger, status, data, created_at_epoch, updated_at_epoch)
+      `INSERT INTO checkpoint_meta (checkpoint_id, session_id, trigger, status, data, created_at_epoch_ms, updated_at_epoch_ms)
        VALUES (?, ?, 'session_end', 'mirrored', ?, ?, ?)`
     ).run('CP_NEW', 's-new', JSON.stringify(cpNew), 5000, 5000);
 
@@ -357,7 +357,7 @@ describe('loadCheckpoint', () => {
     ensureSession(db, 's-old', 'projA');
     const cp = makeCheckpoint();
     db.prepare(
-      `INSERT INTO checkpoint_meta (checkpoint_id, session_id, trigger, status, data, created_at_epoch, updated_at_epoch)
+      `INSERT INTO checkpoint_meta (checkpoint_id, session_id, trigger, status, data, created_at_epoch_ms, updated_at_epoch_ms)
        VALUES (?, ?, 'session_end', 'mirrored', ?, ?, ?)`
     ).run('cp1', 's-old', JSON.stringify(cp), 1000, 1000);
 
@@ -369,7 +369,7 @@ describe('loadCheckpoint', () => {
     ensureSession(db, 's-old', 'projA');
     const cp = makeCheckpoint();
     db.prepare(
-      `INSERT INTO checkpoint_meta (checkpoint_id, session_id, trigger, status, data, created_at_epoch, updated_at_epoch)
+      `INSERT INTO checkpoint_meta (checkpoint_id, session_id, trigger, status, data, created_at_epoch_ms, updated_at_epoch_ms)
        VALUES (?, ?, 'session_end', 'mirrored', ?, ?, ?)`
     ).run('cp1', 's-old', JSON.stringify(cp), 1000, 1000);
 
@@ -391,7 +391,7 @@ describe('selective loading', () => {
     ensureSession(db, 's1');
     const cp = makeCheckpoint();
     db.prepare(
-      `INSERT INTO checkpoint_meta (checkpoint_id, session_id, trigger, status, data, created_at_epoch, updated_at_epoch)
+      `INSERT INTO checkpoint_meta (checkpoint_id, session_id, trigger, status, data, created_at_epoch_ms, updated_at_epoch_ms)
        VALUES (?, ?, ?, 'mirrored', ?, unixepoch(), unixepoch())`
     ).run('cp1', 's1', 'session_end', JSON.stringify(cp));
   });
@@ -463,7 +463,7 @@ describe('Fix 1: recoverFromDb writes compressed for .yaml.gz mirror paths', () 
     const mirrorPath = path.join(checkpointsDir, 'test_cp.yaml.gz');
 
     db.prepare(
-      `INSERT INTO checkpoint_meta (checkpoint_id, session_id, trigger, status, data, mirror_path, created_at_epoch, updated_at_epoch)
+      `INSERT INTO checkpoint_meta (checkpoint_id, session_id, trigger, status, data, mirror_path, created_at_epoch_ms, updated_at_epoch_ms)
        VALUES (?, ?, ?, 'committed', ?, ?, unixepoch(), unixepoch())`
     ).run('cp-gz', 's1', 'session_end', JSON.stringify(cp), mirrorPath);
 
@@ -493,7 +493,7 @@ describe('Fix 1: recoverFromDb writes compressed for .yaml.gz mirror paths', () 
     const mirrorPath = path.join(cpDir, 'sync_cp.yaml.gz');
 
     db.prepare(
-      `INSERT INTO checkpoint_meta (checkpoint_id, session_id, trigger, status, data, mirror_path, created_at_epoch, updated_at_epoch)
+      `INSERT INTO checkpoint_meta (checkpoint_id, session_id, trigger, status, data, mirror_path, created_at_epoch_ms, updated_at_epoch_ms)
        VALUES (?, ?, ?, 'committed', ?, ?, unixepoch(), unixepoch())`
     ).run('cp-sync-gz', 's1', 'session_end', JSON.stringify(cp), mirrorPath);
 
@@ -593,12 +593,12 @@ describe('Fix 5: recoverFromDb per-directory latest.yaml', () => {
     const mirrorPathB = path.join(dirB, 'cp2.yaml');
 
     db.prepare(
-      `INSERT INTO checkpoint_meta (checkpoint_id, session_id, trigger, status, data, mirror_path, created_at_epoch, updated_at_epoch)
+      `INSERT INTO checkpoint_meta (checkpoint_id, session_id, trigger, status, data, mirror_path, created_at_epoch_ms, updated_at_epoch_ms)
        VALUES (?, ?, ?, 'committed', ?, ?, 1000, 1000)`
     ).run('cp1', 's1', 'session_end', JSON.stringify(cp1), mirrorPathA);
 
     db.prepare(
-      `INSERT INTO checkpoint_meta (checkpoint_id, session_id, trigger, status, data, mirror_path, created_at_epoch, updated_at_epoch)
+      `INSERT INTO checkpoint_meta (checkpoint_id, session_id, trigger, status, data, mirror_path, created_at_epoch_ms, updated_at_epoch_ms)
        VALUES (?, ?, ?, 'committed', ?, ?, 2000, 2000)`
     ).run('cp2', 's1', 'session_end', JSON.stringify(cp2), mirrorPathB);
 

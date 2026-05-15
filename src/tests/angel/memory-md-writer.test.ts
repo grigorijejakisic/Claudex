@@ -50,7 +50,8 @@ let db: Database.Database;
 const PROJECT = 'test-proj';
 
 /** Current unix epoch in seconds. */
-const now = () => Math.floor(Date.now() / 1000);
+/** Current time in milliseconds — for *_epoch_ms columns. */
+const now = () => Date.now();
 
 function makeDb(): Database.Database {
   const d = new Database(':memory:');
@@ -84,7 +85,7 @@ function seedEntities(
   rows: Array<{ ref: string; summary: string; importance?: number; ts?: number }>,
 ): void {
   const stmt = d.prepare(
-    `INSERT INTO artifacts (session_id, project, artifact_type, artifact_ref, summary, state, importance, timestamp_epoch)
+    `INSERT INTO artifacts (session_id, project, artifact_type, artifact_ref, summary, state, importance, timestamp_epoch_ms)
      VALUES ('angel', ?, 'entity_summary', ?, ?, 'fresh', ?, ?)`,
   );
   for (const row of rows) {
@@ -100,7 +101,7 @@ function seedActiveProjects(
   // reflect these. Use unique IDs to satisfy the PRIMARY KEY on V17.artifact.
   let seq = 0;
   const stmt = d.prepare(
-    `INSERT INTO artifact (id, kind, title, body, status, created_at_epoch, updated_at_epoch, project, data)
+    `INSERT INTO artifact (id, kind, title, body, status, created_at_epoch_ms, updated_at_epoch_ms, project, data)
      VALUES (?, 'test_seed', ?, 'body', 'active', ?, ?, ?, '{}')`,
   );
   for (const row of rows) {
@@ -118,7 +119,7 @@ function seedTranscriptChunks(
 ): void {
   let seq = 0;
   const stmt = d.prepare(
-    `INSERT INTO artifact (id, kind, title, body, status, created_at_epoch, updated_at_epoch, project, session_id, data)
+    `INSERT INTO artifact (id, kind, title, body, status, created_at_epoch_ms, updated_at_epoch_ms, project, session_id, data)
      VALUES (?, 'transcript_chunk', ?, 'chunk body', 'active', ?, ?, ?, ?, ?)`,
   );
   for (const c of chunks) {

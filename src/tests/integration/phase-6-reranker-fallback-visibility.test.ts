@@ -250,7 +250,7 @@ describe('Phase 6 reranker fallback visibility (RETR-08)', () => {
     // Insert a fallback row with a timestamp 2 hours ago — outside the 1h window.
     const twoHoursAgo = Math.floor(Date.now() / 1000) - 2 * 3600;
     db.prepare(
-      `INSERT INTO telemetry (session_id, event_kind, detail, adapter, timestamp_epoch)
+      `INSERT INTO telemetry (session_id, event_kind, detail, adapter, timestamp_epoch_ms)
        VALUES (?, 'reranker_fallback', ?, 'hybrid-retrieval', ?)`,
     ).run(sessionId, JSON.stringify({ reason: 'unreachable' }), twoHoursAgo);
 

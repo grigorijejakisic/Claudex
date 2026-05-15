@@ -49,7 +49,7 @@ async function seedFixtureCorpus(): Promise<void> {
       errorFingerprintEnabled: false,
     });
   }
-  db.prepare(`UPDATE episodic_events SET ts_epoch = ?`).run(PHASE1_SHIP_TS_EPOCH + 60);
+  db.prepare(`UPDATE episodic_events SET ts_epoch_ms = ?`).run(PHASE1_SHIP_TS_EPOCH + 60);
   await runBackfill(db, { dryRun: false });
 }
 
@@ -86,7 +86,7 @@ describe('runHarness orchestrator', () => {
         errorFingerprintEnabled: false,
       });
     }
-    db.prepare(`UPDATE episodic_events SET ts_epoch = ?`).run(PHASE1_SHIP_TS_EPOCH + 60);
+    db.prepare(`UPDATE episodic_events SET ts_epoch_ms = ?`).run(PHASE1_SHIP_TS_EPOCH + 60);
     await runBackfill(db, { dryRun: false });
     await expect(runHarness(db, { seed: 42 })).rejects.toThrow(/floor/i);
   });

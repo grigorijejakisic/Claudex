@@ -22,7 +22,7 @@ describe('heartbeat-compare race', () => {
     initializeSchema(db);
     // Seed session with detected ages: heartbeat=100, jsonl=100
     db.prepare(
-      `INSERT INTO sessions (session_id, project, status, created_at_epoch,
+      `INSERT INTO sessions (session_id, project, status, created_at_epoch_ms,
                              last_heartbeat_ts, last_jsonl_write_ts)
        VALUES (?, ?, 'active', ?, ?, ?)`
     ).run(sessionId, project, 50, 100, 100);

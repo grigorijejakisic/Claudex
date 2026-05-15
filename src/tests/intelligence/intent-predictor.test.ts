@@ -44,9 +44,9 @@ function insertSession(
   createdAtEpoch?: number,
 ): void {
   db.prepare(
-    `INSERT INTO sessions (session_id, project, status, observation_count, created_at_epoch)
+    `INSERT INTO sessions (session_id, project, status, observation_count, created_at_epoch_ms)
      VALUES (?, ?, ?, 0, ?)`
-  ).run(sessionId, project, status, createdAtEpoch ?? Math.floor(Date.now() / 1000));
+  ).run(sessionId, project, status, createdAtEpoch ?? Date.now());
 }
 
 function insertThread(
@@ -161,7 +161,7 @@ describe('intent-predictor', () => {
   describe('Layer 1 — Temporal Features', () => {
     it('predicts continuation for short session gap (<2h)', () => {
       const project = 'test-project';
-      const recentEpoch = Math.floor(Date.now() / 1000) - 3600; // 1 hour ago
+      const recentEpoch = Date.now() - 3600_000; // 1 hour ago in ms
       insertSession(db, 'prev-sess', project, 'completed', recentEpoch);
       insertSession(db, 'curr-sess', project, 'active');
       insertThread(db, 'prev-sess', 'recent work', 'Finished the task');
@@ -175,7 +175,7 @@ describe('intent-predictor', () => {
 
     it('predicts with lower confidence for long session gap (>24h)', () => {
       const project = 'test-project';
-      const oldEpoch = Math.floor(Date.now() / 1000) - 48 * 3600; // 48 hours ago
+      const oldEpoch = Date.now() - 48 * 3600_000; // 48 hours ago in ms
       insertSession(db, 'prev-sess', project, 'completed', oldEpoch);
       insertSession(db, 'curr-sess', project, 'active');
       // No unfinished thread, no recent session → falls to Layer 1 long gap
@@ -199,7 +199,7 @@ describe('intent-predictor', () => {
       ).run(project, hourBucket, dayOfWeek);
 
       // No recent sessions (so Layer 1 temporal profile fires, not short-gap)
-      const oldEpoch = Math.floor(Date.now() / 1000) - 5 * 3600;
+      const oldEpoch = Date.now() - 5 * 3600_000; // 5 hours ago in ms
       insertSession(db, 'prev-sess', project, 'completed', oldEpoch);
       insertSession(db, 'curr-sess', project, 'active');
 
@@ -216,7 +216,7 @@ describe('intent-predictor', () => {
   describe('Layer 2 — Action Transitions', () => {
     it('predicts from Markov chain when dominant transition exists', () => {
       const project = 'test-project';
-      const oldEpoch = Math.floor(Date.now() / 1000) - 10 * 3600; // 10 hours ago
+      const oldEpoch = Date.now() - 10 * 3600_000; // 10 hours ago in ms
       insertSession(db, 'prev-sess', project, 'completed', oldEpoch);
       insertSession(db, 'curr-sess', project, 'active');
 

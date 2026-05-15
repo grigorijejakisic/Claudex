@@ -39,7 +39,7 @@ function insertTurn(
   assistantText: string | null = null,
 ): void {
   db.prepare(
-    `INSERT INTO conversation_turns(session_id, project, turn_number, user_text, assistant_text, timestamp_epoch)
+    `INSERT INTO conversation_turns(session_id, project, turn_number, user_text, assistant_text, timestamp_epoch_ms)
      VALUES (?, ?, ?, ?, ?, ?)`,
   ).run(sessionId, project, turnNumber, userText, assistantText, 1000 + turnNumber);
 }
@@ -64,13 +64,13 @@ interface ChunkRow {
   session_id: string | null;
   project: string | null;
   embedding_ref: number | null;
-  created_at_epoch: number;
+  created_at_epoch_ms: number;
 }
 
 function listChunks(db: TestDatabase, sessionId: string): ChunkRow[] {
   return db
     .prepare(
-      `SELECT id, kind, title, body, data, session_id, project, embedding_ref, created_at_epoch
+      `SELECT id, kind, title, body, data, session_id, project, embedding_ref, created_at_epoch_ms
          FROM artifact
         WHERE kind = 'transcript_chunk' AND session_id = ?
         ORDER BY json_extract(data, '$.turn_range[0]') ASC`,
@@ -111,7 +111,7 @@ describe('chunkSessionTranscript', () => {
     db.prepare(
       `INSERT INTO artifact(
          id, kind, title, body, scope, status, confidence,
-         created_at_epoch, updated_at_epoch, session_id, project, data
+         created_at_epoch_ms, updated_at_epoch_ms, session_id, project, data
        ) VALUES ('pre', 'transcript_chunk', 'seed', 'pre-body', NULL, 'active', NULL,
                  1000, 1000, ?, ?, '{}')`,
     ).run(sessionId, project);

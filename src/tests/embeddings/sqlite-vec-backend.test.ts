@@ -50,7 +50,7 @@ function insertArtifact(
   },
 ): void {
   db.prepare(`
-    INSERT INTO artifacts (id, session_id, project, artifact_type, summary, importance, timestamp_epoch, superseded_by)
+    INSERT INTO artifacts (id, session_id, project, artifact_type, summary, importance, timestamp_epoch_ms, superseded_by)
     VALUES (?, 'test-session', ?, ?, ?, ?, unixepoch(), ?)
   `).run(
     opts.id,
@@ -70,7 +70,7 @@ const TEST_PAYLOAD: ArtifactPayload = {
   confidence: 1.0,
   activation_score: 1.0,
   session_id: 'test-session',
-  timestamp_epoch: Math.floor(Date.now() / 1000),
+  timestamp_epoch_ms: Math.floor(Date.now() / 1000),
   superseded: false,
   summary: 'test payload',
 };
@@ -226,8 +226,8 @@ describe('sqlite-vec backend via dispatcher', () => {
   describe('conversation upsert + search', () => {
     it('upserts and retrieves a conversation turn', async () => {
       db.prepare(`
-        INSERT INTO conversation_turns (id, session_id, project, turn_number, user_text, assistant_text, timestamp_epoch)
-        VALUES (1, 's', 'p', 1, 'hello', 'world', unixepoch())
+        INSERT INTO conversation_turns (id, session_id, project, turn_number, user_text, assistant_text, timestamp_epoch_ms)
+        VALUES (1, 's', 'p', 1, 'hello', 'world', unixepoch() * 1000)
       `).run();
 
       await upsertConversationEmbedding(1, vec(0.5), {});
@@ -243,8 +243,8 @@ describe('sqlite-vec backend via dispatcher', () => {
   describe('journal upsert + search', () => {
     it('upserts and retrieves a journal entry', async () => {
       db.prepare(`
-        INSERT INTO session_journal (id, session_id, project, entry_type, content, recall_text, timestamp_epoch)
-        VALUES (1, 's', 'p', 'flow', 'entry content', 'recall text', unixepoch())
+        INSERT INTO session_journal (id, session_id, project, entry_type, content, recall_text, timestamp_epoch_ms)
+        VALUES (1, 's', 'p', 'flow', 'entry content', 'recall text', unixepoch() * 1000)
       `).run();
 
       await upsertJournalEmbedding(1, vec(0.5), {});

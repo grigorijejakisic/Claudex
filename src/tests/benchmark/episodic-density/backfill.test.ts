@@ -70,16 +70,16 @@ function seedOrganicTraceRows(): void {
     });
   }
   // Force ts_epoch to be >= PHASE1_SHIP_TS_EPOCH (the writer used unixepoch())
-  db.prepare(`UPDATE episodic_events SET ts_epoch = ?`).run(PHASE1_SHIP_TS_EPOCH + 60);
+  db.prepare(`UPDATE episodic_events SET ts_epoch_ms = ?`).run(PHASE1_SHIP_TS_EPOCH + 60);
 }
 
 function seedV4ArtifactRows(): void {
   // Seed the production `artifacts` schema. Required-NOT-NULL columns
   // (session_id, project, artifact_type, summary, state, ttl, importance,
-  // timestamp_epoch) all populated; everything else takes table defaults.
+  // timestamp_epoch_ms) all populated; everything else takes table defaults.
   const stmt = db.prepare(
     `INSERT INTO artifacts
-       (id, session_id, project, artifact_type, artifact_ref, summary, content, state, ttl, importance, timestamp_epoch)
+       (id, session_id, project, artifact_type, artifact_ref, summary, content, state, ttl, importance, timestamp_epoch_ms)
      VALUES (?, ?, ?, ?, ?, ?, ?, 'fresh', 0, 1, ?)`,
   );
   stmt.run(1, 'old-1', 'projC', 'observation', 'old-1', 's', STACK_TRACE_A, 1700000000);
@@ -182,7 +182,7 @@ describe('Phase 2 Plan 03 — backfill module (IDX-01)', () => {
         errorFingerprintEnabled: false,
       });
     }
-    db.prepare(`UPDATE episodic_events SET ts_epoch = ?`).run(PHASE1_SHIP_TS_EPOCH + 60);
+    db.prepare(`UPDATE episodic_events SET ts_epoch_ms = ?`).run(PHASE1_SHIP_TS_EPOCH + 60);
     let summary = await runBackfill(db, { dryRun: true });
     expect(summary.total_fingerprinted).toBe(49);
     expect(summary.total_projects).toBe(3);
@@ -198,7 +198,7 @@ describe('Phase 2 Plan 03 — backfill module (IDX-01)', () => {
       turnNumber: 50,
       errorFingerprintEnabled: false,
     });
-    db.prepare(`UPDATE episodic_events SET ts_epoch = ?`).run(PHASE1_SHIP_TS_EPOCH + 60);
+    db.prepare(`UPDATE episodic_events SET ts_epoch_ms = ?`).run(PHASE1_SHIP_TS_EPOCH + 60);
     summary = await runBackfill(db, { dryRun: true });
     expect(summary.total_fingerprinted).toBe(50);
     expect(summary.floor_met).toBe(true);
@@ -217,7 +217,7 @@ describe('Phase 2 Plan 03 — backfill module (IDX-01)', () => {
         errorFingerprintEnabled: false,
       });
     }
-    db.prepare(`UPDATE episodic_events SET ts_epoch = ?`).run(PHASE1_SHIP_TS_EPOCH + 60);
+    db.prepare(`UPDATE episodic_events SET ts_epoch_ms = ?`).run(PHASE1_SHIP_TS_EPOCH + 60);
     const summary = await runBackfill(db, { dryRun: true });
     expect(summary.total_fingerprinted).toBeGreaterThanOrEqual(50);
     expect(summary.total_projects).toBe(2);
@@ -227,12 +227,12 @@ describe('Phase 2 Plan 03 — backfill module (IDX-01)', () => {
   it('Phase 1 organic content/provenance/source/ts_epoch unchanged post-backfill', async () => {
     seedOrganicTraceRows();
     const before = db.prepare(
-      `SELECT id, content, provenance, source, ts_epoch FROM episodic_events WHERE provenance='tool_result' ORDER BY id`,
-    ).all() as Array<{ id: number; content: string; provenance: string; source: string; ts_epoch: number }>;
+      `SELECT id, content, provenance, source, ts_epoch_ms FROM episodic_events WHERE provenance='tool_result' ORDER BY id`,
+    ).all() as Array<{ id: number; content: string; provenance: string; source: string; ts_epoch_ms: number }>;
     await runBackfill(db, { dryRun: false });
     const after = db.prepare(
-      `SELECT id, content, provenance, source, ts_epoch FROM episodic_events WHERE provenance='tool_result' ORDER BY id`,
-    ).all() as Array<{ id: number; content: string; provenance: string; source: string; ts_epoch: number }>;
+      `SELECT id, content, provenance, source, ts_epoch_ms FROM episodic_events WHERE provenance='tool_result' ORDER BY id`,
+    ).all() as Array<{ id: number; content: string; provenance: string; source: string; ts_epoch_ms: number }>;
 
     expect(after.length).toBe(before.length);
     for (let i = 0; i < before.length; i++) {
@@ -240,7 +240,7 @@ describe('Phase 2 Plan 03 — backfill module (IDX-01)', () => {
       expect(after[i].content).toBe(before[i].content);
       expect(after[i].provenance).toBe(before[i].provenance);
       expect(after[i].source).toBe(before[i].source);
-      expect(after[i].ts_epoch).toBe(before[i].ts_epoch);
+      expect(after[i].ts_epoch_ms).toBe(before[i].ts_epoch_ms);
     }
   });
 

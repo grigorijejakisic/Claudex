@@ -24,14 +24,14 @@ afterEach(() => {
 });
 
 function baseFrontmatter(overrides: Partial<LessonFrontmatter> = {}): string {
-  const created = overrides.created_at_epoch ?? 1_700_000_000_000;
+  const created = overrides.created_at_epoch_ms ?? 1_700_000_000_000;
   const tier = overrides.tier ? `\ntier: ${overrides.tier}` : '';
   const lastFired = overrides.last_fired_at_epoch != null
     ? `\nlast_fired_at_epoch: ${overrides.last_fired_at_epoch}`
     : '';
   return `---
 type: feedback
-created_at_epoch: ${created}
+created_at_epoch_ms: ${created}
 telemetry:
   tools_used: [Read, Edit]
   files_touched: [src/foo.ts]

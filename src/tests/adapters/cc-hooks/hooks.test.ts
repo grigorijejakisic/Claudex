@@ -773,7 +773,7 @@ describe('detectCcMemoryConflict', () => {
       cwd: '/tmp/test',
     });
     // Backdate it
-    db.prepare('UPDATE sessions SET created_at_epoch = ? WHERE session_id = ?')
+    db.prepare('UPDATE sessions SET created_at_epoch_ms = ? WHERE session_id = ?')
       .run(oldEpoch, 'conflict-old');
 
     createSession(db, {

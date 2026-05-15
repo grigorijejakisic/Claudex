@@ -17,10 +17,10 @@ import type { ArtifactRow } from '../../core/artifacts.js';
 
 describe('computeRecencyScore', () => {
   it('returns ~1.0 for very recent artifact', () => {
-    const now = Math.floor(Date.now() / 1000);
+    const now = Date.now();
     const artifact = {
-      timestamp_epoch: now - 60, // 1 minute ago
-      last_materialized_epoch: null,
+      timestamp_epoch_ms: now - 60000, // 1 minute ago
+      last_materialized_epoch_ms: null,
     } as ArtifactRow;
 
     const score = computeRecencyScore(artifact);
@@ -29,10 +29,10 @@ describe('computeRecencyScore', () => {
   });
 
   it('returns near 0 for old artifact', () => {
-    const now = Math.floor(Date.now() / 1000);
+    const now = Date.now();
     const artifact = {
-      timestamp_epoch: now - 86400, // 24 hours ago
-      last_materialized_epoch: null,
+      timestamp_epoch_ms: now - 86400000, // 24 hours ago
+      last_materialized_epoch_ms: null,
     } as ArtifactRow;
 
     const score = computeRecencyScore(artifact);
@@ -40,10 +40,10 @@ describe('computeRecencyScore', () => {
   });
 
   it('uses last_materialized_epoch when available', () => {
-    const now = Math.floor(Date.now() / 1000);
+    const now = Date.now();
     const artifact = {
-      timestamp_epoch: now - 86400, // created 24h ago
-      last_materialized_epoch: now - 60, // accessed 1 min ago
+      timestamp_epoch_ms: now - 86400000, // created 24h ago
+      last_materialized_epoch_ms: now - 60000, // accessed 1 min ago
     } as ArtifactRow;
 
     const score = computeRecencyScore(artifact);
@@ -61,10 +61,10 @@ describe('computeImportanceScore', () => {
 
 describe('computeThreeFactorScore', () => {
   it('combines recency, importance, and relevance with equal weights', () => {
-    const now = Math.floor(Date.now() / 1000);
+    const now = Date.now();
     const artifact = {
-      timestamp_epoch: now - 60,
-      last_materialized_epoch: null,
+      timestamp_epoch_ms: now - 60000,
+      last_materialized_epoch_ms: null,
       importance: 5,
     } as ArtifactRow;
 
@@ -75,10 +75,10 @@ describe('computeThreeFactorScore', () => {
   });
 
   it('respects custom weights', () => {
-    const now = Math.floor(Date.now() / 1000);
+    const now = Date.now();
     const artifact = {
-      timestamp_epoch: now - 60,
-      last_materialized_epoch: null,
+      timestamp_epoch_ms: now - 60000,
+      last_materialized_epoch_ms: null,
       importance: 5,
     } as ArtifactRow;
 
@@ -102,10 +102,10 @@ describe('computeThreeFactorScore', () => {
 
 describe('computeActivation', () => {
   it('returns positive activation for recent artifact', () => {
-    const now = Math.floor(Date.now() / 1000);
+    const now = Date.now();
     const artifact = {
-      timestamp_epoch: now - 60,
-      last_materialized_epoch: null,
+      timestamp_epoch_ms: now - 60000,
+      last_materialized_epoch_ms: null,
       importance: 3,
       state: 'fresh',
     } as ArtifactRow;
@@ -115,17 +115,17 @@ describe('computeActivation', () => {
   });
 
   it('returns higher activation for higher importance', () => {
-    const now = Math.floor(Date.now() / 1000);
+    const now = Date.now();
     const lowImp = {
-      timestamp_epoch: now - 3600,
-      last_materialized_epoch: null,
+      timestamp_epoch_ms: now - 3600000,
+      last_materialized_epoch_ms: null,
       importance: 1,
       state: 'fresh',
     } as ArtifactRow;
 
     const highImp = {
-      timestamp_epoch: now - 3600,
-      last_materialized_epoch: null,
+      timestamp_epoch_ms: now - 3600000,
+      last_materialized_epoch_ms: null,
       importance: 5,
       state: 'fresh',
     } as ArtifactRow;
@@ -134,17 +134,17 @@ describe('computeActivation', () => {
   });
 
   it('returns higher activation for materialized artifacts', () => {
-    const now = Math.floor(Date.now() / 1000);
+    const now = Date.now();
     const fresh = {
-      timestamp_epoch: now - 3600,
-      last_materialized_epoch: null,
+      timestamp_epoch_ms: now - 3600000,
+      last_materialized_epoch_ms: null,
       importance: 3,
       state: 'fresh',
     } as ArtifactRow;
 
     const materialized = {
-      timestamp_epoch: now - 3600,
-      last_materialized_epoch: now - 60,
+      timestamp_epoch_ms: now - 3600000,
+      last_materialized_epoch_ms: now - 60000,
       importance: 3,
       state: 'materialized',
     } as ArtifactRow;
@@ -180,8 +180,8 @@ describe('decayActivationScores', () => {
     const id = createArtifact(db, 'sess-1', 'myproject', 'observation', null, 'Old obs', 'old content', 1);
 
     // Set timestamp to 48 hours ago — very old, low importance
-    const oldTime = Math.floor(Date.now() / 1000) - 172800;
-    db.prepare('UPDATE artifacts SET timestamp_epoch = ? WHERE id = ?').run(oldTime, id);
+    const oldTime = Date.now() - 172800000;
+    db.prepare('UPDATE artifacts SET timestamp_epoch_ms = ? WHERE id = ?').run(oldTime, id);
 
     const result = decayActivationScores(db, 'myproject');
 
@@ -234,11 +234,11 @@ describe('recordArtifactAccess', () => {
 
     recordArtifactAccess(db, id);
 
-    const row = db.prepare('SELECT activation_score, last_materialized_epoch FROM artifacts WHERE id = ?')
-      .get(id) as { activation_score: number; last_materialized_epoch: number | null };
+    const row = db.prepare('SELECT activation_score, last_materialized_epoch_ms FROM artifacts WHERE id = ?')
+      .get(id) as { activation_score: number; last_materialized_epoch_ms: number | null };
 
     expect(row.activation_score).toBeGreaterThan(0);
-    expect(row.last_materialized_epoch).not.toBeNull();
+    expect(row.last_materialized_epoch_ms).not.toBeNull();
   });
 
   it('does not throw on nonexistent artifact', () => {
@@ -305,8 +305,8 @@ describe('Temporal channel scope flags (regression)', () => {
     const temporalProject = globalScope ? '' : 'AND project = ?';
     const temporalSql = `SELECT * FROM artifacts
        WHERE 1=1 ${temporalProject} ${temporalSuperseded}
-         AND timestamp_epoch >= ? AND timestamp_epoch <= ?
-       ORDER BY importance DESC, timestamp_epoch DESC
+         AND timestamp_epoch_ms >= ? AND timestamp_epoch_ms <= ?
+       ORDER BY importance DESC, timestamp_epoch_ms DESC
        LIMIT ?`;
 
     expect(temporalSql).toContain('AND project = ?');
@@ -320,8 +320,8 @@ describe('Temporal channel scope flags (regression)', () => {
     const temporalProject = globalScope ? '' : 'AND project = ?';
     const temporalSql = `SELECT * FROM artifacts
        WHERE 1=1 ${temporalProject} ${temporalSuperseded}
-         AND timestamp_epoch >= ? AND timestamp_epoch <= ?
-       ORDER BY importance DESC, timestamp_epoch DESC
+         AND timestamp_epoch_ms >= ? AND timestamp_epoch_ms <= ?
+       ORDER BY importance DESC, timestamp_epoch_ms DESC
        LIMIT ?`;
 
     expect(temporalSql).not.toContain('AND project = ?');
@@ -335,8 +335,8 @@ describe('Temporal channel scope flags (regression)', () => {
     const temporalProject = globalScope ? '' : 'AND project = ?';
     const temporalSql = `SELECT * FROM artifacts
        WHERE 1=1 ${temporalProject} ${temporalSuperseded}
-         AND timestamp_epoch >= ? AND timestamp_epoch <= ?
-       ORDER BY importance DESC, timestamp_epoch DESC
+         AND timestamp_epoch_ms >= ? AND timestamp_epoch_ms <= ?
+       ORDER BY importance DESC, timestamp_epoch_ms DESC
        LIMIT ?`;
 
     expect(temporalSql).toContain('AND project = ?');

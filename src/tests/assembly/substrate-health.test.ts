@@ -57,7 +57,7 @@ CREATE TABLE IF NOT EXISTS telemetry (
   event_kind TEXT NOT NULL,
   detail TEXT NOT NULL DEFAULT '{}',
   latency_ms REAL,
-  timestamp_epoch INTEGER NOT NULL DEFAULT 0,
+  timestamp_epoch_ms INTEGER NOT NULL DEFAULT 0,
   adapter TEXT
 );
 `;
@@ -71,14 +71,14 @@ function insertPhase2Failure(
     ageSeconds?: number;
   },
 ): void {
-  const tsEpoch = Math.floor(Date.now() / 1000) - (opts.ageSeconds ?? 0);
+  const tsEpoch = Date.now() - (opts.ageSeconds ?? 0) * 1000;
   const detail = JSON.stringify({
     subsystem: `heartbeat/phase2_${opts.subsystem}_failed`,
     session_id_short: opts.session_id_short,
     reason: opts.reason ?? 'other',
   });
   db.prepare(
-    `INSERT INTO telemetry (session_id, event_kind, detail, timestamp_epoch, adapter)
+    `INSERT INTO telemetry (session_id, event_kind, detail, timestamp_epoch_ms, adapter)
      VALUES ('angel-heartbeat', 'error', ?, ?, 'angel-heartbeat')`,
   ).run(detail, tsEpoch);
 }
@@ -295,7 +295,7 @@ describe('readRecentPhase2Failures', () => {
 
   it('skips telemetry rows from non-phase-2 subsystems', () => {
     db.prepare(
-      `INSERT INTO telemetry (session_id, event_kind, detail, timestamp_epoch, adapter)
+      `INSERT INTO telemetry (session_id, event_kind, detail, timestamp_epoch_ms, adapter)
        VALUES ('x', 'error', ?, ?, 'reranker')`,
     ).run(JSON.stringify({ subsystem: 'reranker/unreachable' }), Math.floor(Date.now() / 1000));
     expect(readRecentPhase2Failures(db).count).toBe(0);
@@ -303,7 +303,7 @@ describe('readRecentPhase2Failures', () => {
 
   it('tolerates malformed detail JSON', () => {
     db.prepare(
-      `INSERT INTO telemetry (session_id, event_kind, detail, timestamp_epoch, adapter)
+      `INSERT INTO telemetry (session_id, event_kind, detail, timestamp_epoch_ms, adapter)
        VALUES ('angel-heartbeat', 'error', 'not-json', ?, 'angel-heartbeat')`,
     ).run(Math.floor(Date.now() / 1000));
     // The LIKE filter on json_extract returns nothing for non-JSON; row drops out cleanly.

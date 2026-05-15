@@ -106,7 +106,7 @@ describe('checkColumns', () => {
       // Re-create sessions without 'adapter' column to simulate missing column.
       // We can't ALTER TABLE DROP COLUMN in older SQLite, so we rebuild the table.
       db.exec(`
-        CREATE TABLE sessions_backup AS SELECT session_id, scope, project, cwd, source, status, observation_count, created_at_epoch, ended_at_epoch FROM sessions;
+        CREATE TABLE sessions_backup AS SELECT session_id, scope, project, cwd, source, status, observation_count, created_at_epoch_ms, ended_at_epoch_ms FROM sessions;
         DROP TABLE sessions;
         CREATE TABLE sessions (
           session_id TEXT PRIMARY KEY,
@@ -116,8 +116,8 @@ describe('checkColumns', () => {
           source TEXT,
           status TEXT NOT NULL DEFAULT 'active',
           observation_count INTEGER NOT NULL DEFAULT 0,
-          created_at_epoch INTEGER NOT NULL DEFAULT (unixepoch()),
-          ended_at_epoch INTEGER
+          created_at_epoch_ms INTEGER NOT NULL DEFAULT (unixepoch()),
+          ended_at_epoch_ms INTEGER
         );
         INSERT INTO sessions SELECT * FROM sessions_backup;
         DROP TABLE sessions_backup;
@@ -173,25 +173,25 @@ describe('checkWriteRead', () => {
           importance INTEGER NOT NULL,
           files_modified TEXT NOT NULL DEFAULT '[]',
           consumed INTEGER NOT NULL DEFAULT 0,
-          timestamp_epoch INTEGER NOT NULL DEFAULT 0,
+          timestamp_epoch_ms INTEGER NOT NULL DEFAULT 0,
           access_count INTEGER NOT NULL DEFAULT 0,
-          deleted_at_epoch INTEGER,
-          last_accessed_at_epoch INTEGER,
+          deleted_at_epoch_ms INTEGER,
+          last_accessed_at_epoch_ms INTEGER,
           obs_type TEXT,
           project TEXT
         );
-        CREATE TABLE sessions (session_id TEXT PRIMARY KEY, status TEXT NOT NULL DEFAULT 'active', observation_count INTEGER NOT NULL DEFAULT 0, created_at_epoch INTEGER NOT NULL DEFAULT 0, ended_at_epoch INTEGER, scope TEXT, project TEXT, cwd TEXT, source TEXT, adapter TEXT);
+        CREATE TABLE sessions (session_id TEXT PRIMARY KEY, status TEXT NOT NULL DEFAULT 'active', observation_count INTEGER NOT NULL DEFAULT 0, created_at_epoch_ms INTEGER NOT NULL DEFAULT 0, ended_at_epoch_ms INTEGER, scope TEXT, project TEXT, cwd TEXT, source TEXT, adapter TEXT);
         CREATE TABLE pressure_scores (file_path TEXT NOT NULL, project TEXT NOT NULL, raw_pressure REAL NOT NULL DEFAULT 0.0, temperature TEXT NOT NULL DEFAULT 'COLD', last_touched_epoch INTEGER NOT NULL DEFAULT 0, decay_rate REAL NOT NULL DEFAULT 0.1, PRIMARY KEY (file_path, project));
-        CREATE TABLE learnings (id INTEGER PRIMARY KEY AUTOINCREMENT, project TEXT NOT NULL DEFAULT '__global__', agent_id TEXT NOT NULL DEFAULT 'default', fingerprint TEXT NOT NULL, content TEXT NOT NULL, promotion_count INTEGER NOT NULL DEFAULT 1, first_seen_epoch INTEGER NOT NULL DEFAULT 0, last_promoted_epoch INTEGER NOT NULL DEFAULT 0, updated_at_epoch INTEGER NOT NULL DEFAULT 0, UNIQUE(project, agent_id, fingerprint));
-        CREATE TABLE decisions (id INTEGER PRIMARY KEY AUTOINCREMENT, session_id TEXT NOT NULL, project TEXT NOT NULL DEFAULT '__global__', content TEXT NOT NULL, source TEXT NOT NULL CHECK (source IN ('confirmation', 'direction', 'rejection', 'explicit')), fingerprint TEXT NOT NULL, timestamp_epoch INTEGER NOT NULL DEFAULT 0, updated_at_epoch INTEGER NOT NULL DEFAULT 0, UNIQUE(session_id, fingerprint));
-        CREATE TABLE thread_state (session_id TEXT PRIMARY KEY, topic TEXT, summary TEXT, key_exchanges TEXT NOT NULL DEFAULT '[]', updated_at_epoch INTEGER NOT NULL DEFAULT 0);
-        CREATE TABLE checkpoint_tracking (session_id TEXT PRIMARY KEY, last_checkpoint_epoch INTEGER, thresholds_hit TEXT NOT NULL DEFAULT '[]', observation_count INTEGER NOT NULL DEFAULT 0, post_compact_pending INTEGER NOT NULL DEFAULT 0, updated_at_epoch INTEGER NOT NULL DEFAULT 0);
-        CREATE TABLE checkpoint_meta (checkpoint_id TEXT PRIMARY KEY, session_id TEXT NOT NULL, trigger TEXT NOT NULL CHECK (trigger IN ('threshold', 'compaction', 'session_end')), status TEXT NOT NULL DEFAULT 'pending', data TEXT, mirror_path TEXT, error TEXT, created_at_epoch INTEGER NOT NULL DEFAULT 0, updated_at_epoch INTEGER NOT NULL DEFAULT 0);
-        CREATE TABLE session_journal (id INTEGER PRIMARY KEY AUTOINCREMENT, session_id TEXT NOT NULL, project TEXT NOT NULL, entry_type TEXT NOT NULL CHECK (entry_type IN ('flow', 'milestone', 'summary')), content TEXT NOT NULL, timestamp_epoch INTEGER NOT NULL DEFAULT 0);
-        CREATE TABLE artifacts (id INTEGER PRIMARY KEY AUTOINCREMENT, session_id TEXT NOT NULL, project TEXT NOT NULL, artifact_type TEXT NOT NULL CHECK (artifact_type IN ('observation', 'learning', 'decision', 'hot_file', 'flow', 'milestone')), artifact_ref TEXT, summary TEXT NOT NULL, content TEXT, state TEXT NOT NULL DEFAULT 'fresh', ttl INTEGER NOT NULL DEFAULT 3, importance INTEGER NOT NULL DEFAULT 3, timestamp_epoch INTEGER NOT NULL DEFAULT 0, last_materialized_epoch INTEGER);
-        CREATE TABLE verified_facts (id INTEGER PRIMARY KEY AUTOINCREMENT, session_id TEXT NOT NULL, fact TEXT NOT NULL, created_at_epoch INTEGER NOT NULL DEFAULT 0);
-        CREATE TABLE telemetry (id INTEGER PRIMARY KEY AUTOINCREMENT, session_id TEXT NOT NULL, event_kind TEXT NOT NULL CHECK (event_kind IN ('hook_invocation', 'injection', 'observation_capture', 'decision_capture', 'checkpoint_write', 'enrichment', 'topic_shift', 'dedup', 'decay_prune', 'error')), detail TEXT NOT NULL DEFAULT '{}', latency_ms REAL, timestamp_epoch INTEGER NOT NULL DEFAULT 0, adapter TEXT);
-        CREATE TABLE schema_versions (version INTEGER PRIMARY KEY, applied_at_epoch INTEGER NOT NULL DEFAULT 0);
+        CREATE TABLE learnings (id INTEGER PRIMARY KEY AUTOINCREMENT, project TEXT NOT NULL DEFAULT '__global__', agent_id TEXT NOT NULL DEFAULT 'default', fingerprint TEXT NOT NULL, content TEXT NOT NULL, promotion_count INTEGER NOT NULL DEFAULT 1, first_seen_epoch INTEGER NOT NULL DEFAULT 0, last_promoted_epoch INTEGER NOT NULL DEFAULT 0, updated_at_epoch_ms INTEGER NOT NULL DEFAULT 0, UNIQUE(project, agent_id, fingerprint));
+        CREATE TABLE decisions (id INTEGER PRIMARY KEY AUTOINCREMENT, session_id TEXT NOT NULL, project TEXT NOT NULL DEFAULT '__global__', content TEXT NOT NULL, source TEXT NOT NULL CHECK (source IN ('confirmation', 'direction', 'rejection', 'explicit')), fingerprint TEXT NOT NULL, timestamp_epoch_ms INTEGER NOT NULL DEFAULT 0, updated_at_epoch_ms INTEGER NOT NULL DEFAULT 0, UNIQUE(session_id, fingerprint));
+        CREATE TABLE thread_state (session_id TEXT PRIMARY KEY, topic TEXT, summary TEXT, key_exchanges TEXT NOT NULL DEFAULT '[]', updated_at_epoch_ms INTEGER NOT NULL DEFAULT 0);
+        CREATE TABLE checkpoint_tracking (session_id TEXT PRIMARY KEY, last_checkpoint_epoch INTEGER, thresholds_hit TEXT NOT NULL DEFAULT '[]', observation_count INTEGER NOT NULL DEFAULT 0, post_compact_pending INTEGER NOT NULL DEFAULT 0, updated_at_epoch_ms INTEGER NOT NULL DEFAULT 0);
+        CREATE TABLE checkpoint_meta (checkpoint_id TEXT PRIMARY KEY, session_id TEXT NOT NULL, trigger TEXT NOT NULL CHECK (trigger IN ('threshold', 'compaction', 'session_end')), status TEXT NOT NULL DEFAULT 'pending', data TEXT, mirror_path TEXT, error TEXT, created_at_epoch_ms INTEGER NOT NULL DEFAULT 0, updated_at_epoch_ms INTEGER NOT NULL DEFAULT 0);
+        CREATE TABLE session_journal (id INTEGER PRIMARY KEY AUTOINCREMENT, session_id TEXT NOT NULL, project TEXT NOT NULL, entry_type TEXT NOT NULL CHECK (entry_type IN ('flow', 'milestone', 'summary')), content TEXT NOT NULL, timestamp_epoch_ms INTEGER NOT NULL DEFAULT 0);
+        CREATE TABLE artifacts (id INTEGER PRIMARY KEY AUTOINCREMENT, session_id TEXT NOT NULL, project TEXT NOT NULL, artifact_type TEXT NOT NULL CHECK (artifact_type IN ('observation', 'learning', 'decision', 'hot_file', 'flow', 'milestone')), artifact_ref TEXT, summary TEXT NOT NULL, content TEXT, state TEXT NOT NULL DEFAULT 'fresh', ttl INTEGER NOT NULL DEFAULT 3, importance INTEGER NOT NULL DEFAULT 3, timestamp_epoch_ms INTEGER NOT NULL DEFAULT 0, last_materialized_epoch_ms INTEGER);
+        CREATE TABLE verified_facts (id INTEGER PRIMARY KEY AUTOINCREMENT, session_id TEXT NOT NULL, fact TEXT NOT NULL, created_at_epoch_ms INTEGER NOT NULL DEFAULT 0);
+        CREATE TABLE telemetry (id INTEGER PRIMARY KEY AUTOINCREMENT, session_id TEXT NOT NULL, event_kind TEXT NOT NULL CHECK (event_kind IN ('hook_invocation', 'injection', 'observation_capture', 'decision_capture', 'checkpoint_write', 'enrichment', 'topic_shift', 'dedup', 'decay_prune', 'error')), detail TEXT NOT NULL DEFAULT '{}', latency_ms REAL, timestamp_epoch_ms INTEGER NOT NULL DEFAULT 0, adapter TEXT);
+        CREATE TABLE schema_versions (version INTEGER PRIMARY KEY, applied_at_epoch_ms INTEGER NOT NULL DEFAULT 0);
       `);
 
       const result = checkWriteRead(db);
@@ -248,9 +248,9 @@ describe('checkTelemetry', () => {
   it('warns when recent errors exist', () => {
     const db = createHealthyDb();
     try {
-      const now = Math.floor(Date.now() / 1000);
+      const now = Date.now(); // ms
       db.prepare(
-        "INSERT INTO telemetry (session_id, event_kind, detail, timestamp_epoch) VALUES (?, 'error', ?, ?)"
+        "INSERT INTO telemetry (session_id, event_kind, detail, timestamp_epoch_ms) VALUES (?, 'error', ?, ?)"
       ).run('test-session', '{"message":"test error"}', now);
 
       const result = checkTelemetry(db);
@@ -294,7 +294,7 @@ describe('checkSessions', () => {
     try {
       const oldEpoch = Math.floor(Date.now() / 1000) - 100000; // > 24h ago
       db.prepare(
-        "INSERT INTO sessions (session_id, status, observation_count, created_at_epoch) VALUES (?, 'active', 0, ?)"
+        "INSERT INTO sessions (session_id, status, observation_count, created_at_epoch_ms) VALUES (?, 'active', 0, ?)"
       ).run('orphan-1', oldEpoch);
 
       const result = checkSessions(db);

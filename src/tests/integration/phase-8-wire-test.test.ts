@@ -51,7 +51,7 @@ function buildV17V32Fixture(db: Database.Database): void {
   db.exec(`
     CREATE TABLE schema_versions (
       version INTEGER PRIMARY KEY,
-      applied_at_epoch INTEGER NOT NULL DEFAULT (unixepoch())
+      applied_at_epoch_ms INTEGER NOT NULL DEFAULT (unixepoch())
     );
     CREATE TABLE artifact (
       id TEXT PRIMARY KEY,
@@ -61,8 +61,8 @@ function buildV17V32Fixture(db: Database.Database): void {
       scope TEXT,
       status TEXT,
       confidence REAL,
-      created_at_epoch INTEGER NOT NULL,
-      updated_at_epoch INTEGER NOT NULL,
+      created_at_epoch_ms INTEGER NOT NULL,
+      updated_at_epoch_ms INTEGER NOT NULL,
       session_id TEXT,
       project_id TEXT,
       embedding_ref INTEGER,
@@ -83,7 +83,7 @@ function buildV17V32Fixture(db: Database.Database): void {
       COALESCE(CAST(json_extract(artifact.data, '$.provenance') AS TEXT), 'organic') AS provenance
     FROM artifact
     WHERE kind = 'learning'
-    ORDER BY created_at_epoch;
+    ORDER BY created_at_epoch_ms;
   `);
 }
 
@@ -126,7 +126,7 @@ describe('WIR-01 — upsertChunk against base-table fresh-DB', () => {
   it('writes a chunk through V32 fresh schema and round-trips it', () => {
     const db = new Database(':memory:');
     initializeSchema(db);
-    expect(db.pragma('user_version', { simple: true })).toBe(34);
+    expect(db.pragma('user_version', { simple: true })).toBe(35);
 
     const chunk: ChunkV6 = { ...validChunkFixture, session_id: 'sess-base-1' };
     upsertChunk(db, chunk);
@@ -150,7 +150,7 @@ describe('WIR-01 — upsertChunk against V17-collapsed DB', () => {
     buildV17V32Fixture(db);
     db.pragma('user_version = 31');
     runMigrations(db);
-    expect(db.pragma('user_version', { simple: true })).toBe(34);
+    expect(db.pragma('user_version', { simple: true })).toBe(35);
 
     // Confirm the legacy V17 `learnings` view is untouched (still a view).
     const learningsView = db.prepare(
@@ -174,7 +174,7 @@ describe('WIR-01 — ingestSession end-to-end on both fixture shapes', () => {
   it('base-table fresh-DB: 5-turn JSONL ingests 5 chunks idempotently', async () => {
     const db = new Database(':memory:');
     initializeSchema(db);
-    expect(db.pragma('user_version', { simple: true })).toBe(34);
+    expect(db.pragma('user_version', { simple: true })).toBe(35);
 
     const project = 'p-base';
     const sessionId = 's-base';
@@ -204,7 +204,7 @@ describe('WIR-01 — ingestSession end-to-end on both fixture shapes', () => {
     buildV17V32Fixture(db);
     db.pragma('user_version = 31');
     runMigrations(db);
-    expect(db.pragma('user_version', { simple: true })).toBe(34);
+    expect(db.pragma('user_version', { simple: true })).toBe(35);
 
     const project = 'p-v17';
     const sessionId = 's-v17';

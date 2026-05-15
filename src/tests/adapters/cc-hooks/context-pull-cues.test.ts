@@ -18,7 +18,7 @@ let db: TestDatabase;
 
 function seedDecision(summary: string, importance = 4): void {
   db.prepare(
-    `INSERT INTO sessions (session_id, project, cwd, source, created_at_epoch) VALUES (?, ?, ?, ?, unixepoch())`
+    `INSERT INTO sessions (session_id, project, cwd, source, created_at_epoch_ms) VALUES (?, ?, ?, ?, unixepoch())`
   ).run('seed-sess', 'test-proj', '/test', 'test');
   db.prepare(
     `INSERT INTO artifacts (session_id, project, artifact_type, summary, importance)

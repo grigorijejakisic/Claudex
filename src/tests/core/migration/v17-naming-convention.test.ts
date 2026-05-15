@@ -21,7 +21,7 @@ function seedMigratedWithAllKinds(): Database.Database {
     'mental_model',
   ];
   const stmt = db.prepare(`
-    INSERT INTO artifact(id, kind, body, created_at_epoch, updated_at_epoch)
+    INSERT INTO artifact(id, kind, body, created_at_epoch_ms, updated_at_epoch_ms)
     VALUES (?, ?, ?, ?, ?)
   `);
   for (const k of kinds) stmt.run(k + '-fixture', k, 'body', 0, 0);
@@ -63,7 +63,7 @@ describe('V17 artifact kind naming convention', () => {
     try {
       // Insert a deliberately-bad kind; the lint test MUST catch it.
       db.prepare(`
-        INSERT INTO artifact(id, kind, body, created_at_epoch, updated_at_epoch)
+        INSERT INTO artifact(id, kind, body, created_at_epoch_ms, updated_at_epoch_ms)
         VALUES (?, ?, ?, ?, ?)
       `).run('bad', 'SomeBadKind', 'body', 0, 0);
 

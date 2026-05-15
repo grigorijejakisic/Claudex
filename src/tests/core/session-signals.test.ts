@@ -62,9 +62,9 @@ describe('session-signals', () => {
   it('sweeps expired signals', () => {
     // Create a signal with past expiration
     db.prepare(
-      `INSERT INTO session_signals (session_id, project, signal_type, target, expires_at_epoch)
+      `INSERT INTO session_signals (session_id, project, signal_type, target, expires_at_epoch_ms)
        VALUES ('s1', 'p1', 'wip', 'x.ts', ?)`
-    ).run(Math.floor(Date.now() / 1000) - 100);
+    ).run(Date.now() - 100000);
 
     createSignal(db, 's2', 'p1', 'danger', 'y.ts'); // no expiry
 

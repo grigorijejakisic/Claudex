@@ -37,7 +37,7 @@ const EPISODIC_EVENTS_V25_COLUMNS = [
   'id',
   'session_id',
   'project',
-  'ts_epoch',
+  'ts_epoch_ms',
   'turn_number',
   'type',
   'source',

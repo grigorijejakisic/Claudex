@@ -19,7 +19,7 @@ const EXPECTED_COLUMNS = [
   'id',
   'session_id',
   'project',
-  'ts_epoch',
+  'ts_epoch_ms',
   'turn_number',
   'type',
   'source',
@@ -124,7 +124,7 @@ describe('Phase 1 Plan 01 — episodic_events V25 migration (EPI-01, EPI-02, EPI
       'turn_number',
       'user_text',
       'assistant_text',
-      'timestamp_epoch',
+      'timestamp_epoch_ms',
       'embedding',
     ]);
   });

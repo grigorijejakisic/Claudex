@@ -98,7 +98,7 @@ describe('matchTriggers', () => {
     const db = createDb();
     try {
       db.prepare(
-        `INSERT INTO sessions (session_id, status, observation_count, created_at_epoch)
+        `INSERT INTO sessions (session_id, status, observation_count, created_at_epoch_ms)
          VALUES ('s1', 'active', 0, 1000)`
       ).run();
 
@@ -123,7 +123,7 @@ describe('matchTriggers', () => {
     const db = createDb();
     try {
       db.prepare(
-        `INSERT INTO sessions (session_id, status, observation_count, created_at_epoch)
+        `INSERT INTO sessions (session_id, status, observation_count, created_at_epoch_ms)
          VALUES ('s1', 'active', 0, 1000)`
       ).run();
 

@@ -175,13 +175,13 @@ function ensureProjectDirs(): void {
 function seedSession(d: Database.Database, sessionId: string, project: string): void {
   createSession(d, { session_id: sessionId, project, cwd: '/tmp', source: 'test' });
   // Mark the session completed so auto-close detection won't touch it.
-  d.prepare(`UPDATE sessions SET status='completed', ended_at_epoch=? WHERE session_id=?`)
+  d.prepare(`UPDATE sessions SET status='completed', ended_at_epoch_ms=? WHERE session_id=?`)
     .run(Math.floor(Date.now() / 1000), sessionId);
 }
 
 function seedTurns(d: Database.Database, sessionId: string, project: string, count: number): void {
   const stmt = d.prepare(
-    `INSERT INTO conversation_turns(session_id, project, turn_number, user_text, assistant_text, timestamp_epoch)
+    `INSERT INTO conversation_turns(session_id, project, turn_number, user_text, assistant_text, timestamp_epoch_ms)
      VALUES (?, ?, ?, ?, ?, ?)`,
   );
   for (let i = 1; i <= count; i++) {
@@ -195,7 +195,7 @@ function seedEntities(
   entries: Array<{ ref: string; summary: string; importance?: number }>,
 ): void {
   const stmt = d.prepare(
-    `INSERT INTO artifacts (session_id, project, artifact_type, artifact_ref, summary, state, importance, timestamp_epoch)
+    `INSERT INTO artifacts (session_id, project, artifact_type, artifact_ref, summary, state, importance, timestamp_epoch_ms)
      VALUES ('angel', ?, 'entity_summary', ?, ?, 'fresh', ?, ?)`,
   );
   const now = Math.floor(Date.now() / 1000);
@@ -364,7 +364,7 @@ describe('Angel heartbeat — Phase 5b Session-completion artifact curation', ()
     seedSession(db, SESSION_A2, PROJECT_1);
     seedTurns(db, SESSION_A2, PROJECT_1, 3);
     db.prepare(
-      `INSERT INTO artifact (id, kind, title, body, status, created_at_epoch, updated_at_epoch, project, data)
+      `INSERT INTO artifact (id, kind, title, body, status, created_at_epoch_ms, updated_at_epoch_ms, project, data)
        VALUES (?, 'test_seed', 'tick3', 'body', 'active', ?, ?, ?, '{}')`,
     ).run(`active-${Date.now()}`, Date.now(), Date.now(), PROJECT_1);
     enqueueCuration(db, SESSION_A2, PROJECT_1);

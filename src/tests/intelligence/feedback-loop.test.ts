@@ -27,7 +27,7 @@ function createDb(): Database.Database {
   db.pragma('journal_mode = WAL');
   initializeSchema(db);
   db.prepare(
-    `INSERT INTO sessions (session_id, status, observation_count, created_at_epoch)
+    `INSERT INTO sessions (session_id, status, observation_count, created_at_epoch_ms)
      VALUES ('test-sess', 'active', 0, ?)`
   ).run(Math.floor(Date.now() / 1000));
   return db;
@@ -53,7 +53,7 @@ function getRetrievalEvents(db: Database.Database, sessionId: string) {
     query_text: string | null;
     was_referenced: number | null;
     correction_followed: number | null;
-    timestamp_epoch: number;
+    timestamp_epoch_ms: number;
   }>;
 }
 

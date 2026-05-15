@@ -43,7 +43,7 @@ const CANONICAL = {
   type: 'project' as const,
   slug: 'backendx-shadowban',
   frontmatter: {
-    created_at_epoch: Date.now(),
+    created_at_epoch_ms: Date.now(),
     telemetry: {
       tools_used: ['Bash', 'Read'],
       files_touched: ['src/scraper.ts'],
@@ -88,7 +88,7 @@ describe('Phase 4.1 substrate-validation probe set (Phase 6.5 hand-off)', () => 
       project,
       type: 'project',
       slug: 'shadowban-terse',
-      frontmatter: { ...CANONICAL.frontmatter, created_at_epoch: Date.now() + 1 },
+      frontmatter: { ...CANONICAL.frontmatter, created_at_epoch_ms: Date.now() + 1 },
       body: '# Backend X bans at 60 polls\n\n15-min IP ban triggered.',
     });
 
@@ -99,7 +99,7 @@ describe('Phase 4.1 substrate-validation probe set (Phase 6.5 hand-off)', () => 
       slug: 'shadowban-diff-file',
       frontmatter: {
         ...CANONICAL.frontmatter,
-        created_at_epoch: Date.now() + 2,
+        created_at_epoch_ms: Date.now() + 2,
         telemetry: { ...CANONICAL.frontmatter.telemetry, files_touched: ['src/poller.ts'] },
       },
       body: '# Same shadowban — different file path\n\nSame symptoms.',
@@ -112,7 +112,7 @@ describe('Phase 4.1 substrate-validation probe set (Phase 6.5 hand-off)', () => 
       slug: 'shadowban-subset',
       frontmatter: {
         ...CANONICAL.frontmatter,
-        created_at_epoch: Date.now() + 3,
+        created_at_epoch_ms: Date.now() + 3,
         telemetry: {
           ...CANONICAL.frontmatter.telemetry,
           user_framing_tokens: ['shadowban', 'rate-limit', 'polls', '15min'],
@@ -128,7 +128,7 @@ describe('Phase 4.1 substrate-validation probe set (Phase 6.5 hand-off)', () => 
       slug: 'shadowban-abstain',
       frontmatter: {
         ...CANONICAL.frontmatter,
-        created_at_epoch: Date.now() + 4,
+        created_at_epoch_ms: Date.now() + 4,
         shape: undefined,
       },
       body: '# Shape-abstained variant\n\nSame substrate.',
@@ -139,7 +139,7 @@ describe('Phase 4.1 substrate-validation probe set (Phase 6.5 hand-off)', () => 
       project,
       type: 'project',
       slug: 'shadowban-other-sess',
-      frontmatter: { ...CANONICAL.frontmatter, created_at_epoch: Date.now() + 5 },
+      frontmatter: { ...CANONICAL.frontmatter, created_at_epoch_ms: Date.now() + 5 },
       body: '# Other-session variant\n\nIdentical substrate.',
     });
 
@@ -164,7 +164,7 @@ describe('Phase 4.1 substrate-validation probe set (Phase 6.5 hand-off)', () => 
       slug: 'arc-shared',
       frontmatter: {
         ...CANONICAL.frontmatter,
-        created_at_epoch: Date.now() + 1,
+        created_at_epoch_ms: Date.now() + 1,
         telemetry: {
           ...CANONICAL.frontmatter.telemetry,
           session_arc: ['investigation', 'follow-up'], // shares 'investigation' with canonical
@@ -188,7 +188,7 @@ describe('Phase 4.1 substrate-validation probe set (Phase 6.5 hand-off)', () => 
       project,
       type: 'project',
       slug: 'shape-match',
-      frontmatter: { ...CANONICAL.frontmatter, created_at_epoch: Date.now() + 1 },
+      frontmatter: { ...CANONICAL.frontmatter, created_at_epoch_ms: Date.now() + 1 },
       body: '# Same shape\n\nbody',
     });
     // Variant with abstained shape
@@ -196,7 +196,7 @@ describe('Phase 4.1 substrate-validation probe set (Phase 6.5 hand-off)', () => 
       project,
       type: 'project',
       slug: 'shape-abstain',
-      frontmatter: { ...CANONICAL.frontmatter, created_at_epoch: Date.now() + 2, shape: undefined },
+      frontmatter: { ...CANONICAL.frontmatter, created_at_epoch_ms: Date.now() + 2, shape: undefined },
       body: '# Abstained\n\nbody',
     });
 
@@ -221,7 +221,7 @@ describe('Phase 4.1 substrate-validation probe set (Phase 6.5 hand-off)', () => 
       slug: 'duration-low',
       frontmatter: {
         ...CANONICAL.frontmatter,
-        created_at_epoch: Date.now() + 1,
+        created_at_epoch_ms: Date.now() + 1,
         telemetry: { ...CANONICAL.frontmatter.telemetry, duration_min: 5 },
       },
       body: '# Short\n\nbody',
@@ -232,7 +232,7 @@ describe('Phase 4.1 substrate-validation probe set (Phase 6.5 hand-off)', () => 
       slug: 'duration-high',
       frontmatter: {
         ...CANONICAL.frontmatter,
-        created_at_epoch: Date.now() + 2,
+        created_at_epoch_ms: Date.now() + 2,
         telemetry: { ...CANONICAL.frontmatter.telemetry, duration_min: 120 },
       },
       body: '# Long\n\nbody',

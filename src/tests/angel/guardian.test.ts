@@ -34,8 +34,11 @@ const config: RetentionConfig = { ...DEFAULT_RETENTION_CONFIG };
 /** Current unix epoch in seconds. */
 const now = () => Math.floor(Date.now() / 1000);
 
-/** Epoch `days` days ago. */
+/** Epoch `days` days ago (seconds). */
 const daysAgo = (days: number) => now() - days * 86_400;
+
+/** Epoch `days` days ago (milliseconds) — for *_epoch_ms columns. */
+const daysAgoMs = (days: number) => Date.now() - days * 86_400_000;
 
 /** Insert a minimal session row. Returns the session_id. */
 function insertSession(
@@ -44,22 +47,22 @@ function insertSession(
     session_id?: string;
     project?: string;
     status?: string;
-    ended_at_epoch?: number | null;
+    ended_at_epoch_ms?: number | null;
     observation_count?: number;
-    created_at_epoch?: number;
+    created_at_epoch_ms?: number;
   } = {},
 ): string {
   const session_id = opts.session_id ?? `sess-${Math.random().toString(36).slice(2)}`;
   db.prepare(
-    `INSERT INTO sessions (session_id, project, status, ended_at_epoch, observation_count, created_at_epoch)
+    `INSERT INTO sessions (session_id, project, status, ended_at_epoch_ms, observation_count, created_at_epoch_ms)
      VALUES (?, ?, ?, ?, ?, ?)`,
   ).run(
     session_id,
     opts.project ?? 'test-project',
     opts.status ?? 'completed',
-    opts.ended_at_epoch ?? now(),
+    opts.ended_at_epoch_ms ?? Date.now(),
     opts.observation_count ?? 0,
-    opts.created_at_epoch ?? now(),
+    opts.created_at_epoch_ms ?? Date.now(),
   );
   return session_id;
 }
@@ -81,7 +84,7 @@ function insertTurn(
   assistant_text: string | null = 'world',
 ): number {
   const result = db.prepare(
-    `INSERT INTO conversation_turns (session_id, project, user_text, assistant_text, timestamp_epoch)
+    `INSERT INTO conversation_turns (session_id, project, user_text, assistant_text, timestamp_epoch_ms)
      VALUES (?, ?, ?, ?, ?)`,
   ).run(session_id, project, user_text, assistant_text, now());
   return result.lastInsertRowid as number;
@@ -97,7 +100,7 @@ function insertArtifact(
     summary?: string;
     state?: string;
     importance?: number;
-    timestamp_epoch?: number;
+    timestamp_epoch_ms?: number;
     superseded_by?: number | null;
     activation_score?: number;
     artifact_ref?: string | null;
@@ -105,7 +108,7 @@ function insertArtifact(
 ): number {
   const result = db.prepare(
     `INSERT INTO artifacts
-       (session_id, project, artifact_type, summary, state, importance, timestamp_epoch,
+       (session_id, project, artifact_type, summary, state, importance, timestamp_epoch_ms,
         superseded_by, activation_score, artifact_ref)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
   ).run(
@@ -115,7 +118,7 @@ function insertArtifact(
     opts.summary ?? 'Test artifact',
     opts.state ?? 'fresh',
     opts.importance ?? 3,
-    opts.timestamp_epoch ?? now(),
+    opts.timestamp_epoch_ms ?? Date.now(),
     opts.superseded_by ?? null,
     opts.activation_score ?? 1.0,
     opts.artifact_ref ?? null,
@@ -128,12 +131,12 @@ function insertRetrievalEvent(
   db: Database.Database,
   artifact_id: number,
   was_referenced = 1,
-  timestamp_epoch?: number,
+  timestamp_epoch_ms?: number,
 ): void {
   db.prepare(
-    `INSERT INTO retrieval_events (artifact_id, session_id, was_referenced, timestamp_epoch)
+    `INSERT INTO retrieval_events (artifact_id, session_id, was_referenced, timestamp_epoch_ms)
      VALUES (?, 'sess-1', ?, ?)`,
-  ).run(artifact_id, was_referenced, timestamp_epoch ?? now());
+  ).run(artifact_id, was_referenced, timestamp_epoch_ms ?? now());
 }
 
 /** Insert a learning. Returns the row id. */
@@ -149,7 +152,7 @@ function insertLearning(
 ): number {
   const result = db.prepare(
     `INSERT INTO learnings (project, agent_id, fingerprint, content, promotion_count,
-       first_seen_epoch, last_promoted_epoch, updated_at_epoch)
+       first_seen_epoch, last_promoted_epoch, updated_at_epoch_ms)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
   ).run(
     opts.project ?? 'project-a',
@@ -172,7 +175,7 @@ function insertDecision(
     project?: string;
     fingerprint?: string;
     content?: string;
-    timestamp_epoch?: number;
+    timestamp_epoch_ms?: number;
   } = {},
 ): number {
   const session_id = opts.session_id ?? `sess-${Math.random().toString(36).slice(2)}`;
@@ -182,14 +185,14 @@ function insertDecision(
   ).run(session_id, opts.project ?? 'project-a');
 
   const result = db.prepare(
-    `INSERT INTO decisions (session_id, project, content, source, fingerprint, timestamp_epoch)
+    `INSERT INTO decisions (session_id, project, content, source, fingerprint, timestamp_epoch_ms)
      VALUES (?, ?, ?, 'explicit', ?, ?)`,
   ).run(
     session_id,
     opts.project ?? 'project-a',
     opts.content ?? 'Some decision',
     opts.fingerprint ?? `fp-${Math.random().toString(36).slice(2)}`,
-    opts.timestamp_epoch ?? now(),
+    opts.timestamp_epoch_ms ?? now(),
   );
   return result.lastInsertRowid as number;
 }
@@ -215,7 +218,7 @@ describe('Retention Sweep', () => {
   describe('pruneConversationTurns', () => {
     it('skeletal tier: nulls assistant_text for angel-processed sessions older than fullDays', () => {
       // Session ended 40 days ago (past fullDays=30, before skeletalDays=90)
-      const sessId = insertSession(db, { ended_at_epoch: daysAgo(40) });
+      const sessId = insertSession(db, { ended_at_epoch_ms: daysAgoMs(40) });
       markAngelProcessed(db, sessId);
       insertTurn(db, sessId);
 
@@ -232,7 +235,7 @@ describe('Retention Sweep', () => {
 
     it('delete tier: hard-deletes turns for angel-processed sessions older than skeletalDays', () => {
       // Session ended 100 days ago (past skeletalDays=90)
-      const sessId = insertSession(db, { ended_at_epoch: daysAgo(100) });
+      const sessId = insertSession(db, { ended_at_epoch_ms: daysAgoMs(100) });
       markAngelProcessed(db, sessId);
       insertTurn(db, sessId);
       insertTurn(db, sessId);
@@ -249,7 +252,7 @@ describe('Retention Sweep', () => {
 
     it('safety contract: never touches turns for sessions WITHOUT angel_processed event', () => {
       // Session ended 100 days ago but no angel_processed event
-      const sessId = insertSession(db, { ended_at_epoch: daysAgo(100) });
+      const sessId = insertSession(db, { ended_at_epoch_ms: daysAgoMs(100) });
       const turnId = insertTurn(db, sessId);
 
       const result = pruneConversationTurns(db, config);
@@ -264,7 +267,7 @@ describe('Retention Sweep', () => {
     });
 
     it('does not touch fresh sessions (ended recently) even with angel_processed', () => {
-      const sessId = insertSession(db, { ended_at_epoch: daysAgo(5) });
+      const sessId = insertSession(db, { ended_at_epoch_ms: daysAgoMs(5) });
       markAngelProcessed(db, sessId);
       const turnId = insertTurn(db, sessId);
 
@@ -277,7 +280,7 @@ describe('Retention Sweep', () => {
     });
 
     it('respects batch limit of 500', () => {
-      const sessId = insertSession(db, { ended_at_epoch: daysAgo(100) });
+      const sessId = insertSession(db, { ended_at_epoch_ms: daysAgoMs(100) });
       markAngelProcessed(db, sessId);
       // Insert 600 turns
       const insertMany = db.transaction(() => {
@@ -303,7 +306,7 @@ describe('Retention Sweep', () => {
       // Old superseded artifact
       const oldArtId = insertArtifact(db, {
         importance: 3,
-        timestamp_epoch: daysAgo(35),
+        timestamp_epoch_ms: daysAgoMs(35),
         superseded_by: newArtId,
       });
 
@@ -318,7 +321,7 @@ describe('Retention Sweep', () => {
       const newArtId = insertArtifact(db, { importance: 5 });
       const importantId = insertArtifact(db, {
         importance: 5,
-        timestamp_epoch: daysAgo(35),
+        timestamp_epoch_ms: daysAgoMs(35),
         superseded_by: newArtId,
       });
 
@@ -332,7 +335,7 @@ describe('Retention Sweep', () => {
       const artId = insertArtifact(db, {
         state: 'packed',
         importance: 2,
-        timestamp_epoch: daysAgo(65), // older than coldDeleteDays=60
+        timestamp_epoch_ms: daysAgoMs(65), // older than coldDeleteDays=60
       });
       // No retrieval events — truly cold
 
@@ -346,7 +349,7 @@ describe('Retention Sweep', () => {
       const artId = insertArtifact(db, {
         state: 'packed',
         importance: 5,
-        timestamp_epoch: daysAgo(65),
+        timestamp_epoch_ms: daysAgoMs(65),
       });
 
       pruneArtifacts(db, config);
@@ -362,9 +365,9 @@ describe('Retention Sweep', () => {
     it('deletes flow entries older than journalFlowRetentionDays (60d)', () => {
       const sessId = insertSession(db);
       db.prepare(
-        `INSERT INTO session_journal (session_id, project, entry_type, content, timestamp_epoch)
+        `INSERT INTO session_journal (session_id, project, entry_type, content, timestamp_epoch_ms)
          VALUES (?, 'test-project', 'flow', 'some flow', ?)`,
-      ).run(sessId, daysAgo(65));
+      ).run(sessId, daysAgoMs(65));
 
       const deleted = pruneSessionJournal(db, config);
 
@@ -374,9 +377,9 @@ describe('Retention Sweep', () => {
     it('deletes milestone entries older than journalMilestoneRetentionDays (180d)', () => {
       const sessId = insertSession(db);
       db.prepare(
-        `INSERT INTO session_journal (session_id, project, entry_type, content, timestamp_epoch)
+        `INSERT INTO session_journal (session_id, project, entry_type, content, timestamp_epoch_ms)
          VALUES (?, 'test-project', 'milestone', 'a milestone', ?)`,
-      ).run(sessId, daysAgo(185));
+      ).run(sessId, daysAgoMs(185));
 
       const deleted = pruneSessionJournal(db, config);
 
@@ -386,9 +389,9 @@ describe('Retention Sweep', () => {
     it('never deletes summary entries', () => {
       const sessId = insertSession(db);
       db.prepare(
-        `INSERT INTO session_journal (session_id, project, entry_type, content, timestamp_epoch)
+        `INSERT INTO session_journal (session_id, project, entry_type, content, timestamp_epoch_ms)
          VALUES (?, 'test-project', 'summary', 'session summary', ?)`,
-      ).run(sessId, daysAgo(500));
+      ).run(sessId, daysAgoMs(500));
 
       const deleted = pruneSessionJournal(db, config);
 
@@ -402,9 +405,9 @@ describe('Retention Sweep', () => {
     it('does not delete flow entries that are still within retention window', () => {
       const sessId = insertSession(db);
       db.prepare(
-        `INSERT INTO session_journal (session_id, project, entry_type, content, timestamp_epoch)
+        `INSERT INTO session_journal (session_id, project, entry_type, content, timestamp_epoch_ms)
          VALUES (?, 'test-project', 'flow', 'recent flow', ?)`,
-      ).run(sessId, daysAgo(10));
+      ).run(sessId, daysAgoMs(10));
 
       const deleted = pruneSessionJournal(db, config);
 
@@ -426,7 +429,7 @@ describe('Retention Sweep', () => {
       runRetentionSweep(db, config);
 
       // Insert something that would normally be pruned
-      const sessId = insertSession(db, { ended_at_epoch: daysAgo(100) });
+      const sessId = insertSession(db, { ended_at_epoch_ms: daysAgoMs(100) });
       markAngelProcessed(db, sessId);
       insertTurn(db, sessId);
 

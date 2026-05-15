@@ -23,7 +23,7 @@ function createDb(): Database.Database {
 
 function insertSession(db: Database.Database, sessionId: string, project: string = 'test'): void {
   db.prepare(
-    `INSERT INTO sessions (session_id, project, status, observation_count, created_at_epoch)
+    `INSERT INTO sessions (session_id, project, status, observation_count, created_at_epoch_ms)
      VALUES (?, ?, 'active', 0, ?)`
   ).run(sessionId, project, Math.floor(Date.now() / 1000));
 }
@@ -65,9 +65,9 @@ describe('recordEvent + getSessionEvents', () => {
 describe('synthesizeSessionSummary', () => {
   it('summarizes file edits with counts', () => {
     const events = [
-      { id: 1, session_id: 's', project: 'p', event_type: 'file_edit' as const, entity: 'src/foo.ts', action: 'modified', detail: null, timestamp_epoch: 1000 },
-      { id: 2, session_id: 's', project: 'p', event_type: 'file_edit' as const, entity: 'src/foo.ts', action: 'modified', detail: null, timestamp_epoch: 1001 },
-      { id: 3, session_id: 's', project: 'p', event_type: 'file_edit' as const, entity: 'src/bar.ts', action: 'modified', detail: null, timestamp_epoch: 1002 },
+      { id: 1, session_id: 's', project: 'p', event_type: 'file_edit' as const, entity: 'src/foo.ts', action: 'modified', detail: null, timestamp_epoch_ms: 1000 },
+      { id: 2, session_id: 's', project: 'p', event_type: 'file_edit' as const, entity: 'src/foo.ts', action: 'modified', detail: null, timestamp_epoch_ms: 1001 },
+      { id: 3, session_id: 's', project: 'p', event_type: 'file_edit' as const, entity: 'src/bar.ts', action: 'modified', detail: null, timestamp_epoch_ms: 1002 },
     ];
 
     const summary = synthesizeSessionSummary(events);
@@ -77,8 +77,8 @@ describe('synthesizeSessionSummary', () => {
 
   it('summarizes test runs', () => {
     const events = [
-      { id: 1, session_id: 's', project: 'p', event_type: 'test_run' as const, entity: 'vitest', action: 'passed', detail: null, timestamp_epoch: 1000 },
-      { id: 2, session_id: 's', project: 'p', event_type: 'test_run' as const, entity: 'vitest', action: 'failed', detail: null, timestamp_epoch: 1001 },
+      { id: 1, session_id: 's', project: 'p', event_type: 'test_run' as const, entity: 'vitest', action: 'passed', detail: null, timestamp_epoch_ms: 1000 },
+      { id: 2, session_id: 's', project: 'p', event_type: 'test_run' as const, entity: 'vitest', action: 'failed', detail: null, timestamp_epoch_ms: 1001 },
     ];
 
     const summary = synthesizeSessionSummary(events);
@@ -92,7 +92,7 @@ describe('synthesizeSessionSummary', () => {
 
   it('includes decisions', () => {
     const events = [
-      { id: 1, session_id: 's', project: 'p', event_type: 'decision' as const, entity: 'architecture', action: 'decided', detail: 'Use async file I/O', timestamp_epoch: 1000 },
+      { id: 1, session_id: 's', project: 'p', event_type: 'decision' as const, entity: 'architecture', action: 'decided', detail: 'Use async file I/O', timestamp_epoch_ms: 1000 },
     ];
 
     const summary = synthesizeSessionSummary(events);
@@ -102,8 +102,8 @@ describe('synthesizeSessionSummary', () => {
 
   it('summarizes file_read events', () => {
     const events = [
-      { id: 1, session_id: 's', project: 'p', event_type: 'file_read' as const, entity: 'src/foo.ts', action: 'read', detail: null, timestamp_epoch: 1000 },
-      { id: 2, session_id: 's', project: 'p', event_type: 'file_read' as const, entity: 'src/bar.ts', action: 'read', detail: null, timestamp_epoch: 1001 },
+      { id: 1, session_id: 's', project: 'p', event_type: 'file_read' as const, entity: 'src/foo.ts', action: 'read', detail: null, timestamp_epoch_ms: 1000 },
+      { id: 2, session_id: 's', project: 'p', event_type: 'file_read' as const, entity: 'src/bar.ts', action: 'read', detail: null, timestamp_epoch_ms: 1001 },
     ];
     const summary = synthesizeSessionSummary(events);
     expect(summary).toContain('read 2 files');
@@ -111,8 +111,8 @@ describe('synthesizeSessionSummary', () => {
 
   it('summarizes search events', () => {
     const events = [
-      { id: 1, session_id: 's', project: 'p', event_type: 'search' as const, entity: 'grep:getExperienceFlags', action: 'searched', detail: null, timestamp_epoch: 1000 },
-      { id: 2, session_id: 's', project: 'p', event_type: 'search' as const, entity: 'glob:**/*.ts', action: 'searched', detail: null, timestamp_epoch: 1001 },
+      { id: 1, session_id: 's', project: 'p', event_type: 'search' as const, entity: 'grep:getExperienceFlags', action: 'searched', detail: null, timestamp_epoch_ms: 1000 },
+      { id: 2, session_id: 's', project: 'p', event_type: 'search' as const, entity: 'glob:**/*.ts', action: 'searched', detail: null, timestamp_epoch_ms: 1001 },
     ];
     const summary = synthesizeSessionSummary(events);
     expect(summary).toContain('2 searches');
@@ -120,9 +120,9 @@ describe('synthesizeSessionSummary', () => {
 
   it('summarizes command events (unique count)', () => {
     const events = [
-      { id: 1, session_id: 's', project: 'p', event_type: 'command' as const, entity: 'node -e "test"', action: 'executed', detail: null, timestamp_epoch: 1000 },
-      { id: 2, session_id: 's', project: 'p', event_type: 'command' as const, entity: 'git status', action: 'executed', detail: null, timestamp_epoch: 1001 },
-      { id: 3, session_id: 's', project: 'p', event_type: 'command' as const, entity: 'node -e "test"', action: 'executed', detail: null, timestamp_epoch: 1002 },
+      { id: 1, session_id: 's', project: 'p', event_type: 'command' as const, entity: 'node -e "test"', action: 'executed', detail: null, timestamp_epoch_ms: 1000 },
+      { id: 2, session_id: 's', project: 'p', event_type: 'command' as const, entity: 'git status', action: 'executed', detail: null, timestamp_epoch_ms: 1001 },
+      { id: 3, session_id: 's', project: 'p', event_type: 'command' as const, entity: 'node -e "test"', action: 'executed', detail: null, timestamp_epoch_ms: 1002 },
     ];
     const summary = synthesizeSessionSummary(events);
     expect(summary).toContain('2 commands'); // "node -e test" deduped
@@ -130,10 +130,10 @@ describe('synthesizeSessionSummary', () => {
 
   it('handles mixed old + new event types', () => {
     const events = [
-      { id: 1, session_id: 's', project: 'p', event_type: 'file_edit' as const, entity: 'src/foo.ts', action: 'modified', detail: null, timestamp_epoch: 1000 },
-      { id: 2, session_id: 's', project: 'p', event_type: 'file_read' as const, entity: 'src/bar.ts', action: 'read', detail: null, timestamp_epoch: 1001 },
-      { id: 3, session_id: 's', project: 'p', event_type: 'search' as const, entity: 'grep:TODO', action: 'searched', detail: null, timestamp_epoch: 1002 },
-      { id: 4, session_id: 's', project: 'p', event_type: 'test_run' as const, entity: 'vitest', action: 'passed', detail: null, timestamp_epoch: 1003 },
+      { id: 1, session_id: 's', project: 'p', event_type: 'file_edit' as const, entity: 'src/foo.ts', action: 'modified', detail: null, timestamp_epoch_ms: 1000 },
+      { id: 2, session_id: 's', project: 'p', event_type: 'file_read' as const, entity: 'src/bar.ts', action: 'read', detail: null, timestamp_epoch_ms: 1001 },
+      { id: 3, session_id: 's', project: 'p', event_type: 'search' as const, entity: 'grep:TODO', action: 'searched', detail: null, timestamp_epoch_ms: 1002 },
+      { id: 4, session_id: 's', project: 'p', event_type: 'test_run' as const, entity: 'vitest', action: 'passed', detail: null, timestamp_epoch_ms: 1003 },
     ];
     const summary = synthesizeSessionSummary(events);
     expect(summary).toContain('edited');

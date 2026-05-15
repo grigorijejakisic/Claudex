@@ -30,7 +30,7 @@ describe('Phase 6 cursor replay across simulated mid-tick fault', () => {
     tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'phase6-replay-'));
     for (const sid of ['s1', 's2', 's3']) {
       db.prepare(
-        `INSERT INTO sessions (session_id, project, status, created_at_epoch,
+        `INSERT INTO sessions (session_id, project, status, created_at_epoch_ms,
                                last_heartbeat_ts, last_jsonl_write_ts)
          VALUES (?, 'proj-a', 'active', ?, ?, ?)`
       ).run(sid, NOW - 1000, NOW - 35 * 60, NOW - 35 * 60);

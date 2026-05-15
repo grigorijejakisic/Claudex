@@ -24,7 +24,7 @@ function createDb(): Database.Database {
   d.pragma('foreign_keys = ON');
   initializeSchema(d);
   d.prepare(
-    `INSERT INTO sessions (session_id, project, status, observation_count, created_at_epoch)
+    `INSERT INTO sessions (session_id, project, status, observation_count, created_at_epoch_ms)
      VALUES (?, ?, 'active', 0, ?)`,
   ).run(SESSION_ID, PROJECT, Math.floor(Date.now() / 1000));
   return d;

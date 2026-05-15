@@ -154,19 +154,19 @@ describe('V33→V34 migration (Phase 14 Plan 14-02)', () => {
     expect(cols).not.toContain('project_id');
   });
 
-  // --- Test 2: user_version reaches 34
-  it('T2: TARGET_USER_VERSION is 34 and fresh-DB reaches it', () => {
-    expect(TARGET_USER_VERSION).toBe(34);
+  // --- Test 2: user_version reaches current TARGET_USER_VERSION (bumped to 35 by Plan 14-06)
+  it('T2: TARGET_USER_VERSION is 35 and fresh-DB reaches it', () => {
+    expect(TARGET_USER_VERSION).toBe(35);
     db = freshDb();
     const uv = (db.pragma('user_version') as Array<{ user_version: number }>)[0].user_version;
-    expect(uv).toBe(34);
+    expect(uv).toBe(35);
   });
 
   // --- Test 3: INSERT + SELECT round-trip using `project` column
   it('T3: INSERT into artifact.project and SELECT project round-trips correctly', () => {
     db = freshDb();
     db.prepare(
-      `INSERT INTO artifact (id, kind, body, created_at_epoch, updated_at_epoch, project)
+      `INSERT INTO artifact (id, kind, body, created_at_epoch_ms, updated_at_epoch_ms, project)
        VALUES ('rt-1', 'decision', 'body', 1000, 1000, 'my-project')`,
     ).run();
     const row = db.prepare('SELECT project FROM artifact WHERE id = ?').get('rt-1') as { project: string };

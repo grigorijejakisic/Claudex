@@ -47,9 +47,9 @@ function seedArtifactWithFingerprint(
   db: Database.Database, id: number, sessionId: string, project: string,
   type: string, summary: string, content: string, taskPattern: string,
 ): void {
-  const ts = Math.floor(Date.now() / 1000);
+  const ts = Date.now();
   db.prepare(
-    `INSERT INTO artifacts (id, session_id, project, artifact_type, summary, content, importance, timestamp_epoch)
+    `INSERT INTO artifacts (id, session_id, project, artifact_type, summary, content, importance, timestamp_epoch_ms)
        VALUES (?, ?, ?, ?, ?, ?, 3, ?)`
   ).run(id, sessionId, project, type, summary, content, ts);
   db.prepare(

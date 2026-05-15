@@ -32,7 +32,7 @@ describe('Angel Message Sender', () => {
       expect(row.sender).toBe('angel');
       expect(row.message_type).toBe('advisory');
       expect(row.priority).toBe('normal');
-      expect(row.delivered_at_epoch).toBeNull();
+      expect(row.delivered_at_epoch_ms).toBeNull();
     });
 
     it('supports different message types and priorities', () => {
@@ -112,13 +112,13 @@ describe('Angel Message Sender', () => {
   });
 
   describe('markMessagesDelivered', () => {
-    it('sets delivered_at_epoch on messages', () => {
+    it('sets delivered_at_epoch_ms on messages', () => {
       sendMessage(db, 'session-1', 'msg 1');
       const pending = getPendingMessages(db, 'session-1');
       markMessagesDelivered(db, [pending[0].id]);
 
-      const row = db.prepare('SELECT delivered_at_epoch FROM session_messages WHERE id = ?').get(pending[0].id) as Record<string, unknown>;
-      expect(row.delivered_at_epoch).toBeGreaterThan(0);
+      const row = db.prepare('SELECT delivered_at_epoch_ms FROM session_messages WHERE id = ?').get(pending[0].id) as Record<string, unknown>;
+      expect(row.delivered_at_epoch_ms).toBeGreaterThan(0);
     });
 
     it('handles empty array gracefully', () => {

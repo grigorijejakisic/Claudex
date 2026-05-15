@@ -43,7 +43,7 @@ function makeLearning(content: string, count: number): LearningRow {
   return {
     id: 1, project: 'p', agent_id: 'default', fingerprint: 'fp',
     content, promotion_count: count,
-    first_seen_epoch: nowEpoch, last_promoted_epoch: nowEpoch, updated_at_epoch: nowEpoch,
+    first_seen_epoch: nowEpoch, last_promoted_epoch: nowEpoch, updated_at_epoch_ms: nowEpoch,
   };
 }
 
@@ -784,7 +784,7 @@ describe('formatFlowSection', () => {
     return {
       id: 1, session_id: 's1', project: 'p',
       content, entry_type: type as any,
-      timestamp_epoch: nowEpoch - ageSeconds,
+      timestamp_epoch_ms: nowEpoch - ageSeconds,
     };
   }
 
@@ -840,8 +840,8 @@ describe('formatReferenceLayer', () => {
       artifact_type: artifactType, artifact_ref: null,
       summary, content: null,
       state: 'packed' as any, ttl: 0, importance,
-      timestamp_epoch: nowEpoch,
-      last_materialized_epoch: null,
+      timestamp_epoch_ms: nowEpoch,
+      last_materialized_epoch_ms: null,
     };
   }
 
@@ -894,8 +894,8 @@ describe('formatMaterializationLayer', () => {
       artifact_type: artifactType, artifact_ref: null,
       summary, content,
       state: 'materialized' as any, ttl: 2, importance: 3,
-      timestamp_epoch: nowEpoch,
-      last_materialized_epoch: nowEpoch,
+      timestamp_epoch_ms: nowEpoch,
+      last_materialized_epoch_ms: nowEpoch,
     };
   }
 
@@ -963,8 +963,8 @@ describe('formatMaterializationLayer', () => {
       artifact_type: 'observation', artifact_ref: null,
       summary: 'No content', content: null,
       state: 'materialized' as any, ttl: 2, importance: 3,
-      timestamp_epoch: nowEpoch,
-      last_materialized_epoch: nowEpoch,
+      timestamp_epoch_ms: nowEpoch,
+      last_materialized_epoch_ms: nowEpoch,
     } as ArtifactRow];
     expect(formatMaterializationLayer(artifacts)).toBeNull();
   });

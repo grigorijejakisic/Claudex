@@ -158,7 +158,7 @@ describe('Phase 8 ingestion hook — end-to-end', () => {
     const sessionId = 's-3';
     const jsonlPath = writeFakeJsonl(4, project, sessionId);
     createSession(db, { session_id: sessionId, project, cwd: '/tmp', source: 'test' });
-    db.prepare(`UPDATE sessions SET status='completed', ended_at_epoch=? WHERE session_id=?`)
+    db.prepare(`UPDATE sessions SET status='completed', ended_at_epoch_ms=? WHERE session_id=?`)
       .run(Math.floor(Date.now() / 1000), sessionId);
     emitCleanEndsessionClose(db, sessionId, project);
     enqueueSessionIngestion(db, sessionId, project, jsonlPath);

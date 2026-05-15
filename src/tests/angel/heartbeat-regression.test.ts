@@ -92,7 +92,7 @@ describe('Services-down interval override (regression)', () => {
       CREATE TABLE sessions (
         session_id TEXT PRIMARY KEY,
         status TEXT NOT NULL,
-        created_at_epoch INTEGER NOT NULL
+        created_at_epoch_ms INTEGER NOT NULL
       );
       CREATE TABLE observations (id INTEGER PRIMARY KEY, processed INTEGER DEFAULT 0);
       CREATE TABLE artifacts (id INTEGER PRIMARY KEY, embedding BLOB);

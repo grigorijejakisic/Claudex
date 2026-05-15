@@ -27,7 +27,7 @@ describe('session journal CRUD', () => {
     expect(entries[0].project).toBe('myapp');
     expect(entries[0].entry_type).toBe('flow');
     expect(entries[0].content).toBe('pivoted from REST to gRPC');
-    expect(entries[0].timestamp_epoch).toBeGreaterThan(0);
+    expect(entries[0].timestamp_epoch_ms).toBeGreaterThan(0);
   });
 
   it('addJournalEntry inserts a milestone entry', () => {
@@ -94,11 +94,11 @@ describe('session journal CRUD', () => {
   it('getJournalBySession returns newest first', () => {
     // Insert with explicit timestamps to guarantee order
     db.prepare(
-      `INSERT INTO session_journal (session_id, project, entry_type, content, timestamp_epoch)
+      `INSERT INTO session_journal (session_id, project, entry_type, content, timestamp_epoch_ms)
        VALUES (?, ?, ?, ?, ?)`
     ).run('s1', 'myapp', 'flow', 'older', 1000);
     db.prepare(
-      `INSERT INTO session_journal (session_id, project, entry_type, content, timestamp_epoch)
+      `INSERT INTO session_journal (session_id, project, entry_type, content, timestamp_epoch_ms)
        VALUES (?, ?, ?, ?, ?)`
     ).run('s1', 'myapp', 'flow', 'newer', 2000);
 
@@ -114,11 +114,11 @@ describe('session journal CRUD', () => {
 
   it('getRecentFlow returns flow entries for project, newest first', () => {
     db.prepare(
-      `INSERT INTO session_journal (session_id, project, entry_type, content, timestamp_epoch)
+      `INSERT INTO session_journal (session_id, project, entry_type, content, timestamp_epoch_ms)
        VALUES (?, ?, ?, ?, ?)`
     ).run('s1', 'myapp', 'flow', 'old flow', 1000);
     db.prepare(
-      `INSERT INTO session_journal (session_id, project, entry_type, content, timestamp_epoch)
+      `INSERT INTO session_journal (session_id, project, entry_type, content, timestamp_epoch_ms)
        VALUES (?, ?, ?, ?, ?)`
     ).run('s2', 'myapp', 'flow', 'new flow', 2000);
     addJournalEntry(db, 's1', 'myapp', 'milestone', 'not a flow');

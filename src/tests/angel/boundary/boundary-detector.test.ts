@@ -23,7 +23,7 @@ function insertSession(db: Database.Database, opts: {
 }) {
   db.prepare(
     `INSERT INTO sessions
-       (session_id, project, status, created_at_epoch,
+       (session_id, project, status, created_at_epoch_ms,
         last_heartbeat_ts, last_jsonl_write_ts)
      VALUES (?, ?, ?, ?, ?, ?)`
   ).run(

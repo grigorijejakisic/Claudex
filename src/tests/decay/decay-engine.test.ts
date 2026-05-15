@@ -23,30 +23,30 @@ function seedObservation(overrides: Partial<{
   project: string;
   importance: number;
   files_modified: string;
-  timestamp_epoch: number;
+  timestamp_epoch_ms: number;
   access_count: number;
-  last_accessed_at_epoch: number | null;
-  deleted_at_epoch: number | null;
+  last_accessed_at_epoch_ms: number | null;
+  deleted_at_epoch_ms: number | null;
 }> = {}): number {
   const result = db.prepare(
-    `INSERT INTO observations (session_id, project, tool_name, category, title, content, importance, files_modified, timestamp_epoch, access_count, last_accessed_at_epoch, deleted_at_epoch)
+    `INSERT INTO observations (session_id, project, tool_name, category, title, content, importance, files_modified, timestamp_epoch_ms, access_count, last_accessed_at_epoch_ms, deleted_at_epoch_ms)
      VALUES (?, ?, 'Read', 'code', 'test', 'test content', ?, ?, ?, ?, ?, ?)`
   ).run(
     overrides.session_id ?? 'sess-1',
     overrides.project ?? 'proj-1',
     overrides.importance ?? 3,
     overrides.files_modified ?? '[]',
-    overrides.timestamp_epoch ?? Math.floor(Date.now() / 1000),
+    overrides.timestamp_epoch_ms ?? Date.now(),
     overrides.access_count ?? 0,
-    overrides.last_accessed_at_epoch ?? null,
-    overrides.deleted_at_epoch ?? null,
+    overrides.last_accessed_at_epoch_ms ?? null,
+    overrides.deleted_at_epoch_ms ?? null,
   );
   return Number(result.lastInsertRowid);
 }
 
 describe('computeEI', () => {
   it('returns correct EI for fresh importance-3 observation with zero access', () => {
-    const now = Date.now() / 1000;
+    const now = Date.now();
     const ei = computeEI({
       importance: 3,
       accessCount: 0,
@@ -59,7 +59,7 @@ describe('computeEI', () => {
   });
 
   it('access factor increases with access count (diminishing returns)', () => {
-    const now = Date.now() / 1000;
+    const now = Date.now();
     const ei = computeEI({
       importance: 3,
       accessCount: 7,
@@ -73,8 +73,8 @@ describe('computeEI', () => {
   });
 
   it('decay factor decreases with age', () => {
-    const now = Date.now() / 1000;
-    const fourteenDaysAgo = now - 14 * 86400;
+    const now = Date.now();
+    const fourteenDaysAgo = now - 14 * 86400000;
     const ei = computeEI({
       importance: 2,
       accessCount: 0,
@@ -88,7 +88,7 @@ describe('computeEI', () => {
   });
 
   it('effective half-life extended by access count', () => {
-    const now = Date.now() / 1000;
+    const now = Date.now();
     const ei = computeEI({
       importance: 1,
       accessCount: 10,
@@ -103,7 +103,7 @@ describe('computeEI', () => {
   });
 
   it('connectivity bonus increases with co-occurrences (capped at 5)', () => {
-    const now = Date.now() / 1000;
+    const now = Date.now();
     const ei = computeEI({
       importance: 3,
       accessCount: 0,
@@ -117,8 +117,8 @@ describe('computeEI', () => {
   });
 
   it('importance-5 observations have high EI even when old', () => {
-    const now = Date.now() / 1000;
-    const threeHundredDaysAgo = now - 300 * 86400;
+    const now = Date.now();
+    const threeHundredDaysAgo = now - 300 * 86400000;
     const ei = computeEI({
       importance: 5,
       accessCount: 0,
@@ -132,8 +132,8 @@ describe('computeEI', () => {
   });
 
   it('importance-1 observations decay rapidly', () => {
-    const now = Date.now() / 1000;
-    const fourteenDaysAgo = now - 14 * 86400;
+    const now = Date.now();
+    const fourteenDaysAgo = now - 14 * 86400000;
     const ei = computeEI({
       importance: 1,
       accessCount: 0,
@@ -204,7 +204,7 @@ describe('pruneObservations', () => {
     expect(pruned).toBe(50);
 
     // Verify soft-deleted
-    const deleted = db.prepare('SELECT COUNT(*) as cnt FROM observations WHERE deleted_at_epoch IS NOT NULL').get() as { cnt: number };
+    const deleted = db.prepare('SELECT COUNT(*) as cnt FROM observations WHERE deleted_at_epoch_ms IS NOT NULL').get() as { cnt: number };
     expect(deleted.cnt).toBe(50);
   });
 
@@ -217,7 +217,7 @@ describe('pruneObservations', () => {
   });
 
   it('never prunes frequently-accessed recent observations', () => {
-    const recentEpoch = Math.floor(Date.now() / 1000) - 30 * 86400; // 30 days ago
+    const recentEpoch = Date.now() - 30 * 86400000; // 30 days ago
 
     // Seed 1010 obs: 1000 low importance + 10 low importance but high access
     for (let i = 0; i < 1000; i++) seedObservation({ importance: 1 });
@@ -225,7 +225,7 @@ describe('pruneObservations', () => {
       seedObservation({
         importance: 1,
         access_count: 5,
-        last_accessed_at_epoch: recentEpoch,
+        last_accessed_at_epoch_ms: recentEpoch,
       });
     }
 
@@ -234,7 +234,7 @@ describe('pruneObservations', () => {
 
     // Verify the frequently-accessed ones were NOT pruned
     const accessedAlive = db.prepare(
-      'SELECT COUNT(*) as cnt FROM observations WHERE access_count >= 5 AND deleted_at_epoch IS NULL'
+      'SELECT COUNT(*) as cnt FROM observations WHERE access_count >= 5 AND deleted_at_epoch_ms IS NULL'
     ).get() as { cnt: number };
     expect(accessedAlive.cnt).toBe(10);
   });
@@ -287,8 +287,8 @@ describe('getCoOccurrences — execution bounds (REC-15)', () => {
 
 describe('applyRetentionPolicy', () => {
   it('hard-deletes soft-deleted observations older than retention_days', () => {
-    const oldEpoch = Math.floor(Date.now() / 1000) - 100 * 86400;
-    seedObservation({ deleted_at_epoch: oldEpoch, timestamp_epoch: oldEpoch });
+    const oldEpoch = Date.now() - 100 * 86400000;
+    seedObservation({ deleted_at_epoch_ms: oldEpoch, timestamp_epoch_ms: oldEpoch });
 
     const deleted = applyRetentionPolicy(db, 'proj-1', 90);
     expect(deleted).toBe(1);
@@ -298,16 +298,16 @@ describe('applyRetentionPolicy', () => {
   });
 
   it('hard-deletes old non-deleted observations with importance < 5', () => {
-    const oldEpoch = Math.floor(Date.now() / 1000) - 100 * 86400;
-    seedObservation({ importance: 2, timestamp_epoch: oldEpoch });
+    const oldEpoch = Date.now() - 100 * 86400000;
+    seedObservation({ importance: 2, timestamp_epoch_ms: oldEpoch });
 
     const deleted = applyRetentionPolicy(db, 'proj-1', 90);
     expect(deleted).toBe(1);
   });
 
   it('preserves importance-5 observations regardless of age', () => {
-    const oldEpoch = Math.floor(Date.now() / 1000) - 200 * 86400;
-    seedObservation({ importance: 5, timestamp_epoch: oldEpoch });
+    const oldEpoch = Date.now() - 200 * 86400000;
+    seedObservation({ importance: 5, timestamp_epoch_ms: oldEpoch });
 
     const deleted = applyRetentionPolicy(db, 'proj-1', 90);
     expect(deleted).toBe(0);
@@ -317,8 +317,8 @@ describe('applyRetentionPolicy', () => {
   });
 
   it('preserves soft-deleted observations within retention window', () => {
-    const recentDelete = Math.floor(Date.now() / 1000) - 30 * 86400;
-    seedObservation({ deleted_at_epoch: recentDelete, timestamp_epoch: recentDelete });
+    const recentDelete = Date.now() - 30 * 86400000;
+    seedObservation({ deleted_at_epoch_ms: recentDelete, timestamp_epoch_ms: recentDelete });
 
     const deleted = applyRetentionPolicy(db, 'proj-1', 90);
     expect(deleted).toBe(0);
@@ -363,8 +363,8 @@ describe('classifyStability', () => {
 
 describe('stability-aware computeEI', () => {
   it('transient error observation decays faster than stable architecture at same importance', () => {
-    const now = Date.now() / 1000;
-    const fourteenDaysAgo = now - 14 * 86400;
+    const now = Date.now();
+    const fourteenDaysAgo = now - 14 * 86400000;
 
     const transientEI = computeEI({
       importance: 3,
@@ -390,8 +390,8 @@ describe('stability-aware computeEI', () => {
   });
 
   it('importance-5 stable observation never decays (Infinity half-life)', () => {
-    const now = Date.now() / 1000;
-    const yearAgo = now - 365 * 86400;
+    const now = Date.now();
+    const yearAgo = now - 365 * 86400000;
 
     const ei = computeEI({
       importance: 5,
@@ -408,8 +408,8 @@ describe('stability-aware computeEI', () => {
   });
 
   it('permanent observations never decay regardless of importance', () => {
-    const now = Date.now() / 1000;
-    const yearAgo = now - 365 * 86400;
+    const now = Date.now();
+    const yearAgo = now - 365 * 86400000;
 
     const ei = computeEI({
       importance: 1,
@@ -426,8 +426,8 @@ describe('stability-aware computeEI', () => {
   });
 
   it('falls back to standard when stabilityClass is null or undefined', () => {
-    const now = Date.now() / 1000;
-    const sevenDaysAgo = now - 7 * 86400;
+    const now = Date.now();
+    const sevenDaysAgo = now - 7 * 86400000;
 
     const eiNull = computeEI({
       importance: 1,

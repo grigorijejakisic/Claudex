@@ -48,7 +48,7 @@ describe('lesson-writer', () => {
       type: 'feedback',
       slug: 'check-deps',
       frontmatter: {
-        created_at_epoch: Date.now(),
+        created_at_epoch_ms: Date.now(),
         telemetry: baseTelemetry(),
         shape: { task_shape: 'code-edit-with-existing-deps' },
       },
@@ -69,7 +69,7 @@ describe('lesson-writer', () => {
       type: 'project',
       slug: 'mozzart-429',
       frontmatter: {
-        created_at_epoch: Date.now(),
+        created_at_epoch_ms: Date.now(),
         telemetry: baseTelemetry(),
         // shape omitted = abstain
       },
@@ -87,7 +87,7 @@ describe('lesson-writer', () => {
       type: 'process',
       slug: 'trajectory-1',
       frontmatter: {
-        created_at_epoch: Date.now(),
+        created_at_epoch_ms: Date.now(),
         telemetry: { ...baseTelemetry(), triggered_by: ['corrections', 'pivots'] },
         shape: {
           task_shape: 'design-discussion-before-commit',
@@ -111,7 +111,7 @@ describe('lesson-writer', () => {
       project,
       type: 'feedback' as const,
       slug: 'idem',
-      frontmatter: { created_at_epoch: 1700000000000, telemetry: baseTelemetry() },
+      frontmatter: { created_at_epoch_ms: 1700000000000, telemetry: baseTelemetry() },
       body: '# Idempotent body\n\nSame content twice.',
     };
     const filePath1 = writeLesson(params);
@@ -129,7 +129,7 @@ describe('lesson-writer', () => {
       project,
       type: 'feedback',
       slug: 'empty',
-      frontmatter: { created_at_epoch: 1700000000000, telemetry: baseTelemetry() },
+      frontmatter: { created_at_epoch_ms: 1700000000000, telemetry: baseTelemetry() },
       body: '   \n\n',
     })).toThrow(/body cannot be empty/i);
   });
@@ -140,7 +140,7 @@ describe('lesson-writer', () => {
       type: 'feedback',
       slug: 'no-telem',
       frontmatter: {
-        created_at_epoch: 1700000000000,
+        created_at_epoch_ms: 1700000000000,
         telemetry: {
           // tools_used missing
           files_touched: [],
@@ -155,13 +155,13 @@ describe('lesson-writer', () => {
     })).toThrow(/Telemetry handles incomplete/i);
   });
 
-  it('rejects pre-1e12 created_at_epoch (CUR-14 wedge)', () => {
+  it('rejects pre-1e12 created_at_epoch_ms (CUR-14 wedge)', () => {
     expect(() => writeLesson({
       project,
       type: 'feedback',
       slug: 'old-epoch',
       frontmatter: {
-        created_at_epoch: 1700000000, // seconds-precision (10-digit)
+        created_at_epoch_ms: 1700000000, // seconds-precision (10-digit)
         telemetry: baseTelemetry(),
       },
       body: '# Body',
@@ -175,7 +175,7 @@ describe('lesson-writer', () => {
 
   it('renderLessonFrontmatter omits shape block when all fields are null', () => {
     const yaml = renderLessonFrontmatter('feedback', {
-      created_at_epoch: 1700000000000,
+      created_at_epoch_ms: 1700000000000,
       telemetry: baseTelemetry(),
       shape: { task_shape: undefined, failure_mode: undefined, solution_pattern: undefined },
     });

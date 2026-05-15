@@ -62,14 +62,14 @@ function setupDb(): { db: TestDatabase; sessionId: string; project: string } {
   const ctx = createTestDbWithSession('itg-sess', 'itg-proj');
   applyV17DDL(ctx.db);
   // Mark the seeded session as completed so getUnprocessedSessions picks it up.
-  ctx.db.prepare(`UPDATE sessions SET status = 'completed', ended_at_epoch = ? WHERE session_id = ?`)
+  ctx.db.prepare(`UPDATE sessions SET status = 'completed', ended_at_epoch_ms = ? WHERE session_id = ?`)
     .run(Math.floor(Date.now() / 1000), ctx.sessionId);
   return ctx;
 }
 
 function seedTurn(db: TestDatabase, sessionId: string, project: string, n: number, user: string): void {
   db.prepare(
-    `INSERT INTO conversation_turns(session_id, project, turn_number, user_text, timestamp_epoch)
+    `INSERT INTO conversation_turns(session_id, project, turn_number, user_text, timestamp_epoch_ms)
      VALUES (?, ?, ?, ?, ?)`,
   ).run(sessionId, project, n, user, 1000 + n);
 }

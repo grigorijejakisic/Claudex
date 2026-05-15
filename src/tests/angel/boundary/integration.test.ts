@@ -34,7 +34,7 @@ describe('Phase 6 boundary detector — single-process integration', () => {
 
   function seed(sessionId: string, hbAge: number, jsonlAge: number, status: string = 'active') {
     db.prepare(
-      `INSERT INTO sessions (session_id, project, status, created_at_epoch,
+      `INSERT INTO sessions (session_id, project, status, created_at_epoch_ms,
                              last_heartbeat_ts, last_jsonl_write_ts)
        VALUES (?, 'proj-a', ?, ?, ?, ?)`
     ).run(sessionId, status, NOW - 1000, NOW - hbAge, NOW - jsonlAge);
@@ -42,8 +42,8 @@ describe('Phase 6 boundary detector — single-process integration', () => {
 
   function seedClosedClean(sessionId: string): number {
     db.prepare(
-      `INSERT INTO sessions (session_id, project, status, created_at_epoch,
-                             ended_at_epoch, last_heartbeat_ts, last_jsonl_write_ts)
+      `INSERT INTO sessions (session_id, project, status, created_at_epoch_ms,
+                             ended_at_epoch_ms, last_heartbeat_ts, last_jsonl_write_ts)
        VALUES (?, 'proj-a', 'completed', ?, ?, ?, ?)`
     ).run(sessionId, NOW - 1000, NOW - 60, NOW - 60, NOW - 60);
     db.prepare(

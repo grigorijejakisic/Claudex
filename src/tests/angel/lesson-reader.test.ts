@@ -63,7 +63,7 @@ describe('lesson-reader', () => {
     fs.writeFileSync(fp, [
       '---',
       'type: project',
-      'created_at_epoch: 1700000000000',
+      'created_at_epoch_ms: 1700000000000',
       'telemetry:',
       '  tools_used: []',
       '  files_touched: []',
@@ -85,7 +85,7 @@ describe('lesson-reader', () => {
       type: 'feedback',
       slug: 'parse-me',
       frontmatter: {
-        created_at_epoch: 1700000000000,
+        created_at_epoch_ms: 1700000000000,
         telemetry: baseTelemetry(),
         shape: { task_shape: 'fix' },
       },
@@ -96,7 +96,7 @@ describe('lesson-reader', () => {
     const parsed = parseLessonFile(fp);
     expect(parsed).not.toBeNull();
     expect(parsed!.frontmatter.type).toBe('feedback');
-    expect(parsed!.frontmatter.created_at_epoch).toBe(1700000000000);
+    expect(parsed!.frontmatter.created_at_epoch_ms).toBe(1700000000000);
     expect(parsed!.frontmatter.telemetry.tools_used).toEqual(['Read']);
     expect(parsed!.frontmatter.shape?.task_shape).toBe('fix');
     expect(parsed!.body).toContain('# Salience headline');
@@ -107,7 +107,7 @@ describe('lesson-reader', () => {
     fs.writeFileSync(fp, [
       '---',
       'type: feedback',
-      'created_at_epoch: 1700000000000',
+      'created_at_epoch_ms: 1700000000000',
       'telemetry:',
       '  tools_used: []',
       '  files_touched: []',
@@ -139,14 +139,14 @@ describe('lesson-reader', () => {
       project,
       type: 'feedback',
       slug: 'a-first',
-      frontmatter: { created_at_epoch: 1700000000000, telemetry: baseTelemetry() },
+      frontmatter: { created_at_epoch_ms: 1700000000000, telemetry: baseTelemetry() },
       body: '# A',
     });
     writeLesson({
       project,
       type: 'project',
       slug: 'b-second',
-      frontmatter: { created_at_epoch: 1700000000000, telemetry: baseTelemetry() },
+      frontmatter: { created_at_epoch_ms: 1700000000000, telemetry: baseTelemetry() },
       body: '# B',
     });
     // Add a non-lesson markdown file (e.g., MEMORY.md) — should be ignored.
@@ -167,7 +167,7 @@ describe('lesson-reader', () => {
     fs.writeFileSync(fp, [
       '---',
       'type: feedback',
-      'created_at_epoch: 1700000000000',
+      'created_at_epoch_ms: 1700000000000',
       'telemetry:',
       '  tools_used: []',
       '  files_touched: []',

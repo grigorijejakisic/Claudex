@@ -321,7 +321,7 @@ function makeTestDb(): Database.Database {
       )),
       detail TEXT NOT NULL DEFAULT '{}' CHECK (json_valid(detail)),
       latency_ms REAL,
-      timestamp_epoch INTEGER NOT NULL DEFAULT (unixepoch()),
+      timestamp_epoch_ms INTEGER NOT NULL DEFAULT (unixepoch()),
       adapter TEXT DEFAULT 'unknown'
     );
   `);

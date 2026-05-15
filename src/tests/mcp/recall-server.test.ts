@@ -24,7 +24,7 @@ function createDb(): Database.Database {
 
 function insertSession(db: Database.Database, sessionId: string, project: string = 'test'): void {
   db.prepare(
-    `INSERT INTO sessions (session_id, project, status, observation_count, created_at_epoch)
+    `INSERT INTO sessions (session_id, project, status, observation_count, created_at_epoch_ms)
      VALUES (?, ?, 'active', 0, ?)`
   ).run(sessionId, project, Math.floor(Date.now() / 1000));
 }

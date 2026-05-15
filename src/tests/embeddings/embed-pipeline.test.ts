@@ -40,7 +40,7 @@ function createTestDb(): Database.Database {
 
 function insertTestSession(db: Database.Database, sessionId: string): void {
   db.prepare(
-    `INSERT INTO sessions (session_id, project, status, observation_count, created_at_epoch)
+    `INSERT INTO sessions (session_id, project, status, observation_count, created_at_epoch_ms)
      VALUES (?, 'test', 'active', 0, ?)`
   ).run(sessionId, Math.floor(Date.now() / 1000));
 }

@@ -32,7 +32,7 @@ function insertSession(
   createdAtEpoch: number = Math.floor(Date.now() / 1000)
 ): void {
   db.prepare(
-    `INSERT INTO sessions (session_id, status, observation_count, created_at_epoch)
+    `INSERT INTO sessions (session_id, status, observation_count, created_at_epoch_ms)
      VALUES (?, 'active', 0, ?)`
   ).run(sessionId, createdAtEpoch);
 }
@@ -76,7 +76,7 @@ describe('findLatestSessionId', () => {
     }
   });
 
-  it('returns the most recent session by created_at_epoch', () => {
+  it('returns the most recent session by created_at_epoch_ms', () => {
     const db = createDb();
     try {
       const now = Math.floor(Date.now() / 1000);

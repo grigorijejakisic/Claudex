@@ -227,7 +227,7 @@ describe('backfillTaskPatternsBatch', () => {
          ON CONFLICT(session_id) DO NOTHING`
     ).run('s-' + id);
     db.prepare(
-      `INSERT INTO artifacts (id, session_id, project, artifact_type, summary, content, importance, timestamp_epoch)
+      `INSERT INTO artifacts (id, session_id, project, artifact_type, summary, content, importance, timestamp_epoch_ms)
          VALUES (?, ?, ?, ?, ?, ?, 3, unixepoch())`
     ).run(id, 's-' + id, 'p', type, summary, content);
   }
@@ -315,7 +315,7 @@ describe('writeLessonWithTaskPattern integration', () => {
       type: 'feedback',
       slug: 'rate-limit-finding',
       frontmatter: {
-        created_at_epoch: Date.now(),
+        created_at_epoch_ms: Date.now(),
         telemetry: emptyHandles({
           tools_used: ['Read'],
           user_framing_tokens: ['rate', 'limit', 'investigation'],
@@ -347,7 +347,7 @@ describe('writeLessonWithTaskPattern integration', () => {
       type: 'feedback',
       slug: 'mystery-thing',
       frontmatter: {
-        created_at_epoch: Date.now(),
+        created_at_epoch_ms: Date.now(),
         telemetry: emptyHandles({
           user_framing_tokens: ['nothing', 'special'],
         }),

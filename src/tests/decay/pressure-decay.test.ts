@@ -10,8 +10,8 @@ beforeEach(() => {
 
 function seedPressure(filePath: string, rawPressure: number, temperature: string, project = 'proj-1'): void {
   db.prepare(
-    `INSERT INTO pressure_scores (file_path, project, raw_pressure, temperature, last_touched_epoch)
-     VALUES (?, ?, ?, ?, unixepoch())`
+    `INSERT INTO pressure_scores (file_path, project, raw_pressure, temperature, last_touched_epoch_ms)
+     VALUES (?, ?, ?, ?, (unixepoch() * 1000))`
   ).run(filePath, project, rawPressure, temperature);
 }
 

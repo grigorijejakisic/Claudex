@@ -1,13 +1,12 @@
 /**
- * Regression tests for Phase 4.1 CUR-14 timestamp-precision lock.
+ * Regression tests for V35 CUR-14 timestamp-precision lock.
  *
- * conversation_turns.timestamp_epoch is unixepoch() (10-digit seconds).
- * Phase 4.1 locks artifact.created_at_epoch as ms-precision (13-digit).
- * The transcript_chunker writer must upscale by * 1000 at insert time.
+ * conversation_turns.timestamp_epoch_ms stores milliseconds (V35 migration).
+ * artifact.created_at_epoch_ms is also ms-precision (13-digit).
+ * The transcript_chunker writer stores the turn's timestamp directly.
  *
- * Without the fix, transcript_chunk rows carry seconds-precision values
- * which silently misorder against ms-precision peers in recency-weighted
- * retrieval paths.
+ * Test fixtures insert ms-precision values into timestamp_epoch_ms and verify
+ * that artifact.created_at_epoch_ms reflects the same ms values.
  */
 
 import { vi, describe, it, expect, beforeEach, afterEach } from 'vitest';
@@ -33,13 +32,13 @@ function insertTurnsWithTs(
   sessionId: string,
   project: string,
   count: number,
-  baseEpochSec: number,
+  baseEpochMs: number,
 ): void {
   for (let i = 1; i <= count; i++) {
     db.prepare(
-      `INSERT INTO conversation_turns(session_id, project, turn_number, user_text, assistant_text, timestamp_epoch)
+      `INSERT INTO conversation_turns(session_id, project, turn_number, user_text, assistant_text, timestamp_epoch_ms)
        VALUES (?, ?, ?, ?, ?, ?)`,
-    ).run(sessionId, project, i, `user ${i}`, `assistant ${i}`, baseEpochSec + i);
+    ).run(sessionId, project, i, `user ${i}`, `assistant ${i}`, baseEpochMs + i);
   }
 }
 
@@ -60,9 +59,9 @@ describe('transcript-chunker timestamp precision (CUR-14)', () => {
     try { db.close(); } catch { /* noop */ }
   });
 
-  it('writes ms-precision created_at_epoch (>= 1e12) on new chunks', async () => {
-    const nowSec = Math.floor(Date.now() / 1000);
-    insertTurnsWithTs(db, sessionId, project, 3, nowSec);
+  it('writes ms-precision created_at_epoch_ms (>= 1e12) on new chunks', async () => {
+    const nowMs = Date.now();
+    insertTurnsWithTs(db, sessionId, project, 3, nowMs);
     mockCallLocalLLM.mockResolvedValueOnce(JSON.stringify({
       segments: [{ start: 1, end: 3, topic_label: 'now' }],
     }));
@@ -71,23 +70,21 @@ describe('transcript-chunker timestamp precision (CUR-14)', () => {
     expect(r.inserted).toBeGreaterThan(0);
 
     const rows = db.prepare(
-      `SELECT created_at_epoch FROM artifact WHERE kind='transcript_chunk' AND session_id = ?`,
-    ).all(sessionId) as Array<{ created_at_epoch: number }>;
+      `SELECT created_at_epoch_ms FROM artifact WHERE kind='transcript_chunk' AND session_id = ?`,
+    ).all(sessionId) as Array<{ created_at_epoch_ms: number }>;
 
     expect(rows.length).toBeGreaterThan(0);
     for (const row of rows) {
       // ms-precision lower bound: any time after 2001-09-09 is >= 1e12.
-      expect(row.created_at_epoch).toBeGreaterThanOrEqual(1e12);
-      // Upper sanity bound: turns are inserted at nowSec+1..+3 seconds; the
-      // chunker uses the LAST turn's timestamp_epoch * 1000 — allow a 10s
-      // window past Date.now() to cover turn insertion offsets.
-      expect(row.created_at_epoch).toBeLessThanOrEqual(Date.now() + 10_000);
+      expect(row.created_at_epoch_ms).toBeGreaterThanOrEqual(1e12);
+      // Upper sanity bound: allow a 10s window past nowMs to cover turn insertion offsets.
+      expect(row.created_at_epoch_ms).toBeLessThanOrEqual(nowMs + 10_000);
     }
   });
 
   it('matches expected upscale factor (1000) for known input timestamps', async () => {
-    const fixedSec = 1745923400; // a known seconds-precision value (~2025)
-    insertTurnsWithTs(db, sessionId, project, 3, fixedSec);
+    const fixedMs = 1745923400 * 1000; // ms-precision: a known value (~2025)
+    insertTurnsWithTs(db, sessionId, project, 3, fixedMs);
     mockCallLocalLLM.mockResolvedValueOnce(JSON.stringify({
       segments: [{ start: 1, end: 3, topic_label: 'fixed' }],
     }));
@@ -96,17 +93,17 @@ describe('transcript-chunker timestamp precision (CUR-14)', () => {
     expect(r.inserted).toBe(1);
 
     const row = db.prepare(
-      `SELECT created_at_epoch FROM artifact WHERE kind='transcript_chunk' AND session_id = ?`,
-    ).get(sessionId) as { created_at_epoch: number };
+      `SELECT created_at_epoch_ms FROM artifact WHERE kind='transcript_chunk' AND session_id = ?`,
+    ).get(sessionId) as { created_at_epoch_ms: number };
 
-    // The chunker uses the LAST in-segment turn's timestamp_epoch.
-    // For 3 turns starting at fixedSec+1, last is fixedSec+3.
-    expect(row.created_at_epoch).toBe((fixedSec + 3) * 1000);
+    // The chunker uses the LAST in-segment turn's timestamp_epoch_ms directly.
+    // For 3 turns starting at fixedMs+1, last is fixedMs+3.
+    expect(row.created_at_epoch_ms).toBe(fixedMs + 3);
   });
 
   it('multi-segment chunks all carry ms-precision timestamps', async () => {
-    const baseSec = 1700000000;
-    insertTurnsWithTs(db, sessionId, project, 30, baseSec);
+    const baseMs = 1700000000 * 1000; // ms-precision
+    insertTurnsWithTs(db, sessionId, project, 30, baseMs);
     mockCallLocalLLM.mockResolvedValueOnce(JSON.stringify({
       segments: [
         { start: 1, end: 15, topic_label: 'a' },
@@ -118,16 +115,16 @@ describe('transcript-chunker timestamp precision (CUR-14)', () => {
     expect(r.inserted).toBe(2);
 
     const rows = db.prepare(
-      `SELECT created_at_epoch FROM artifact WHERE kind='transcript_chunk' AND session_id = ? ORDER BY created_at_epoch ASC`,
-    ).all(sessionId) as Array<{ created_at_epoch: number }>;
+      `SELECT created_at_epoch_ms FROM artifact WHERE kind='transcript_chunk' AND session_id = ? ORDER BY created_at_epoch_ms ASC`,
+    ).all(sessionId) as Array<{ created_at_epoch_ms: number }>;
 
     expect(rows.length).toBe(2);
     for (const row of rows) {
-      expect(row.created_at_epoch).toBeGreaterThanOrEqual(1e12);
+      expect(row.created_at_epoch_ms).toBeGreaterThanOrEqual(1e12);
     }
-    // Segment a ends at turn 15, so created_at_epoch = (baseSec + 15) * 1000
-    expect(rows[0].created_at_epoch).toBe((baseSec + 15) * 1000);
-    // Segment b ends at turn 30, so created_at_epoch = (baseSec + 30) * 1000
-    expect(rows[1].created_at_epoch).toBe((baseSec + 30) * 1000);
+    // Segment a ends at turn 15: created_at_epoch_ms = baseMs + 15
+    expect(rows[0].created_at_epoch_ms).toBe(baseMs + 15);
+    // Segment b ends at turn 30: created_at_epoch_ms = baseMs + 30
+    expect(rows[1].created_at_epoch_ms).toBe(baseMs + 30);
   });
 });

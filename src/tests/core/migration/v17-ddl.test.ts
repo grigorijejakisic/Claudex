@@ -36,44 +36,44 @@ describe('applyV17DDL', () => {
     const cols = (db.pragma('table_info(artifact)') as Array<{ name: string }>).map((c) => c.name);
     expect(cols).toEqual([
       'id', 'kind', 'title', 'body', 'scope', 'status', 'confidence',
-      'created_at_epoch', 'updated_at_epoch', 'session_id', 'project',
+      'created_at_epoch_ms', 'updated_at_epoch_ms', 'session_id', 'project',
       'embedding_ref', 'supersedes_id', 'data',
     ]);
   });
 
-  it('kind_registry trigger fires on INSERT and updates last_seen_epoch on conflict', () => {
+  it('kind_registry trigger fires on INSERT and updates last_seen_epoch_ms on conflict', () => {
     applyV17DDL(db);
     db.prepare(`
-      INSERT INTO artifact(id, kind, body, created_at_epoch, updated_at_epoch)
+      INSERT INTO artifact(id, kind, body, created_at_epoch_ms, updated_at_epoch_ms)
       VALUES (?, ?, ?, ?, ?)
     `).run('a1', 'learning', 'content 1', 1000, 1000);
 
     const reg1 = db.prepare('SELECT * FROM kind_registry WHERE kind = ?').get('learning') as {
       kind: string;
-      first_seen_epoch: number;
-      last_seen_epoch: number;
+      first_seen_epoch_ms: number;
+      last_seen_epoch_ms: number;
     };
-    expect(reg1.first_seen_epoch).toBe(1000);
-    expect(reg1.last_seen_epoch).toBe(1000);
+    expect(reg1.first_seen_epoch_ms).toBe(1000);
+    expect(reg1.last_seen_epoch_ms).toBe(1000);
 
     db.prepare(`
-      INSERT INTO artifact(id, kind, body, created_at_epoch, updated_at_epoch)
+      INSERT INTO artifact(id, kind, body, created_at_epoch_ms, updated_at_epoch_ms)
       VALUES (?, ?, ?, ?, ?)
     `).run('a2', 'learning', 'content 2', 2000, 2000);
 
     const reg2 = db.prepare('SELECT * FROM kind_registry WHERE kind = ?').get('learning') as {
       kind: string;
-      first_seen_epoch: number;
-      last_seen_epoch: number;
+      first_seen_epoch_ms: number;
+      last_seen_epoch_ms: number;
     };
-    expect(reg2.first_seen_epoch).toBe(1000); // unchanged
-    expect(reg2.last_seen_epoch).toBe(2000); // updated
+    expect(reg2.first_seen_epoch_ms).toBe(1000); // unchanged
+    expect(reg2.last_seen_epoch_ms).toBe(2000); // updated
   });
 
   it('data CHECK constraint rejects invalid JSON', () => {
     applyV17DDL(db);
     const stmt = db.prepare(`
-      INSERT INTO artifact(id, kind, body, created_at_epoch, updated_at_epoch, data)
+      INSERT INTO artifact(id, kind, body, created_at_epoch_ms, updated_at_epoch_ms, data)
       VALUES (?, ?, ?, ?, ?, ?)
     `);
     expect(() => stmt.run('a1', 'learning', 'b', 0, 0, 'not valid json')).toThrow();
@@ -83,12 +83,12 @@ describe('applyV17DDL', () => {
     applyV17DDL(db);
     // Default — no data column
     db.prepare(`
-      INSERT INTO artifact(id, kind, body, created_at_epoch, updated_at_epoch)
+      INSERT INTO artifact(id, kind, body, created_at_epoch_ms, updated_at_epoch_ms)
       VALUES (?, ?, ?, ?, ?)
     `).run('a1', 'learning', 'b', 0, 0);
     // Explicit
     db.prepare(`
-      INSERT INTO artifact(id, kind, body, created_at_epoch, updated_at_epoch, data)
+      INSERT INTO artifact(id, kind, body, created_at_epoch_ms, updated_at_epoch_ms, data)
       VALUES (?, ?, ?, ?, ?, ?)
     `).run('a2', 'learning', 'b', 0, 0, '{"x":1}');
 
@@ -100,7 +100,7 @@ describe('applyV17DDL', () => {
   it('artifact_fts AFTER INSERT trigger populates the fts5 index', () => {
     applyV17DDL(db);
     db.prepare(`
-      INSERT INTO artifact(id, kind, title, body, created_at_epoch, updated_at_epoch)
+      INSERT INTO artifact(id, kind, title, body, created_at_epoch_ms, updated_at_epoch_ms)
       VALUES (?, ?, ?, ?, ?, ?)
     `).run('a1', 'learning', 'jose library', 'JWT auth with refresh rotation using jose', 0, 0);
 
@@ -116,7 +116,7 @@ describe('applyV17DDL', () => {
   it('artifact_fts AFTER DELETE trigger removes from the fts5 index', () => {
     applyV17DDL(db);
     db.prepare(`
-      INSERT INTO artifact(id, kind, title, body, created_at_epoch, updated_at_epoch)
+      INSERT INTO artifact(id, kind, title, body, created_at_epoch_ms, updated_at_epoch_ms)
       VALUES (?, ?, ?, ?, ?, ?)
     `).run('a1', 'learning', 'keyword-foo', 'body foo', 0, 0);
     db.prepare('DELETE FROM artifact WHERE id = ?').run('a1');
@@ -129,7 +129,7 @@ describe('applyV17DDL', () => {
     const kinds = ['learning', 'decision', 'experience_pattern', 'angel_opinion', 'critical_rule', 'mental_model'];
     for (const k of kinds) {
       db.prepare(`
-        INSERT INTO artifact(id, kind, body, created_at_epoch, updated_at_epoch)
+        INSERT INTO artifact(id, kind, body, created_at_epoch_ms, updated_at_epoch_ms)
         VALUES (?, ?, ?, ?, ?)
       `).run(k + '-id', k, 'body', 0, 0);
     }
@@ -166,13 +166,13 @@ describe('applyV17DDL', () => {
   it('uq_artifact_learning UNIQUE partial index enforces dedup', () => {
     applyV17DDL(db);
     db.prepare(`
-      INSERT INTO artifact(id, kind, body, project, created_at_epoch, updated_at_epoch, data)
+      INSERT INTO artifact(id, kind, body, project, created_at_epoch_ms, updated_at_epoch_ms, data)
       VALUES (?, ?, ?, ?, ?, ?, ?)
     `).run('a1', 'learning', 'b', 'proj', 0, 0, JSON.stringify({ agent_id: 'x', fingerprint: 'fp1' }));
 
     expect(() => {
       db.prepare(`
-        INSERT INTO artifact(id, kind, body, project, created_at_epoch, updated_at_epoch, data)
+        INSERT INTO artifact(id, kind, body, project, created_at_epoch_ms, updated_at_epoch_ms, data)
         VALUES (?, ?, ?, ?, ?, ?, ?)
       `).run('a2', 'learning', 'b2', 'proj', 0, 0, JSON.stringify({ agent_id: 'x', fingerprint: 'fp1' }));
     }).toThrow();

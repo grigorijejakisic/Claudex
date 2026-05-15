@@ -84,7 +84,7 @@ describe('telemetry subsystem', () => {
 
     // Make the row 30 days old
     const oldEpoch = Math.floor(Date.now() / 1000) - 30 * 86400;
-    db.prepare('UPDATE telemetry SET timestamp_epoch = ?').run(oldEpoch);
+    db.prepare('UPDATE telemetry SET timestamp_epoch_ms = ?').run(oldEpoch);
 
     // Insert a recent row
     emitTelemetry(db, 'sess-1', 'hook_invocation', {
@@ -110,7 +110,7 @@ describe('telemetry subsystem', () => {
     } as ErrorDetail);
 
     const oldEpoch = Math.floor(Date.now() / 1000) - 30 * 86400;
-    db.prepare('UPDATE telemetry SET timestamp_epoch = ? WHERE id = 1').run(oldEpoch);
+    db.prepare('UPDATE telemetry SET timestamp_epoch_ms = ? WHERE id = 1').run(oldEpoch);
 
     // Insert a recent non-error event
     emitTelemetry(db, 'sess-1', 'hook_invocation', {
@@ -142,7 +142,7 @@ describe('telemetry subsystem', () => {
     // Set all to old timestamps (distinct for ordering)
     for (let i = 1; i <= 5; i++) {
       const ts = Math.floor(Date.now() / 1000) - (30 - i) * 86400;
-      db.prepare('UPDATE telemetry SET timestamp_epoch = ? WHERE id = ?').run(ts, i);
+      db.prepare('UPDATE telemetry SET timestamp_epoch_ms = ? WHERE id = ?').run(ts, i);
     }
 
     // Prune with retain count of 3
@@ -166,7 +166,7 @@ describe('telemetry subsystem', () => {
     }
 
     const oldEpoch = Math.floor(Date.now() / 1000) - 30 * 86400;
-    db.prepare('UPDATE telemetry SET timestamp_epoch = ?').run(oldEpoch);
+    db.prepare('UPDATE telemetry SET timestamp_epoch_ms = ?').run(oldEpoch);
 
     const pruned = pruneTelemetry(db);
     expect(pruned).toBe(3);

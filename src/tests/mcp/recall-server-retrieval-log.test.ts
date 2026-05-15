@@ -198,7 +198,7 @@ describe('_resolveActiveSessionId fallback (logical replication)', () => {
              FROM session_events GROUP BY session_id
          ) e ON e.session_id = s.session_id
         WHERE s.project = ? AND s.status = 'active'
-        ORDER BY COALESCE(e.last_activity, s.created_at_epoch) DESC LIMIT 1`,
+        ORDER BY COALESCE(e.last_activity, s.created_at_epoch_ms) DESC LIMIT 1`,
     ).get(project) as { session_id: string } | undefined;
     return active?.session_id ?? `mcp:${project}`;
   }
@@ -209,7 +209,7 @@ describe('_resolveActiveSessionId fallback (logical replication)', () => {
 
   it('one active session → returns its id', () => {
     db.prepare(
-      `INSERT INTO sessions (session_id, project, status, observation_count, created_at_epoch)
+      `INSERT INTO sessions (session_id, project, status, observation_count, created_at_epoch_ms)
        VALUES (?, ?, 'active', 0, ?)`
     ).run('sess-A', 'proj-one', Math.floor(Date.now() / 1000));
     expect(resolveLogical('proj-one')).toBe('sess-A');
@@ -218,11 +218,11 @@ describe('_resolveActiveSessionId fallback (logical replication)', () => {
   it('two active sessions → most recently active wins', () => {
     const t = Math.floor(Date.now() / 1000);
     db.prepare(
-      `INSERT INTO sessions (session_id, project, status, observation_count, created_at_epoch)
+      `INSERT INTO sessions (session_id, project, status, observation_count, created_at_epoch_ms)
        VALUES (?, ?, 'active', 0, ?)`
     ).run('sess-old', 'proj-multi', t - 100);
     db.prepare(
-      `INSERT INTO sessions (session_id, project, status, observation_count, created_at_epoch)
+      `INSERT INTO sessions (session_id, project, status, observation_count, created_at_epoch_ms)
        VALUES (?, ?, 'active', 0, ?)`
     ).run('sess-new', 'proj-multi', t);
     expect(resolveLogical('proj-multi')).toBe('sess-new');

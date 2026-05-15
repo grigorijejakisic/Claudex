@@ -44,12 +44,12 @@ describe('sessions CRUD', () => {
     expect(row.observation_count).toBe(0);
   });
 
-  it('endSession updates status and ended_at_epoch', () => {
+  it('endSession updates status and ended_at_epoch_ms', () => {
     createSession(db, { session_id: 's3' });
     endSession(db, 's3', 'completed');
     const session = db.prepare('SELECT * FROM sessions WHERE session_id = ?').get('s3') as any;
     expect(session.status).toBe('completed');
-    expect(session.ended_at_epoch).not.toBeNull();
+    expect(session.ended_at_epoch_ms).not.toBeNull();
   });
 
 });

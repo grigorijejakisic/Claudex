@@ -59,7 +59,7 @@ function seedShadowbanLesson(db: Database.Database, project: string): void {
   // Cloudflare" — a Vesna probe MUST type around all of these.
   const ts = Math.floor(Date.now() / 1000) - 3 * 86400;
   db.prepare(
-    `INSERT INTO artifacts (id, session_id, project, artifact_type, summary, content, importance, timestamp_epoch)
+    `INSERT INTO artifacts (id, session_id, project, artifact_type, summary, content, importance, timestamp_epoch_ms)
        VALUES (?, ?, ?, 'learning', ?, ?, 4, ?)`
   ).run(
     100 + project.length, `s-${project}-shadowban`, project,
@@ -81,7 +81,7 @@ function seedAuthTokenLesson(db: Database.Database, project: string): void {
   ).run(`s-${project}-auth`, project);
   const ts = Math.floor(Date.now() / 1000) - 5 * 86400;
   db.prepare(
-    `INSERT INTO artifacts (id, session_id, project, artifact_type, summary, content, importance, timestamp_epoch)
+    `INSERT INTO artifacts (id, session_id, project, artifact_type, summary, content, importance, timestamp_epoch_ms)
        VALUES (?, ?, ?, 'learning', ?, ?, 4, ?)`
   ).run(
     200 + project.length, `s-${project}-auth`, project,
@@ -103,7 +103,7 @@ function seedMigrationLesson(db: Database.Database, project: string): void {
   ).run(`s-${project}-mig`, project);
   const ts = Math.floor(Date.now() / 1000) - 7 * 86400;
   db.prepare(
-    `INSERT INTO artifacts (id, session_id, project, artifact_type, summary, content, importance, timestamp_epoch)
+    `INSERT INTO artifacts (id, session_id, project, artifact_type, summary, content, importance, timestamp_epoch_ms)
        VALUES (?, ?, ?, 'learning', ?, ?, 4, ?)`
   ).run(
     300 + project.length, `s-${project}-mig`, project,

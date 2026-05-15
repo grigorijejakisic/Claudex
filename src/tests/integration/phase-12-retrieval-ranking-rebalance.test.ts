@@ -25,7 +25,7 @@ let db: TestDatabase;
 // Plus two topic-specific artifacts with lower importance.
 function seedArtifacts(): void {
   const sess = db.prepare(
-    `INSERT INTO sessions (session_id, project, cwd, source, created_at_epoch)
+    `INSERT INTO sessions (session_id, project, cwd, source, created_at_epoch_ms)
      VALUES ('seed-session', 'lacuna-betting', '/test', 'test', unixepoch())`
   );
   sess.run();
@@ -105,8 +105,8 @@ describe('computeArtifactScore — topical importance cap formula', () => {
     const artifact = {
       id: 1, session_id: 's', project: 'p', artifact_type: 'decision',
       summary: 'test', content: null, state: 'fresh', ttl: 3,
-      importance: 5, retrieval_score: 1.0, timestamp_epoch: Math.floor(Date.now()/1000),
-      last_materialized_epoch: null, embedding: null, activation_score: 1.0,
+      importance: 5, retrieval_score: 1.0, timestamp_epoch_ms: Date.now(),
+      last_materialized_epoch_ms: null, embedding: null, activation_score: 1.0,
       superseded_by: null, valid_until: null, confidence: 1.0, novelty_score: 0.5,
       artifact_ref: null,
     } as const;

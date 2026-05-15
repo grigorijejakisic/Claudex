@@ -338,7 +338,7 @@ describe('formatDecisions', () => {
 
   it('formats decisions with source and session', () => {
     const output = formatDecisions([
-      { content: 'Use SQLite WAL mode', source: 'confirmation', session_id: 's1', project: 'proj1', timestamp_epoch: 1710000000 },
+      { content: 'Use SQLite WAL mode', source: 'confirmation', session_id: 's1', project: 'proj1', timestamp_epoch_ms: 1710000000 },
     ]);
     expect(output).toContain('=== Decisions ===');
     expect(output).toContain('[confirmation]');
@@ -369,7 +369,7 @@ describe('formatStats', () => {
       total_learnings: 5,
       total_sessions: 3,
       top_categories: [{ category: 'code', count: 30 }, { category: 'error', count: 12 }],
-      recent_sessions: [{ session_id: 's1', project: 'proj1', status: 'completed', created_at_epoch: 1710000000, observation_count: 20 }],
+      recent_sessions: [{ session_id: 's1', project: 'proj1', status: 'completed', created_at_epoch_ms: 1710000000, observation_count: 20 }],
     });
     expect(output).toContain('Observations: 42');
     expect(output).toContain('code: 30');
@@ -386,7 +386,7 @@ describe('formatTopics', () => {
 
   it('formats topics with session and summary', () => {
     const output = formatTopics([
-      { session_id: 's1', topic: 'Auth refactor', summary: 'Working on JWT', updated_at_epoch: 1710000000 },
+      { session_id: 's1', topic: 'Auth refactor', summary: 'Working on JWT', updated_at_epoch_ms: 1710000000 },
     ]);
     expect(output).toContain('=== Topic History ===');
     expect(output).toContain('session: s1');
@@ -396,7 +396,7 @@ describe('formatTopics', () => {
 
   it('handles null topic gracefully', () => {
     const output = formatTopics([
-      { session_id: 's1', topic: null, summary: null, updated_at_epoch: 1710000000 },
+      { session_id: 's1', topic: null, summary: null, updated_at_epoch_ms: 1710000000 },
     ]);
     expect(output).toContain('(no topic)');
   });
