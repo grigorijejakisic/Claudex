@@ -15,8 +15,8 @@ export interface SessionRow {
   adapter: string;
   status: string;
   observation_count: number;
-  created_at_epoch: number;
-  ended_at_epoch: number | null;
+  created_at_epoch_ms: number;
+  ended_at_epoch_ms: number | null;
 }
 
 /**
@@ -47,7 +47,7 @@ export function createSession(
 }
 
 /**
- * Ends a session by updating its status and setting ended_at_epoch.
+ * Ends a session by updating its status and setting ended_at_epoch_ms (ms-precision).
  */
 export function endSession(
   db: Database,
@@ -55,7 +55,7 @@ export function endSession(
   status: 'completed' | 'failed'
 ): void {
   cachedPrepare(db,
-    `UPDATE sessions SET status = ?, ended_at_epoch = unixepoch()
+    `UPDATE sessions SET status = ?, ended_at_epoch_ms = (unixepoch() * 1000)
      WHERE session_id = ?`
   ).run(status, sessionId);
 }

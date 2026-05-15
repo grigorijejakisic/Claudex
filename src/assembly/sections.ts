@@ -829,7 +829,7 @@ function formatDuration(seconds: number): string {
 }
 
 export interface GaugeTimingContext {
-  /** Session created_at_epoch from sessions table */
+  /** Session created_at_epoch_ms from sessions table (ms-precision, V35+) */
   sessionStartEpoch?: number;
   /** last_checkpoint_epoch from checkpoint_tracking table */
   lastCompactionEpoch?: number;
@@ -853,7 +853,8 @@ export function formatGaugeSection(
     const zone: PressureZone = getPressureZone(gauge.utilization);
     const inputK = Math.round(gauge.inputTokens / 1000);
     const windowK = Math.round(gauge.contextWindowTokens / 1000);
-    const nowEpoch = Math.floor(Date.now() / 1000);
+    const nowMs = Date.now();
+    const nowSec = Math.floor(nowMs / 1000);
 
     // Build gauge line
     let line = `[Context: ${inputK}k/${windowK}k (${pct}%)`;
@@ -865,14 +866,19 @@ export function formatGaugeSection(
     line += ` | Time: ${hh}:${mm} UTC`;
 
     if (timing?.sessionStartEpoch && timing.sessionStartEpoch > 0) {
-      const elapsed = nowEpoch - timing.sessionStartEpoch;
-      if (elapsed > 0) {
-        line += ` | Session: ${formatDuration(elapsed)}`;
+      // V35: sessionStartEpoch is now ms-precision (from created_at_epoch_ms).
+      // Detect unit heuristically: if >= 1e12 it's ms, otherwise legacy sec.
+      const startMs = timing.sessionStartEpoch >= 1e12
+        ? timing.sessionStartEpoch
+        : timing.sessionStartEpoch * 1000;
+      const elapsedSec = Math.floor((nowMs - startMs) / 1000);
+      if (elapsedSec > 0) {
+        line += ` | Session: ${formatDuration(elapsedSec)}`;
       }
     }
 
     if (timing?.lastCompactionEpoch && timing.lastCompactionEpoch > 0) {
-      const sinceCompaction = nowEpoch - timing.lastCompactionEpoch;
+      const sinceCompaction = nowSec - timing.lastCompactionEpoch;
       if (sinceCompaction > 0) {
         line += ` | Last compaction: ${formatDuration(sinceCompaction)} ago`;
       }

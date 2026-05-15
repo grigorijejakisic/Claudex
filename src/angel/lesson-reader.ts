@@ -102,7 +102,7 @@ export function listLessonsForProject(project: string): ParsedLesson[] {
 
 interface ParserState {
   type?: LessonType;
-  created_at_epoch?: number;
+  created_at_epoch_ms?: number;
   telemetry?: Partial<TelemetryHandles>;
   shape?: ShapeHandles;
   tier?: 'foreground' | 'background';
@@ -132,10 +132,17 @@ function parseFrontmatter(raw: string): LessonFrontmatter | null {
       if (key === 'type') {
         if (value !== 'feedback' && value !== 'project' && value !== 'process') return null;
         state.type = value as LessonType;
-      } else if (key === 'created_at_epoch') {
+      } else if (key === 'created_at_epoch_ms') {
+        // V35+: canonical field name
         const n = Number(value);
         if (!Number.isFinite(n)) return null;
-        state.created_at_epoch = n;
+        state.created_at_epoch_ms = n;
+      } else if (key === 'created_at_epoch') {
+        // Legacy field name (pre-V35): auto-upgrade to ms on read
+        const n = Number(value);
+        if (!Number.isFinite(n)) return null;
+        // If value looks like seconds (< 1e12), scale to ms
+        state.created_at_epoch_ms = n < 1e12 ? n * 1000 : n;
       } else if (key === 'tier') {
         if (value === 'foreground' || value === 'background') state.tier = value;
       } else if (key === 'last_fired_at_epoch') {
@@ -169,15 +176,16 @@ function parseFrontmatter(raw: string): LessonFrontmatter | null {
     }
   }
 
-  // Validate: only `type` is strictly required. created_at_epoch + telemetry
+  // Validate: only `type` is strictly required. created_at_epoch_ms + telemetry
   // were Phase 4.1 requirements; relaxed to defaults so user-style memory
   // files (with just `type: feedback / project / process` + originSessionId)
   // also load. Existing telemetry-shaped files preserve their data unchanged.
+  // Legacy `created_at_epoch` (pre-V35) is auto-upgraded to ms on read above.
   if (!state.type) return null;
   const t = state.telemetry ?? {};
   return {
     type: state.type,
-    created_at_epoch: state.created_at_epoch ?? 0,
+    created_at_epoch_ms: state.created_at_epoch_ms ?? 0,
     telemetry: {
       tools_used: Array.isArray(t.tools_used) ? t.tools_used : [],
       files_touched: Array.isArray(t.files_touched) ? t.files_touched : [],

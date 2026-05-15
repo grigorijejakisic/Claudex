@@ -216,7 +216,7 @@ export function getSessionsPendingHighlights(
       WHERE s.project = ?
         AND s.status = 'completed'
         AND (sh.session_id IS NULL OR sh.degraded = 1)
-      ORDER BY s.created_at_epoch DESC
+      ORDER BY s.created_at_epoch_ms DESC
       LIMIT ?
     `).all(project, limit) as Array<{ session_id: string }>;
     return rows.map(r => r.session_id);

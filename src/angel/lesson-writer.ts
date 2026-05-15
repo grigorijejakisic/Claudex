@@ -9,7 +9,7 @@
  *     is NOT allowed; abstaining is only permitted on shape).
  *   - Body must be non-empty after trim.
  *   - Slug must match SLUG_RE.
- *   - created_at_epoch must be ms-precision (>= 1e12).
+ *   - created_at_epoch_ms must be ms-precision (>= 1e12).
  *
  * Idempotent on byte-identical content (skips rewrite if existing matches).
  */
@@ -50,7 +50,7 @@ export function computeLessonFilePath(project: string, type: LessonType, slug: s
  * emitted only when populated (abstain-allowed per CONTEXT.md).
  *
  * Preserves the readable formatting from the CONTEXT.md schema example:
- *   - top-level `type:` and `created_at_epoch:` fields
+ *   - top-level `type:` and `created_at_epoch_ms:` fields
  *   - nested `telemetry:` block with explicit array notation
  *   - optional `shape:` block (omitted entirely if absent or all undefined)
  *
@@ -63,7 +63,7 @@ export function renderLessonFrontmatter(
 ): string {
   const lines: string[] = ['---'];
   lines.push(`type: ${type}`);
-  lines.push(`created_at_epoch: ${frontmatter.created_at_epoch}`);
+  lines.push(`created_at_epoch_ms: ${frontmatter.created_at_epoch_ms}`);
 
   // telemetry block (always present)
   const t = frontmatter.telemetry;
@@ -132,10 +132,10 @@ export function writeLesson(params: LessonWriteParams): string {
     throw new Error('Telemetry duration_min and correction_count must be numbers');
   }
   if (
-    typeof params.frontmatter.created_at_epoch !== 'number'
-    || params.frontmatter.created_at_epoch < 1e12
+    typeof params.frontmatter.created_at_epoch_ms !== 'number'
+    || params.frontmatter.created_at_epoch_ms < 1e12
   ) {
-    throw new Error('created_at_epoch must be ms-precision (>= 1e12)');
+    throw new Error('created_at_epoch_ms must be ms-precision (>= 1e12)');
   }
 
   const filePath = computeLessonFilePath(params.project, params.type, params.slug);

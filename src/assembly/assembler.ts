@@ -155,7 +155,7 @@ const EMPTY_PAYLOAD: InjectPayload = { content: '', tokenEstimate: 0, sources: [
  * or `created_at_epoch_ms` not parseable. The two callers (highlights / checkpoint)
  * fall back to their default unfiltered queries when the floor is undefined.
  */
-function readActiveHandoffFloor(projectDir: string): { floorMs?: number; floorSec?: number } {
+function readActiveHandoffFloor(projectDir: string): { floorMs?: number } {
   try {
     const handoffPath = path.join(getHandoffsDir(projectDir), 'ACTIVE.md');
     if (!fs.existsSync(handoffPath)) return {};
@@ -166,7 +166,8 @@ function readActiveHandoffFloor(projectDir: string): { floorMs?: number; floorSe
     if (!epochMatch) return {};
     const ms = Number(epochMatch[1]);
     if (!Number.isFinite(ms) || ms <= 0) return {};
-    return { floorMs: ms, floorSec: Math.floor(ms / 1000) };
+    // V35: checkpoint_meta.created_at_epoch_ms is now ms-precision. No conversion needed.
+    return { floorMs: ms };
   } catch {
     return {};
   }
@@ -332,7 +333,7 @@ export function assembleFullContext(params: FullAssemblyParams): InjectPayload {
     // sessions. Reading once here (instead of per-section) keeps both
     // surfaces consistent on the same `created_at_epoch_ms` marker even if
     // the operator rewrites ACTIVE.md mid-cascade somehow.
-    const { floorMs: activeFloorEpochMs, floorSec: activeFloorEpochSec } =
+    const { floorMs: activeFloorEpochMs } =
       readActiveHandoffFloor(params.projectDir);
 
     // Post-compaction skips identity, project, and session continuity sections —
@@ -458,12 +459,13 @@ export function assembleFullContext(params: FullAssemblyParams): InjectPayload {
 
     // Priority 3: Checkpoint — skipLearnings because Priority 4 injects them separately.
     // Phase 13.1 Fix #6 (2026-05-15): apply the ACTIVE.md freshness floor
-    // (`activeFloorEpochSec`, read once at the top of this assembler call)
+    // (`activeFloorEpochMs`, read once at the top of this assembler call)
     // so a stale prior-phase checkpoint can't surface a pre-pivot "Current
     // Objective" into a post-pivot session. Post-compaction path keeps the
     // floor too — the operator's last handoff is still the boundary, and
     // a checkpoint older than that handoff is stale in either path.
-    const checkpoint = loadCheckpoint(params.db, params.projectDir, undefined, params.project, activeFloorEpochSec);
+    // V35: checkpoint_meta.created_at_epoch_ms is now ms-precision; pass ms directly.
+    const checkpoint = loadCheckpoint(params.db, params.projectDir, undefined, params.project, activeFloorEpochMs);
     const checkpointSection = formatCheckpointSection(checkpoint, { skipLearnings: true });
     if (checkpointSection) {
       const cost = estimateTokens(checkpointSection);
@@ -618,10 +620,10 @@ function buildGaugeTiming(db: Database, sessionId?: string): GaugeTimingContext 
   if (!sessionId) return timing;
   try {
     const sessionRow = db.prepare(
-      'SELECT created_at_epoch FROM sessions WHERE session_id = ?'
-    ).get(sessionId) as { created_at_epoch: number } | undefined;
-    if (sessionRow?.created_at_epoch) {
-      timing.sessionStartEpoch = sessionRow.created_at_epoch;
+      'SELECT created_at_epoch_ms FROM sessions WHERE session_id = ?'
+    ).get(sessionId) as { created_at_epoch_ms: number } | undefined;
+    if (sessionRow?.created_at_epoch_ms) {
+      timing.sessionStartEpoch = sessionRow.created_at_epoch_ms;
     }
     const tracking = getCheckpointTracking(db, sessionId);
     if (tracking?.last_checkpoint_epoch) {

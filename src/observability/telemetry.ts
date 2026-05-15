@@ -49,16 +49,16 @@ export function pruneTelemetry(
     const retainErrorCount =
       opts?.retainErrorCount ?? DEFAULT_CONFIG.observability.retain_error_count;
 
-    const cutoffEpoch = Math.floor(Date.now() / 1000) - retentionDays * 86400;
+    const cutoffMs = Date.now() - retentionDays * 86400000;
     let totalPruned = 0;
 
     // 1. Delete non-error rows older than retention period
     const ageResult = db
       .prepare(
         `DELETE FROM telemetry
-         WHERE timestamp_epoch < ? AND event_kind != 'error'`
+         WHERE timestamp_epoch_ms < ? AND event_kind != 'error'`
       )
-      .run(cutoffEpoch);
+      .run(cutoffMs);
     totalPruned += ageResult.changes;
 
     // 2. Delete error events beyond retain count (keep most recent N)
@@ -69,7 +69,7 @@ export function pruneTelemetry(
            AND id NOT IN (
              SELECT id FROM telemetry
              WHERE event_kind = 'error'
-             ORDER BY timestamp_epoch DESC
+             ORDER BY timestamp_epoch_ms DESC
              LIMIT ?
            )`
       )

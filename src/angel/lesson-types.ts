@@ -43,7 +43,7 @@ export interface ShapeHandles {
 
 export interface LessonFrontmatter {
   type: LessonType;
-  created_at_epoch: number;          // ms-precision per CUR-14 lock
+  created_at_epoch_ms: number;       // ms-precision per CUR-14 lock; renamed from created_at_epoch in V35
   telemetry: TelemetryHandles;
   shape?: ShapeHandles;              // optional — abstain-allowed
   // Tier tracking for foreground/background placement (CONTEXT.md MEMORY.md

@@ -210,9 +210,9 @@ export async function heartbeatTick(ctx: HeartbeatContext): Promise<TickResult> 
           captureRecallFlowEntry(ctx.db, session.session_id, session.project, events);
 
           // 3. Close the session
-          const now = Math.floor(Date.now() / 1000);
+          const now = Date.now();
           cachedPrepare(ctx.db,
-            `UPDATE sessions SET status = 'completed', ended_at_epoch = ? WHERE session_id = ?`
+            `UPDATE sessions SET status = 'completed', ended_at_epoch_ms = ? WHERE session_id = ?`
           ).run(now, session.session_id);
 
           // 4. Record the auto-close event
@@ -530,19 +530,19 @@ export async function heartbeatTick(ctx: HeartbeatContext): Promise<TickResult> 
       }
 
       // 4d: Close orphaned sessions (active > 2 hours with no recent observations)
-      const twoHoursAgo = Math.floor(Date.now() / 1000) - 7200;
+      const twoHoursAgoMs = Date.now() - 7200000;
       const orphans = cachedPrepare(ctx.db,
         `SELECT session_id FROM sessions
-         WHERE status = 'active' AND created_at_epoch < ?
+         WHERE status = 'active' AND created_at_epoch_ms < ?
          AND session_id NOT IN (
            SELECT DISTINCT session_id FROM observations
-           WHERE timestamp_epoch > ?
+           WHERE timestamp_epoch_ms > ?
          )`
-      ).all(twoHoursAgo, twoHoursAgo) as Array<{ session_id: string }>;
+      ).all(twoHoursAgoMs, twoHoursAgoMs) as Array<{ session_id: string }>;
       for (const o of orphans) {
         cachedPrepare(ctx.db,
-          `UPDATE sessions SET status = 'completed', ended_at_epoch = ? WHERE session_id = ?`
-        ).run(Math.floor(Date.now() / 1000), o.session_id);
+          `UPDATE sessions SET status = 'completed', ended_at_epoch_ms = ? WHERE session_id = ?`
+        ).run(Date.now(), o.session_id);
       }
     } catch {
       // Guardian duties are non-critical — failures don't break the heartbeat
@@ -1002,7 +1002,7 @@ export async function heartbeatTick(ctx: HeartbeatContext): Promise<TickResult> 
           const advisory = '⚠ Services down: '
             + downOutcomes.map(o => `${o.label} — ${o.outcome}`).join('; ');
           const activeSessions = cachedPrepare(ctx.db,
-            `SELECT session_id FROM sessions WHERE status = 'active' ORDER BY created_at_epoch DESC LIMIT 5`
+            `SELECT session_id FROM sessions WHERE status = 'active' ORDER BY created_at_epoch_ms DESC LIMIT 5`
           ).all() as Array<{ session_id: string }>;
           const { sendMessage: sendMsg } = await import('./message-sender.js');
           for (const s of activeSessions) {
@@ -1099,8 +1099,8 @@ export async function heartbeatTick(ctx: HeartbeatContext): Promise<TickResult> 
       const { indexProject } = await import('../indexer/codebase-indexer.js');
       const activeProjects = cachedPrepare(ctx.db,
         `SELECT DISTINCT p.project, s.cwd FROM sessions s
-         JOIN (SELECT project, MAX(created_at_epoch) as latest FROM sessions WHERE status = 'active' GROUP BY project) p
-         ON s.project = p.project AND s.created_at_epoch = p.latest
+         JOIN (SELECT project, MAX(created_at_epoch_ms) as latest FROM sessions WHERE status = 'active' GROUP BY project) p
+         ON s.project = p.project AND s.created_at_epoch_ms = p.latest
          LIMIT 3`
       ).all() as Array<{ project: string; cwd: string | null }>;
 
@@ -1139,7 +1139,7 @@ export async function heartbeatTick(ctx: HeartbeatContext): Promise<TickResult> 
     try {
       const { indexCrossAgentSessions } = await import('../intelligence/cross-agent-indexer.js');
       const activeProject = cachedPrepare(ctx.db,
-        `SELECT project FROM sessions WHERE status = 'active' ORDER BY created_at_epoch DESC LIMIT 1`
+        `SELECT project FROM sessions WHERE status = 'active' ORDER BY created_at_epoch_ms DESC LIMIT 1`
       ).get() as { project: string } | undefined;
       if (activeProject?.project) {
         indexCrossAgentSessions(ctx.db, 'angel-heartbeat', activeProject.project);
@@ -1597,7 +1597,7 @@ function hasPendingBacklog(db: Database): boolean {
       `SELECT COUNT(*) as c FROM observations
        WHERE consumed = 0
          AND consolidated_into IS NULL
-         AND deleted_at_epoch IS NULL
+         AND deleted_at_epoch_ms IS NULL
          AND importance >= 2`
     ).get() as { c: number };
     if (unconsolidated.c > 50) return true; // Only if meaningful batch

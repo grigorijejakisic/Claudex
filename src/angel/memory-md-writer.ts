@@ -243,7 +243,7 @@ export function renderEntities(db: Database, project: string): string {
  * ASC for determinism.
  */
 export function renderActiveProjects(db: Database): string {
-  const cutoff = Math.floor(Date.now() / 1000) - ACTIVE_WINDOW_SECONDS;
+  const cutoffMs = Date.now() - ACTIVE_WINDOW_SECONDS * 1000;
 
   let rows: Array<{ project: string; activity_cnt: number; last_touched: number }> = [];
   try {
@@ -251,15 +251,15 @@ export function renderActiveProjects(db: Database): string {
       db,
       `SELECT project,
               COUNT(*) AS activity_cnt,
-              MAX(updated_at_epoch) AS last_touched
+              MAX(updated_at_epoch_ms) AS last_touched
        FROM artifact
-       WHERE updated_at_epoch >= ?
+       WHERE updated_at_epoch_ms >= ?
          AND project IS NOT NULL
          AND project != ''
        GROUP BY project
        ORDER BY activity_cnt DESC, last_touched DESC, project ASC
        LIMIT ${MAX_ACTIVE_PROJECTS}`,
-    ).all(cutoff) as typeof rows;
+    ).all(cutoffMs) as typeof rows;
   } catch {
     rows = [];
   }
@@ -300,7 +300,7 @@ export function renderRecentThreads(db: Database, project: string): string {
          AND project = ?
          AND session_id IS NOT NULL
        GROUP BY session_id
-       ORDER BY MAX(created_at_epoch) DESC
+       ORDER BY MAX(created_at_epoch_ms) DESC
        LIMIT ${RECENT_SESSIONS_WINDOW}`,
     ).all(project) as Array<{ session_id: string }>;
 
@@ -315,7 +315,7 @@ export function renderRecentThreads(db: Database, project: string): string {
     candidates = cachedPrepare(
       db,
       `SELECT json_extract(data, '$.topic_label') AS topic_label,
-              MAX(created_at_epoch) AS latest,
+              MAX(created_at_epoch_ms) AS latest,
               MAX(session_id) AS session_id
        FROM artifact
        WHERE kind = 'transcript_chunk'
@@ -412,7 +412,7 @@ export function renderHandoff(project: string): string {
  *     shape was abstained (per CONTEXT.md abstain-allowed rule).
  *
  * Sort: foreground entries by `last_fired_at_epoch` DESC nulls last,
- * then `created_at_epoch` DESC, then filename ASC.
+ * then `created_at_epoch_ms` DESC, then filename ASC.
  *
  * Cap: top 20 foreground entries (MAX_LESSONS_FOREGROUND). The heartbeat-
  * driven demotion (Plan 07) handles persistent demotion; this only
@@ -428,8 +428,8 @@ export function renderLessons(project: string): string {
     const fa = a.frontmatter.last_fired_at_epoch ?? 0;
     const fb = b.frontmatter.last_fired_at_epoch ?? 0;
     if (fa !== fb) return fb - fa;
-    const ca = a.frontmatter.created_at_epoch;
-    const cb = b.frontmatter.created_at_epoch;
+    const ca = a.frontmatter.created_at_epoch_ms;
+    const cb = b.frontmatter.created_at_epoch_ms;
     if (ca !== cb) return cb - ca;
     return a.filename.localeCompare(b.filename);
   });

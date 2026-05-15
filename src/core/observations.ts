@@ -51,10 +51,10 @@ export interface ObservationRow {
   content: string;
   importance: number;
   files_modified: string;
-  timestamp_epoch: number;
+  timestamp_epoch_ms: number;
   access_count: number;
-  last_accessed_at_epoch: number | null;
-  deleted_at_epoch: number | null;
+  last_accessed_at_epoch_ms: number | null;
+  deleted_at_epoch_ms: number | null;
   consumed: number;
   obs_type: string | null;
 }
@@ -130,7 +130,7 @@ export const DEDUP_COSINE_THRESHOLD = 0.85;
  * Decision logic delegated to MemoryPolicy.shouldStore():
  * - No match → normal insert
  * - Match in same session → skip (return existing observation ID)
- * - Match in different session → update existing: increment access_count, refresh last_accessed_at_epoch
+ * - Match in different session → update existing: increment access_count, refresh last_accessed_at_epoch_ms
  * - Qdrant unavailable or any error → fall through to normal insert
  *
  * NEVER blocks writes. The entire dedup path is wrapped in try/catch.
@@ -198,10 +198,10 @@ export async function insertObservationWithDedup(
       let hoursSinceLastSession = 0;
       try {
         const prev = cachedPrepare(db,
-          `SELECT ended_at_epoch FROM sessions WHERE status != 'active' ORDER BY ended_at_epoch DESC LIMIT 1`
-        ).get() as { ended_at_epoch: number } | undefined;
-        if (prev?.ended_at_epoch) {
-          hoursSinceLastSession = (Math.floor(Date.now() / 1000) - prev.ended_at_epoch) / 3600;
+          `SELECT ended_at_epoch_ms FROM sessions WHERE status != 'active' ORDER BY ended_at_epoch_ms DESC LIMIT 1`
+        ).get() as { ended_at_epoch_ms: number } | undefined;
+        if (prev?.ended_at_epoch_ms) {
+          hoursSinceLastSession = (Date.now() - prev.ended_at_epoch_ms) / 3600000;
         }
       } catch { /* non-critical */ }
       const policyContext = {
@@ -223,7 +223,7 @@ export async function insertObservationWithDedup(
           cachedPrepare(db,
             `UPDATE observations
              SET access_count = access_count + 1,
-                 last_accessed_at_epoch = unixepoch()
+                 last_accessed_at_epoch_ms = (unixepoch() * 1000)
              WHERE id = ?`
           ).run(decision.targetId);
         } catch { /* non-fatal — we still return the existing ID */ }
@@ -244,7 +244,7 @@ export async function insertObservationWithDedup(
 /**
  * Retrieves observations for a given project.
  * Excludes soft-deleted rows unless includeDeleted is true.
- * Ordered by timestamp_epoch DESC. Default limit 100.
+ * Ordered by timestamp_epoch_ms DESC. Default limit 100.
  * Filters by project scope.
  */
 export function getObservationsByProject(
@@ -259,7 +259,7 @@ export function getObservationsByProject(
     return cachedPrepare(db,
         `SELECT * FROM observations
          WHERE project = ?
-         ORDER BY timestamp_epoch DESC
+         ORDER BY timestamp_epoch_ms DESC
          LIMIT ?`
       )
       .all(project, limit) as ObservationRow[];
@@ -267,8 +267,8 @@ export function getObservationsByProject(
 
   return cachedPrepare(db,
       `SELECT * FROM observations
-       WHERE project = ? AND deleted_at_epoch IS NULL
-       ORDER BY timestamp_epoch DESC
+       WHERE project = ? AND deleted_at_epoch_ms IS NULL
+       ORDER BY timestamp_epoch_ms DESC
        LIMIT ?`
     )
     .all(project, limit) as ObservationRow[];
@@ -316,18 +316,18 @@ export function searchObservations(
        JOIN observations o ON o.id = fts.rowid
        WHERE observations_fts MATCH ?
          AND o.project = ?
-         AND o.deleted_at_epoch IS NULL
+         AND o.deleted_at_epoch_ms IS NULL
          AND o.consumed = 0
        ORDER BY bm25(observations_fts)
        LIMIT ?`
     )
     .all(sanitized, project, limit) as Array<ObservationRow & { bm25_rank: number }>;
 
-  const nowEpoch = Date.now() / 1000;
+  const nowMs = Date.now();
 
   // Apply temporal re-ranking
   const scored = rows.map((row) => {
-    const ageDays = (nowEpoch - row.timestamp_epoch) / 86400;
+    const ageDays = (nowMs - row.timestamp_epoch_ms) / 86400000;
     const finalScore = row.bm25_rank * Math.exp(-ageDays / 30);
     return { row, finalScore };
   });
@@ -362,8 +362,8 @@ export function markObservationsConsumed(
   // Get IDs of the N most recent observations to exclude (scoped to session)
   const recentIds = cachedPrepare(db,
     `SELECT id FROM observations
-     WHERE project = ? AND session_id = ? AND deleted_at_epoch IS NULL
-     ORDER BY timestamp_epoch DESC
+     WHERE project = ? AND session_id = ? AND deleted_at_epoch_ms IS NULL
+     ORDER BY timestamp_epoch_ms DESC
      LIMIT ?`
   ).all(project, sessionId, excludeRecent) as Array<{ id: number }>;
 
@@ -373,8 +373,8 @@ export function markObservationsConsumed(
     // Mark all older observations as consumed (scoped to session)
     const result = cachedPrepare(db,
       `UPDATE observations SET consumed = 1
-       WHERE project = ? AND session_id = ? AND deleted_at_epoch IS NULL
-         AND consumed = 0 AND timestamp_epoch < ?`
+       WHERE project = ? AND session_id = ? AND deleted_at_epoch_ms IS NULL
+         AND consumed = 0 AND timestamp_epoch_ms < ?`
     ).run(project, sessionId, olderThanEpoch);
     return result.changes;
   }
@@ -382,12 +382,12 @@ export function markObservationsConsumed(
   // Use subquery to exclude the most recent N observations (scoped to session)
   const result = cachedPrepare(db,
     `UPDATE observations SET consumed = 1
-     WHERE project = ? AND session_id = ? AND deleted_at_epoch IS NULL
-       AND consumed = 0 AND timestamp_epoch < ?
+     WHERE project = ? AND session_id = ? AND deleted_at_epoch_ms IS NULL
+       AND consumed = 0 AND timestamp_epoch_ms < ?
        AND id NOT IN (
          SELECT id FROM observations
-         WHERE project = ? AND session_id = ? AND deleted_at_epoch IS NULL
-         ORDER BY timestamp_epoch DESC
+         WHERE project = ? AND session_id = ? AND deleted_at_epoch_ms IS NULL
+         ORDER BY timestamp_epoch_ms DESC
          LIMIT ?
        )`
   ).run(project, sessionId, olderThanEpoch, project, sessionId, excludeRecent);

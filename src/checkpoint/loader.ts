@@ -93,7 +93,7 @@ export async function recoverFromDb(db: Database, projectDir?: string): Promise<
     const committedRows = db
       .prepare(
         `SELECT * FROM checkpoint_meta WHERE status = 'committed'
-         ORDER BY created_at_epoch DESC`
+         ORDER BY created_at_epoch_ms DESC`
       )
       .all() as CheckpointMeta[];
 
@@ -135,15 +135,15 @@ export async function recoverFromDb(db: Database, projectDir?: string): Promise<
 
           if (writeOk) {
             db.prepare(
-              `UPDATE checkpoint_meta SET status = 'mirrored', updated_at_epoch = unixepoch()
+              `UPDATE checkpoint_meta SET status = 'mirrored', updated_at_epoch_ms = (unixepoch() * 1000)
                WHERE checkpoint_id = ?`
             ).run(row.checkpoint_id);
 
             // Track newest mirrored row per directory
             const dir = path.dirname(mirrorPath);
             const existing = mirroredDirs.get(dir);
-            if (!existing || row.created_at_epoch > existing.epoch) {
-              mirroredDirs.set(dir, { basename: path.basename(mirrorPath), epoch: row.created_at_epoch });
+            if (!existing || row.created_at_epoch_ms > existing.epoch) {
+              mirroredDirs.set(dir, { basename: path.basename(mirrorPath), epoch: row.created_at_epoch_ms });
             }
           }
         }
@@ -296,7 +296,7 @@ export function loadCheckpoint(
         let row: CheckpointMeta | undefined;
 
         // Phase 13.1 Fix #6 (2026-05-15): optional freshness floor. When the
-        // caller passes ACTIVE.md's `created_at_epoch_ms / 1000`, checkpoints
+        // caller passes ACTIVE.md's `created_at_epoch_ms`, checkpoints
         // older than the most recent handoff rewrite are excluded. The
         // handoff IS the operator's "new state begins here" marker — any
         // earlier checkpoint describes pre-pivot work and would surface stale
@@ -304,8 +304,10 @@ export function loadCheckpoint(
         // caught this with a "mark work conclusions somehow" objective from
         // a persona-tuning lock-in moment that had been superseded by the
         // disposition-test scope).
+        // V35: checkpoint_meta.created_at_epoch_ms is now ms-precision; the
+        // ms→sec floor conversion previously applied by the caller is removed.
         const freshnessClause = minCreatedAtEpoch !== undefined
-          ? `AND cm.created_at_epoch >= ${Math.floor(minCreatedAtEpoch)}`
+          ? `AND cm.created_at_epoch_ms >= ${minCreatedAtEpoch}`
           : '';
 
         if (project) {
@@ -319,7 +321,7 @@ export function loadCheckpoint(
                  AND s.project = ?
                  AND s.observation_count > 0
                  ${freshnessClause}
-               ORDER BY cm.created_at_epoch DESC LIMIT 1`
+               ORDER BY cm.created_at_epoch_ms DESC LIMIT 1`
             )
             .get(project) as CheckpointMeta | undefined;
         } else {
@@ -330,7 +332,7 @@ export function loadCheckpoint(
                WHERE cm.status IN ('committed', 'mirrored')
                  AND s.observation_count > 0
                  ${freshnessClause}
-               ORDER BY cm.created_at_epoch DESC LIMIT 1`
+               ORDER BY cm.created_at_epoch_ms DESC LIMIT 1`
             )
             .get() as CheckpointMeta | undefined;
         }
@@ -361,7 +363,7 @@ export function loadCheckpoint(
                   fs.writeFileSync(row.mirror_path, yamlContent, 'utf-8');
                 }
                 db.prepare(
-                  `UPDATE checkpoint_meta SET status = 'mirrored', updated_at_epoch = unixepoch()
+                  `UPDATE checkpoint_meta SET status = 'mirrored', updated_at_epoch_ms = (unixepoch() * 1000)
                    WHERE checkpoint_id = ?`
                 ).run(row.checkpoint_id);
               } catch {
