@@ -26,10 +26,15 @@
  *
  * Atomic write semantics: tmp + rename. Validation throws at the boundary.
  * Parser returns null on shape failure (fail-loud at consumer's option).
+ *
+ * Phase 14-01: parseHandoffHeader now supports an optional opts overload.
+ * When opts.db is supplied, null-return paths emit a 'handoff_parse_failed'
+ * telemetry row (best-effort; wrapped in try/catch; non-throwing).
  */
 
 import * as fs from 'node:fs';
 import * as path from 'node:path';
+import type { Database } from 'better-sqlite3';
 
 export type HandoffStatus = 'active' | 'archived' | 'paused';
 
@@ -90,20 +95,60 @@ export function validateHandoffHeader(
 }
 
 /**
- * Parse the YAML frontmatter at the head of `raw`. Returns the typed header,
- * or null if no frontmatter is present, the frontmatter is malformed, or the
- * resulting header fails validation.
+ * Reason codes for parseHandoffHeader null-return paths (Phase 14-01).
+ *
+ * - `no_frontmatter`  — no `---\n...\n---\n` block found
+ * - `missing_status`  — frontmatter present but no status field
+ * - `invalid_status`  — status present but not in {active, archived, paused}
+ * - `missing_phase`   — frontmatter present but no phase field
  */
-export function parseHandoffHeader(raw: string): HandoffHeader | null {
-  if (typeof raw !== 'string' || raw.length === 0) return null;
+export type HandoffParseFailedReason =
+  | 'no_frontmatter'
+  | 'missing_status'
+  | 'invalid_status'
+  | 'missing_phase';
+
+/**
+ * Options bag for the Phase 14-01 telemetry-on-rejection overload.
+ * All fields are optional; the overload is backwards-compatible.
+ */
+export interface ParseHandoffOpts {
+  /** When supplied, null-return paths emit a `handoff_parse_failed` telemetry row. */
+  db?: Database;
+  /** Stored as `session_id` on the telemetry row. Defaults to empty string. */
+  sessionId?: string;
+  /** Stored as `detail.source_path` on the telemetry row. */
+  sourcePath?: string;
+}
+
+/**
+ * Internal result from parseHandoffHeaderInner. Contains both the result
+ * and the failure reason so the caller can emit telemetry without re-parsing.
+ */
+interface ParseResult {
+  header: HandoffHeader | null;
+  reason?: HandoffParseFailedReason;
+}
+
+/**
+ * Non-exported inner parser. Returns both the header and, on failure, the
+ * reason code so the exported overload can emit telemetry without re-running
+ * the parse logic.
+ */
+function parseHandoffHeaderInner(raw: string): ParseResult {
+  if (typeof raw !== 'string' || raw.length === 0) {
+    return { header: null, reason: 'no_frontmatter' };
+  }
 
   const match = raw.match(/^---\n([\s\S]*?)\n---\n/);
-  if (!match) return null;
+  if (!match) {
+    return { header: null, reason: 'no_frontmatter' };
+  }
 
-  const body = match[1];
+  const fmBody = match[1];
   const partial: Partial<HandoffHeader> = {};
 
-  for (const line of body.split('\n')) {
+  for (const line of fmBody.split('\n')) {
     const lineMatch = line.match(/^([a-z_]+):\s*"?([^"\n]*)"?\s*$/);
     if (!lineMatch) continue;
     const key = lineMatch[1];
@@ -131,10 +176,87 @@ export function parseHandoffHeader(raw: string): HandoffHeader | null {
     }
   }
 
-  const errors = validateHandoffHeader(partial);
-  if (errors.length > 0) return null;
+  // Determine the failure reason before running full validation.
+  if (partial.status === undefined || partial.status === null) {
+    return { header: null, reason: 'missing_status' };
+  }
+  if (!VALID_STATUSES.includes(partial.status as HandoffStatus)) {
+    return { header: null, reason: 'invalid_status' };
+  }
+  if (partial.phase === undefined || partial.phase === null || partial.phase.length === 0) {
+    return { header: null, reason: 'missing_phase' };
+  }
 
-  return partial as HandoffHeader;
+  // Run full validation to catch any additional edge cases.
+  const errors = validateHandoffHeader(partial);
+  if (errors.length > 0) {
+    // Map to the most specific reason we can derive.
+    const phaseErr = errors.find(e => e.field === 'phase');
+    const statusErr = errors.find(e => e.field === 'status');
+    const reason: HandoffParseFailedReason = statusErr
+      ? (partial.status !== undefined ? 'invalid_status' : 'missing_status')
+      : phaseErr
+        ? 'missing_phase'
+        : 'missing_status';
+    return { header: null, reason };
+  }
+
+  return { header: partial as HandoffHeader };
+}
+
+/**
+ * Emit a `handoff_parse_failed` telemetry row. Best-effort: wrapped in
+ * try/catch so a write failure never propagates to the caller.
+ *
+ * The event_kind `handoff_parse_failed` must be present in the telemetry
+ * table's CHECK constraint (added in schema Phase 14-01). On older DBs the
+ * INSERT will fail the CHECK and be silently swallowed — same pattern as
+ * `reranker_fallback` on pre-V20 DBs.
+ */
+function emitHandoffParseFailure(
+  db: Database,
+  reason: HandoffParseFailedReason,
+  sessionId: string,
+  sourcePath?: string,
+): void {
+  try {
+    db.prepare(
+      `INSERT INTO telemetry (session_id, event_kind, detail, adapter)
+       VALUES (?, 'handoff_parse_failed', ?, 'handoff-parser')`,
+    ).run(
+      sessionId,
+      JSON.stringify({ reason, source_path: sourcePath ?? null }),
+    );
+  } catch {
+    // Non-throwing: telemetry must never break the parser's return contract.
+  }
+}
+
+/**
+ * Parse the YAML frontmatter at the head of `raw`. Returns the typed header,
+ * or null if no frontmatter is present, the frontmatter is malformed, or the
+ * resulting header fails validation.
+ *
+ * Overload (Phase 14-01): when `opts.db` is supplied, every null-return path
+ * emits a `handoff_parse_failed` telemetry row before returning null. The
+ * telemetry write is best-effort (wrapped in try/catch) and never affects
+ * the return value.
+ */
+export function parseHandoffHeader(raw: string): HandoffHeader | null;
+export function parseHandoffHeader(raw: string, opts: ParseHandoffOpts): HandoffHeader | null;
+export function parseHandoffHeader(raw: string, opts?: ParseHandoffOpts): HandoffHeader | null {
+  const { header, reason } = parseHandoffHeaderInner(raw);
+
+  if (header === null && reason !== undefined && opts?.db) {
+    emitHandoffParseFailure(
+      opts.db,
+      reason,
+      opts.sessionId ?? '',
+      opts.sourcePath,
+    );
+  }
+
+  return header;
 }
 
 function serializePhase(phase: string | number): string {
