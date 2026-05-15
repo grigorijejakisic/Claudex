@@ -84,14 +84,22 @@ export function recordRetrievedButUnapplied(
  * Mirrors the reranker-fallback discipline — every Opus-to-fallback transition
  * writes one row with the structured reason so operators can spot persistent
  * Opus unavailability and the existing health-line surfacing.
+ *
+ * Phase 14 Plan 14-00 (2026-05-15): added optional `http_status` so the
+ * actual HTTP code (e.g. 429 rate limit, 401 auth) is preserved in the
+ * detail. RCA-2 found that the OAuth path was getting 429 globally and
+ * the original telemetry shape lost that signal — only the bucketed
+ * `reason` enum survived. Future debugging should not require manual
+ * reproduction.
  */
 export function recordFrameExtractionFallback(
   db: Database,
   detail: {
     session_id: string;
     project: string;
-    reason: 'opus_timeout' | 'opus_non_2xx' | 'opus_auth_failed' | 'opus_parse_failed' | 'opus_empty_response' | string;
+    reason: 'opus_timeout' | 'opus_non_2xx' | 'opus_auth_failed' | 'opus_parse_failed' | 'opus_empty_response' | 'local_llm_failed' | string;
     fallback_model: string;
+    http_status?: number;
   },
 ): void {
   writeTelemetrySignal(db, 'frame_extraction_fallback', detail);

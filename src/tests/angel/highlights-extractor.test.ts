@@ -22,6 +22,11 @@ import {
   _setOpusCallableForTest,
   _setFallbackCallableForTest,
 } from '../../angel/highlights-extractor.js';
+// Phase 14 Plan 14-00 (2026-05-15): the Opus path is now gated by either
+// a test hook or the ANTHROPIC_API_KEY env var. Tests that exercise the
+// Opus path set _setOpusCallableForTest, which opens the gate. Tests for
+// the env-var-unset behavior verify ANTHROPIC_API_KEY is unset and that
+// no Opus call is attempted.
 import { getHighlightsBySessionId } from '../../intelligence/session-highlights.js';
 import { DEFAULT_ANGEL_CONFIG } from '../../angel/types.js';
 
@@ -68,16 +73,25 @@ function makeTmpProject(): { projectDir: string; sessionId: string; cleanup: () 
 
 describe('extractHighlightsForSession — degraded-flag discipline', () => {
   let db: DatabaseType;
+  let savedApiKey: string | undefined;
 
   beforeEach(() => {
     db = makeDb();
     _setOpusCallableForTest(null);
     _setFallbackCallableForTest(null);
+    // Phase 14 Plan 14-00: protect tests from the host environment having
+    // ANTHROPIC_API_KEY set. Each test that needs Opus opens the gate via
+    // the test hook explicitly; tests that need env-var-unset behavior
+    // delete it explicitly. Save and restore so we don't leak across tests.
+    savedApiKey = process.env.ANTHROPIC_API_KEY;
+    delete process.env.ANTHROPIC_API_KEY;
   });
 
   afterEach(() => {
     _setOpusCallableForTest(null);
     _setFallbackCallableForTest(null);
+    if (savedApiKey === undefined) delete process.env.ANTHROPIC_API_KEY;
+    else process.env.ANTHROPIC_API_KEY = savedApiKey;
     db.close();
   });
 
@@ -202,6 +216,186 @@ describe('extractHighlightsForSession — degraded-flag discipline', () => {
       expect(row).toBeNull();
     } finally {
       fs.rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
+  // ---------------------------------------------------------------------------
+  // Phase 14 Plan 14-00 (2026-05-15) — API-key-gated Opus path.
+  // RCA-2 found that the original OAuth path returned HTTP 429 globally.
+  // The new contract: Opus is opt-in via ANTHROPIC_API_KEY; default path
+  // is local-LLM-as-primary with degraded=0 on success.
+  // ---------------------------------------------------------------------------
+
+  it('env-var-unset: skips Opus, calls local LLM as primary, degraded=false', async () => {
+    const { projectDir, sessionId, cleanup } = makeTmpProject();
+    try {
+      let opusCalled = false;
+      _setOpusCallableForTest(async () => {
+        opusCalled = true;
+        return { mental_model: 'opus should NOT be called' };
+      });
+      // Note: opusCallableForTest is set, which opens the gate — to test
+      // the env-var-unset shortcut we instead clear the test hook AND keep
+      // the env var unset.
+      _setOpusCallableForTest(null);
+      _setFallbackCallableForTest(async () => ({
+        mental_model: 'local LLM is primary',
+        open_questions: [],
+        reframes: [],
+        tools_introduced: [],
+        decisions_not_made: [],
+      }));
+
+      await extractHighlightsForSession({
+        db, sessionId, project: 'p1', projectDir,
+        config: { ...DEFAULT_ANGEL_CONFIG, localModel: 'glm-5.1:cloud' },
+      });
+
+      const row = getHighlightsBySessionId(db, sessionId, 'p1');
+      expect(row).not.toBeNull();
+      expect(row?.degraded).toBe(false);
+      expect(row?.degraded_reason).toBeUndefined();
+      expect(row?.mental_model).toBe('local LLM is primary');
+      expect(opusCalled).toBe(false);
+
+      // No telemetry row — local-as-primary success is not a "fallback"
+      const tel = db.prepare(`SELECT * FROM telemetry WHERE event_kind='frame_extraction_fallback'`).all();
+      expect(tel).toHaveLength(0);
+    } finally {
+      cleanup();
+    }
+  });
+
+  it('env-var-set-empty: treated as unset (local LLM primary path)', async () => {
+    const { projectDir, sessionId, cleanup } = makeTmpProject();
+    try {
+      process.env.ANTHROPIC_API_KEY = '';
+      _setFallbackCallableForTest(async () => ({
+        mental_model: 'local primary on empty env var',
+      }));
+
+      await extractHighlightsForSession({
+        db, sessionId, project: 'p1', projectDir,
+        config: { ...DEFAULT_ANGEL_CONFIG, localModel: 'glm-5.1:cloud' },
+      });
+
+      const row = getHighlightsBySessionId(db, sessionId, 'p1');
+      expect(row).not.toBeNull();
+      expect(row?.degraded).toBe(false);
+      expect(row?.mental_model).toBe('local primary on empty env var');
+    } finally {
+      cleanup();
+    }
+  });
+
+  it('env-var-set-whitespace: trimmed to empty, treated as unset', async () => {
+    const { projectDir, sessionId, cleanup } = makeTmpProject();
+    try {
+      process.env.ANTHROPIC_API_KEY = '   ';
+      _setFallbackCallableForTest(async () => ({
+        mental_model: 'whitespace key is empty after trim',
+      }));
+
+      await extractHighlightsForSession({
+        db, sessionId, project: 'p1', projectDir,
+        config: { ...DEFAULT_ANGEL_CONFIG, localModel: 'glm-5.1:cloud' },
+      });
+
+      const row = getHighlightsBySessionId(db, sessionId, 'p1');
+      expect(row?.degraded).toBe(false);
+    } finally {
+      cleanup();
+    }
+  });
+
+  it('opus 429 captured in telemetry detail.http_status', async () => {
+    const { projectDir, sessionId, cleanup } = makeTmpProject();
+    try {
+      _setOpusCallableForTest(async () => {
+        const err: Error & { degradedReason?: string; httpStatus?: number } = new Error('HTTP 429');
+        err.degradedReason = 'opus_non_2xx';
+        err.httpStatus = 429;
+        throw err;
+      });
+      _setFallbackCallableForTest(async () => ({
+        mental_model: 'fallback after 429',
+      }));
+
+      await extractHighlightsForSession({
+        db, sessionId, project: 'p1', projectDir,
+        config: { ...DEFAULT_ANGEL_CONFIG, localModel: 'glm-5.1:cloud' },
+      });
+
+      const tel = db.prepare(`SELECT detail FROM telemetry WHERE event_kind='frame_extraction_fallback'`).all() as Array<{ detail: string }>;
+      expect(tel).toHaveLength(1);
+      const det = JSON.parse(tel[0].detail);
+      expect(det.reason).toBe('opus_non_2xx');
+      expect(det.http_status).toBe(429);
+      expect(det.fallback_model).toBe('glm-5.1:cloud');
+
+      const row = getHighlightsBySessionId(db, sessionId, 'p1');
+      expect(row?.degraded).toBe(true);
+      expect(row?.degraded_reason).toBe('opus_non_2xx');
+      expect(row?.mental_model).toBe('fallback after 429');
+    } finally {
+      cleanup();
+    }
+  });
+
+  it('opus error without httpStatus omits the field from telemetry', async () => {
+    const { projectDir, sessionId, cleanup } = makeTmpProject();
+    try {
+      _setOpusCallableForTest(async () => {
+        const err: Error & { degradedReason?: string } = new Error('Timeout');
+        err.degradedReason = 'opus_timeout';
+        throw err;
+      });
+      _setFallbackCallableForTest(async () => ({ mental_model: 'fallback' }));
+
+      await extractHighlightsForSession({
+        db, sessionId, project: 'p1', projectDir,
+        config: { ...DEFAULT_ANGEL_CONFIG, localModel: 'glm-5.1:cloud' },
+      });
+
+      const tel = db.prepare(`SELECT detail FROM telemetry WHERE event_kind='frame_extraction_fallback'`).all() as Array<{ detail: string }>;
+      expect(tel).toHaveLength(1);
+      const det = JSON.parse(tel[0].detail);
+      expect(det.reason).toBe('opus_timeout');
+      expect(det).not.toHaveProperty('http_status');
+    } finally {
+      cleanup();
+    }
+  });
+
+  it('local-as-primary failure: degraded=true with local_llm_failed reason', async () => {
+    // env var unset → local is primary → if local fails, we have nowhere to go.
+    // Should produce a degraded row with the new local_llm_failed reason
+    // AND a telemetry row (so substrate health surface can flag it).
+    const { projectDir, sessionId, cleanup } = makeTmpProject();
+    try {
+      _setFallbackCallableForTest(async () => {
+        throw new Error('Ollama down');
+      });
+
+      await extractHighlightsForSession({
+        db, sessionId, project: 'p1', projectDir,
+        config: { ...DEFAULT_ANGEL_CONFIG, localModel: 'glm-5.1:cloud' },
+      });
+
+      const row = getHighlightsBySessionId(db, sessionId, 'p1');
+      expect(row).not.toBeNull();
+      expect(row?.degraded).toBe(true);
+      expect(row?.degraded_reason).toBe('local_llm_failed');
+      expect(row?.degraded_model).toBe('glm-5.1:cloud');
+      expect(row?.mental_model).toBeUndefined();
+
+      // Telemetry: surface the failure with reason='local_llm_failed'
+      const tel = db.prepare(`SELECT detail FROM telemetry WHERE event_kind='frame_extraction_fallback'`).all() as Array<{ detail: string }>;
+      expect(tel).toHaveLength(1);
+      const det = JSON.parse(tel[0].detail);
+      expect(det.reason).toBe('local_llm_failed');
+    } finally {
+      cleanup();
     }
   });
 });

@@ -1,14 +1,29 @@
 /**
- * Angel Highlights Extractor — Phase 13 Plan 03.
+ * Angel Highlights Extractor — Phase 13 Plan 03 + Phase 14 Plan 14-00.
  *
- * Produces a session_highlights row by calling Claude Opus 4.7 via OAuth
- * (primary) against the Sessions/ markdown for a completed session. Falls
- * back to the Angel-configured local LLM (AngelConfig.localModel via
- * callLocalLLM) on Opus failure.
+ * Phase 14 Plan 14-00 (2026-05-15) — Opus path rewired:
+ * RCA-2 found that the original OAuth path (reading the MAX subscription
+ * OAuth token from `~/.claude/.credentials.json` and calling
+ * `api.anthropic.com/v1/messages` directly) returned HTTP 429
+ * `rate_limit_error` on every call. Result: 100% of session_highlights
+ * since Phase 13 ship were degraded=1, falling back to the Ollama-
+ * proxied cloud model. The OAuth path is removed.
+ *
+ * The new contract:
+ *   - When `process.env.ANTHROPIC_API_KEY` is set + non-empty, the
+ *     extractor calls Opus via API key (separate billing path). Opus
+ *     success: degraded=0. Opus failure: degraded=1 + fallback to
+ *     local LLM via `callLocalLLM`.
+ *   - When `ANTHROPIC_API_KEY` is unset (the default — operator opts
+ *     in explicitly), the extractor goes straight to `callLocalLLM`
+ *     (Ollama daemon, default `glm-5.1:cloud` proxied to Ollama Cloud).
+ *     Local-as-primary success: degraded=0. Local-as-primary failure:
+ *     degraded=1 with `local_llm_failed` reason.
  *
  * Degraded flag discipline mirrors CLAUDE.md reranker-fallback pattern:
  *   - every fallback artifact carries degraded=true + degraded_reason + degraded_model
  *   - `frame_extraction_fallback` telemetry row written on every fallback path
+ *   - HTTP status code (when applicable) preserved in telemetry detail
  *   - heartbeat re-attempts Opus on degraded artifacts (next tick)
  *   - operator-visible health line surfaces in session-start when degraded
  *     persists beyond one heartbeat cycle (assembly side, Plan 13-04)
@@ -17,7 +32,6 @@
 import type { Database } from 'better-sqlite3';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import * as os from 'node:os';
 import { upsertHighlights } from '../intelligence/session-highlights.js';
 import { recordFrameExtractionFallback } from '../core/telemetry-signals.js';
 import { callLocalLLM } from './llama-client.js';
@@ -47,7 +61,17 @@ export type DegradedReason =
   | 'opus_non_2xx'
   | 'opus_auth_failed'
   | 'opus_parse_failed'
-  | 'opus_empty_response';
+  | 'opus_empty_response'
+  | 'local_llm_failed';
+
+/**
+ * Test seam: when set, treat Opus path as available regardless of
+ * `ANTHROPIC_API_KEY`. Production callers should never set this.
+ */
+let opusEnabledForTest = false;
+export function _setOpusEnabledForTest(enabled: boolean): void {
+  opusEnabledForTest = enabled;
+}
 
 interface ExtractResult {
   mental_model?: string;
@@ -107,35 +131,72 @@ export async function extractHighlightsForSession(params: ExtractHighlightsParam
   let degradedReason: DegradedReason | undefined;
   let degradedModel: string | undefined;
 
-  // Try Claude Opus 4.7 via OAuth (primary)
-  try {
-    const opusFn = opusCallableForTest ?? callOpusOAuth;
-    result = await opusFn(prompt);
-  } catch (err) {
-    const reason = classifyOpusError(err);
-    degraded = true;
-    degradedReason = reason;
+  // Phase 14 Plan 14-00 (2026-05-15): API-key-gated Opus path.
+  // Opus is opt-in via ANTHROPIC_API_KEY (a real billing API key, not the
+  // MAX subscription OAuth token — RCA-2 confirmed the OAuth path returns
+  // HTTP 429 on every programmatic call). When the env var is unset, we
+  // treat the local LLM as the chosen primary path (degraded=0).
+  const apiKey = (process.env.ANTHROPIC_API_KEY ?? '').trim();
+  const opusAvailable = opusEnabledForTest || apiKey.length > 0 || opusCallableForTest !== null;
 
-    // Emit fallback telemetry row
+  if (opusAvailable) {
+    // Try Opus first; on any failure, drop to local LLM (degraded path).
     try {
-      recordFrameExtractionFallback(db, {
-        session_id: sessionId,
-        project,
-        reason,
-        fallback_model: config.localModel ?? 'unknown',
-      });
-    } catch { /* non-fatal */ }
+      const opusFn = opusCallableForTest ?? ((p: string) => callOpusApiKey(p, apiKey));
+      result = await opusFn(prompt);
+    } catch (err) {
+      const reason = classifyOpusError(err);
+      const httpStatus = (err && typeof err === 'object')
+        ? (err as { httpStatus?: number }).httpStatus
+        : undefined;
+      degraded = true;
+      degradedReason = reason;
 
-    // Try Ollama/local fallback
+      // Telemetry: include http_status when known so future debugging can
+      // distinguish 429-rate-limit from 401-auth from 5xx-server.
+      try {
+        recordFrameExtractionFallback(db, {
+          session_id: sessionId,
+          project,
+          reason,
+          fallback_model: config.localModel ?? 'unknown',
+          ...(httpStatus !== undefined ? { http_status: httpStatus } : {}),
+        });
+      } catch { /* non-fatal */ }
+
+      // Fall back to local LLM
+      try {
+        const fallbackFn = fallbackCallableForTest ?? callLocalFallback;
+        result = await fallbackFn(prompt, config.localModel ?? '');
+        degradedModel = config.localModel;
+      } catch {
+        // Both Opus AND local failed — write a minimal degraded row so the
+        // session does not stay in the pending queue forever (next heartbeat
+        // retries via the pending sweep).
+        result = {};
+        degradedModel = config.localModel ?? 'none';
+      }
+    }
+  } else {
+    // No API key — local LLM IS the primary path. Success is degraded=0.
     try {
       const fallbackFn = fallbackCallableForTest ?? callLocalFallback;
       result = await fallbackFn(prompt, config.localModel ?? '');
-      degradedModel = config.localModel;
     } catch {
-      // Both failed — write a minimal degraded row so the session does not stay
-      // in the pending queue forever (next heartbeat retries via the pending sweep).
-      result = {};
+      // Local-as-primary failed. Surface explicitly so substrate health
+      // can flag the situation (no Opus to fall back to here).
+      degraded = true;
+      degradedReason = 'local_llm_failed';
       degradedModel = config.localModel ?? 'none';
+      try {
+        recordFrameExtractionFallback(db, {
+          session_id: sessionId,
+          project,
+          reason: 'local_llm_failed',
+          fallback_model: config.localModel ?? 'none',
+        });
+      } catch { /* non-fatal */ }
+      result = {};
     }
   }
 
@@ -156,20 +217,27 @@ export async function extractHighlightsForSession(params: ExtractHighlightsParam
 }
 
 /**
- * Call Claude Opus 4.7 via OAuth using credentials from ~/.claude/.credentials.json.
- * Throws on timeout, non-2xx, auth failure, empty response, or JSON parse failure.
- * The thrown Error carries a `degradedReason` property for the caller to classify.
+ * Call Claude Opus 4.7 via the standard `x-api-key` API key header.
+ *
+ * Phase 14 Plan 14-00 (2026-05-15): replaces the prior `callOpusOAuth`
+ * implementation which used the MAX subscription OAuth token from
+ * `~/.claude/.credentials.json`. RCA-2 confirmed OAuth-credentialed
+ * direct API calls return HTTP 429 `rate_limit_error` on every
+ * invocation — interactive CC sessions consume the same token through
+ * CC's own client and don't hit the limit, but Angel calling the API
+ * directly does. The OAuth path is gone; Opus is opt-in via a real
+ * billing API key in the `ANTHROPIC_API_KEY` env var.
+ *
+ * Throws on timeout, non-2xx, auth failure, empty response, or JSON
+ * parse failure. The thrown Error carries `degradedReason` (for
+ * bucketed classification) AND `httpStatus` (for precise debugging)
+ * so the caller can record both in telemetry.
  */
-async function callOpusOAuth(prompt: string): Promise<ExtractResult> {
-  const credPath = path.join(os.homedir(), '.claude', '.credentials.json');
-  let token: string;
-  try {
-    const creds = JSON.parse(fs.readFileSync(credPath, 'utf8')) as
-      { claudeAiOauth?: { accessToken?: string }; access_token?: string };
-    token = creds.claudeAiOauth?.accessToken ?? creds.access_token ?? '';
-    if (!token) throw new Error('No access token in credentials');
-  } catch {
-    throw Object.assign(new Error('OAuth credentials unavailable'), { degradedReason: 'opus_auth_failed' as DegradedReason });
+async function callOpusApiKey(prompt: string, apiKey: string): Promise<ExtractResult> {
+  if (!apiKey) {
+    throw Object.assign(new Error('ANTHROPIC_API_KEY required'), {
+      degradedReason: 'opus_auth_failed' as DegradedReason,
+    });
   }
 
   const body = JSON.stringify({
@@ -179,14 +247,14 @@ async function callOpusOAuth(prompt: string): Promise<ExtractResult> {
   });
 
   const { request } = await import('node:https');
-  const responseText = await new Promise<string>((resolve, reject) => {
+  const { responseText, statusCode } = await new Promise<{ responseText: string; statusCode: number }>((resolve, reject) => {
     const req = request({
       hostname: 'api.anthropic.com',
       path: '/v1/messages',
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        Authorization: `Bearer ${token}`,
+        'x-api-key': apiKey,
         'anthropic-version': '2023-06-01',
         'Content-Length': Buffer.byteLength(body),
       },
@@ -195,31 +263,53 @@ async function callOpusOAuth(prompt: string): Promise<ExtractResult> {
       let data = '';
       res.on('data', (chunk: Buffer) => { data += chunk.toString(); });
       res.on('end', () => {
-        if ((res.statusCode ?? 0) >= 400) {
-          reject(Object.assign(new Error(`HTTP ${res.statusCode}`), { degradedReason: 'opus_non_2xx' as DegradedReason }));
+        const status = res.statusCode ?? 0;
+        if (status >= 400) {
+          // Distinguish auth errors (401/403) from generic non-2xx so
+          // the bucketed reason is informative without masking the precise
+          // HTTP status (preserved on the error object).
+          const reason: DegradedReason = (status === 401 || status === 403)
+            ? 'opus_auth_failed'
+            : 'opus_non_2xx';
+          reject(Object.assign(new Error(`HTTP ${status}`), {
+            degradedReason: reason,
+            httpStatus: status,
+          }));
         } else {
-          resolve(data);
+          resolve({ responseText: data, statusCode: status });
         }
       });
     });
     req.on('timeout', () => {
       req.destroy();
-      reject(Object.assign(new Error('Timeout'), { degradedReason: 'opus_timeout' as DegradedReason }));
+      reject(Object.assign(new Error('Timeout'), {
+        degradedReason: 'opus_timeout' as DegradedReason,
+      }));
     });
-    req.on('error', (e) => reject(Object.assign(e, { degradedReason: 'opus_non_2xx' as DegradedReason })));
+    req.on('error', (e) => reject(Object.assign(e, {
+      degradedReason: 'opus_non_2xx' as DegradedReason,
+    })));
     req.write(body);
     req.end();
   });
+
+  // statusCode is referenced to keep the variable live for any future
+  // diagnostics; the success path itself doesn't condition on it.
+  void statusCode;
 
   let parsed: { content?: Array<{ text?: string }> };
   try {
     parsed = JSON.parse(responseText);
   } catch {
-    throw Object.assign(new Error('Outer JSON parse failure'), { degradedReason: 'opus_parse_failed' as DegradedReason });
+    throw Object.assign(new Error('Outer JSON parse failure'), {
+      degradedReason: 'opus_parse_failed' as DegradedReason,
+    });
   }
   const text = parsed?.content?.[0]?.text ?? '';
   if (!text.trim()) {
-    throw Object.assign(new Error('Empty response'), { degradedReason: 'opus_empty_response' as DegradedReason });
+    throw Object.assign(new Error('Empty response'), {
+      degradedReason: 'opus_empty_response' as DegradedReason,
+    });
   }
   return parseExtractResult(text, 'opus_parse_failed');
 }
