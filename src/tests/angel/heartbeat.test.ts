@@ -364,7 +364,7 @@ describe('Angel heartbeat — Phase 5b Session-completion artifact curation', ()
     seedSession(db, SESSION_A2, PROJECT_1);
     seedTurns(db, SESSION_A2, PROJECT_1, 3);
     db.prepare(
-      `INSERT INTO artifact (id, kind, title, body, status, created_at_epoch, updated_at_epoch, project_id, data)
+      `INSERT INTO artifact (id, kind, title, body, status, created_at_epoch, updated_at_epoch, project, data)
        VALUES (?, 'test_seed', 'tick3', 'body', 'active', ?, ?, ?, '{}')`,
     ).run(`active-${Date.now()}`, Date.now(), Date.now(), PROJECT_1);
     enqueueCuration(db, SESSION_A2, PROJECT_1);

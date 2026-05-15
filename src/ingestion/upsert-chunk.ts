@@ -34,11 +34,11 @@ import type { ChunkV6 } from './transcript-chunker-v6.js';
 // equal on a conflict — so omit them from SET to avoid no-op rewrites.
 const UPSERT_SQL = `
 INSERT INTO transcript_chunk_v6 (
-  session_id, project_id, turn_index, sub_index, role, provenance,
+  session_id, project, turn_index, sub_index, role, provenance,
   body, created_at_epoch_ms, wrapper_redacted
 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT(session_id, turn_index, role, sub_index) DO UPDATE SET
-  project_id = excluded.project_id,
+  project = excluded.project,
   provenance = excluded.provenance,
   body = excluded.body,
   created_at_epoch_ms = excluded.created_at_epoch_ms,

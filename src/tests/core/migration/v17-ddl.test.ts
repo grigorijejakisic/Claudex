@@ -36,7 +36,7 @@ describe('applyV17DDL', () => {
     const cols = (db.pragma('table_info(artifact)') as Array<{ name: string }>).map((c) => c.name);
     expect(cols).toEqual([
       'id', 'kind', 'title', 'body', 'scope', 'status', 'confidence',
-      'created_at_epoch', 'updated_at_epoch', 'session_id', 'project_id',
+      'created_at_epoch', 'updated_at_epoch', 'session_id', 'project',
       'embedding_ref', 'supersedes_id', 'data',
     ]);
   });
@@ -166,13 +166,13 @@ describe('applyV17DDL', () => {
   it('uq_artifact_learning UNIQUE partial index enforces dedup', () => {
     applyV17DDL(db);
     db.prepare(`
-      INSERT INTO artifact(id, kind, body, project_id, created_at_epoch, updated_at_epoch, data)
+      INSERT INTO artifact(id, kind, body, project, created_at_epoch, updated_at_epoch, data)
       VALUES (?, ?, ?, ?, ?, ?, ?)
     `).run('a1', 'learning', 'b', 'proj', 0, 0, JSON.stringify({ agent_id: 'x', fingerprint: 'fp1' }));
 
     expect(() => {
       db.prepare(`
-        INSERT INTO artifact(id, kind, body, project_id, created_at_epoch, updated_at_epoch, data)
+        INSERT INTO artifact(id, kind, body, project, created_at_epoch, updated_at_epoch, data)
         VALUES (?, ?, ?, ?, ?, ?, ?)
       `).run('a2', 'learning', 'b2', 'proj', 0, 0, JSON.stringify({ agent_id: 'x', fingerprint: 'fp1' }));
     }).toThrow();

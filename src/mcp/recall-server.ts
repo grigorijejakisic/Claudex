@@ -353,13 +353,13 @@ server.registerTool(
         let hits: Array<{ id: number | string; content: string; project: string; promotion_count: number }> = [];
         try {
           const rows = cachedPrepare(db,
-            `SELECT a.id AS id, a.body AS content, a.project_id AS project,
+            `SELECT a.id AS id, a.body AS content, a.project AS project,
                     CAST(json_extract(a.data, '$.promotion_count') AS INTEGER) AS promotion_count
              FROM artifact_fts f
              JOIN artifact a ON a.rowid = f.rowid
              WHERE artifact_fts MATCH ?
                AND a.kind = 'learning'
-               AND (a.project_id = ? OR a.project_id = '__global__')
+               AND (a.project = ? OR a.project = '__global__')
              ORDER BY bm25(artifact_fts)
              LIMIT ?`
           ).all(ftsQuery, proj, offset + limit) as Array<{
@@ -474,13 +474,13 @@ server.registerTool(
           const rows = cachedPrepare(db,
             `SELECT a.id, a.body AS lesson,
                     CAST(json_extract(a.data, '$.severity') AS TEXT) AS severity,
-                    a.project_id AS source_project
+                    a.project AS source_project
              FROM artifact_fts f
              JOIN artifact a ON a.rowid = f.rowid
              WHERE artifact_fts MATCH ?
                AND a.kind = 'experience_pattern'
                AND CAST(json_extract(a.data, '$.score') AS INTEGER) >= 2
-               AND (a.project_id = ? OR a.project_id = '__global__')
+               AND (a.project = ? OR a.project = '__global__')
              ORDER BY bm25(artifact_fts)
              LIMIT ?`
           ).all(ftsQuery, proj, offset + limit) as Array<{
