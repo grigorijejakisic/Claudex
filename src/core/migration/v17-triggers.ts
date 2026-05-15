@@ -195,7 +195,7 @@ CREATE TRIGGER ${triggerName} INSTEAD OF INSERT ON ${legacyTable}
 BEGIN
   INSERT INTO artifact(
     id, kind, title, body, scope, status, confidence,
-    created_at_epoch, updated_at_epoch, session_id, project_id, data
+    created_at_epoch, updated_at_epoch, session_id, project, data
   ) VALUES (
     ${idExpr},
     '${kind}',
@@ -221,6 +221,7 @@ interface KernelFills {
   created_at_epoch: string;
   updated_at_epoch: string;
   session_id: string;
+  /** Maps to the `project` column on artifact (formerly project_id). */
   project_id: string;
 }
 

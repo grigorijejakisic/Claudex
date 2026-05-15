@@ -216,7 +216,7 @@ export async function runV17Migration(opts: RunnerOpts): Promise<RunnerResult> {
       const insertArtifactStmt = db.prepare(`
         INSERT INTO artifact(
           id, kind, title, body, scope, status, confidence,
-          created_at_epoch, updated_at_epoch, session_id, project_id, data
+          created_at_epoch, updated_at_epoch, session_id, project, data
         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `);
       const insertMapStmt = db.prepare(`

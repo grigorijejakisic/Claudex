@@ -2397,6 +2397,34 @@ export function migrateV33toV34(db: Database): void {
     }
   }
 
+  // Audit views that reference artifact.project_id (e.g., the learnings view
+  // installed by migrateV30toV31 on V17-collapsed DBs). SQLite views do not
+  // auto-update on column renames — drop + recreate each affected view AND
+  // its associated INSTEAD OF triggers (which also reference project_id).
+  const viewRows = db.prepare(
+    `SELECT name, sql FROM sqlite_master WHERE type='view'`
+  ).all() as Array<{ name: string; sql: string | null }>;
+  for (const v of viewRows) {
+    if (v.sql && /project_id/i.test(v.sql)) {
+      // Drop INSTEAD OF triggers on this view first (triggers are order-sensitive).
+      const vTriggers = db.prepare(
+        `SELECT name, sql FROM sqlite_master WHERE type='trigger' AND tbl_name=?`
+      ).all(v.name) as Array<{ name: string; sql: string | null }>;
+      for (const t of vTriggers) {
+        db.exec(`DROP TRIGGER IF EXISTS "${t.name}"`);
+      }
+      // Recreate view with project_id → project substitution.
+      db.exec(`DROP VIEW IF EXISTS "${v.name}"`);
+      db.exec(v.sql.replace(/\bartifact\.project_id\b/g, 'artifact.project'));
+      // Recreate triggers with project_id → project substitution.
+      for (const t of vTriggers) {
+        if (t.sql) {
+          db.exec(t.sql.replace(/project_id/g, 'project'));
+        }
+      }
+    }
+  }
+
   db.pragma('user_version = 34');
   db.exec(`INSERT OR IGNORE INTO schema_versions(version, applied_at_epoch)
            VALUES (34, unixepoch())`);

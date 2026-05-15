@@ -37,7 +37,7 @@ export type KernelCol =
   | 'created_at_epoch'
   | 'updated_at_epoch'
   | 'session_id'
-  | 'project_id'
+  | 'project'
   | 'embedding_ref'
   | 'supersedes_id'
   | 'data';
@@ -91,6 +91,7 @@ export interface ComposedPayload {
   status: 'active' | 'stale' | 'archived' | 'superseded';
   confidence: number | null;
   session_id: string | null;
+  /** The value for the `project` column on artifact (formerly project_id). */
   project_id: string | null;
 }
 
@@ -132,7 +133,7 @@ export const KIND_MAPPING: Record<LegacyTable, KindMapping> = {
     projectIdCol: 'project',
     columns: [
       { name: 'id', type: 'INTEGER', storage: { kind: 'legacy_id_map' } },
-      { name: 'project', type: 'TEXT', storage: { kind: 'kernel', col: 'project_id' } },
+      { name: 'project', type: 'TEXT', storage: { kind: 'kernel', col: 'project' } },
       { name: 'agent_id', type: 'TEXT', storage: { kind: 'data', path: '$.agent_id' } },
       { name: 'fingerprint', type: 'TEXT', storage: { kind: 'data', path: '$.fingerprint' } },
       { name: 'content', type: 'TEXT', storage: { kind: 'kernel', col: 'body' } },
@@ -172,7 +173,7 @@ export const KIND_MAPPING: Record<LegacyTable, KindMapping> = {
     columns: [
       { name: 'id', type: 'INTEGER', storage: { kind: 'legacy_id_map' } },
       { name: 'session_id', type: 'TEXT', storage: { kind: 'kernel', col: 'session_id' } },
-      { name: 'project', type: 'TEXT', storage: { kind: 'kernel', col: 'project_id' } },
+      { name: 'project', type: 'TEXT', storage: { kind: 'kernel', col: 'project' } },
       { name: 'content', type: 'TEXT', storage: { kind: 'kernel', col: 'body' } },
       { name: 'source', type: 'TEXT', storage: { kind: 'data', path: '$.source' } },
       { name: 'fingerprint', type: 'TEXT', storage: { kind: 'data', path: '$.fingerprint' } },
@@ -217,7 +218,7 @@ export const KIND_MAPPING: Record<LegacyTable, KindMapping> = {
       { name: 'times_triggered', type: 'INTEGER', storage: { kind: 'data', path: '$.times_triggered' } },
       { name: 'times_useful', type: 'INTEGER', storage: { kind: 'data', path: '$.times_useful' } },
       { name: 'source_session', type: 'TEXT', storage: { kind: 'kernel', col: 'session_id' } },
-      { name: 'source_project', type: 'TEXT', storage: { kind: 'kernel', col: 'project_id' } },
+      { name: 'source_project', type: 'TEXT', storage: { kind: 'kernel', col: 'project' } },
       { name: 'created_at_epoch', type: 'INTEGER', storage: { kind: 'kernel', col: 'created_at_epoch' } },
       { name: 'last_triggered_epoch', type: 'INTEGER', storage: { kind: 'data', path: '$.last_triggered_epoch' } },
       { name: 'trigger_glob', type: 'TEXT', storage: { kind: 'data', path: '$.trigger_glob' } },
@@ -291,7 +292,7 @@ export const KIND_MAPPING: Record<LegacyTable, KindMapping> = {
     projectIdCol: 'project',
     columns: [
       { name: 'id', type: 'INTEGER', storage: { kind: 'legacy_id_map' } },
-      { name: 'project', type: 'TEXT', storage: { kind: 'kernel', col: 'project_id' } },
+      { name: 'project', type: 'TEXT', storage: { kind: 'kernel', col: 'project' } },
       { name: 'subject', type: 'TEXT', storage: { kind: 'data', path: '$.subject' } },
       { name: 'opinion', type: 'TEXT', storage: { kind: 'kernel', col: 'body' } },
       { name: 'confidence', type: 'REAL', storage: { kind: 'kernel', col: 'confidence' } },
@@ -335,7 +336,7 @@ export const KIND_MAPPING: Record<LegacyTable, KindMapping> = {
     projectIdCol: 'project',
     columns: [
       { name: 'id', type: 'INTEGER', storage: { kind: 'legacy_id_map' } },
-      { name: 'project', type: 'TEXT', storage: { kind: 'kernel', col: 'project_id' } },
+      { name: 'project', type: 'TEXT', storage: { kind: 'kernel', col: 'project' } },
       { name: 'rule_text', type: 'TEXT', storage: { kind: 'kernel', col: 'body' } },
       { name: 'variants', type: 'TEXT', storage: { kind: 'data', path: '$.variants' } },
       { name: 'source', type: 'TEXT', storage: { kind: 'data', path: '$.source' } },
@@ -387,7 +388,7 @@ export const KIND_MAPPING: Record<LegacyTable, KindMapping> = {
     projectIdCol: 'project',
     columns: [
       { name: 'id', type: 'INTEGER', storage: { kind: 'legacy_id_map' } },
-      { name: 'project', type: 'TEXT', storage: { kind: 'kernel', col: 'project_id' } },
+      { name: 'project', type: 'TEXT', storage: { kind: 'kernel', col: 'project' } },
       { name: 'type', type: 'TEXT', storage: { kind: 'data', path: '$.type' } },
       { name: 'content', type: 'TEXT', storage: { kind: 'kernel', col: 'body' } },
       { name: 'tags', type: 'TEXT', storage: { kind: 'data', path: '$.tags' } },
