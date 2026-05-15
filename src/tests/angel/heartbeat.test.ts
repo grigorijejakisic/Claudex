@@ -546,4 +546,64 @@ describe('Angel heartbeat — Phase 5b Session-completion artifact curation', ()
     // Pending row still marked done (no_project_dir is whitelisted by design).
     expect(countDoneEvents(db)).toBe(1);
   });
+
+  // --------------------------------------------------------------------------
+  // Phase 14 Plan 14-05 — TERMINATED session triggers promoteSessionToCompleted
+  // --------------------------------------------------------------------------
+
+  it('14-05: heartbeat tick fires session_end_action chain for recently-completed sessions', async () => {
+    // Seed a session that is already completed (as if boundary tick just fired)
+    // with no session_end_action telemetry yet.
+    const TERMINATED_SESSION = 'terminated-sess-1';
+    db.prepare(
+      `INSERT INTO sessions (session_id, project, status, created_at_epoch_ms, ended_at_epoch_ms)
+       VALUES (?, ?, 'completed', ?, ?)`
+    ).run(TERMINATED_SESSION, PROJECT_1, Date.now() - 7200000, Date.now() - 1000);
+
+    // Heartbeat tick should detect this session (recently completed, no action telemetry)
+    // and call promoteSessionToCompleted on it.
+    const tick = await heartbeatTick(mkCtx(db));
+    expect(tick.error).toBeUndefined();
+
+    // The session_end_action telemetry must now have 5 rows for this session.
+    const actionRows = db.prepare(
+      `SELECT json_extract(detail, '$.action') AS action FROM telemetry
+       WHERE session_id = ? AND event_kind = 'session_end_action'
+       ORDER BY id ASC`
+    ).all(TERMINATED_SESSION) as Array<{ action: string }>;
+    expect(actionRows).toHaveLength(5);
+    expect(actionRows.map(r => r.action)).toEqual([
+      'session_summary',
+      'pattern_extraction',
+      'highlights_extraction',
+      'memory_md_regeneration',
+      'lesson_pointer_update',
+    ]);
+  });
+
+  it('14-05: heartbeat tick does NOT re-fire action chain for already-promoted sessions', async () => {
+    // Seed a session that was completed AND already has session_end_action rows
+    const ALREADY_PROMOTED = 'already-promoted-sess';
+    db.prepare(
+      `INSERT INTO sessions (session_id, project, status, created_at_epoch_ms, ended_at_epoch_ms)
+       VALUES (?, ?, 'completed', ?, ?)`
+    ).run(ALREADY_PROMOTED, PROJECT_1, Date.now() - 7200000, Date.now() - 1000);
+
+    // Insert the idempotency guard telemetry row
+    db.prepare(
+      `INSERT INTO telemetry (session_id, event_kind, detail, adapter)
+       VALUES (?, 'session_end_action', ?, 'angel-boundary')`
+    ).run(
+      ALREADY_PROMOTED,
+      JSON.stringify({ action: 'session_summary', outcome: 'ok', duration_ms: 10, reason: 'idle_terminated' }),
+    );
+
+    await heartbeatTick(mkCtx(db));
+
+    // Still only 1 session_end_action row — heartbeat did not re-fire
+    const count = (db.prepare(
+      `SELECT COUNT(*) AS c FROM telemetry WHERE session_id = ? AND event_kind = 'session_end_action'`
+    ).get(ALREADY_PROMOTED) as { c: number }).c;
+    expect(count).toBe(1);
+  });
 });
