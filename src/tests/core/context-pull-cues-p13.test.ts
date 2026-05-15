@@ -39,6 +39,12 @@ CREATE TABLE IF NOT EXISTS session_events (
   detail TEXT,
   timestamp_epoch INTEGER DEFAULT (strftime('%s','now'))
 );
+CREATE TABLE IF NOT EXISTS sessions (
+  session_id TEXT PRIMARY KEY,
+  project TEXT,
+  status TEXT DEFAULT 'active',
+  created_at_epoch INTEGER DEFAULT 0
+);
 `;
 
 function makeDb(): DatabaseType {
@@ -47,9 +53,28 @@ function makeDb(): DatabaseType {
   return db;
 }
 
+/**
+ * Seed a sessions row. Required after Phase 13.1 Fix #4 (2026-05-15): the
+ * `getLatestHighlights` query JOINs `sessions` to filter by source-of-truth
+ * project, so any test seeding session_highlights must also seed a sessions
+ * row for the highlight to be visible to consumers like shouldFireCue.
+ */
+function seedSession(db: DatabaseType, session_id: string, project: string): void {
+  db.prepare(`INSERT OR IGNORE INTO sessions (session_id, project) VALUES (?, ?)`).run(session_id, project);
+}
+
 describe('shouldFireCue — coverage gate', () => {
   let db: DatabaseType;
-  beforeEach(() => { db = makeDb(); _resetScriptEncounterCacheForTest(); });
+  beforeEach(() => {
+    db = makeDb();
+    _resetScriptEncounterCacheForTest();
+    // Phase 13.1 Fix #4 (2026-05-15): getLatestHighlights JOINs sessions for
+    // project-truth filtering. Seed the sessions rows the tests reference so
+    // upsertHighlights writes are visible through the consuming surfaces.
+    seedSession(db, 's1', 'p1');
+    seedSession(db, 's2', 'p1');
+    seedSession(db, 's3', 'p1');
+  });
 
   it('fires when no highlights exist (no coverage possible)', () => {
     expect(shouldFireCue('script_encounter', { filePath: 'src/angel/heartbeat.ts' }, 'p1', db)).toBe(true);
@@ -144,7 +169,16 @@ describe('shouldFireCue — coverage gate', () => {
 
 describe('buildPackageInstallCue — pattern + content', () => {
   let db: DatabaseType;
-  beforeEach(() => { db = makeDb(); _resetScriptEncounterCacheForTest(); });
+  beforeEach(() => {
+    db = makeDb();
+    _resetScriptEncounterCacheForTest();
+    // Phase 13.1 Fix #4 (2026-05-15): getLatestHighlights JOINs sessions for
+    // project-truth filtering. Seed the sessions rows the tests reference so
+    // upsertHighlights writes are visible through the consuming surfaces.
+    seedSession(db, 's1', 'p1');
+    seedSession(db, 's2', 'p1');
+    seedSession(db, 's3', 'p1');
+  });
 
   it('fires on npm install <package>', async () => {
     const cue = await buildPackageInstallCue(db, 'npm install zod', 'p1');
@@ -200,7 +234,13 @@ describe('buildPackageInstallCue — pattern + content', () => {
 
 describe('buildErrorInvestigationCue — pattern + content', () => {
   let db: DatabaseType;
-  beforeEach(() => { db = makeDb(); });
+  beforeEach(() => {
+    db = makeDb();
+    // Phase 13.1 Fix #4 (2026-05-15): seed sessions rows for the JOIN.
+    seedSession(db, 's1', 'p1');
+    seedSession(db, 's2', 'p1');
+    seedSession(db, 's3', 'p1');
+  });
 
   it('fires on grep error in logs', async () => {
     const cue = await buildErrorInvestigationCue(db, 'grep -r "error" logs/', 'p1');
@@ -254,7 +294,16 @@ describe('buildErrorInvestigationCue — pattern + content', () => {
 
 describe('buildScriptEncounterCue — pattern + history threshold', () => {
   let db: DatabaseType;
-  beforeEach(() => { db = makeDb(); _resetScriptEncounterCacheForTest(); });
+  beforeEach(() => {
+    db = makeDb();
+    _resetScriptEncounterCacheForTest();
+    // Phase 13.1 Fix #4 (2026-05-15): getLatestHighlights JOINs sessions for
+    // project-truth filtering. Seed the sessions rows the tests reference so
+    // upsertHighlights writes are visible through the consuming surfaces.
+    seedSession(db, 's1', 'p1');
+    seedSession(db, 's2', 'p1');
+    seedSession(db, 's3', 'p1');
+  });
 
   it('does NOT fire on a README path (not a script)', async () => {
     const cue = await buildScriptEncounterCue(db, 'docs/README.md', 'p1', 'this-session');
@@ -292,6 +341,7 @@ describe('buildScriptEncounterCue — pattern + history threshold', () => {
     db.exec(`INSERT INTO session_events (session_id, project, event_type, entity, action) VALUES ('s1', 'p1', 'file', 'src/angel/heartbeat.ts', 'read')`);
     db.exec(`INSERT INTO session_events (session_id, project, event_type, entity, action) VALUES ('s2', 'p1', 'file', 'src/angel/heartbeat.ts', 'edit')`);
     db.exec(`INSERT INTO session_events (session_id, project, event_type, entity, action) VALUES ('s3', 'p1', 'file', 'src/angel/heartbeat.ts', 'read')`);
+    seedSession(db, 's-prior', 'p1');
     upsertHighlights(db, {
       session_id: 's-prior', project: 'p1',
       tools_introduced: [{ path: 'src/angel/heartbeat.ts', purpose: 'Angel tick loop' }],
