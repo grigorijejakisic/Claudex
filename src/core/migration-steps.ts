@@ -2346,3 +2346,88 @@ export function migrateV31toV32(db: Database): boolean {
 
   return true;
 }
+
+/**
+ * V33 → V34 (Phase 14 Plan 14-02, 2026-05-15):
+ * Project-naming column unification. The V17 `artifact` table and
+ * `transcript_chunk_v6` use `project_id`; every other project-scoped
+ * table uses `project`. The collision causes cross-table queries to
+ * fail in non-obvious ways. This migration renames the V17 outliers.
+ *
+ * SQLite `ALTER TABLE ... RENAME COLUMN` requires SQLite 3.25+;
+ * better-sqlite3 ships with 3.40+ on supported Node versions, so
+ * this is safe.
+ *
+ * FTS5 sidecar `artifact_fts` is content-table-bound (content=artifact,
+ * content_rowid=id) — column rename on the source table does NOT
+ * require FTS DDL changes (FTS reads by rowid, not by column name).
+ * Existing triggers (artifact_ai/ad/au) are inspected; if any
+ * reference `project_id` directly, they're recreated against `project`.
+ *
+ * Indexes referencing `project_id` are dropped + recreated.
+ *
+ * Reverse migration `migrateV34toV33` exists for rollback. Both
+ * migrations bump user_version + add a schema_versions row.
+ */
+export function migrateV33toV34(db: Database): void {
+  db.exec(`ALTER TABLE artifact RENAME COLUMN project_id TO project`);
+  db.exec(`ALTER TABLE transcript_chunk_v6 RENAME COLUMN project_id TO project`);
+
+  // Audit indexes — drop any that reference project_id.
+  const idxRows = db.prepare(
+    `SELECT name, sql FROM sqlite_master WHERE type='index'
+       AND (tbl_name='artifact' OR tbl_name='transcript_chunk_v6')`
+  ).all() as Array<{ name: string; sql: string | null }>;
+  for (const r of idxRows) {
+    if (r.sql && /project_id/i.test(r.sql)) {
+      db.exec(`DROP INDEX IF EXISTS "${r.name}"`);
+      db.exec(r.sql.replace(/project_id/g, 'project'));
+    }
+  }
+
+  // Audit triggers — same pattern.
+  const trgRows = db.prepare(
+    `SELECT name, sql FROM sqlite_master WHERE type='trigger'
+       AND (tbl_name='artifact' OR tbl_name='transcript_chunk_v6')`
+  ).all() as Array<{ name: string; sql: string | null }>;
+  for (const r of trgRows) {
+    if (r.sql && /project_id/i.test(r.sql)) {
+      db.exec(`DROP TRIGGER IF EXISTS "${r.name}"`);
+      db.exec(r.sql.replace(/project_id/g, 'project'));
+    }
+  }
+
+  db.pragma('user_version = 34');
+  db.exec(`INSERT OR IGNORE INTO schema_versions(version, applied_at_epoch)
+           VALUES (34, unixepoch())`);
+}
+
+export function migrateV34toV33(db: Database): void {
+  // Reverse: rename back to project_id. Mirror trigger/index audit.
+  db.exec(`ALTER TABLE artifact RENAME COLUMN project TO project_id`);
+  db.exec(`ALTER TABLE transcript_chunk_v6 RENAME COLUMN project TO project_id`);
+
+  const idxRows = db.prepare(
+    `SELECT name, sql FROM sqlite_master WHERE type='index'
+       AND (tbl_name='artifact' OR tbl_name='transcript_chunk_v6')`
+  ).all() as Array<{ name: string; sql: string | null }>;
+  for (const r of idxRows) {
+    if (r.sql && /\bproject\b(?!_id)/i.test(r.sql)) {
+      db.exec(`DROP INDEX IF EXISTS "${r.name}"`);
+      db.exec(r.sql.replace(/\bproject\b/g, 'project_id'));
+    }
+  }
+
+  const trgRows = db.prepare(
+    `SELECT name, sql FROM sqlite_master WHERE type='trigger'
+       AND (tbl_name='artifact' OR tbl_name='transcript_chunk_v6')`
+  ).all() as Array<{ name: string; sql: string | null }>;
+  for (const r of trgRows) {
+    if (r.sql && /\bproject\b(?!_id)/i.test(r.sql)) {
+      db.exec(`DROP TRIGGER IF EXISTS "${r.name}"`);
+      db.exec(r.sql.replace(/\bproject\b/g, 'project_id'));
+    }
+  }
+
+  db.pragma('user_version = 33');
+}

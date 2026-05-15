@@ -19,6 +19,7 @@ import { getClaudexHome } from '../shared/paths.js';
 import { SCHEMA_V3, TELEMETRY_SCHEMA, TEAM_COORDINATION_SCHEMA, SHAPE_VOCABULARY_SCHEMA, POINTER_RECALL_SCHEMA, ARTIFACT_TASK_PATTERN_SCHEMA, SCHEMA_V22 } from './schema.js';
 import {
   hasTable,
+  hasColumn,
   rebuildStaleFts5,
   migrateV1toV2,
   migrateV2toV3,
@@ -52,6 +53,7 @@ import {
   migrateV30toV31,
   migrateV31toV32,
   migrateV32toV33,
+  migrateV33toV34,
   migrateSchemaFixes,
   cleanupOrphanTables,
   upgradeV2SchemaInPlace,
@@ -96,6 +98,7 @@ export { migrateV14toV15 };
  *   31 — v5.0.1 hot-fix (MIG-02): learnings.provenance view rebuild (V17 view-mode)
  *   32 — v6 Phase 8: transcript_chunk_v6 + vec_transcript_chunks_v6 (TRX-05)
  *   33 — v6 Phase 13 Plan 03: session_highlights table (per-session frame artifacts)
+ *   34 — Phase 14 Plan 14-02: project_id → project column rename on artifact + transcript_chunk_v6
  *
  * Dual version tracking:
  * Both `PRAGMA user_version` and `schema_versions` table are needed:
@@ -110,7 +113,7 @@ export { migrateV14toV15 };
  * `claudex doctor` (DIAG-05) reads this to verify the on-disk DB is in sync.
  * Bumping a migration must bump this constant in lockstep.
  */
-export const TARGET_USER_VERSION = 33;
+export const TARGET_USER_VERSION = 34;
 
 export function runMigrations(db: Database): void {
   const row = db.pragma('user_version') as Array<{ user_version: number }>;
@@ -159,6 +162,7 @@ export function runMigrations(db: Database): void {
     [30, () => { migrateV30toV31(db); }],
     [31, () => { migrateV31toV32(db); }],
     [32, () => { migrateV32toV33(db); }],
+    [33, () => { migrateV33toV34(db); }],
   ];
 
   // Handle special cases for version 0 and 1
@@ -426,6 +430,15 @@ export function initializeSchema(db: Database): void {
   if (currentUv < 32) {
     migrateV31toV32(db);
     db.pragma('user_version = 32');
+  }
+
+  // Phase 14 Plan 14-02 (V34): rename artifact.project_id → project and
+  // transcript_chunk_v6.project_id → project. Unifies naming across all
+  // project-scoped tables. Idempotent: hasColumn guard prevents double-rename.
+  if (currentUv < 34) {
+    if (hasTable(db, 'artifact') && hasColumn(db, 'artifact', 'project_id')) {
+      migrateV33toV34(db);
+    }
   }
 
   // Phase 4 (V28): per-connection sidecar + TEMP TRIGGER guarding writes
