@@ -19,6 +19,7 @@ Priority-ordered cascade with budget gating. Each section only included if withi
 | P2 | Project | From PROJECT_PRIMER.md (fallback when no CLAUDE.md) |
 | P2.5 | Session Continuity | ACTIVE.md frontmatter (status/phase/summary) + body inline fields + `## Operator Gates` section. Source of truth: `context/handoffs/ACTIVE.md`. Session-log "Where We Left Off" extraction removed in Phase 13.1 Fix #1 (2026-05-15) — it surfaced stale prior-session framings. |
 | P2.6 | Recent Session Frames | session_highlights for current project (JOIN to sessions for project-truth filter; Fix #4, 2026-05-15). Frame Extraction Degraded health line piggybacks here. |
+| P2.7 | Project Knowledge | Same-project hybrid retrieval against ACTIVE.md summary; isSubstantive filter (Plan 14-03); 800 token cap; cache-stable; null when summary absent. (Phase 14 Plan 14-04, 2026-05-16) |
 | P3 | Checkpoint | Loaded from DB, skipLearnings=true |
 | P4 | Learnings | Top 5 cross-session learnings |
 | P4.05 | Entity Summaries | Angel-generated entity knowledge |
