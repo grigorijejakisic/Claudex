@@ -101,10 +101,10 @@ END;
 export const EXPRESSION_INDEXES_DDL = `
 -- learnings (2 indexes)
 CREATE INDEX IF NOT EXISTS idx_artifact_learning_agent
-  ON artifact(project_id, json_extract(data, '$.agent_id'), json_extract(data, '$.promotion_count') DESC)
+  ON artifact(project, json_extract(data, '$.agent_id'), json_extract(data, '$.promotion_count') DESC)
   WHERE kind = 'learning';
 CREATE UNIQUE INDEX IF NOT EXISTS uq_artifact_learning
-  ON artifact(project_id, json_extract(data, '$.agent_id'), json_extract(data, '$.fingerprint'))
+  ON artifact(project, json_extract(data, '$.agent_id'), json_extract(data, '$.fingerprint'))
   WHERE kind = 'learning';
 
 -- decisions (3 indexes)
@@ -115,7 +115,7 @@ CREATE INDEX IF NOT EXISTS idx_artifact_decision_session
   ON artifact(session_id, created_at_epoch DESC)
   WHERE kind = 'decision';
 CREATE INDEX IF NOT EXISTS idx_artifact_decision_project
-  ON artifact(project_id, created_at_epoch DESC)
+  ON artifact(project, created_at_epoch DESC)
   WHERE kind = 'decision';
 
 -- experience_patterns (2 indexes)
@@ -123,31 +123,31 @@ CREATE INDEX IF NOT EXISTS idx_artifact_expat_score
   ON artifact(json_extract(data, '$.score') DESC, json_extract(data, '$.times_triggered') DESC)
   WHERE kind = 'experience_pattern';
 CREATE INDEX IF NOT EXISTS idx_artifact_expat_project_score
-  ON artifact(project_id, json_extract(data, '$.score') DESC)
+  ON artifact(project, json_extract(data, '$.score') DESC)
   WHERE kind = 'experience_pattern';
 
 -- angel_opinions (2 indexes)
 CREATE UNIQUE INDEX IF NOT EXISTS uq_artifact_opinion
-  ON artifact(project_id, json_extract(data, '$.subject'))
+  ON artifact(project, json_extract(data, '$.subject'))
   WHERE kind = 'angel_opinion';
 CREATE INDEX IF NOT EXISTS idx_artifact_opinion_confidence
-  ON artifact(project_id, confidence DESC)
+  ON artifact(project, confidence DESC)
   WHERE kind = 'angel_opinion';
 
 -- critical_rules (2 indexes)
 CREATE INDEX IF NOT EXISTS idx_artifact_critrule_source
-  ON artifact(project_id, json_extract(data, '$.source'))
+  ON artifact(project, json_extract(data, '$.source'))
   WHERE kind = 'critical_rule';
 CREATE UNIQUE INDEX IF NOT EXISTS uq_artifact_critrule_dedup
-  ON artifact(project_id, body)
+  ON artifact(project, body)
   WHERE kind = 'critical_rule';
 
 -- mental_model / project_curated_context (2 indexes)
 CREATE INDEX IF NOT EXISTS idx_artifact_mentalmodel_status
-  ON artifact(project_id, status)
+  ON artifact(project, status)
   WHERE kind = 'mental_model';
 CREATE INDEX IF NOT EXISTS idx_artifact_mentalmodel_type
-  ON artifact(project_id, json_extract(data, '$.type'), status)
+  ON artifact(project, json_extract(data, '$.type'), status)
   WHERE kind = 'mental_model';
 `;
 

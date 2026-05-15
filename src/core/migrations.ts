@@ -435,9 +435,14 @@ export function initializeSchema(db: Database): void {
   // Phase 14 Plan 14-02 (V34): rename artifact.project_id → project and
   // transcript_chunk_v6.project_id → project. Unifies naming across all
   // project-scoped tables. Idempotent: hasColumn guard prevents double-rename.
+  // Fresh DBs created post-V34 already have `project` (not `project_id`) so
+  // the rename is skipped, but we still bump user_version to 34.
   if (currentUv < 34) {
     if (hasTable(db, 'artifact') && hasColumn(db, 'artifact', 'project_id')) {
       migrateV33toV34(db);
+    } else {
+      // Fresh DB or already-renamed DB — just bump the version.
+      db.pragma('user_version = 34');
     }
   }
 
