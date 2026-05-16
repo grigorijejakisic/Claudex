@@ -1,9 +1,9 @@
 ---
 status: active
-phase: "14-07 spec complete → Wave 1 dispatch pending"
-summary: v7.0.0 spec (Phase 14-07) authored end-to-end on 2026-05-16 — 15 deliverables (1 CONTEXT + 3 WAVE-COORDINATION docs + 11 PLAN.mds) covering substrate unification (Wave 1), knowledge graph (Wave 2), and session-start coherence (Wave 3). All files at `.planning/phases/14-substrate-coherence/14-07-*`. Strict-sequential execution per CONTEXT Locked Decision 7. Operator gates: v6.6.0 push, v7.0.0 spec review, /auto-orchestrate Wave 1 dispatch.
-topic: 2026-05-16-v7-spec-complete-wave1-dispatch-pending
-created_at_epoch_ms: 1779787200000
+phase: "14-07 spec verified + Wave 0 shipped partial → Wave 1 dispatch needs WAVE1-COORD + 14-07b tasks restructure"
+summary: v7.0.0 spec authored 2026-05-16 morning; operator-triggered verification pass surfaced major errors (wrong file paths, wrong function names, wrong schema mapping, missing 10 caller files, design error in experience-tier). Afternoon: Wave 0 partially shipped (auto-commit hooks LIVE + CLAUDE.md verify-before-done rule LIVE + /verify skill registered). Spec corrections applied to most docs. Locked Decisions 8 (Wave 0) and 9 (experience-tier option C) added to CONTEXT. Remaining: 14-07-WAVE1-COORDINATION restructure to W1-W5; 14-07b <tasks> section restructure; Wave 0 sections-split + Wave 0 plan docs authoring.
+topic: 2026-05-16-v7-spec-corrected-wave0-shipped-partial
+created_at_epoch_ms: 1779809400000
 ---
 
 # 2026-05-16 — v7.0.0 spec complete; Wave 1 dispatch operator-gated
