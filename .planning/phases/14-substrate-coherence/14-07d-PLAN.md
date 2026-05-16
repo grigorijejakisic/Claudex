@@ -13,7 +13,7 @@ files_modified:
   - src/intelligence/retrieval-log.ts
   - src/tests/intelligence/soft-link-writers.test.ts (NEW)
   - src/tests/angel/handoff-writer.test.ts
-  - src/tests/angel/learnings-promoter.test.ts
+  - src/tests/intelligence/learnings-promoter.test.ts
   - src/tests/angel/highlights-extractor.test.ts
 autonomous: true
 requirements: []
@@ -325,7 +325,7 @@ New test file. Tests:
 
 <task type="auto">
   <name>Task 7: Site-instrumentation tests</name>
-  <files>src/tests/angel/handoff-writer.test.ts, src/tests/angel/learnings-promoter.test.ts, src/tests/angel/highlights-extractor.test.ts</files>
+  <files>src/tests/angel/handoff-writer.test.ts, src/tests/intelligence/learnings-promoter.test.ts, src/tests/angel/highlights-extractor.test.ts</files>
   <action>
 Add new describe blocks to each existing test file:
 
@@ -356,7 +356,7 @@ Preserve all existing tests.
   <action>
 - `bun run build` — must succeed.
 - `npx vitest run src/tests/intelligence/soft-link-writers.test.ts` — 12 tests pass.
-- `npx vitest run src/tests/angel/handoff-writer.test.ts src/tests/angel/learnings-promoter.test.ts src/tests/angel/highlights-extractor.test.ts` — new + existing tests pass.
+- `npx vitest run src/tests/angel/handoff-writer.test.ts src/tests/intelligence/learnings-promoter.test.ts src/tests/angel/highlights-extractor.test.ts` — new + existing tests pass.
 - `npx vitest run` — full suite green.
   </action>
   <verification>
