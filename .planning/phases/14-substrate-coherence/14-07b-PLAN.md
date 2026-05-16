@@ -466,19 +466,15 @@ export function migrateFixtureV36toV37(db: Database): void;
 </task>
 
 <task type="auto" worker="W5">
-  <name>Task B3.2: Migrate memory-md-writer.ts</name>
-  <files>src/angel/memory-md-writer.ts</files>
+  <name>Task W5.2: Migrate cli/health.ts (1 site)</name>
+  <files>src/cli/health.ts</files>
   <action>
-Read-path sites. memory-md-writer reads from the artifact substrate to populate MEMORY.md. Switch all legacy `artifacts` references to V17 `artifact`.
-
-Estimate: 1-2 sites (per RCA-3). Project-scope filtering unchanged.
-
-If B1 or B2 filed any memory-md-writer sites during their sweep, address them here.
+One INSERT site used as a health-check fixture. Switch the INSERT target from legacy `artifacts` to V17 `artifact` with the appropriate `kind` (likely 'observation' for the health check). Health check semantics unchanged.
   </action>
   <verification>
-- memory-md-writer legacy `artifacts` references migrated.
-- MEMORY.md output for claudex-v3 fixture is byte-equivalent pre/post migration (behavioral equivalence).
-- Existing memory-md-writer tests pass.
+- 1 site migrated.
+- Health-check CLI works against V17 schema post-migration.
+- Tests pass.
   </verification>
 </task>
 
