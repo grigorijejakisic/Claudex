@@ -432,7 +432,7 @@ Mocking strategy: inject each gate's runner via DI. Real harnesses are NOT invok
 - AC-12: `14-07-WAVE1-GATE-RESULTS.md` template exists; populated by cutover runs.
 - AC-13: All 25 new tests (15 cutover + 10 benchmark) pass.
 - AC-14: Operator-runnable dry-run smoke against real DB completes; output captured in 14-07-WAVE1-STATUS.md.
-- AC-15: No autonomous worker invokes `--apply` mode — operator-gated by design.
+- AC-15: Default mode is operator-gated — typed `CONFIRM` required for `--apply`. **Exception per Locked Decision 10 (Option B):** /auto-orchestrate Worker C invokes `--apply --confirm-non-interactive` when dispatched under autonomous-one-run authorization. The benchmark gate remains binding regardless — gate failure halts the cutover script with exit 1, no flag bypasses this.
 </acceptance_criteria>
 
 <risks>
