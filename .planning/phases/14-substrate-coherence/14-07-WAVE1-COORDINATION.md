@@ -195,14 +195,16 @@ fits best.
 PM merges in this order:
 
 1. **14-07a (Worker A) first** — schema migration is additive. No
-   conflict possible because B and C haven't started yet.
-2. **B1, B2, B3 in parallel** after A lands. Each commits to its
-   own feature branch. PM merges in the order they signal AC-green
-   (typically B1 → B2 → B3 alphabetical, but order doesn't matter
-   semantically — they own non-overlapping files except where
-   coordinated below).
+   conflict possible because W1-W5 and C haven't started yet.
+2. **W1, W2, W3, W4, W5 in parallel** after A lands. Each commits to
+   its own feature branch. PM merges in alphabetical order
+   (W1 → W2 → W3 → W4 → W5) — they own non-overlapping files, so
+   merge order is semantic-equivalent. The only shared surface is
+   `src/tests/helpers/v7-unified-schema.ts` (W5-owned; consumed by
+   others via import); if W1-W4 reference it before W5 lands, their
+   tests fail until W5 merges — acceptable, fix-on-merge.
 3. **14-07c (Worker C) last** — runs the cutover script + benchmark
-   gate. Cannot start until all of B is merged AND the integration
+   gate. Cannot start until all of W1-W5 is merged AND the integration
    branch passes `bun run build` and `bun run test`.
 
 ---
