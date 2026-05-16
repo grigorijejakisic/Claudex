@@ -1,40 +1,72 @@
 ---
 status: active
-phase: "14 → 14-07 spec"
-summary: Phase 14 shipped as v6.6.0 (8 plans, 4 waves, AC-3 PASS noise 83% → 18%, zero new regressions). Tomorrow's work is writing the production-quality 14-07 spec — the v7.0.0 milestone covering V17 unification + knowledge-graph linking. Plan-writing only; no execution unless operator says go.
-topic: 2026-05-16-phase-14-shipped-v7-spec-pending
-created_at_epoch_ms: 1779763200000
+phase: "14-07 spec complete → Wave 1 dispatch pending"
+summary: v7.0.0 spec (Phase 14-07) authored end-to-end on 2026-05-16 — 15 deliverables (1 CONTEXT + 3 WAVE-COORDINATION docs + 11 PLAN.mds) covering substrate unification (Wave 1), knowledge graph (Wave 2), and session-start coherence (Wave 3). All files at `.planning/phases/14-substrate-coherence/14-07-*`. Strict-sequential execution per CONTEXT Locked Decision 7. Operator gates: v6.6.0 push, v7.0.0 spec review, /auto-orchestrate Wave 1 dispatch.
+topic: 2026-05-16-v7-spec-complete-wave1-dispatch-pending
+created_at_epoch_ms: 1779787200000
 ---
 
-# 2026-05-16 — Phase 14 v6.6.0 shipped, v7.0.0 spec authoring next
+# 2026-05-16 — v7.0.0 spec complete; Wave 1 dispatch operator-gated
 
-**What we found:** Today's session shipped Phase 14 Substrate Coherence as v6.6.0 — eight contract-tightening fixes addressing the structural debt surfaced in the 2026-05-15 substrate audits. Wave 1 (parallel: 14-01 handoff schema migrator + 14-02 project naming + 14-08 multi-agent ACTIVE.md), Wave 2 (14-06 epoch ms canonicalization across ~10 tables), Wave 3 (parallel: 14-03 isSubstantive predicate + 14-05 boundary-detector single-owner), Wave 4 (14-04 P2.7 Project Knowledge surface). 4080/4088 tests passing; the 31 failures are all pre-existing v4-debt baseline (verified pre/post — phase-6-5-cross-project-vesna + phase-12-retrieval-ranking-rebalance + phase-5-full-gate + llama-* — same counts before Wave 3 as after). v6.6.0 annotated tag at commit `a3b3a42`. Worker A's migration of big-mozzy-v2/context/handoffs/ACTIVE.md was real but the entire big-mozzy-v2 source tree was retired to MoneyMaker by a parallel session at 00:20 today; the 47 memory files in `~/.claude/projects/C--Users-Grigorije-Desktop-big-mozzy-v2/memory/` are intact, only the source tree is gone. Hooks re-registered via `bun run setup` (25 hooks live for V36 schema).
+**What we found:** Today's session re-framed v7.0.0 from "V17 unification + knowledge-graph linking" (the 2026-05-15 sketch) to **session-start coherence as the user-facing goal** with three waves serving it. Operator-confirmed re-frame 2026-05-16 12:08 after the agent surfaced that session-start "felt like reading, not remembering" even with the existing substrate. Spec authored end-to-end in one session: 15 deliverables, ~thousands of lines, production-quality plan format matching v6.6.0 conventions. Three operator review gates embedded inside Wave 2 (14-07f UX simulation) + Wave 3 (14-07h migration tool dry-run) + final ship (14-07j qualitative gate on big-mozzy + claudex-v3).
 
 **What we decided:**
-1. **v6.6.0 push is operator-gated** — annotated tag exists locally; `git push origin master --tags` only on explicit confirmation, same gate as v5.0.0 and v6.0.0.
-2. **14-07 (V17 ↔ legacy artifacts migration) IS v7.0.0** — not split into v7.0.0 / v7.1.0 / v7.2.0 staged milestones. One plan, full scope. Per operator pushback 2026-05-16 01:39: "no need for versioning if you write the plan thoroughly."
-3. **v7.0.0 scope = V17 unification + full knowledge-graph linking** — six sub-plans in two waves. Foundation wave: 14-07a unification (one table, one ID type), 14-07b caller migration (~22 sites), 14-07c cutover + benchmark (Vesna + LongMemEval + LoCoMo gates). Linking wave: 14-07d soft links (supersedes / promoted_to / extracted_from / references — autonomous writers), 14-07e claudex_trace MCP + retrieval boost from link distance, 14-07f hard links (triggered_by / evidence_for / contradicts) + LLM proposer + operator-in-loop UX, 14-07g assembly "Provenance Chain" surface walking links from a checkpoint decision back to source observations.
-4. **Hard-link writer policy = option C hybrid** (operator-confirmed 2026-05-16 01:46). Soft links commit autonomously at write-time. Hard links propose-confirm-commit per the Good Child parable from `feedback_good_child_parable.md` — see `project_v7_hard_link_writer_is_good_child.md` for the full policy + UX shape.
 
-**What's next:** Tomorrow's work is **writing the v7.0.0 spec end-to-end at production quality**. No execution; just the spec deliverables. Specifically:
-- `14-07-CONTEXT.md` (phase-level rationale + locked decisions + scope + anti-scope + methodology gates)
-- `14-07-WAVE1-COORDINATION.md` (PM contract for foundation wave: file ownership table, branch strategy, merge order, cross-plan invariants)
-- `14-07-WAVE2-COORDINATION.md` (PM contract for linking wave; depends on Wave 1 landing)
-- **7 PLAN.mds**, one per sub-plan:
-  - **Foundation wave (3 plans):** `14-07a-PLAN.md` unification (one table, one ID type, mapping table for transition); `14-07b-PLAN.md` caller migration (~22 sites including hybrid-retrieval.ts 8 sites + retrieval-feedback.ts 5 sites + file-ingester.ts 2 sites); `14-07c-PLAN.md` cutover + benchmark gates (Vesna + LongMemEval + LoCoMo binding to no-ranking-regression).
-  - **Linking wave (4 plans):** `14-07d-PLAN.md` soft links (supersedes / promoted_to / extracted_from / references) + autonomous writer paths; `14-07e-PLAN.md` `claudex_trace()` MCP + retrieval boost from link-distance scoring; `14-07f-PLAN.md` hard links (triggered_by / evidence_for / contradicts) + LLM proposer + operator-in-loop UX (Good Child hybrid per `project_v7_hard_link_writer_is_good_child.md`); `14-07g-PLAN.md` "Provenance Chain" assembly section walking links from a checkpoint decision back to source observations.
+1. **v7.0.0 = three waves, strict-sequential execution.** Locked Decision 7 in CONTEXT (operator-confirmed 2026-05-16 12:25). Wave 1 substrate unification ships fully before Wave 2 knowledge graph dispatches; Wave 2 ships fully before Wave 3 session-start coherence dispatches. Trade-off: slightly slower wall-clock than parallel-overlap, but execution simplicity for /auto-orchestrate.
+2. **Wave 3 (session-start coherence) is part of v7.0.0**, not split as v6.7.0 intervening release. Per operator confirmation 2026-05-16 12:08.
+3. **Regenerator + experience-pattern project-scoping folded into 14-07h** (not split as v6.6.1). Per operator confirmation 2026-05-16 12:14.
+4. **Hard-link writer = option C hybrid** carries forward (Locked Decision 2 from yesterday). Soft links autonomous (14-07d); hard links propose-confirm-commit per Good Child policy (14-07f).
+5. **14 position-unless-flagged decisions** baked into the spec — the agent took positions across Wave 1 (V17 ID derivation, read-only enforcement, re-vectorization threshold), Wave 2 (project denormalization, decay threshold, boost formula + tier weights, boost flag-off, proposer rate limits, provenance exclusions, hop caps), and Wave 3 (experience scope default, lesson relevance weights, top-K + budget, codebase-context annotation format). All interruptible by operator before Wave 1 dispatch.
+6. **"Take position unless flagged"** confirmed 2026-05-16 12:14 as a default behavior pattern to use *always* — see `~/.claude/projects/C--Users-Grigorije-Desktop-Projects-CLAUDEXv3/memory/feedback_take_position_unless_flagged.md`.
+7. **"Periodic work updates during autonomous spans"** confirmed 2026-05-16 12:51 — see `feedback_periodic_work_updates.md`. Brief progress updates at wave/milestone boundaries.
 
-Each PLAN.md must address: schema mapping (legacy INTEGER↔V17 TEXT hash via `artifact_id_map` table), per-caller migration order (read-side first to validate, then write-side, then cutover), embedding re-vectorization protocol (re-embed from scratch via arctic-embed2 OR blob-convert; pick one in 14-07a), rollback path during cutover (keep legacy table populated as read-only mirror until verification), benchmark gates that bind ship to no-ranking-regression, AND for hard-link plans (14-07f): the propose-confirm-defer UX shape + the new "Inferred Links Pending Review" assembly section (low-priority, dismissible per session, decay-out anti-links after N rejections).
+**What's next:** Operator-gated action items:
 
-**Where to look:** `.planning/phases/14-substrate-coherence/14-CLOSE.md` (v6.6.0 milestone close doc); `.planning/phases/14-substrate-coherence/14-CONTEXT.md` (Phase 14 spec including Decision 7 / 14-07 deferral rationale); `context/measurements/2026-05-15-substrate-rcas.md` (RCA-3 V17 migration impact analysis — caller list, schema mapping, risks); `context/measurements/2026-05-15-substrate-contract-matrix.md` (Conflict K — V17 + legacy co-residence diagnosis); `~/.claude/projects/C--Users-Grigorije-Desktop-Projects-CLAUDEXv3/memory/project_v7_hard_link_writer_is_good_child.md` (Good Child policy for hard-link writer).
+- **v6.6.0 push** — annotated tag at `a3b3a42` locally; carries forward from yesterday's gate. Same posture as v5.0.0 and v6.0.0.
+- **v7.0.0 spec review** — read through `.planning/phases/14-substrate-coherence/14-07-CONTEXT.md` + the 14 wave/plan docs; flag any positions-unless-flagged you want pivoted before Wave 1 dispatches.
+- **/auto-orchestrate Wave 1 dispatch** — user-triggered slash command; the agent cannot launch it. Per WAVE1-COORDINATION the workers are: A solo (14-07a schema) → B1/B2/B3 parallel (14-07b caller migration across ~22 sites split by code path) → C solo (14-07c cutover + benchmark gate).
+- **(Optional) cross-family review** — /codex-review or /gemini-review the spec for second eyes before Wave 1 dispatches.
+
+After Wave 1 lands (legacy artifacts read-only mirror + V17 unified + benchmarks non-regressed), Wave 2 dispatches. After Wave 2 (link substrate + claudex_trace MCP + Provenance Chain assembly surface), Wave 3 dispatches. After Wave 3 (regenerator fixed + lessons trigger frontmatter + link-aware inline-expansion), the v7.0.0 final ship gate runs — including the **qualitative operator-confirmation gate: does session-start feel "remembered" not "read"?** Operator-runnable on big-mozzy + claudex-v3.
+
+**Where to look:** `.planning/phases/14-substrate-coherence/14-07-CONTEXT.md` (phase-level spec with 7 locked decisions); `.planning/phases/14-substrate-coherence/14-07-WAVE1-COORDINATION.md` (Wave 1 PM contract); `.planning/phases/14-substrate-coherence/14-07-WAVE2-COORDINATION.md` (Wave 2 PM contract); `.planning/phases/14-substrate-coherence/14-07-WAVE3-COORDINATION.md` (Wave 3 PM contract); the 11 PLAN.md files (14-07a/b/c, 14-07-LINKS-SCHEMA, 14-07d/e/f/g, 14-07h/i/j); `~/.claude/projects/C--Users-Grigorije-Desktop-Projects-CLAUDEXv3/memory/feedback_take_position_unless_flagged.md` (durable operator preference); `~/.claude/projects/C--Users-Grigorije-Desktop-Projects-CLAUDEXv3/memory/feedback_periodic_work_updates.md` (durable operator preference); `~/.claude/projects/C--Users-Grigorije-Desktop-Projects-CLAUDEXv3/memory/project_v7_hard_link_writer_is_good_child.md` (Good Child hybrid policy).
 
 ## Operator Gates
 
 Honor each gate before acting on the corresponding queued item.
 
-- **v6.6.0 public push**: operator-gated; do not push autonomously. Tag is at `a3b3a42` locally.
+- **v6.6.0 public push**: operator-gated; tag at `a3b3a42` locally. Carries forward from yesterday.
 - **v6.0.0 public push**: still operator-gated from the prior cycle (Phase 13's retag pending). Carries forward.
-- **14-07 spec authoring vs execution**: TOMORROW is plan-writing only. Workers are not dispatched until operator explicitly says go. The hard-link writer's UX flow needs operator review before it ships even after spec is complete.
-- **migrate-handoff.ts CLI run on real projects**: operator-runnable; do not auto-run. Produces dry-run mode by default. Big-mozzy-v2 is now retired so no longer applicable; lacuna-betting / oracle / nexus may be candidates.
-- **migrate-lesson-frontmatter.ts CLI run**: operator-runnable; same posture.
+- **v7.0.0 Wave 1 /auto-orchestrate dispatch**: operator-gated; agent cannot launch slash commands.
+- **v7.0.0 Wave 1c cutover** (`14-07c`): operator-gated via `--apply` + typed `CONFIRM` prompt; never auto-runs.
+- **v7.0.0 14-07f hard-link UX**: operator review of the simulation script output (`bun src/scripts/simulate-hard-link-ux.ts`) is required before enabling `CLAUDEX_HARD_LINK_PROPOSER` flag in production.
+- **v7.0.0 14-07h migration tool dry-run** (`migrate-lesson-trigger.ts`): operator reviews dry-run output against existing lesson files before any live run.
+- **v7.0.0 final ship qualitative gate**: operator confirms session-start feels "remembered" not "read" on big-mozzy-v2 + claudex-v3. No measurement substitutes.
+- **migrate-handoff.ts CLI runs on real projects**: operator-runnable; out of scope for v7.0.0 (carry-over to separate operator-runnable surface).
+- **migrate-lesson-frontmatter.ts CLI runs**: superseded by `migrate-lesson-trigger.ts` in 14-07h; operator-runnable.
 - **Stray feedback_reach_for_memory_on_memory_shaped_questions.md** carry-over from 2026-05-14 — written autonomously without operator review per the persona-tuning-manual-track rule. Sign-off or rewrite still pending.
+
+## Positions-unless-flagged in v7.0.0 spec (interruptible before Wave 1 dispatch)
+
+The agent took 14 positions in the spec where multiple defensible options existed. Operator may pivot any of them by flagging before Wave 1 dispatches.
+
+| Wave | Plan | Position | Alternative |
+|---|---|---|---|
+| 1 | 14-07a | V17 ID = sha256 32-char hex from legacy fields | Blob-convert from V17 BLOBs |
+| 1 | 14-07a | Read-only legacy enforcement = SQLite triggers | App-layer guards |
+| 1 | 14-07a | Re-vectorization via arctic-embed2 from scratch | Blob-convert |
+| 1 | 14-07c | Re-vectorization failure threshold = 5% | Tunable |
+| 2 | LINKS-SCHEMA | Link rows denormalize `project` at write-time | Read-time JOIN |
+| 2 | LINKS-SCHEMA | DECAY_THRESHOLD = 3 rejections | Tunable |
+| 2 | 14-07e | Boost = `original × (1 + 0.1 × tier_mult / hop)`, hard 1.0 / soft 0.5 | Different weights / formula |
+| 2 | 14-07e | Link-distance boost ships flag-OFF | Ship flag-ON |
+| 2 | 14-07e | Reranker preserves source channel match_kind | Mark as 'reranker' |
+| 2 | 14-07f | Proposer: max 10/run, rate 1/min/session | Tunable |
+| 2 | 14-07g | Provenance walker excludes `contradicts` | Include with separate section |
+| 2 | 14-07g | MAX_PROVENANCE_HOPS = 4 | Tunable |
+| 2 | 14-07g | Heuristic-gated rendering (pivot mentions decision) | Always-on |
+| 3 | 14-07h | Experience-tier passive injection = same-project-only default | Cross-project with `[cross-project]` label |
+| 3 | 14-07i | Codebase-context annotation = raw query + score | NL-synthesis via LLM |
+| 3 | 14-07j | Lesson relevance = 0.6 × trigger + 0.4 × link distance | 50/50 or 80/20 |
+| 3 | 14-07j | Top-K inline = 3 (cap 5), 400 token budget | Tunable |
+| 3 | 14-07f / 14-07i | Annotation format = position-unless-flagged | NL-synthesis adds cost |

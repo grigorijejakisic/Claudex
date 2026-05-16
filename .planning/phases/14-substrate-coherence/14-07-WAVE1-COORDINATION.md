@@ -1,0 +1,329 @@
+---
+phase: 14-substrate-coherence
+sub_phase: 14-07
+wave: 1
+role: PM coordination doc — read by all Wave 1 /auto-orchestrate workers
+created_by: PM (Claude Opus 4.7) on 2026-05-16
+parent_context: .planning/phases/14-substrate-coherence/14-07-CONTEXT.md
+---
+
+# v7.0.0 Wave 1 Coordination Manifest — Substrate Unification
+
+This document is the PM-level contract that every Wave 1
+/auto-orchestrate worker MUST honor. Wave 1 collapses the V17 and
+legacy `artifacts` substrates into one source of truth. The pattern
+is **schema-first → parallel workers → gate**: 14-07a lands the
+unified schema solo, 14-07b fans out three workers across ~22 caller
+sites in parallel, 14-07c runs the cutover + benchmark gate solo.
+
+Without explicit ownership + merge order, the parallel 14-07b
+workers will produce git conflicts on shared helpers and on
+`memory-md-writer.ts` / test fixtures.
+
+---
+
+## Workers + plans
+
+| Worker | Plan | Branch | Sequence |
+|---|---|---|---|
+| A | 14-07a (schema unification + artifact_id_map + arctic-embed2 re-vectorization helper) | `phase-14-07/a-schema` | first — blocks everything |
+| B1 | 14-07b worker 1 (retrieval cluster) | `phase-14-07/b1-retrieval` | parallel after A lands |
+| B2 | 14-07b worker 2 (ingestion cluster) | `phase-14-07/b2-ingest` | parallel after A lands |
+| B3 | 14-07b worker 3 (writer + tests cluster) | `phase-14-07/b3-writer-tests` | parallel after A lands |
+| C | 14-07c (cutover + benchmark gate) | `phase-14-07/c-cutover` | last — runs after all of B lands |
+
+Sequencing:
+```
+A  (solo, blocks)
+   └─→ B1, B2, B3  (parallel)
+                  └─→ C  (solo, gates ship)
+```
+
+A is single-worker because it defines the unified schema + the
+`artifact_id_map` mapping table + the arctic-embed2 re-vectorization
+helper. Every B worker depends on A's output; running A in parallel
+with anything else is a race condition.
+
+C is single-worker because it runs the cutover (legacy → V17 read
+flip + legacy table demotion to read-only mirror) AND the benchmark
+gate (Vesna + LongMemEval + LoCoMo + cross-project hit rate). It
+cannot start until all of B has merged.
+
+---
+
+## File ownership table
+
+PM (me) is the only authority for resolving boundary disputes. Every
+worker reads this table before touching a file. If a file isn't
+listed here, normal `git add` behavior applies.
+
+### Plan 14-07a (Worker A) owns
+
+- `src/core/migration-steps.ts` — **adds** `migrateV36toV37` (the
+  unified-substrate migration step). No edits to prior steps.
+- `src/core/migration/v17-runner.ts` — schema-shape extensions for
+  the unified artifact table.
+- `src/core/migration/v17-triggers.ts` — FTS5 + vec0 trigger updates
+  for the unified shape.
+- `src/core/artifact-id-map.ts` (NEW) — mapping helpers (legacy
+  INTEGER ↔ V17 TEXT hash). Single-source-of-truth for transitional
+  ID lookups.
+- `src/core/re-vectorize.ts` (NEW) — arctic-embed2 re-vectorization
+  helper. Called by 14-07c at cutover, but the helper itself ships
+  in 14-07a so test fixtures can exercise it.
+- `src/tests/core/migration/v17-unified.test.ts` (NEW) — schema
+  migration tests.
+- `src/tests/core/artifact-id-map.test.ts` (NEW) — mapping
+  round-trip tests.
+- `src/tests/core/re-vectorize.test.ts` (NEW) — re-vectorization
+  determinism tests (same input ↔ same vector output).
+- DDL for legacy `artifacts` table: **read-only mirror flag** added
+  by 14-07a; flag flipped to enforced by 14-07c at cutover.
+
+### Plan 14-07b worker B1 (retrieval cluster) owns
+
+- `src/intelligence/hybrid-retrieval.ts` — 8 call sites against
+  legacy `artifacts` API → V17 unified API (exact site list
+  enumerated in 14-07b-PLAN.md).
+- `src/intelligence/retrieval-feedback.ts` — 5 call sites.
+- `src/tests/intelligence/hybrid-retrieval.test.ts` — fixture
+  updates for V17 unified shape (only the fixtures called by B1's
+  migrated files).
+- `src/tests/intelligence/retrieval-feedback.test.ts` — same.
+
+### Plan 14-07b worker B2 (ingestion cluster) owns
+
+- `src/angel/file-ingester.ts` — 2 call sites.
+- `src/intelligence/directive-detector.ts` — call sites against
+  legacy `artifacts`.
+- `src/intelligence/retrieval-log.ts` — call sites against legacy
+  `artifacts`.
+- `src/angel/transcript-chunker.ts` — call sites against legacy
+  `artifacts`.
+- `src/tests/angel/file-ingester.test.ts` — fixture updates for
+  V17 unified shape (B2's migrated files only).
+- `src/tests/intelligence/directive-detector.test.ts` — same.
+- `src/tests/intelligence/retrieval-log.test.ts` — same.
+- `src/tests/angel/transcript-chunker.test.ts` — same.
+
+### Plan 14-07b worker B3 (writer + tests cluster) owns
+
+- `src/angel/memory-md-writer.ts` — call sites against legacy
+  `artifacts`. **Coordinate with B1/B2**: if B1 or B2's caller
+  migration discovers a memory-md-writer site, they hand it off
+  to B3 via the integration branch.
+- `src/tests/helpers/v7-unified-schema.ts` (NEW) — shared fixture
+  helper for the post-Wave-1 unified schema. Other workers consume
+  this; only B3 modifies it.
+- `src/tests/angel/memory-md-writer.test.ts` — fixture updates.
+- General sweep across `src/tests/**` for fixtures that reference
+  legacy `artifacts` schema and need migration to V17 unified
+  shape. B3 is the only worker that does test-fixture sweeps
+  outside their own caller's tests.
+
+### Plan 14-07c (Worker C) owns
+
+- `src/scripts/cutover-v7.ts` (NEW) — the cutover script
+  (idempotent, dry-run by default, operator-runnable).
+- `src/scripts/run-wave1-benchmarks.ts` (NEW) — orchestrates Vesna
+  + LongMemEval + LoCoMo + cross-project hit rate against the
+  post-migration state.
+- `src/core/migration-steps.ts` — **adds** the read-only-enforcement
+  flag flip for legacy `artifacts` (post-B merge).
+- `src/tests/scripts/cutover-v7.test.ts` (NEW) — cutover idempotency
+  + dry-run tests.
+- `.planning/phases/14-substrate-coherence/14-07-WAVE1-GATE-RESULTS.md`
+  (NEW) — PM-maintained, records benchmark outputs against the gate
+  thresholds.
+
+---
+
+## Merge order
+
+PM merges in this order:
+
+1. **14-07a (Worker A) first** — schema migration is additive. No
+   conflict possible because B and C haven't started yet.
+2. **B1, B2, B3 in parallel** after A lands. Each commits to its
+   own feature branch. PM merges in the order they signal AC-green
+   (typically B1 → B2 → B3 alphabetical, but order doesn't matter
+   semantically — they own non-overlapping files except where
+   coordinated below).
+3. **14-07c (Worker C) last** — runs the cutover script + benchmark
+   gate. Cannot start until all of B is merged AND the integration
+   branch passes `bun run build` and `bun run test`.
+
+---
+
+## Cross-plan invariants
+
+Contracts that span multiple plans within Wave 1. PM enforces;
+workers honor.
+
+1. **artifact_id_map is single-writer.** Only 14-07a populates it
+   during initial schema migration. Workers in 14-07b read from it
+   but do not modify the table or its schema.
+
+2. **Re-vectorization helper is single-owned by 14-07a.** Workers in
+   14-07b call `re-vectorize.ts` helpers but do not reimplement.
+   14-07c invokes the helper at cutover time.
+
+3. **memory-md-writer.ts is owned by B3 only.** If B1 or B2 discover
+   a memory-md-writer call site during their caller sweep, they
+   STOP, file the site to B3 via integration branch comment, and
+   wait for B3 to handle it.
+
+4. **No worker introduces net-new caller sites.** 14-07b is a
+   *migration* of existing sites. If a worker finds a caller site
+   missed by RCA-3's inventory, they add it to 14-07b-PLAN.md's
+   site list and migrate it — they do NOT add new code paths.
+
+5. **No production-shape changes to retrieval ranking math.** Per
+   CONTEXT out-of-scope. If a worker is tempted to "improve"
+   ranking weights, hybrid-retrieval scoring, or reranker logic
+   during their migration, they STOP and surface to PM. Same-family
+   blind spots apply (`memory/feedback_same_family_teammates_blind_spots.md`).
+
+6. **No worker changes embedder model, reranker model, or vector
+   dimensions.** arctic-embed2 (1024d) + BGE-v2-m3 stay. The
+   re-vectorization in 14-07a uses the same arctic-embed2 model
+   applied to the unified shape; it is not a model swap.
+
+7. **Test fixture schema:** any test that creates a fresh DB and
+   seeds rows must use the post-Wave-1 schema (post-V37). B3's
+   shared fixture helper at `src/tests/helpers/v7-unified-schema.ts`
+   is the canonical seed. B1 and B2 consume it; only B3 modifies
+   it.
+
+8. **No worker emits link-write helpers.** Soft/hard link tables
+   don't exist until Wave 2. Any code that writes "this artifact
+   links to that artifact" belongs to Wave 2 / 14-07-LINKS-SCHEMA.
+   If a worker finds a place that "wants" linking semantics, they
+   leave a TODO comment referencing `14-07-LINKS-SCHEMA` and move
+   on.
+
+---
+
+## Anti-scope for the wave
+
+Plans in Wave 1 must NOT:
+
+- Touch link tables (Wave 2 / `14-07-LINKS-SCHEMA-PLAN.md` territory).
+  Tables don't exist yet anyway.
+- Touch session-start assembler section ordering, lesson surface,
+  or codebase-context annotation (Wave 3 territory: 14-07h / 14-07i
+  / 14-07j).
+- Refactor adjacent code "for cleanup." Per
+  `memory/feedback_same_family_teammates_blind_spots.md`, same-family
+  blind spots cause silent scope creep. Operator surfaces if cleanup
+  needed; workers do not improve silently.
+- Add new retrieval features, new candidate sources, or new query
+  expansion logic.
+- Modify the project-scope filter for experience-tier (14-07h
+  territory).
+- Change `bun run setup` hook registration (Phase 14 v6.6.0 wave
+  already shipped 25 hooks for V36 schema; Wave 1 ships V37, hook
+  registration update goes in 14-07a as part of the migration step).
+- Change the `~/.claudex/db/claudex.db` file path or DB instance
+  topology.
+
+---
+
+## Worker → PM escalation
+
+Workers ask the PM (me) when they hit:
+
+- A file that isn't in their ownership column AND isn't in another
+  plan's ownership column (judgment call — PM decides).
+- A schema decision not covered in their PLAN.md or this manifest.
+- A test that fails for a reason outside their plan's scope (the
+  failure may be uncovering a real bug elsewhere).
+- A spec ambiguity in their PLAN.md.
+- A caller site that, when migrated, would change the *behavior*
+  (not just the shape) of the call — this is a scope question.
+
+Workers do NOT escalate for:
+
+- Standard implementation choices (variable naming, function
+  signature minor variations, test structure within their plan's
+  test files).
+- Build / test re-run mechanics.
+- Anything explicitly listed in their plan's `must_haves.truths` or
+  in this manifest's invariants.
+
+---
+
+## PM → PO escalation
+
+I (PM) escalate to the PO (operator) when:
+
+- A worker reports a fundamental contradiction between two plan ACs.
+- A schema decision proposed by a worker would change the contract
+  matrix from 14-CONTEXT.md.
+- The merge order produces an unresolvable conflict.
+- A worker's external review (Codex / Gemini) returns NO-SIGNOFF
+  with a load-bearing concern.
+- Benchmarks at 14-07c gate fail (any regression in Vesna /
+  LongMemEval / LoCoMo / cross-project hit rate). **Critical:** PM
+  does NOT auto-rollback. PM surfaces, operator decides whether to
+  hold the cutover or accept the regression with documented
+  rationale.
+
+---
+
+## SIGNOFF + ship per plan
+
+Each plan ships its own commit with:
+
+- All AC from the plan green
+- Tests pass within the plan's scope (`bun run test` filtered)
+- Cross-family external review (Codex + Gemini) SIGNOFF
+- PM merge after order check
+- Updated `.planning/phases/14-substrate-coherence/14-07-WAVE1-STATUS.md`
+  (PM-maintained) noting completion
+
+After all of A + B1/B2/B3 + C land, PM kicks off Wave 2 by writing
+the wave-2 status entry against the actual landed state. The Wave 2
+coordination doc (`14-07-WAVE2-COORDINATION.md`) is already authored
+during spec writing, but it gets a per-execution status appended at
+Wave 2 entry.
+
+---
+
+## Wave 1 gate handoff to Wave 2
+
+When Wave 1 exits cleanly:
+
+- All A + B + C ACs green.
+- Vesna 18/18 PASS against post-migration state.
+- LongMemEval ≥ v6.6.0 baseline (90.6% Oracle).
+- LoCoMo ≥ v6.6.0 baseline (55.5% Sonnet 4.6).
+- Cross-project candidate hit rate non-regressed (currently 18%
+  noise post-14-03).
+- `artifact_id_map` populated for 100% of rows in legacy `artifacts`.
+- Legacy `artifacts` table is read-only mirror (writes refused at
+  DDL level via 14-07c's enforcement flag flip).
+- Re-vectorized embeddings in V17 unified vector store
+  (`vec_artifact_v17`).
+- All 22+ caller sites read from V17 unified API.
+- WAVE2-COORDINATION dispatch unblocked (link tables can now
+  reference unified artifact IDs).
+
+**No tag is created at wave boundary.** Tags only fire at v7.0.0
+ship. The integration branch `phase-14-07/wave1-integration` merges
+into the longer-lived `v7.0.0-rc` branch after Wave 1 exit.
+
+---
+
+## What this is NOT
+
+- Not a replacement for the per-plan PLAN.mds — this is the
+  inter-plan coordination layer above them. Plans define what
+  changes; this doc defines who changes what and when.
+- Not a substitute for git's actual conflict resolution. If
+  collision happens despite this doc, PM resolves manually.
+- Not authority for scope changes. Plans + this manifest + CONTEXT
+  define scope; changes require PO (operator) sign-off.
+- Not a benchmark gate definition — that lives in 14-07c-PLAN.md.
+  This manifest only enforces that the gate runs and that PM does
+  not auto-rollback on regression.

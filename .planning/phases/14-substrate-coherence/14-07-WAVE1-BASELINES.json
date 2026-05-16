@@ -1,0 +1,29 @@
+{
+  "_doc": "Phase 14-07 Wave 1 benchmark baselines (v6.6.0 floor). Used by 14-07c run-wave1-benchmarks.ts to gate the substrate cutover. Non-regression gates — measured values >= baseline = PASS.",
+  "_baseline_source": "v6.6.0 ship at tag a3b3a42 (2026-05-16)",
+  "_created": "2026-05-16",
+  "vesna_sc1": {
+    "_description": "Vesna SC#1 behavioral probe suite",
+    "baseline": 1.0,
+    "threshold_comparison": ">=",
+    "unit": "fraction of 18/18 probes passing"
+  },
+  "longmemeval_oracle": {
+    "_description": "LongMemEval Oracle mode with deepseek-coder-v2:16b local",
+    "baseline": 0.906,
+    "threshold_comparison": ">=",
+    "unit": "fraction correct (426/470 at baseline)"
+  },
+  "locomo": {
+    "_description": "LoCoMo with claude-sonnet-4-6 (known WIP item from v4 ship)",
+    "baseline": 0.555,
+    "threshold_comparison": ">=",
+    "unit": "fraction correct (855/1540 at baseline)"
+  },
+  "cross_project_hit_rate": {
+    "_description": "Cross-project candidate hit rate noise floor (post-Phase-14-03 isSubstantive filter)",
+    "baseline": 0.20,
+    "threshold_comparison": "<=",
+    "unit": "fraction noise (18% at v6.6.0 ship; 20% threshold gives small tolerance)"
+  }
+}
