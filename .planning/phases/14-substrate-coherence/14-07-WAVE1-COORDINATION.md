@@ -222,10 +222,11 @@ workers honor.
    14-07b call `re-vectorize.ts` helpers but do not reimplement.
    14-07c invokes the helper at cutover time.
 
-3. **memory-md-writer.ts is owned by B3 only.** If B1 or B2 discover
-   a memory-md-writer call site during their caller sweep, they
-   STOP, file the site to B3 via integration branch comment, and
-   wait for B3 to handle it.
+3. **memory-md-writer.ts is NOT in 14-07b** (per RCA-3, it's a V17
+   caller — 1 SELECT guard against V17 only, no legacy `artifacts`
+   reference). If any worker discovers an UNDOCUMENTED legacy
+   reference there during their sweep, they STOP and file to PM via
+   integration branch comment.
 
 4. **No worker introduces net-new caller sites.** 14-07b is a
    *migration* of existing sites. If a worker finds a caller site
