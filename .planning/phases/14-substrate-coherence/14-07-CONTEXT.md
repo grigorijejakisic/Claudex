@@ -152,10 +152,16 @@ Knowledge graph (Wave 2):
 - Good Child propose-confirm UX: new "Inferred Links Pending Review" assembly section, low-priority, dismissible per session, anti-links decay after N rejections.
 - Provenance Chain assembly section walking links from a checkpoint decision back to source observations.
 
+Foundations (Wave 0):
+- Auto-commit hooks: SessionStart / PostToolUse on Write|Edit|MultiEdit|NotebookEdit / Stop. Each fires `git add -A && commit --allow-empty --no-verify`. Boundary commits tagged `claudex/session-start-<epoch>` and `claudex/session-end-<epoch>`. Per-tool commits messaged `claudex/auto: edit`. Silent-fail design — never blocks the session.
+- `/verify` skill: git diff against most-recent session-start tag, build+test on changed code, grep-verification for spec docs (function names, file paths, schema versions). Outputs structured report. Agent runs before claiming done.
+- `CLAUDE.md verify-before-done rule`: identity-level rule in `~/.claude/CLAUDE.md` "How I approach work" section. Verified is the only kind of done.
+- `sections.ts` split: extract from monolithic 1500-line file into `sections/lessons.ts`, `sections/codebase-context.ts`, `sections/links.ts`, residual `sections/index.ts`. Eliminates cross-plan collision risk in Waves 2 and 3.
+
 Session-start coherence (Wave 3):
 - MEMORY.md auto-regenerator fix — preserve Lessons index across runs (the 2026-05-14 wipe regression must not recur).
 - Lesson frontmatter `trigger:` field used in MEMORY.md output instead of truncated body. Title becomes trigger condition + rule, not "first N chars of body."
-- Experience-pattern passive injection filtered to project-scope. Cross-project patterns remain queryable via `claudex_search` but do not surface in passive injection.
+- Experience-tier passive injection relevance rewrite (per Locked Decision 9): per-task-pattern relevance scoring + handle-overlap threshold lift via existing `stageOneHandleOverlap`. Cross-project transfer PRESERVED; noise reduced through better matching, not filter-elimination.
 - Codebase-context section annotates each surfaced file with the retrieval reason (query + score, OR a natural-language one-line synthesized from the query).
 - Link-aware lesson inline-expansion: at session-start, the top 2–3 lessons whose triggers match the current pivot OR whose link-distance to the current artifact is shortest get their full body inlined. Others stay as pointers.
 - User Notes section in MEMORY.md preserved as authoritative — regenerator never overwrites it.
