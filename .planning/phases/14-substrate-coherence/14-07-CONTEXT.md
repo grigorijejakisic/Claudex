@@ -52,9 +52,15 @@ Do not relitigate without operator sign-off. Listed in order of confirmation.
 ## Wave structure
 
 ```
+Wave 0 — Foundations (ships first; safety net + verification protocol for all downstream work):
+  14-07-w0a  Auto-commit hooks (SHIPPED 2026-05-16 — scripts/auto-commit-hook.cjs + .claude/settings.json)
+  14-07-w0b  /verify skill — captures git diff vs session-start tag, runs tests on changed files, greps for assumed names; emits N-claims/M-verified/K-unverified report
+  14-07-w0c  CLAUDE.md verify-before-done rule (SHIPPED 2026-05-16 in ~/.claude/CLAUDE.md "How I approach work" section)
+  14-07-w0d  sections.ts split — extract formatCodebaseContextSection from assembler.ts:857 + split sections/lessons.ts + sections/codebase-context.ts + sections/links.ts (operator-approved Wave 0 pre-work for v7.0.0 sections.ts collision risk)
+
 Wave 1 — Substrate unification (sequential within wave; blocks Wave 2 and Wave 3j):
   14-07a  Schema unification + artifact_id_map mapping                [SCHEMA, BLOCKS]
-  14-07b  Caller migration across ~22 sites (3-worker fanout)         [PARALLEL after a]
+  14-07b  Caller migration across 22 sites / 15 files (5-worker fanout per RCA-3)  [PARALLEL after a]
   14-07c  Cutover + benchmark gates (Vesna / LongMemEval / LoCoMo)    [GATE, BLOCKS SHIP]
 
 Wave 2 — Knowledge graph (mostly parallel; depends on Wave 1 cutover):
