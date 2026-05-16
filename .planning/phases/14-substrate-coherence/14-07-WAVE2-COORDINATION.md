@@ -124,7 +124,7 @@ PM (me) is the only authority for resolving boundary disputes.
   scoring helper. Given a query artifact + candidate set, computes
   per-candidate link-distance and applies a configurable boost
   weight.
-- `src/intelligence/hybrid-retrieval.ts` — **adds** the
+- `src/core/hybrid-retrieval.ts` — **adds** the
   link-distance boost as an optional ranking modifier behind a
   feature flag (`CLAUDEX_LINK_DISTANCE_BOOST=1`). E does NOT modify
   the existing scoring math; the boost is additive at the rerank
