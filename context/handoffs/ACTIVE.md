@@ -37,7 +37,7 @@ Honor each gate before acting on the corresponding queued item.
 
 - **v6.6.0 public push**: operator-gated; tag at `a3b3a42` locally. Carries forward from yesterday.
 - **v6.0.0 public push**: still operator-gated from the prior cycle (Phase 13's retag pending). Carries forward.
-- **v7.0.0 Wave 1 /auto-orchestrate dispatch**: operator-gated; agent cannot launch slash commands.
+- **v7.0.0 Wave 1 /auto-orchestrate dispatch**: operator-gated; agent cannot launch slash commands. **Spec is READY as of 2026-05-16 17:31** — all preconditions met from agent side; only operator skim + fresh-session hook empirical test remain before invoke.
 - **v7.0.0 Wave 1c cutover** (`14-07c`): operator-gated via `--apply` + typed `CONFIRM` prompt; never auto-runs.
 - **v7.0.0 14-07f hard-link UX**: operator review of the simulation script output (`bun src/scripts/simulate-hard-link-ux.ts`) is required before enabling `CLAUDEX_HARD_LINK_PROPOSER` flag in production.
 - **v7.0.0 14-07h migration tool dry-run** (`migrate-lesson-trigger.ts`): operator reviews dry-run output against existing lesson files before any live run.
