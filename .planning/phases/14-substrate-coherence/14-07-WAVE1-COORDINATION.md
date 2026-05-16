@@ -244,10 +244,9 @@ workers honor.
    applied to the unified shape; it is not a model swap.
 
 7. **Test fixture schema:** any test that creates a fresh DB and
-   seeds rows must use the post-Wave-1 schema (post-V37). B3's
+   seeds rows must use the post-Wave-1 schema (post-V37). W5's
    shared fixture helper at `src/tests/helpers/v7-unified-schema.ts`
-   is the canonical seed. B1 and B2 consume it; only B3 modifies
-   it.
+   is the canonical seed. W1-W4 consume it; only W5 modifies it.
 
 8. **No worker emits link-write helpers.** Soft/hard link tables
    don't exist until Wave 2. Any code that writes "this artifact
