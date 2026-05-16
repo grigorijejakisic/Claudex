@@ -17,37 +17,40 @@ unified schema solo, 14-07b fans out three workers across ~22 caller
 sites in parallel, 14-07c runs the cutover + benchmark gate solo.
 
 Without explicit ownership + merge order, the parallel 14-07b
-workers will produce git conflicts on shared helpers and on
-`memory-md-writer.ts` / test fixtures.
+workers will produce git conflicts on shared helpers / test fixtures.
+
+**Worker structure restored per VERIFICATION-PASS (2026-05-16 afternoon) — 5-worker split based on RCA-3 inventory of 15 production caller files across legacy `artifacts`.** Previous 3-worker spec was structurally wrong: missed 10 caller files entirely, and misidentified `directive-detector.ts` / `retrieval-log.ts` / `transcript-chunker.ts` as legacy callers when RCA-3 classifies them as V17 callers (no migration needed).
 
 ---
 
 ## Workers + plans
 
-| Worker | Plan | Branch | Sequence |
-|---|---|---|---|
-| A | 14-07a (schema unification + artifact_id_map + arctic-embed2 re-vectorization helper) | `phase-14-07/a-schema` | first — blocks everything |
-| B1 | 14-07b worker 1 (retrieval cluster) | `phase-14-07/b1-retrieval` | parallel after A lands |
-| B2 | 14-07b worker 2 (ingestion cluster) | `phase-14-07/b2-ingest` | parallel after A lands |
-| B3 | 14-07b worker 3 (writer + tests cluster) | `phase-14-07/b3-writer-tests` | parallel after A lands |
-| C | 14-07c (cutover + benchmark gate) | `phase-14-07/c-cutover` | last — runs after all of B lands |
+| Worker | Plan | Cluster | Branch | Sequence |
+|---|---|---|---|---|
+| A  | 14-07a (schema unification + artifact_id_map + re-vectorize helper) | substrate | `phase-14-07/a-schema` | first — blocks everything |
+| W1 | 14-07b worker 1 — retrieval | `hybrid-retrieval` + `retrieval-feedback` + `experience-tier` (query shape) | `phase-14-07/w1-retrieval` | parallel after A lands |
+| W2 | 14-07b worker 2 — ingestion/embedding | `file-ingester` + `embed-pipeline` + `sqlite-vec-backend` | `phase-14-07/w2-embedding` | parallel after A lands |
+| W3 | 14-07b worker 3 — query-surface | `mcp/recall-server` + `cross-project-search` + `observations` | `phase-14-07/w3-query-surface` | parallel after A lands |
+| W4 | 14-07b worker 4 — Angel writers | `consolidator` + `retention-sweep` + `entity-summarizer` + `intent-predictor` + `batch-reflection` | `phase-14-07/w4-angel-writers` | parallel after A lands |
+| W5 | 14-07b worker 5 — CLI + tests | `cli/health` + shared fixture helper + test fixture sweep | `phase-14-07/w5-cli-tests` | parallel after A lands |
+| C  | 14-07c (cutover + benchmark gate) | gate | `phase-14-07/c-cutover` | last — runs after all of W1-W5 lands |
 
 Sequencing:
 ```
 A  (solo, blocks)
-   └─→ B1, B2, B3  (parallel)
-                  └─→ C  (solo, gates ship)
+   └─→ W1, W2, W3, W4, W5  (parallel)
+                          └─→ C  (solo, gates ship)
 ```
 
 A is single-worker because it defines the unified schema + the
 `artifact_id_map` mapping table + the arctic-embed2 re-vectorization
-helper. Every B worker depends on A's output; running A in parallel
+helper. Every W worker depends on A's output; running A in parallel
 with anything else is a race condition.
 
 C is single-worker because it runs the cutover (legacy → V17 read
 flip + legacy table demotion to read-only mirror) AND the benchmark
 gate (Vesna + LongMemEval + LoCoMo + cross-project hit rate). It
-cannot start until all of B has merged.
+cannot start until all of W1-W5 has merged.
 
 ---
 
