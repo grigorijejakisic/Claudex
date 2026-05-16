@@ -289,7 +289,7 @@ Write-path: transcript chunker writes chunks. Post-14-02 (v6.6.0), `transcript_c
 </task>
 
 <task type="auto" worker="W5">
-  <name>Task B3.1: Create shared fixture helper</name>
+  <name>Task W5.1: Create shared fixture helper</name>
   <files>src/tests/helpers/v7-unified-schema.ts</files>
   <action>
 New file. Exports test helpers that seed V7-unified-schema rows. Used by B1, B2, and B3's test files.
