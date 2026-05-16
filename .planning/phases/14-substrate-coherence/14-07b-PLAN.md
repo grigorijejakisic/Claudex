@@ -208,7 +208,7 @@ For each migrated site:
   </verification>
 </task>
 
-<task type="auto" worker="B1">
+<task type="auto" worker="W1">
   <name>Task B1.2: Migrate retrieval-feedback.ts (5 sites)</name>
   <files>src/intelligence/retrieval-feedback.ts</files>
   <action>
