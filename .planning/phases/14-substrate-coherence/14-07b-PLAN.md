@@ -357,7 +357,7 @@ If B1 or B2 filed any memory-md-writer sites during their sweep, address them he
 </task>
 
 <task type="auto" worker="W5">
-  <name>Task B3.3: Test-fixture sweep across src/tests/**</name>
+  <name>Task W5.3: Test-fixture sweep across src/tests/**</name>
   <files>src/tests/**/*.test.ts, src/tests/**/*.ts</files>
   <action>
 Sweep through `src/tests/` for tests that:
