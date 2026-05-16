@@ -101,7 +101,7 @@ PM (me) is the only authority for resolving boundary disputes.
 - `src/angel/handoff-writer.ts` — instrumented to call
   `softLinkWriters.recordSupersedes` post-write. Additive; existing
   contract unchanged.
-- `src/angel/lesson-promoter.ts` — instrumented to call
+- `src/intelligence/learnings-promoter.ts` — instrumented to call
   `softLinkWriters.recordPromotedTo`.
 - `src/angel/frame-extractor.ts` (or wherever frame extraction lives)
   — instrumented to call `softLinkWriters.recordExtractedFrom`.
