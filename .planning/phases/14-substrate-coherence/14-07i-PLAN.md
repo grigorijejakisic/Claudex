@@ -7,7 +7,7 @@ wave: 3
 depends_on: []
 files_modified:
   - src/assembly/sections.ts
-  - src/intelligence/hybrid-retrieval.ts
+  - src/core/hybrid-retrieval.ts
   - src/tests/assembly/codebase-context-annotation.test.ts (NEW)
   - src/tests/intelligence/hybrid-retrieval-metadata.test.ts (NEW)
 autonomous: true
@@ -23,7 +23,7 @@ must_haves:
     - "Annotation is rendered ONLY when the retrieval metadata is available. If a fallback path produced the file list without metadata (e.g., a synthesized session-recovery surface), annotation is omitted and the section renders as before."
     - "Budget: the annotation adds ~30 tokens per file. With ~3-5 files in the Codebase Context section, that's ~150 tokens of new content. Existing section budget can absorb this without reducing file count."
   artifacts:
-    - path: "src/intelligence/hybrid-retrieval.ts"
+    - path: "src/core/hybrid-retrieval.ts"
       provides: "Retrieval return shape extended with match_query + score + match_kind fields per candidate. Existing fields unchanged."
       contains: "match_query|match_kind|retrieval_metadata"
     - path: "src/assembly/sections.ts"
@@ -37,7 +37,7 @@ must_haves:
       contains: "match_query|match_kind|score|metadata"
   key_links:
     - from: "src/assembly/sections.ts (formatCodebaseContextSection)"
-      to: "src/intelligence/hybrid-retrieval.ts (retrieval candidates with metadata)"
+      to: "src/core/hybrid-retrieval.ts (retrieval candidates with metadata)"
       via: "Section formatter consumes metadata from retrieval to render annotation lines"
       pattern: "match_query"
 ---
@@ -45,7 +45,7 @@ must_haves:
 <objective>
 Two deliverables in one plan, both targeting the Codebase Context section of session-start:
 
-1. **Retrieval metadata surface** — `src/intelligence/hybrid-retrieval.ts` extends its return shape to include `match_query` (the query string that matched the candidate), `score` (numeric ranking score), and `match_kind` ('fts' | 'vector' | 'reranker'). Additive change; existing callers unaffected.
+1. **Retrieval metadata surface** — `src/core/hybrid-retrieval.ts` extends its return shape to include `match_query` (the query string that matched the candidate), `score` (numeric ranking score), and `match_kind` ('fts' | 'vector' | 'reranker'). Additive change; existing callers unaffected.
 
 2. **Codebase Context section annotation** — `src/assembly/sections.ts`'s codebase-context formatter (exact function name surveyed during execution) renders a one-line reason per file. Format: `- <path> — matched "<truncated_query>" (score <N.NN>)`.
 
@@ -70,7 +70,7 @@ After this plan lands:
 <context>
 @.planning/phases/14-substrate-coherence/14-07-CONTEXT.md
 @.planning/phases/14-substrate-coherence/14-07-WAVE3-COORDINATION.md
-@src/intelligence/hybrid-retrieval.ts
+@src/core/hybrid-retrieval.ts
 @src/assembly/sections.ts
 </context>
 
@@ -90,7 +90,7 @@ After this plan lands:
 
 <task type="auto">
   <name>Task 1: Hybrid-retrieval return shape extension</name>
-  <files>src/intelligence/hybrid-retrieval.ts</files>
+  <files>src/core/hybrid-retrieval.ts</files>
   <action>
 Locate the existing candidate return type. Extend it with:
 
