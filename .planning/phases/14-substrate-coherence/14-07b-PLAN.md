@@ -502,10 +502,10 @@ Be surgical: do not modify test ASSERTIONS, only test SETUP / SEEDING.
   <name>Task Final: Integration merge + build + full test suite</name>
   <files></files>
   <action>
-After all 3 workers signal AC-green on their branches, PM merges in order B1 → B2 → B3 to integration branch `phase-14-07/wave1-integration`. Then:
+After all 5 workers signal AC-green on their branches, PM merges in order W1 → W2 → W3 → W4 → W5 to integration branch `phase-14-07/wave1-integration`. Then:
 
 - `bun run build` — must succeed.
-- `npx vitest run` — full suite. Expected: same green count as v6.6.0 baseline, plus the +35 from 14-07a, plus new tests added per worker (B1: at least 2 V17-path tests, B2: at least 3, B3: at least 3 + shared fixture tests). Net new tests: ~+45 from 14-07b.
+- `npx vitest run` — full suite. Expected: same green count as v6.6.0 baseline, plus the +35 from 14-07a, plus per-worker new tests (W1: ~3 V17-path tests for retrieval cluster; W2: ~3 for embedding cluster; W3: ~3 for query-surface cluster; W4: ~5 for Angel writers; W5: ~3 + shared fixture tests). Net new tests: ~+50-60 from 14-07b.
 - `grep -rn 'FROM artifacts\b' src/` returns 0 matches in production code (excluding `src/core/migration/`).
 - `bun run vesna` — SC#1 PASS 18/18 (this is a smoke; 14-07c is the formal gate).
   </action>
