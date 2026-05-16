@@ -103,7 +103,7 @@ PM (me) is the only authority for resolving boundary disputes.
   contract unchanged.
 - `src/intelligence/learnings-promoter.ts` — instrumented to call
   `softLinkWriters.recordPromotedTo`.
-- `src/angel/frame-extractor.ts` (or wherever frame extraction lives)
+- `src/angel/highlights-extractor.ts` (or wherever frame extraction lives)
   — instrumented to call `softLinkWriters.recordExtractedFrom`.
 - `src/intelligence/retrieval-log.ts` — instrumented to call
   `softLinkWriters.recordReferences` (READ-ONLY add: D does not
