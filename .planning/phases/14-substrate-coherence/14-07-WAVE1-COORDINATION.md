@@ -335,7 +335,7 @@ Each plan ships its own commit with:
 - Updated `.planning/phases/14-substrate-coherence/14-07-WAVE1-STATUS.md`
   (PM-maintained) noting completion
 
-After all of A + B1/B2/B3 + C land, PM kicks off Wave 2 by writing
+After all of A + W1/W2/W3/W4/W5 + C land, PM kicks off Wave 2 by writing
 the wave-2 status entry against the actual landed state. The Wave 2
 coordination doc (`14-07-WAVE2-COORDINATION.md`) is already authored
 during spec writing, but it gets a per-execution status appended at
