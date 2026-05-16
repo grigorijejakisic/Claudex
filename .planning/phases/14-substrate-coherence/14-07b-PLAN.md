@@ -10,7 +10,7 @@ files_modified:
   - src/intelligence/retrieval-feedback.ts
   - src/intelligence/directive-detector.ts
   - src/intelligence/retrieval-log.ts
-  - src/angel/file-ingester.ts
+  - src/core/file-ingester.ts
   - src/angel/transcript-chunker.ts
   - src/angel/memory-md-writer.ts
   - src/tests/helpers/v7-unified-schema.ts (NEW)
@@ -44,7 +44,7 @@ must_haves:
     - path: "src/intelligence/retrieval-feedback.ts"
       provides: "Retrieval feedback writing to V17 unified artifact (5 sites migrated)."
       contains: "V17|artifact_id_map"
-    - path: "src/angel/file-ingester.ts"
+    - path: "src/core/file-ingester.ts"
       provides: "File ingester writing artifacts to V17 unified shape (2 sites migrated)."
       contains: "V17"
     - path: "src/intelligence/directive-detector.ts"
@@ -109,7 +109,7 @@ After this plan lands:
 @src/core/artifact-id-map.ts
 @src/core/hybrid-retrieval.ts
 @src/intelligence/retrieval-feedback.ts
-@src/angel/file-ingester.ts
+@src/core/file-ingester.ts
 </context>
 
 <anti_scope>
@@ -172,7 +172,7 @@ Write-path specifics: when feedback writes a new artifact row (e.g., a "retrieva
 
 <task type="auto" worker="B2">
   <name>Task B2.1: Migrate file-ingester.ts (2 sites)</name>
-  <files>src/angel/file-ingester.ts</files>
+  <files>src/core/file-ingester.ts</files>
   <action>
 Two write-path sites. The file ingester reads file content from the operator's workspace, extracts substantive artifacts (per the post-14-03 isSubstantive predicate), and writes them. After migration, writes go DIRECTLY to V17 `artifact` with TEXT IDs.
 
