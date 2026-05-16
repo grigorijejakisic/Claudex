@@ -45,7 +45,7 @@ must_haves:
       contains: "filterToProjectScope|isPassiveInjection"
     - path: "src/assembly/sections.ts"
       provides: "Lessons section formatter (H owns this function per WAVE3-COORDINATION). Renders lesson pointers using trigger frontmatter when available; falls back to truncated-body if `trigger:` missing."
-      contains: "formatLessonsSection"
+      contains: "formatProvenPrinciplesSection"
     - path: "src/tests/angel/memory-md-writer.test.ts"
       provides: "Extended with round-trip preservation test + User Notes sacred-region test"
       contains: "round_trip|preserve_user_notes|lessons_index"
@@ -312,7 +312,7 @@ Telemetry: emit `experience_tier_filtered` per filter pass with `{ total_candida
   <action>
 Add (or refactor) the lessons section formatter. Per WAVE3-COORDINATION, H owns this function; J will EXTEND it later for inline-expansion.
 
-Function name: `formatLessonsSection` (lock the name; J extends this same function).
+Function name: `formatProvenPrinciplesSection` (lock the name; J extends this same function).
 
 ```typescript
 import { readLessonTrigger } from '../angel/lesson-writer.js';
@@ -335,7 +335,7 @@ export interface LessonsSectionParams {
  * 14-07j will extend this function to inline-expand the top 2-3
  * lessons by relevance. H ships this function; J extends post-merge.
  */
-export function formatLessonsSection(p: LessonsSectionParams): string | null;
+export function formatProvenPrinciplesSection(p: LessonsSectionParams): string | null;
 ```
 
 Implementation:
@@ -421,7 +421,7 @@ Preserve all existing tests.
 7. `Empty current_project: filter returns empty (defensive)`
 
 **lessons-trigger-rendering.test.ts** — new file, 6 tests:
-1. `formatLessonsSection with N lessons: section has N lines`
+1. `formatProvenPrinciplesSection with N lessons: section has N lines`
 2. `Lesson with trigger: line shows trigger`
 3. `Lesson without trigger: line shows truncated-body fallback`
 4. `Budget cap: truncates with "... and N more" message`
@@ -468,7 +468,7 @@ Preserve all existing tests.
 - AC-9: Migration tool preserves all other frontmatter fields + body content byte-equivalent.
 - AC-10: Experience-tier filter excludes cross-project patterns from passive injection (default mode).
 - AC-11: Filter configurable via `CLAUDEX_EXPERIENCE_SCOPE` env var.
-- AC-12: `formatLessonsSection` function added to sections.ts; H owns it; J extends post-merge.
+- AC-12: `formatProvenPrinciplesSection` function added to sections.ts; H owns it; J extends post-merge.
 - AC-13: Lessons section uses trigger frontmatter when present; falls back to truncated-body when missing.
 - AC-14: All 35 new tests pass.
 - AC-15: Vesna SC#1 PASS 18/18 unchanged.
@@ -482,7 +482,7 @@ Preserve all existing tests.
 - **Risk 3: Experience-tier filter too aggressive — useful cross-project patterns blocked.** Mitigation: configurable; env var to revert; operator can claudex_search for cross-project patterns when needed.
 - **Risk 4: User Notes section preservation breaks on Windows line-ending differences.** Mitigation: preservation reads raw bytes; writes raw bytes; no line-ending normalization. Test on Windows fixtures.
 - **Risk 5: Lesson body truncation produces unhelpful display.** Mitigation: trigger frontmatter is the durable fix; truncated-body is the transitional fallback. Operator migrates over time.
-- **Risk 6: J's later extension to formatLessonsSection conflicts with H's shape.** Mitigation: WAVE3-COORDINATION enforces H ships first; J rebases. H's function shape is explicit (in this PLAN.md); J reads it before extending.
+- **Risk 6: J's later extension to formatProvenPrinciplesSection conflicts with H's shape.** Mitigation: WAVE3-COORDINATION enforces H ships first; J rebases. H's function shape is explicit (in this PLAN.md); J reads it before extending.
 - **Risk 7: Existing lesson files have invalid frontmatter that breaks readLessonTrigger.** Mitigation: readLessonTrigger wraps in try/catch; returns null on parse failure; fall-back path still renders the lesson.
 </risks>
 
