@@ -41,15 +41,17 @@ requirements: []
 
 must_haves:
   truths:
-    - "All ~22 caller sites against the legacy `artifacts` API are migrated to the V17 unified API. Read paths use `lookupV17ByLegacy` from 14-07a's `src/core/artifact-id-map.ts` as the transitional bridge when a caller still receives a legacy INTEGER ID externally; write paths go DIRECTLY to V17 with TEXT IDs."
-    - "No worker introduces net-new caller sites or net-new code paths. If a worker discovers an unmigrated site missing from the inventory below, the site is added to the worker's slice and migrated. The worker does NOT add new code paths, new query types, or new candidate sources."
+    - "**RCA-3 inventory (2026-05-15) is the authoritative caller list.** 22 production read/write sites against legacy `artifacts` distributed across 15 files (+ migration-steps.ts excluded as migration-aware). Verified via grep in 14-07-VERIFICATION-PASS.md Section A4 against the actual codebase. The earlier ~22 placeholder remains correct in count but the file inventory was incomplete in the original spec; restored here."
+    - "All 22 caller sites (15 files) are migrated to the V17 unified API. Read paths use `lookupV17ByLegacy` from 14-07a's `src/core/artifact-id-map.ts` as the transitional bridge when a caller still receives a legacy INTEGER ID externally; write paths go DIRECTLY to V17 with TEXT IDs."
+    - "**Worker structure: 5 workers (W1-W5)**, not 3 — restructured per VERIFICATION-PASS Section E item 4 after RCA-3 review. Cluster boundaries chosen to minimize cross-cluster coupling (retrieval activation_score lifecycle stays inside W1; embedding storage shape change stays inside W2)."
+    - "Workers commit on dedicated feature branches: W1 → `phase-14-07/w1-retrieval`, W2 → `phase-14-07/w2-embedding`, W3 → `phase-14-07/w3-query-surface`, W4 → `phase-14-07/w4-angel-writers`, W5 → `phase-14-07/w5-cli-tests`. Each branch is merged independently after AC-green per worker."
+    - "No worker introduces net-new caller sites or net-new code paths. If a worker discovers an unmigrated site missing from the inventory, the site is added to the worker's slice and migrated. The worker does NOT add new code paths, new query types, or new candidate sources."
     - "No worker changes hybrid-retrieval ranking math, BGE-v2-m3 reranker config, arctic-embed2 model, vector dimensions, candidate-pool composition, or query expansion logic. Per CONTEXT out-of-scope. If a worker is tempted to optimize during migration, STOP and surface to PM."
-    - "Workers commit on dedicated feature branches: B1 → `phase-14-07/b1-retrieval`, B2 → `phase-14-07/b2-ingest`, B3 → `phase-14-07/b3-writer-tests`. Each branch is merged independently after AC-green per worker."
-    - "memory-md-writer.ts is owned by B3 only. If B1 or B2 discover a memory-md-writer site during their caller sweep, they STOP, file the site to B3 via integration-branch comment, and wait for B3 to handle it."
-    - "B3 owns the shared test-fixture helper `src/tests/helpers/v7-unified-schema.ts` (NEW). B1 and B2 consume it for their test fixtures; only B3 modifies it."
+    - "**`src/angel/memory-md-writer.ts` is NOT in this plan.** Per RCA-3 it has 1 SELECT guard against V17 `artifact` (already-V17 caller), not against legacy `artifacts`. No migration needed for this file in 14-07b."
+    - "W5 owns the shared test-fixture helper `src/tests/helpers/v7-unified-schema.ts` (NEW). W1-W4 consume it for their test fixtures; only W5 modifies it."
     - "Each worker's existing tests stay green; new tests cover the V17 path explicitly. Test counts go up, not down."
-    - "Migrated read paths return data of identical SHAPE as before the migration (same fields, same types). Internal representation changes from legacy INTEGER ID + sidecar tables to V17 TEXT ID + unified shape; external callers see no shape diff."
-    - "Site inventory below is the working list. Exact site counts may shift +/-2 during execution as workers discover variations. The total stays under 26 sites; if it exceeds 26, surface to PM (likely an inventory miss)."
+    - "Migrated read paths return data of identical SHAPE as before the migration (same fields conceptually, but renamed per 14-07a's loss-map — callers translate at the call site: summary↔title, content↔body, importance↔confidence with scale, state↔status, etc.). External callers of THESE callers see no shape diff IF the worker correctly proxies the rename."
+    - "Site inventory below is the working list per RCA-3. Exact site counts may shift +/-2 during execution as workers discover variations. The total stays at 22 (+/- 2). If a worker discovers >24 sites, surface to PM — likely an inventory miss requiring scope review."
   artifacts:
     - path: "src/core/hybrid-retrieval.ts"
       provides: "Hybrid retrieval calling V17 unified artifact API (8 sites migrated). Behavior unchanged externally."
