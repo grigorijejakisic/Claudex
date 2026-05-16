@@ -14,7 +14,7 @@ files_modified:
   - src/tests/angel/memory-md-writer.test.ts
   - src/tests/angel/lesson-writer.test.ts
   - src/tests/scripts/migrate-lesson-trigger.test.ts (NEW)
-  - src/tests/intelligence/experience-tier-project-scope.test.ts (NEW)
+  - src/tests/intelligence/experience-tier-relevance.test.ts (NEW)
   - src/tests/assembly/lessons-trigger-rendering.test.ts (NEW)
 autonomous: true
 operator_review_gate: true
@@ -52,7 +52,7 @@ must_haves:
     - path: "src/tests/scripts/migrate-lesson-trigger.test.ts"
       provides: "CLI tests: dry-run, --infer, --trigger override, refusal-on-ambiguity, idempotency"
       contains: "dry_run|infer|trigger_override|refuse|idempotent"
-    - path: "src/tests/intelligence/experience-tier-project-scope.test.ts"
+    - path: "src/tests/intelligence/experience-tier-relevance.test.ts"
       provides: "Tests for project-scope filter: in-project surfaces; cross-project filtered out; configurable threshold"
       contains: "project_scope|in_project|cross_project_filtered"
     - path: "src/tests/assembly/lessons-trigger-rendering.test.ts"
@@ -391,7 +391,7 @@ Preserve all existing tests.
 
 <task type="auto">
   <name>Task 7: Tests — lesson writer, migration tool, experience-tier filter, lessons section</name>
-  <files>src/tests/angel/lesson-writer.test.ts, src/tests/scripts/migrate-lesson-trigger.test.ts, src/tests/intelligence/experience-tier-project-scope.test.ts, src/tests/assembly/lessons-trigger-rendering.test.ts</files>
+  <files>src/tests/angel/lesson-writer.test.ts, src/tests/scripts/migrate-lesson-trigger.test.ts, src/tests/intelligence/experience-tier-relevance.test.ts, src/tests/assembly/lessons-trigger-rendering.test.ts</files>
   <action>
 **lesson-writer.test.ts** — add 4 tests:
 1. `writeLesson with trigger: frontmatter contains trigger field`
@@ -411,7 +411,7 @@ Preserve all existing tests.
 9. `Preserves other frontmatter fields byte-equivalent`
 10. `Preserves body content byte-equivalent`
 
-**experience-tier-project-scope.test.ts** — new file, 7 tests:
+**experience-tier-relevance.test.ts** — new file, 7 tests:
 1. `filterToProjectScope: same_project_only excludes cross-project candidates`
 2. `filterToProjectScope: all_projects preserves all`
 3. `Default scope: same_project_only`
@@ -438,7 +438,7 @@ Preserve all existing tests.
   <files></files>
   <action>
 - `bun run build` — must succeed.
-- `npx vitest run src/tests/angel/memory-md-writer.test.ts src/tests/angel/lesson-writer.test.ts src/tests/scripts/migrate-lesson-trigger.test.ts src/tests/intelligence/experience-tier-project-scope.test.ts src/tests/assembly/lessons-trigger-rendering.test.ts` — 8 + 4 + 10 + 7 + 6 = 35 new tests pass.
+- `npx vitest run src/tests/angel/memory-md-writer.test.ts src/tests/angel/lesson-writer.test.ts src/tests/scripts/migrate-lesson-trigger.test.ts src/tests/intelligence/experience-tier-relevance.test.ts src/tests/assembly/lessons-trigger-rendering.test.ts` — 8 + 4 + 10 + 7 + 6 = 35 new tests pass.
 - `npx vitest run` — full suite green.
 - `bun run vesna` — SC#1 PASS 18/18.
 - **Operator-runnable smoke (NOT auto):** `bun src/scripts/migrate-lesson-trigger.ts ~/.claude/projects/C--Users-Grigorije-Desktop-Projects-CLAUDEXv3/memory --dry-run` — preview output for the existing 17+ lesson files. Document in `14-07-WAVE3-STATUS.md`.
