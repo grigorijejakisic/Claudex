@@ -224,7 +224,7 @@ Write-path specifics: when feedback writes a new artifact row (e.g., a "retrieva
   </verification>
 </task>
 
-<task type="auto" worker="B2">
+<task type="auto" worker="W2">
   <name>Task B2.1: Migrate file-ingester.ts (2 sites)</name>
   <files>src/core/file-ingester.ts</files>
   <action>
@@ -244,7 +244,7 @@ No change to isSubstantive filter behavior; just the write target.
   </verification>
 </task>
 
-<task type="auto" worker="B2">
+<task type="auto" worker="W2">
   <name>Task B2.2: Migrate directive-detector.ts</name>
   <files>src/intelligence/directive-detector.ts</files>
   <action>
@@ -262,7 +262,7 @@ If the detector currently joins against `artifact_fts`, switch to `artifact_fts_
   </verification>
 </task>
 
-<task type="auto" worker="B2">
+<task type="auto" worker="W2">
   <name>Task B2.3: Migrate retrieval-log.ts</name>
   <files>src/intelligence/retrieval-log.ts</files>
   <action>
@@ -276,7 +276,7 @@ Per-site shape per B1.1.
   </verification>
 </task>
 
-<task type="auto" worker="B2">
+<task type="auto" worker="W2">
   <name>Task B2.4: Migrate transcript-chunker.ts</name>
   <files>src/angel/transcript-chunker.ts</files>
   <action>
