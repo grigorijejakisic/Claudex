@@ -6,24 +6,37 @@ type: execute
 wave: 1
 depends_on: ["07a"]
 files_modified:
-  - src/core/hybrid-retrieval.ts
-  - src/intelligence/retrieval-feedback.ts
-  - src/intelligence/directive-detector.ts
-  - src/intelligence/retrieval-log.ts
-  - src/core/file-ingester.ts
-  - src/angel/transcript-chunker.ts
-  - src/angel/memory-md-writer.ts
+  # Retrieval cluster (W1)
+  - src/core/hybrid-retrieval.ts            # 8 sites — L3 retrieval centerpiece
+  - src/intelligence/retrieval-feedback.ts  # 5 sites — activation_score lifecycle
+  - src/intelligence/experience-tier.ts     # 1 site — candidate pool query
+  # Ingestion / embedding cluster (W2)
+  - src/core/file-ingester.ts               # 2 sites — INSERT memory_file/session_log/handoff/entity_summary
+  - src/embeddings/embed-pipeline.ts        # 2 sites — UPDATE embedding (storage shape change)
+  - src/embeddings/sqlite-vec-backend.ts    # 1 site — JOIN to vec sidecar
+  # Query-surface cluster (W3)
+  - src/mcp/recall-server.ts                # 2 sites — exposed via claudex_recall
+  - src/core/cross-project-search.ts        # 1 site — claudex_search expansion
+  - src/core/observations.ts                # 1 site — SELECT artifact_ref
+  # Angel writers cluster (W4)
+  - src/angel/consolidator.ts               # 1 site — UPDATE consolidated_into
+  - src/angel/retention-sweep.ts            # 1 site — DELETE / UPDATE (TTL enforcement)
+  - src/angel/entity-summarizer.ts          # 1 site — INSERT entity_summary
+  - src/intelligence/intent-predictor.ts    # 1 site — per-turn prediction
+  - src/intelligence/batch-reflection.ts    # 1 site — SELECT id (dedup) for learning promotion
+  # CLI + tests cluster (W5)
+  - src/cli/health.ts                       # 1 site — INSERT (test fixture)
   - src/tests/helpers/v7-unified-schema.ts (NEW)
-  - src/tests/intelligence/hybrid-retrieval.test.ts
-  - src/tests/intelligence/retrieval-feedback.test.ts
-  - src/tests/intelligence/directive-detector.test.ts
-  - src/tests/intelligence/retrieval-log.test.ts
-  - src/tests/angel/file-ingester.test.ts
-  - src/tests/angel/transcript-chunker.test.ts
-  - src/tests/angel/memory-md-writer.test.ts
-  - src/tests/** (general sweep for V36→V37 schema references)
+  - src/tests/** (general sweep — fixture seeds + caller adjacent tests)
+  # NOTE: Excluded from W1-W5 — migration-aware (handled by 14-07a)
+  # - src/core/migration-steps.ts (4 sites — already migration-aware)
+  # NOT in W1-W5 — these files are V17 callers (per RCA-3), not legacy callers:
+  # - src/intelligence/directive-detector.ts (kind='directive_rule' against V17)
+  # - src/intelligence/retrieval-log.ts (kind='transcript_chunk' against V17)
+  # - src/angel/transcript-chunker.ts (INSERT against V17)
+  # - src/angel/memory-md-writer.ts (V17 guard SELECT only — 1 site)
 autonomous: true
-parallel_workers: ["B1", "B2", "B3"]
+parallel_workers: ["W1", "W2", "W3", "W4", "W5"]
 requirements: []
 
 must_haves:
