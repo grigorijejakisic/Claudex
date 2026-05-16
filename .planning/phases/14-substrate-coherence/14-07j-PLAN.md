@@ -23,7 +23,7 @@ must_haves:
     - "Position-unless-flagged on combined weights: 60/40 trigger/link is the lean because trigger-match is the direct semantic signal (operator wrote the trigger), while link distance is structural (graph topology). If PM flags this, alternatives are 50/50 (equal weight) or 80/20 (trigger-dominant)."
     - "Top-K selection: K=3 by default. Configurable via `CLAUDEX_LESSON_INLINE_K` (default 3, capped at 5 to bound budget)."
     - "Inline-expanded lesson budget: 400 tokens TOTAL across all K lessons. Per-lesson budget ~130 tokens (header + 1-3 body sentences). Lessons longer than ~130 tokens are truncated with ellipsis."
-    - "This plan EXTENDS H's `formatLessonsSection`. H ships first; J rebases onto integration branch and adds inline-expansion as additional behavior, not a rewrite. The function shape: H's signature stays; J extends the implementation."
+    - "This plan EXTENDS H's `formatProvenPrinciplesSection`. H ships first; J rebases onto integration branch and adds inline-expansion as additional behavior, not a rewrite. The function shape: H's signature stays; J extends the implementation."
     - "If Wave 2 link graph is sparse (early adoption), link-distance score will be 0 for most lessons; relevance falls back to trigger-match alone. This is acceptable — inline-expansion degrades gracefully to trigger-only selection."
     - "If no lesson has trigger frontmatter (transitional state pre-migration of existing lessons), relevance scoring uses truncated-body keyword overlap as the trigger proxy. Quality lower; inline-expansion still functional."
   artifacts:
@@ -31,8 +31,8 @@ must_haves:
       provides: "Relevance scoring: per-lesson combined score of trigger-match + link-distance to current pivot. Pure function + helpers."
       contains: "computeLessonRelevance|computeTriggerMatch|computeLinkDistanceScore|selectTopKLessons"
     - path: "src/assembly/sections.ts"
-      provides: "Lessons section formatter extended (H's formatLessonsSection) to inline-expand top-K lessons by relevance"
-      contains: "formatLessonsSection|inlineExpandLesson"
+      provides: "Lessons section formatter extended (H's formatProvenPrinciplesSection) to inline-expand top-K lessons by relevance"
+      contains: "formatProvenPrinciplesSection|inlineExpandLesson"
     - path: "src/tests/intelligence/lesson-relevance.test.ts"
       provides: "Tests for relevance scoring: trigger match correctness, link distance scoring, combined weight, top-K selection"
       contains: "trigger_match|link_distance|combined|top_k"
@@ -44,7 +44,7 @@ must_haves:
       to: "src/intelligence/provenance-walker.ts (walkProvenance) OR src/mcp/tools/claudex-trace.ts (handleClaudexTrace)"
       via: "Reuses Wave 2's graph walker; either provenance (directed) or trace (general); J authors decision: claudex_trace's BFS is more general for relevance scoring"
       pattern: "handleClaudexTrace|walkProvenance"
-    - from: "src/assembly/sections.ts (formatLessonsSection extended)"
+    - from: "src/assembly/sections.ts (formatProvenPrinciplesSection extended)"
       to: "src/intelligence/lesson-relevance.ts (selectTopKLessons)"
       via: "Section formatter consults relevance scorer to pick which lessons to inline"
       pattern: "selectTopKLessons"
@@ -55,7 +55,7 @@ Two deliverables in one plan:
 
 1. **`src/intelligence/lesson-relevance.ts`** — relevance scoring helpers. Per-lesson combined score of trigger-match + link-distance to current pivot artifacts. Used by the assembler to select top-K lessons to inline.
 
-2. **Extended `formatLessonsSection`** — H ships the baseline lessons section formatter (14-07h); J extends it to inline-expand the top-K lessons by relevance. The rest of the lessons stay as pointer lines per H's rendering.
+2. **Extended `formatProvenPrinciplesSection`** — H ships the baseline lessons section formatter (14-07h); J extends it to inline-expand the top-K lessons by relevance. The rest of the lessons stay as pointer lines per H's rendering.
 
 After this plan lands:
 - Top 2-3 lessons relevant to the current pivot appear FULL-BODY in the assembler's lessons section.
@@ -92,7 +92,7 @@ After this plan lands:
 
 <anti_scope>
 - Do NOT modify H's lessons-section function shape. J EXTENDS the function; J does NOT rewrite it. Coordinate via WAVE3-COORDINATION's enforced merge order (H first, J rebases).
-- Do NOT modify any other function in `src/assembly/sections.ts`. J owns ONLY the extension to formatLessonsSection.
+- Do NOT modify any other function in `src/assembly/sections.ts`. J owns ONLY the extension to formatProvenPrinciplesSection.
 - Do NOT modify lesson files. Trigger frontmatter is read-only for this plan.
 - Do NOT modify MEMORY.md regenerator (14-07h territory).
 - Do NOT modify experience-tier filter (14-07h territory).
@@ -210,10 +210,10 @@ Implementation:
 </task>
 
 <task type="auto">
-  <name>Task 2: Extend formatLessonsSection for inline-expansion</name>
+  <name>Task 2: Extend formatProvenPrinciplesSection for inline-expansion</name>
   <files>src/assembly/sections.ts</files>
   <action>
-Extend H's `formatLessonsSection`. CRITICAL: this Task happens AFTER H lands (per WAVE3-COORDINATION merge order). J rebases onto integration branch and extends the function — does NOT rewrite H's shape.
+Extend H's `formatProvenPrinciplesSection`. CRITICAL: this Task happens AFTER H lands (per WAVE3-COORDINATION merge order). J rebases onto integration branch and extends the function — does NOT rewrite H's shape.
 
 Extended behavior:
 
@@ -370,7 +370,7 @@ New test file. Tests:
 - AC-4: Combined formula: `trigger_weight * trigger_match + (1 - trigger_weight) * link_distance`.
 - AC-5: Default weights 0.6 / 0.4; env var overrides honored.
 - AC-6: Top-K selection: sorts desc by combined; K default 3, cap 5.
-- AC-7: H's `formatLessonsSection` extended with inline-expansion; J does NOT rewrite H's shape.
+- AC-7: H's `formatProvenPrinciplesSection` extended with inline-expansion; J does NOT rewrite H's shape.
 - AC-8: Top-K lessons inline-expanded at top of section; rest as pointers.
 - AC-9: Inline-expanded budget cap 400 tokens total; per-lesson cap ~130.
 - AC-10: Graceful fallback when pivot params absent (renders H's baseline).
@@ -383,7 +383,7 @@ New test file. Tests:
 </acceptance_criteria>
 
 <risks>
-- **Risk 1: H's formatLessonsSection shape too rigid for J's extension.** Mitigation: WAVE3-COORDINATION enforces H ships first; J rebases. H's PLAN.md documents the function shape explicitly; J authors extend rather than rewrite.
+- **Risk 1: H's formatProvenPrinciplesSection shape too rigid for J's extension.** Mitigation: WAVE3-COORDINATION enforces H ships first; J rebases. H's PLAN.md documents the function shape explicitly; J authors extend rather than rewrite.
 - **Risk 2: Trigger-match scoring is too crude.** Keyword overlap misses semantic relevance. Mitigation: shipping the crude version; future post-ship work can swap in embedding-based similarity. CONTEXT methodology gate: simple-first is OK if it doesn't regress.
 - **Risk 3: Link-distance scoring depends on the graph being populated.** Early adoption: link graph is sparse; relevance falls back to trigger-only. Acceptable degradation.
 - **Risk 4: Inline-expansion makes lessons section overwhelming.** Top-3 with 400 token budget could feel heavy. Mitigation: K configurable; budget configurable; operator can tune post-ship.
@@ -398,7 +398,7 @@ Codex + Gemini cross-family review focuses on:
 - (a) Relevance scoring shape — is keyword overlap the right starting point?
 - (b) 60/40 weight — defensible?
 - (c) Top-K + budget interaction — does the truncation actually fit visually?
-- (d) H/J coordination on formatLessonsSection — is the extension surgical?
+- (d) H/J coordination on formatProvenPrinciplesSection — is the extension surgical?
 - (e) Sparse-link fallback — does it actually degrade gracefully?
 - (f) v7.0.0 ship gate — are all sub-gates the right ones?
 
