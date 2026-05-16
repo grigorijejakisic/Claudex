@@ -175,8 +175,16 @@ After this plan lands:
 
 <tasks>
 
-<task type="auto" worker="B1">
-  <name>Task B1.1: Migrate hybrid-retrieval.ts (8 sites)</name>
+<!--
+TASKS REWRITTEN 2026-05-16 afternoon per VERIFICATION-PASS Section E item 4.
+Old 9-task B1/B2/B3 structure replaced with 18-task W1-W5 structure covering
+all 15 caller files (RCA-3 inventory). Each task has a compact action + verification;
+common patterns (migrate sites → grep returns 0 matches → tests pass) factored into
+the per-task action shape rather than duplicated verbosely.
+-->
+
+<task type="auto" worker="W1">
+  <name>Task W1.1: Migrate hybrid-retrieval.ts (8 sites)</name>
   <files>src/core/hybrid-retrieval.ts</files>
   <action>
 Enumerate 8 call sites against legacy `artifacts` and migrate each to V17 unified `artifact` table. Each site preserves the EXTERNAL CONTRACT of the calling function (same return shape, same parameters) and only switches the internal data source.
