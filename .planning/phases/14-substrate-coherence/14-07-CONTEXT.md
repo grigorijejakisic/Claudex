@@ -108,7 +108,7 @@ The contract /auto-orchestrate must honor. Each wave's coordination doc enforces
 - **No pre-fanout schema** — h/i/j are independent additions to existing surfaces.
 - **Three parallel workers** (with 14-07j gated on Wave 2 landing):
   - Worker H: src/angel/memory-md-writer.ts (regenerator) + lesson frontmatter `trigger:` field + src/intelligence/experience-tier.ts (project-scope filter)
-  - Worker I: src/assembly/sections.ts (codebase-context formatter) + src/intelligence/hybrid-retrieval.ts (surface query+score in retrieval result)
+  - Worker I: src/assembly/sections.ts (codebase-context formatter) + src/core/hybrid-retrieval.ts (surface query+score in retrieval result)
   - Worker J: src/assembly/sections.ts (lessons section formatter — link-aware expansion)
 - **Critical: Workers H, I, and J all touch `src/assembly/sections.ts`.** Coordination doc enforces non-overlapping function ownership. H touches `formatProvenPrinciplesSection` if lessons surface there; I touches the codebase-context formatter (function name TBD during 14-07i authoring); J adds `formatLessonsInlineExpandedSection` or extends H's surface. WAVE3-COORDINATION resolves the exact split — likely by introducing a new section P2.9 or by restructuring the existing lessons surface.
 
