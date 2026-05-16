@@ -288,7 +288,7 @@ Write-path: transcript chunker writes chunks. Post-14-02 (v6.6.0), `transcript_c
   </verification>
 </task>
 
-<task type="auto" worker="B3">
+<task type="auto" worker="W5">
   <name>Task B3.1: Create shared fixture helper</name>
   <files>src/tests/helpers/v7-unified-schema.ts</files>
   <action>
@@ -339,7 +339,7 @@ export function migrateFixtureV36toV37(db: Database): void;
   </verification>
 </task>
 
-<task type="auto" worker="B3">
+<task type="auto" worker="W5">
   <name>Task B3.2: Migrate memory-md-writer.ts</name>
   <files>src/angel/memory-md-writer.ts</files>
   <action>
@@ -356,7 +356,7 @@ If B1 or B2 filed any memory-md-writer sites during their sweep, address them he
   </verification>
 </task>
 
-<task type="auto" worker="B3">
+<task type="auto" worker="W5">
   <name>Task B3.3: Test-fixture sweep across src/tests/**</name>
   <files>src/tests/**/*.test.ts, src/tests/**/*.ts</files>
   <action>
