@@ -9,7 +9,7 @@ files_modified:
   - src/mcp/recall-server.ts
   - src/mcp/tools/claudex-trace.ts (NEW)
   - src/intelligence/link-distance-boost.ts (NEW)
-  - src/intelligence/hybrid-retrieval.ts
+  - src/core/hybrid-retrieval.ts
   - src/tests/mcp/claudex-trace.test.ts (NEW)
   - src/tests/intelligence/link-distance-boost.test.ts (NEW)
   - src/tests/intelligence/hybrid-retrieval-with-boost.test.ts (NEW)
@@ -37,7 +37,7 @@ must_haves:
     - path: "src/intelligence/link-distance-boost.ts"
       provides: "Scoring helper that computes per-candidate link distance to a query artifact and applies the boost formula. Pure function plus a DB query helper."
       contains: "computeLinkDistance|applyLinkDistanceBoost|BOOST_WEIGHT_DEFAULT"
-    - path: "src/intelligence/hybrid-retrieval.ts"
+    - path: "src/core/hybrid-retrieval.ts"
       provides: "Existing hybrid retrieval; extended with link-distance boost behind feature flag. Existing ranking math unchanged in flag-off state."
       contains: "CLAUDEX_LINK_DISTANCE_BOOST|applyLinkDistanceBoost"
     - path: "src/tests/mcp/claudex-trace.test.ts"
@@ -58,7 +58,7 @@ must_haves:
       to: "src/core/link-writer.ts"
       via: "Boost helper reads link rows for distance computation"
       pattern: "listSoftLinks|listConfirmedHardLinks"
-    - from: "src/intelligence/hybrid-retrieval.ts"
+    - from: "src/core/hybrid-retrieval.ts"
       to: "src/intelligence/link-distance-boost.ts"
       via: "Hybrid retrieval invokes the boost at rerank step when flag is ON"
       pattern: "CLAUDEX_LINK_DISTANCE_BOOST|applyLinkDistanceBoost"
@@ -69,7 +69,7 @@ Two deliverables in one plan, both READ-side of the link substrate:
 
 1. **`claudex_trace` MCP tool** — registered in `src/mcp/recall-server.ts`, handled in `src/mcp/tools/claudex-trace.ts`. Walks the link graph (soft + confirmed hard) via BFS from a starting artifact; returns the N-hop neighborhood with hop distance + path. Used by the agent to query "what's connected to this decision?" or "trace back from this lesson to source observations."
 
-2. **Link-distance retrieval boost** — additive scoring modifier in `src/intelligence/link-distance-boost.ts`, integrated into `src/intelligence/hybrid-retrieval.ts` at the rerank step. Behind feature flag `CLAUDEX_LINK_DISTANCE_BOOST` (default OFF per CONTEXT position-unless-flagged). Closer-linked candidates rank higher.
+2. **Link-distance retrieval boost** — additive scoring modifier in `src/intelligence/link-distance-boost.ts`, integrated into `src/core/hybrid-retrieval.ts` at the rerank step. Behind feature flag `CLAUDEX_LINK_DISTANCE_BOOST` (default OFF per CONTEXT position-unless-flagged). Closer-linked candidates rank higher.
 
 After this plan lands:
 - Agent can call `claudex_trace(artifact_id, max_hops=3)` and receive the neighborhood graph.
@@ -96,7 +96,7 @@ After this plan lands:
 @.planning/phases/14-substrate-coherence/14-07-WAVE2-COORDINATION.md
 @.planning/phases/14-substrate-coherence/14-07-LINKS-SCHEMA-PLAN.md
 @src/mcp/recall-server.ts
-@src/intelligence/hybrid-retrieval.ts
+@src/core/hybrid-retrieval.ts
 @src/core/link-writer.ts
 </context>
 
@@ -371,7 +371,7 @@ Where hop_distance is bounded (≥1; max_hops cap).
 
 <task type="auto">
   <name>Task 4: Hybrid-retrieval integration behind feature flag</name>
-  <files>src/intelligence/hybrid-retrieval.ts</files>
+  <files>src/core/hybrid-retrieval.ts</files>
   <action>
 Locate the rerank step in hybrid-retrieval.ts. Currently the flow is:
 
