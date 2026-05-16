@@ -6,7 +6,7 @@ type: execute
 wave: 1
 depends_on: ["07a"]
 files_modified:
-  - src/intelligence/hybrid-retrieval.ts
+  - src/core/hybrid-retrieval.ts
   - src/intelligence/retrieval-feedback.ts
   - src/intelligence/directive-detector.ts
   - src/intelligence/retrieval-log.ts
@@ -38,7 +38,7 @@ must_haves:
     - "Migrated read paths return data of identical SHAPE as before the migration (same fields, same types). Internal representation changes from legacy INTEGER ID + sidecar tables to V17 TEXT ID + unified shape; external callers see no shape diff."
     - "Site inventory below is the working list. Exact site counts may shift +/-2 during execution as workers discover variations. The total stays under 26 sites; if it exceeds 26, surface to PM (likely an inventory miss)."
   artifacts:
-    - path: "src/intelligence/hybrid-retrieval.ts"
+    - path: "src/core/hybrid-retrieval.ts"
       provides: "Hybrid retrieval calling V17 unified artifact API (8 sites migrated). Behavior unchanged externally."
       contains: "V17|artifact_id_map|lookupV17ByLegacy"
     - path: "src/intelligence/retrieval-feedback.ts"
@@ -107,7 +107,7 @@ After this plan lands:
 @.planning/phases/14-substrate-coherence/14-07a-PLAN.md
 @context/measurements/2026-05-15-substrate-rcas.md
 @src/core/artifact-id-map.ts
-@src/intelligence/hybrid-retrieval.ts
+@src/core/hybrid-retrieval.ts
 @src/intelligence/retrieval-feedback.ts
 @src/angel/file-ingester.ts
 </context>
@@ -131,7 +131,7 @@ After this plan lands:
 
 <task type="auto" worker="B1">
   <name>Task B1.1: Migrate hybrid-retrieval.ts (8 sites)</name>
-  <files>src/intelligence/hybrid-retrieval.ts</files>
+  <files>src/core/hybrid-retrieval.ts</files>
   <action>
 Enumerate 8 call sites against legacy `artifacts` and migrate each to V17 unified `artifact` table. Each site preserves the EXTERNAL CONTRACT of the calling function (same return shape, same parameters) and only switches the internal data source.
 
@@ -147,8 +147,8 @@ For each migrated site:
 - Verify the function's return shape is unchanged via the existing test (pre-migration baseline).
   </action>
   <verification>
-- 8 sites migrated; `grep -n 'FROM artifacts\b' src/intelligence/hybrid-retrieval.ts` returns 0 matches.
-- `grep -n 'artifact_fts\b' src/intelligence/hybrid-retrieval.ts` returns 0 matches (only `artifact_fts_v17`).
+- 8 sites migrated; `grep -n 'FROM artifacts\b' src/core/hybrid-retrieval.ts` returns 0 matches.
+- `grep -n 'artifact_fts\b' src/core/hybrid-retrieval.ts` returns 0 matches (only `artifact_fts_v17`).
 - Each migrated site has the `// 14-07b: migrated from legacy artifacts` marker.
 - Existing tests pass without modification (behavioral equivalence).
   </verification>
