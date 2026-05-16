@@ -105,7 +105,7 @@ PM (me) is the only authority for resolving boundary disputes.
   section formatter**. I owns ONLY this function. (Surveys existing
   formatter functions during authoring; coordinates with H/J via
   PM.)
-- `src/intelligence/hybrid-retrieval.ts` — surface the retrieval
+- `src/core/hybrid-retrieval.ts` — surface the retrieval
   query + score in the returned candidate metadata so the assembler
   can render the reason. Additive; existing return shape extended,
   not replaced.
