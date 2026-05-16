@@ -82,7 +82,7 @@ listed here, normal `git add` behavior applies.
 
 ### Plan 14-07b worker B1 (retrieval cluster) owns
 
-- `src/intelligence/hybrid-retrieval.ts` — 8 call sites against
+- `src/core/hybrid-retrieval.ts` — 8 call sites against
   legacy `artifacts` API → V17 unified API (exact site list
   enumerated in 14-07b-PLAN.md).
 - `src/intelligence/retrieval-feedback.ts` — 5 call sites.
