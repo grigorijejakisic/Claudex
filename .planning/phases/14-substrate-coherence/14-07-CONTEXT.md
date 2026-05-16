@@ -91,13 +91,22 @@ Wave 3 — Session-start coherence (mostly parallel; 14-07j depends on Wave 2):
 
 The contract /auto-orchestrate must honor. Each wave's coordination doc enforces these in detail.
 
+### Wave 0 (foundations)
+
+- **14-07-w0a auto-commit hooks** — SHIPPED 2026-05-16. `scripts/auto-commit-hook.cjs` + `.claude/settings.json` register SessionStart / PostToolUse / Stop hooks that commit + tag. Provides the diff baseline that `/verify` reads.
+- **14-07-w0b `/verify` skill** — new slash command. Captures git diff against session-start tag, runs build+tests on changed code, greps for assumed-but-not-verified names (function names, file paths, schema versions). Outputs structured "N claims, M verified, K unverified" report. Agent runs before claiming done.
+- **14-07-w0c CLAUDE.md verify-before-done rule** — SHIPPED 2026-05-16 in `~/.claude/CLAUDE.md` "How I approach work" section. Identity-level rule: verified is the only kind of done.
+- **14-07-w0d sections.ts split** — extract `formatCodebaseContextSection` from inline `assembler.ts:857`; split `src/assembly/sections.ts` (currently 28 exports, 1500+ lines) into `sections/lessons.ts`, `sections/codebase-context.ts`, `sections/links.ts`, and a residual `sections/index.ts`. Eliminates the cross-plan collision risk in Waves 2 and 3 where 5 plans touch sections.ts (per WAVE2-COORD and WAVE3-COORD). Operator-approved 2026-05-16.
+
 ### Wave 1 (substrate unification)
 
 - **14-07a lands solo** (blocks). Touches DDL + new `artifact_id_map` table + arctic-embed2 re-vectorization helper. No worker collisions because it runs alone.
-- **14-07b fans out to three workers**. Caller sweep across ~22 sites split by code path:
-  - Worker B1: hybrid-retrieval.ts (8 sites) + retrieval-feedback.ts (5 sites)
-  - Worker B2: file-ingester.ts (2 sites) + directive-detector.ts + retrieval-log.ts + transcript-chunker.ts
-  - Worker B3: memory-md-writer.ts + test fixtures across `src/tests/**` (sweep)
+- **14-07b fans out to FIVE workers** (per RCA-3 inventory + VERIFICATION-PASS Section E item 4 restructure). Caller sweep across 22 sites / 15 files split by cluster:
+  - Worker W1 — retrieval cluster: `src/core/hybrid-retrieval.ts` (8 sites) + `src/intelligence/retrieval-feedback.ts` (5 sites) + `src/intelligence/experience-tier.ts` (1 site — query shape only; FILTER semantics rewritten in 14-07h)
+  - Worker W2 — ingestion/embedding cluster: `src/core/file-ingester.ts` (2 sites) + `src/embeddings/embed-pipeline.ts` (2 sites) + `src/embeddings/sqlite-vec-backend.ts` (1 site)
+  - Worker W3 — query-surface cluster: `src/mcp/recall-server.ts` (2 sites) + `src/core/cross-project-search.ts` (1 site) + `src/core/observations.ts` (1 site)
+  - Worker W4 — Angel writers cluster: `src/angel/consolidator.ts` (1 site) + `src/angel/retention-sweep.ts` (1 site) + `src/angel/entity-summarizer.ts` (1 site) + `src/intelligence/intent-predictor.ts` (1 site) + `src/intelligence/batch-reflection.ts` (1 site)
+  - Worker W5 — CLI + tests cluster: `src/cli/health.ts` (1 site) + `src/tests/helpers/v7-unified-schema.ts` (NEW) + test fixture sweep across `src/tests/**`
 - **14-07c lands solo** (gate). Runs Vesna + LongMemEval + LoCoMo + cross-project candidate hit rate against post-migration state. If any regression, holds cutover.
 
 ### Wave 2 (knowledge graph)
