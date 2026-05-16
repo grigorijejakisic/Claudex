@@ -418,7 +418,7 @@ One SELECT site for dedup checks during learning promotion. Switch to V17 `artif
   <name>Task W5.1: Create shared fixture helper</name>
   <files>src/tests/helpers/v7-unified-schema.ts</files>
   <action>
-New file. Exports test helpers that seed V7-unified-schema rows. Used by B1, B2, and B3's test files.
+New file. Exports test helpers that seed V7-unified-schema rows. Used by W1-W4 cluster test files.
 
 ```typescript
 import type { Database } from 'better-sqlite3';
