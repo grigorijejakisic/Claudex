@@ -140,7 +140,7 @@ PM (me) is the only authority for resolving boundary disputes.
   proposer. At session-end boundary, runs an LLM pass over recent
   artifacts, proposes `triggered_by`, `evidence_for`, `contradicts`
   links. Writes proposals via `proposeHardLink` from LSS.
-- `src/angel/boundary-detector.ts` — hooks `runHardLinkProposer`
+- `src/angel/boundary/boundary-detector.ts` — hooks `runHardLinkProposer`
   into the post-session-end action sequence (Phase 14-05 already
   established the boundary detector as the single owner of
   session-end side effects). Additive.
