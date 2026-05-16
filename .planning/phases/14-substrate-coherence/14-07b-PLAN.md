@@ -167,8 +167,8 @@ After this plan lands:
 - Do NOT touch session-start codebase-context formatter — Wave 3 / 14-07i territory.
 - Do NOT refactor adjacent code "for cleanup." Per `memory/feedback_same_family_teammates_blind_spots.md`, same-family blind spots cause silent scope creep. Operator surfaces if cleanup needed.
 - Do NOT modify schema-version constants or schema migration steps. 14-07a owns those.
-- B1 and B2 do NOT touch `src/angel/memory-md-writer.ts` — B3-only territory.
-- B1 and B2 do NOT modify `src/tests/helpers/v7-unified-schema.ts` — B3-only territory.
+- No worker touches `src/angel/memory-md-writer.ts` — it's a V17 caller per RCA-3 (1 SELECT guard already against V17), not in this plan's scope.
+- W1-W4 do NOT modify `src/tests/helpers/v7-unified-schema.ts` — W5-only territory.
 - Do NOT add cutover logic, read-only flag flip, or benchmark code — 14-07c territory.
 - Do NOT auto-drop or auto-truncate the legacy `artifacts` table.
 </anti_scope>
