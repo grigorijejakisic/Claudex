@@ -80,6 +80,7 @@ Wave 3 — Session-start coherence (mostly parallel; 14-07j depends on Wave 2):
 **Within-wave pattern: schema-first → parallel workers → gate.** /auto-orchestrate worker fanout happens AFTER the schema/contract for the wave lands. Workers cannot collide because file ownership is locked in the wave coordination doc.
 
 **Across-wave dependencies:**
+- **Wave 0 ships first.** Waves 1, 2, 3 all depend on Wave 0's auto-commit safety net + `/verify` protocol being live. Without Wave 0, the failure mode that produced the 2026-05-16 v7.0.0 spec errors (writing without verification baseline) can recur for any /auto-orchestrate worker downstream.
 - Wave 2 requires Wave 1 cutover (link tables reference unified artifact IDs).
 - Wave 3 task 14-07j requires Wave 2 linking shipped (link-aware expansion has no graph to walk otherwise).
 - Wave 3 tasks 14-07h and 14-07i have **no Wave 2 dependency** and could in principle run alongside Wave 1 worker fanout. **They do not, per Locked decision 7** — strict-sequential execution by wave was chosen for execution simplicity. h/i ship in Wave 3, not earlier.
