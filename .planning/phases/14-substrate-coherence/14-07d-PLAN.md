@@ -13,19 +13,19 @@ files_modified:
   - src/intelligence/retrieval-log.ts
   - src/tests/intelligence/soft-link-writers.test.ts (NEW)
   - src/tests/angel/handoff-writer.test.ts
-  - src/tests/angel/lesson-promoter.test.ts
+  - src/tests/angel/learnings-promoter.test.ts
   - src/tests/angel/highlights-extractor.test.ts
 autonomous: true
 requirements: []
 
 must_haves:
   truths:
-    - "Four soft-link write sites are instrumented in this plan: (1) handoff-writer emits `supersedes` when a new ACTIVE.md is written (links the new handoff to the prior one); (2) lesson-promoter emits `promoted_to` when an observation is promoted to a lesson; (3) highlights-extractor emits `extracted_from` when session frame highlights are extracted; (4) retrieval-log emits `references` when a log entry contains an artifact reference."
+    - "Four soft-link write sites are instrumented in this plan: (1) handoff-writer emits `supersedes` when a new ACTIVE.md is written (links the new handoff to the prior one); (2) learnings-promoter emits `promoted_to` when an observation is promoted to a lesson; (3) highlights-extractor emits `extracted_from` when session frame highlights are extracted; (4) retrieval-log emits `references` when a log entry contains an artifact reference."
     - "All four writes go through `src/intelligence/soft-link-writers.ts` site helpers, which themselves call `writeSoftLink` from `src/core/link-writer.ts` (14-07-LINKS-SCHEMA). No site calls `writeSoftLink` directly."
-    - "Instrumentation is ADDITIVE. Existing write contracts (handoff-writer's writeHandoff, lesson-promoter's promote, etc.) keep their signatures + return shapes. Soft-link emission happens after the primary write succeeds; failure to write a soft link is logged but does not roll back the primary write."
+    - "Instrumentation is ADDITIVE. Existing write contracts (handoff-writer's writeHandoff, learnings-promoter's promote, etc.) keep their signatures + return shapes. Soft-link emission happens after the primary write succeeds; failure to write a soft link is logged but does not roll back the primary write."
     - "Soft links commit at the autonomous tier per the Good Child policy: write-time, no operator confirmation, low-stakes inference (these are factual relationships: 'this handoff replaces that one' is observable from the write event itself, not LLM-inferred)."
     - "The supersedes link is written when the prior ACTIVE.md exists as a V17 artifact AND the new handoff is also a V17 artifact. If either is missing, the soft-link write is skipped silently and a telemetry row is emitted (`soft_link_skipped` event)."
-    - "The promoted_to link writes from the observation's V17 ID to the lesson's V17 ID. If lesson-promoter does not currently produce V17 IDs for both sides, this plan adds the V17 ID derivation BUT does not modify the lesson/observation schemas (those are V17 unified post-Wave-1)."
+    - "The promoted_to link writes from the observation's V17 ID to the lesson's V17 ID. If learnings-promoter does not currently produce V17 IDs for both sides, this plan adds the V17 ID derivation BUT does not modify the lesson/observation schemas (those are V17 unified post-Wave-1)."
     - "The extracted_from link writes from each extracted highlight's V17 ID to the session frame's V17 ID. session_highlights post-Wave-1 are V17 artifacts; session frames are V17 artifacts."
     - "The references link is denser — retrieval-log entries may reference multiple artifacts. The instrumentation iterates over a log entry's referenced artifacts and writes one link per reference."
   artifacts:
@@ -241,7 +241,7 @@ Add a `// 14-07d: emit supersedes soft link` comment marker so reviewers can gre
 </task>
 
 <task type="auto">
-  <name>Task 3: Instrument lesson-promoter.ts for promoted_to</name>
+  <name>Task 3: Instrument learnings-promoter.ts for promoted_to</name>
   <files>src/intelligence/learnings-promoter.ts</files>
   <action>
 After a lesson promotion writes the new lesson artifact AND the originating observation is identifiable:
@@ -256,7 +256,7 @@ Add `// 14-07d: emit promoted_to soft link` comment marker.
   <verification>
 - A lesson promotion creates a promoted_to soft_link row.
 - Multi-source promotion (no single observation) skips emission cleanly.
-- lesson-promoter contract unchanged.
+- learnings-promoter contract unchanged.
   </verification>
 </task>
 
@@ -325,7 +325,7 @@ New test file. Tests:
 
 <task type="auto">
   <name>Task 7: Site-instrumentation tests</name>
-  <files>src/tests/angel/handoff-writer.test.ts, src/tests/angel/lesson-promoter.test.ts, src/tests/angel/highlights-extractor.test.ts</files>
+  <files>src/tests/angel/handoff-writer.test.ts, src/tests/angel/learnings-promoter.test.ts, src/tests/angel/highlights-extractor.test.ts</files>
   <action>
 Add new describe blocks to each existing test file:
 
@@ -334,7 +334,7 @@ Add new describe blocks to each existing test file:
 - `writeHandoff first-for-project: no soft_link emitted; soft_link_skipped telemetry present`
 - `writeHandoff: soft-link emission failure does NOT cause writeHandoff to fail`
 
-**lesson-promoter.test.ts** — `describe('Phase 14-07d promoted_to emission', ...)`:
+**learnings-promoter.test.ts** — `describe('Phase 14-07d promoted_to emission', ...)`:
 - `single-source promotion: promoted_to soft_link emitted`
 - `multi-source aggregate promotion: no link, soft_link_skipped telemetry`
 
@@ -356,7 +356,7 @@ Preserve all existing tests.
   <action>
 - `bun run build` — must succeed.
 - `npx vitest run src/tests/intelligence/soft-link-writers.test.ts` — 12 tests pass.
-- `npx vitest run src/tests/angel/handoff-writer.test.ts src/tests/angel/lesson-promoter.test.ts src/tests/angel/highlights-extractor.test.ts` — new + existing tests pass.
+- `npx vitest run src/tests/angel/handoff-writer.test.ts src/tests/angel/learnings-promoter.test.ts src/tests/angel/highlights-extractor.test.ts` — new + existing tests pass.
 - `npx vitest run` — full suite green.
   </action>
   <verification>
@@ -372,7 +372,7 @@ Preserve all existing tests.
 - AC-1: `src/intelligence/soft-link-writers.ts` exports 4 site helpers with the documented contract.
 - AC-2: Each helper wraps writeSoftLink with try/catch + telemetry on failure/skip.
 - AC-3: handoff-writer instrumented; supersedes soft_link emitted after successful writeHandoff.
-- AC-4: lesson-promoter instrumented; promoted_to soft_link emitted after successful promotion.
+- AC-4: learnings-promoter instrumented; promoted_to soft_link emitted after successful promotion.
 - AC-5: highlights-extractor instrumented; extracted_from soft_links emitted per highlight.
 - AC-6: retrieval-log instrumented; references soft_links emitted per log entry.
 - AC-7: All primary write contracts unchanged — same signatures, same returns.
@@ -384,7 +384,7 @@ Preserve all existing tests.
 
 <risks>
 - **Risk 1: Prior-handoff lookup query is slow.** For projects with many handoffs, the "find most recent prior" query scans the artifact table. Mitigation: V17 artifact has an index on (project, kind, created_at_epoch_ms); the query uses it. Performance acceptable for project sizes seen in practice.
-- **Risk 2: V17 ID lookup for observation in lesson-promoter requires schema alignment.** If lesson-promoter receives an in-memory observation object (not a DB ID), V17 ID resolution may need an extra query. Mitigation: lesson-promoter post-Wave-1 already operates on V17 IDs (per 14-07b's caller migration); this plan does not change that flow.
+- **Risk 2: V17 ID lookup for observation in learnings-promoter requires schema alignment.** If learnings-promoter receives an in-memory observation object (not a DB ID), V17 ID resolution may need an extra query. Mitigation: learnings-promoter post-Wave-1 already operates on V17 IDs (per 14-07b's caller migration); this plan does not change that flow.
 - **Risk 3: Highlight extraction emits many links.** With ~10 highlights per session frame, the bulk extracted_from emission adds 10 writes per extraction. Mitigation: per-write overhead is small (single INSERT + UNIQUE check); acceptable at production scale.
 - **Risk 4: Telemetry write failure cascades.** If the telemetry helper itself errors, the link emission could throw despite the wrap. Mitigation: telemetry calls wrapped in try/catch INSIDE the helper; telemetry failure logs to console only.
 - **Risk 5: Operator notices soft_link_skipped telemetry as noise.** First-handoff-for-project emits a skip telemetry. Over many projects this accumulates. Mitigation: skipped events are low-severity; telemetry sweep can prune; documentation notes this is expected.
