@@ -244,47 +244,173 @@ No change to isSubstantive filter behavior; just the write target.
   </verification>
 </task>
 
-<task type="auto" worker="W2">
-  <name>Task B2.2: Migrate directive-detector.ts</name>
-  <files>src/intelligence/directive-detector.ts</files>
+<task type="auto" worker="W1">
+  <name>Task W1.3: Migrate experience-tier.ts query shape (1 site)</name>
+  <files>src/intelligence/experience-tier.ts</files>
   <action>
-Read-path sites. Directive detector currently queries legacy artifacts for prior directives. Switch to V17 unified queries.
+One read site in `fetchCandidatePool` — the JOIN against `artifact_task_pattern` reading from legacy `artifacts a`. Switch to V17 `artifact` table; if artifact_task_pattern migration (per 14-07a) created a new sidecar `artifact_task_pattern_v17` joining on TEXT ID, use it. **Scope-only: QUERY SHAPE migration. The FILTER SEMANTICS rewrite (per-task-pattern relevance scoring + admission-floor threshold) is 14-07h's territory and runs at Wave 3.**
 
-Enumerate exact sites during execution (estimate: 1-3 sites). Each site:
-- SELECT FROM artifacts → SELECT FROM artifact
-- Project scoping unchanged (column name is `project`).
-
-If the detector currently joins against `artifact_fts`, switch to `artifact_fts_v17`.
+Field renames per 14-07a's loss-map: `a.summary` reads stay literal in this query (the column maps to V17 `title` post-migration; if V17 already aliases, no change; verify v17-ddl.ts during execution).
   </action>
   <verification>
-- All directive-detector legacy `artifacts` references migrated to V17.
-- Existing directive-detector tests pass.
+- experience-tier.ts legacy `artifacts` reference migrated to V17.
+- Existing experience-tier tests pass.
+- Cross-project hit rate measurement (per 14-07c) shows no regression on QUERY SHAPE; filter quality is 14-07h's surface.
+  </verification>
+</task>
+
+<!--
+Tasks deleted 2026-05-16: B2.2 (directive-detector), B2.3 (retrieval-log),
+B2.4 (transcript-chunker), B3.2 (memory-md-writer). Per RCA-3, these are V17
+callers, not legacy `artifacts` callers. No migration needed. Removed from
+14-07b scope. See VERIFICATION-PASS Section A1 and WAVE1-COORD "Files NOT in
+14-07b" section for rationale.
+-->
+
+<task type="auto" worker="W2">
+  <name>Task W2.2: Migrate embed-pipeline.ts (2 sites; embedding storage shape change)</name>
+  <files>src/embeddings/embed-pipeline.ts</files>
+  <action>
+Two write sites updating per-artifact embedding. Legacy uses single-BLOB column on `artifacts` row; V17 uses sidecar table `artifact_embeddings` (possibly chunked storage per RCA-3 — VERIFY in v17-triggers.ts during execution).
+
+Per-site shape:
+- Determine V17 sidecar shape (single-row per artifact vs chunked) by reading `src/core/migration/v17-triggers.ts` + `v17-ddl.ts`.
+- If chunked: write N rows per artifact (chunk by 14-07a's chunker spec).
+- If single-row: write 1 row per artifact, vector serialized via sqlite-vec helper.
+- Embedding generation goes through `re-vectorize.ts` (14-07a's helper) for arctic-embed2 invocation.
+  </action>
+  <verification>
+- 2 sites migrated.
+- Embeddings appear in V17 `artifact_embeddings` sidecar (not legacy BLOB on row).
+- Existing embed-pipeline tests pass against the new shape.
+- Vector retrieval round-trip via hybrid-retrieval works.
   </verification>
 </task>
 
 <task type="auto" worker="W2">
-  <name>Task B2.3: Migrate retrieval-log.ts</name>
-  <files>src/intelligence/retrieval-log.ts</files>
+  <name>Task W2.3: Migrate sqlite-vec-backend.ts (1 site)</name>
+  <files>src/embeddings/sqlite-vec-backend.ts</files>
   <action>
-Write-path: retrieval log writes to V17 `artifact` for any artifact-shaped logging events. Read-path: log queries for prior retrieval-log entries hit V17.
-
-Per-site shape per B1.1.
+One site JOINs to vec sidecar. Update to JOIN to V17 vec sidecar (name TBD via v17-triggers.ts read — RCA-3 says V17 uses different shape than `vec_artifacts`).
   </action>
   <verification>
-- All retrieval-log legacy `artifacts` references migrated.
-- Existing retrieval-log tests pass.
+- sqlite-vec-backend JOIN updated to V17 sidecar.
+- Backend tests pass.
+- Hybrid retrieval against V17 returns correct ranks.
   </verification>
 </task>
 
-<task type="auto" worker="W2">
-  <name>Task B2.4: Migrate transcript-chunker.ts</name>
-  <files>src/angel/transcript-chunker.ts</files>
+<task type="auto" worker="W3">
+  <name>Task W3.1: Migrate mcp/recall-server.ts (2 sites)</name>
+  <files>src/mcp/recall-server.ts</files>
   <action>
-Write-path: transcript chunker writes chunks. Post-14-02 (v6.6.0), `transcript_chunk_v6` already uses V17 conventions. The remaining legacy `artifacts` references in this file are for cross-referencing parent artifacts — switch those to V17.
+Two SELECT sites — by id and by artifact_ref. The `claudex_recall` MCP tool exposes these to the agent. After migration, both queries hit V17 `artifact`; if the agent passes a legacy INTEGER ID (transitional period), bridge via `lookupV17ByLegacy`.
+
+Field renames per 14-07a loss-map: returns to MCP layer translate V17 `title`/`body` back to legacy-style `summary`/`content` if the MCP contract expects those names, OR the MCP contract updates to expose V17 field names (operator decision in Wave 3 / 14-07i scope; for THIS plan, preserve external contract).
   </action>
   <verification>
-- transcript-chunker legacy `artifacts` references migrated.
-- Existing transcript-chunker tests pass.
+- 2 sites migrated.
+- `claudex_recall` MCP tool returns correct artifacts post-migration.
+- Tests pass.
+  </verification>
+</task>
+
+<task type="auto" worker="W3">
+  <name>Task W3.2: Migrate cross-project-search.ts (1 site)</name>
+  <files>src/core/cross-project-search.ts</files>
+  <action>
+One SELECT against legacy `artifacts` for cross-project expansion (consumed by `claudex_search`). Switch to V17 `artifact`. Cross-project query semantics unchanged (the `project != ?` filter or equivalent stays; what changes is the table name).
+  </action>
+  <verification>
+- 1 site migrated.
+- `claudex_search` cross-project expansion works against V17.
+- Tests pass.
+  </verification>
+</task>
+
+<task type="auto" worker="W3">
+  <name>Task W3.3: Migrate observations.ts (1 site)</name>
+  <files>src/core/observations.ts</files>
+  <action>
+One SELECT against legacy `artifacts.artifact_ref` for observation lookup. Switch to V17 `artifact` — note that `artifact_ref` per RCA-3 either drops or moves to `data` JSON depending on site context. Verify which during execution.
+  </action>
+  <verification>
+- 1 site migrated.
+- Observation lookup returns correct artifact.
+- Tests pass.
+  </verification>
+</task>
+
+<task type="auto" worker="W4">
+  <name>Task W4.1: Migrate consolidator.ts (1 site)</name>
+  <files>src/angel/consolidator.ts</files>
+  <action>
+One UPDATE site setting `consolidated_into` on legacy `artifacts`. Field `consolidated_into` likely moves to V17 `data` JSON per the JSON sidecar pattern; verify during execution.
+
+Retention-sweep semantics: the consolidator marks a row as consolidated into another; in V17 this should use `supersedes_id` (note: direction-flipped per RCA-3 — V17 points BACKWARD from new row to replaced row).
+  </action>
+  <verification>
+- 1 site migrated.
+- Consolidator's UPDATE writes to V17 with correct field semantics.
+- Tests pass.
+  </verification>
+</task>
+
+<task type="auto" worker="W4">
+  <name>Task W4.2: Migrate retention-sweep.ts (1 site; status enum semantic adjustment)</name>
+  <files>src/angel/retention-sweep.ts</files>
+  <action>
+One DELETE / UPDATE site for TTL enforcement. **Critical: V17 status enum ('active','stale','superseded') differs from legacy state enum ('fresh','packed','materialized').** TTL semantics need re-mapping:
+- Legacy state='fresh' (recent) → V17 status='active'
+- Legacy state='packed' (compacted) → V17 status='stale' (likely; verify with operator if ambiguous)
+- Legacy state='materialized' (fully expanded) → V17 status — no direct mapping; possible drop or move to `data.materialization_state` JSON.
+
+TTL enforcement queries the `ttl` field; per RCA-3 ttl moves to `data.ttl` JSON. UPDATE / DELETE queries need to read from JSON.
+  </action>
+  <verification>
+- 1 site migrated.
+- Retention sweep operates on V17 with status enum semantics.
+- TTL enforcement still expires rows at expected cadence.
+- Tests pass.
+  </verification>
+</task>
+
+<task type="auto" worker="W4">
+  <name>Task W4.3: Migrate entity-summarizer.ts (1 site)</name>
+  <files>src/angel/entity-summarizer.ts</files>
+  <action>
+One INSERT site for entity-summary writes. Switch to V17 `artifact` with `kind='entity_summary'`. ID derived via `generateV17IdFromLegacy` if there's a legacy ID context, or via payload hash if it's a net-new entity summary.
+  </action>
+  <verification>
+- 1 site migrated.
+- Entity summaries appear in V17 artifact with kind='entity_summary'.
+- Tests pass.
+  </verification>
+</task>
+
+<task type="auto" worker="W4">
+  <name>Task W4.4: Migrate intent-predictor.ts (1 site)</name>
+  <files>src/intelligence/intent-predictor.ts</files>
+  <action>
+One SELECT site for per-turn prediction lookups. Switch to V17 `artifact`. Predictor queries patterns by handle overlap; the JOIN to artifact_task_pattern needs the V17 sidecar (see 14-07a task pattern migration).
+  </action>
+  <verification>
+- 1 site migrated.
+- Predictor returns correct candidates.
+- Tests pass.
+  </verification>
+</task>
+
+<task type="auto" worker="W4">
+  <name>Task W4.5: Migrate batch-reflection.ts (1 site)</name>
+  <files>src/intelligence/batch-reflection.ts</files>
+  <action>
+One SELECT site for dedup checks during learning promotion. Switch to V17 `artifact`. Dedup logic queries for prior promotions by content match.
+  </action>
+  <verification>
+- 1 site migrated.
+- Dedup catches prior promotions correctly.
+- Tests pass.
   </verification>
 </task>
 
