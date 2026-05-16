@@ -8,7 +8,7 @@ depends_on: ["07-LINKS-SCHEMA"]
 files_modified:
   - src/intelligence/hard-link-proposer.ts (NEW)
   - src/intelligence/link-decay.ts (NEW)
-  - src/angel/boundary-detector.ts
+  - src/angel/boundary/boundary-detector.ts
   - src/assembly/sections.ts
   - src/assembly/assembler.ts
   - src/tests/intelligence/hard-link-proposer.test.ts (NEW)
@@ -38,7 +38,7 @@ must_haves:
     - path: "src/intelligence/link-decay.ts"
       provides: "Anti-link decay helpers wrapping LINKS-SCHEMA's getDecayCount + rejection tracking."
       contains: "isDecayed|recordDecay|skipDecayedProposals"
-    - path: "src/angel/boundary-detector.ts"
+    - path: "src/angel/boundary/boundary-detector.ts"
       provides: "Existing boundary detector; hooks runHardLinkProposer into the post-session-end action sequence behind the CLAUDEX_HARD_LINK_PROPOSER flag."
       contains: "runHardLinkProposer"
     - path: "src/assembly/sections.ts"
@@ -64,7 +64,7 @@ must_haves:
       to: "src/core/link-writer.ts (proposeHardLink, getDecayCount)"
       via: "Proposer calls proposeHardLink for each proposal; checks getDecayCount before proposing"
       pattern: "proposeHardLink|getDecayCount"
-    - from: "src/angel/boundary-detector.ts"
+    - from: "src/angel/boundary/boundary-detector.ts"
       to: "src/intelligence/hard-link-proposer.ts (runHardLinkProposer)"
       via: "Boundary detector schedules proposer at post-session-end, behind flag"
       pattern: "CLAUDEX_HARD_LINK_PROPOSER"
@@ -111,7 +111,7 @@ After this plan lands AND the operator reviews + enables the flag:
 @~/.claude/projects/C--Users-Grigorije-Desktop-Projects-CLAUDEXv3/memory/project_v7_hard_link_writer_is_good_child.md
 @~/.claude/projects/C--Users-Grigorije-Desktop-Projects-CLAUDEXv3/memory/feedback_good_child_parable.md
 @src/core/link-writer.ts
-@src/angel/boundary-detector.ts
+@src/angel/boundary/boundary-detector.ts
 @src/assembly/sections.ts
 @src/assembly/assembler.ts
 @src/angel/highlights-extractor.ts
@@ -337,7 +337,7 @@ In `src/assembly/assembler.ts`:
 
 <task type="auto">
   <name>Task 4: Boundary-detector integration</name>
-  <files>src/angel/boundary-detector.ts</files>
+  <files>src/angel/boundary/boundary-detector.ts</files>
   <action>
 Locate the post-session-end action sequence in boundary-detector (per Phase 14-05's single-owner pattern). Add `runHardLinkProposer` as a new step in the sequence.
 
