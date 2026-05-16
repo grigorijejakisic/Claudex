@@ -212,7 +212,7 @@ For each migrated site:
   <name>Task W1.2: Migrate retrieval-feedback.ts (5 sites)</name>
   <files>src/intelligence/retrieval-feedback.ts</files>
   <action>
-Same migration shape as B1.1, applied to retrieval-feedback's 5 sites. Read AND write paths in this file — the feedback writer that records retrieval signals into the artifact substrate must write to V17 directly.
+Same migration shape as W1.1, applied to retrieval-feedback's 5 sites. Read AND write paths in this file — the feedback writer that records retrieval signals into the artifact substrate must write to V17 directly.
 
 Write-path specifics: when feedback writes a new artifact row (e.g., a "retrieval_signal" kind), INSERT INTO `artifact` with V17 TEXT id generated via `generateV17IdFromLegacy({ legacy_id: -1, ... })` or by hashing the signal payload. **Position-unless-flagged:** I lean on hashing the payload (`sha256(signal_kind + project + content + timestamp).slice(0,32)`) rather than calling generateV17IdFromLegacy with a synthetic legacy_id, because the latter is overloading a transition helper for a non-transitional case. If PM flags this, the alternative is a small `generateV17IdFromPayload` helper in `src/core/artifact-id-map.ts` (additive, would be a B1 → 14-07a callback).
   </action>
