@@ -522,9 +522,12 @@ After all 5 workers signal AC-green on their branches, PM merges in order W1 →
 <acceptance_criteria>
 - AC-1: All 8 `hybrid-retrieval.ts` sites migrated; grep returns 0 legacy `artifacts` references in this file.
 - AC-2: All 5 `retrieval-feedback.ts` sites migrated.
-- AC-3: All `file-ingester.ts`, `directive-detector.ts`, `retrieval-log.ts`, `transcript-chunker.ts` legacy references migrated.
-- AC-4: All `memory-md-writer.ts` legacy references migrated.
-- AC-5: `src/tests/helpers/v7-unified-schema.ts` exists, exports the three documented helpers, is consumed by tests across B1/B2/B3 clusters.
+- AC-3: All `file-ingester.ts`, `embed-pipeline.ts`, `sqlite-vec-backend.ts` legacy references migrated (W2 cluster).
+- AC-3a: All `mcp/recall-server.ts`, `cross-project-search.ts`, `observations.ts` legacy references migrated (W3 cluster).
+- AC-3b: All `consolidator.ts`, `retention-sweep.ts`, `entity-summarizer.ts`, `intent-predictor.ts`, `batch-reflection.ts` legacy references migrated (W4 cluster).
+- AC-3c: `cli/health.ts` legacy reference migrated (W5).
+- AC-4: `memory-md-writer.ts`, `directive-detector.ts`, `retrieval-log.ts`, `transcript-chunker.ts` are V17 callers per RCA-3 — NOT IN 14-07b SCOPE. Workers do NOT migrate these.
+- AC-5: `src/tests/helpers/v7-unified-schema.ts` exists, exports the three documented helpers, is consumed by tests across W1-W4 clusters.
 - AC-6: Test-fixture sweep complete — grep returns 0 legacy `FROM artifacts` or `artifact_fts` (without _v17) references in production code and in test setup logic.
 - AC-7: Full test suite passes with the same green count as v6.6.0 baseline plus the +35 (14-07a) + ~+45 (14-07b) = ~+80 new tests.
 - AC-8: `bun run vesna` SC#1 passes 18/18 as a Wave 1 smoke (formal gate at 14-07c).
