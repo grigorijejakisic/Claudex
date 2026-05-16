@@ -118,25 +118,27 @@ must_haves:
 ---
 
 <objective>
-Caller migration sweep across ~22 sites. Three workers fan out in parallel (B1: retrieval cluster, B2: ingestion cluster, B3: writer + tests cluster) per `14-07-WAVE1-COORDINATION.md`'s file-ownership table.
+Caller migration sweep across **22 sites / 15 files** per RCA-3 inventory. **Five workers fan out in parallel** (W1: retrieval, W2: ingestion/embedding, W3: query-surface, W4: Angel writers, W5: CLI + tests) per `14-07-WAVE1-COORDINATION.md`'s file-ownership table.
 
 **Migration shape per site:**
 - Read paths: replace legacy `artifacts` SELECT with V17 unified SELECT; use `lookupV17ByLegacy` only when an external boundary delivers a legacy INTEGER ID.
-- Write paths: INSERT/UPSERT into V17 `artifact` + `artifact_fts_v17` + `vec_artifact_v17` (via existing v17-triggers).
+- Write paths: INSERT/UPSERT into V17 `artifact` using V17 sidecar names from `v17-triggers.ts` (verify exact FTS5 + vec table names during W2 plan execution per 14-07a's `truths`).
 - Test fixtures: migrated to seed V7 unified schema via `src/tests/helpers/v7-unified-schema.ts`.
+- Field translations per 14-07a's loss-map: summary→title, content→body, importance(1-5)→confidence(0-1), state enum shift, JSON sidecar moves for ttl/retrieval_score/activation_score/etc.
 
 After this plan lands:
-- All ~22 caller sites read/write the unified shape.
+- All 22 caller sites across 15 files read/write the unified shape.
 - Legacy `artifacts` table is still alive but receives no new writes from production code.
 - Test suite passes against the V37 schema.
 - Wave 1c (cutover + benchmarks) can dispatch.
 
 | What this plan provides | Why |
 |---|---|
-| All retrieval-side reads on V17 | Hybrid retrieval, retrieval feedback, directive detector |
-| All ingestion-side writes on V17 | File ingester, transcript chunker, retrieval log |
-| MEMORY.md writer on V17 | Closes the writer side of the unified shape |
-| Shared test-fixture helper | Workers don't reinvent V7-unified seeding |
+| Retrieval cluster on V17 (W1) | Hybrid retrieval + retrieval feedback + experience tier candidate pool query |
+| Ingestion/embedding cluster on V17 (W2) | File ingester + embed pipeline + sqlite-vec backend |
+| Query-surface cluster on V17 (W3) | MCP recall server + cross-project search + observations |
+| Angel writers cluster on V17 (W4) | Consolidator + retention sweep + entity summarizer + intent predictor + batch reflection |
+| CLI + tests cluster on V17 (W5) | Health check + shared fixture helper + test fixture sweep |
 | No regression in test suite | Behavioral equivalence post-migration |
 </objective>
 
