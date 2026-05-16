@@ -93,7 +93,7 @@ listed here, normal `git add` behavior applies.
 
 ### Plan 14-07b worker B2 (ingestion cluster) owns
 
-- `src/angel/file-ingester.ts` — 2 call sites.
+- `src/core/file-ingester.ts` — 2 call sites.
 - `src/intelligence/directive-detector.ts` — call sites against
   legacy `artifacts`.
 - `src/intelligence/retrieval-log.ts` — call sites against legacy
