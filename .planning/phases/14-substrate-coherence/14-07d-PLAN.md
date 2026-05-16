@@ -8,7 +8,7 @@ depends_on: ["07-LINKS-SCHEMA"]
 files_modified:
   - src/intelligence/soft-link-writers.ts (NEW)
   - src/angel/handoff-writer.ts
-  - src/angel/lesson-promoter.ts
+  - src/intelligence/learnings-promoter.ts
   - src/angel/highlights-extractor.ts
   - src/intelligence/retrieval-log.ts
   - src/tests/intelligence/soft-link-writers.test.ts (NEW)
@@ -35,7 +35,7 @@ must_haves:
     - path: "src/angel/handoff-writer.ts"
       provides: "Existing handoff writer; instrumented to call soft-link-writers.recordSupersedes after a successful writeHandoff."
       contains: "recordSupersedes"
-    - path: "src/angel/lesson-promoter.ts"
+    - path: "src/intelligence/learnings-promoter.ts"
       provides: "Lesson promotion writer; instrumented to emit promoted_to soft link."
       contains: "recordPromotedTo"
     - path: "src/angel/highlights-extractor.ts"
@@ -89,7 +89,7 @@ After this plan lands:
 @~/.claude/projects/C--Users-Grigorije-Desktop-Projects-CLAUDEXv3/memory/project_v7_hard_link_writer_is_good_child.md
 @src/core/link-writer.ts
 @src/angel/handoff-writer.ts
-@src/angel/lesson-promoter.ts
+@src/intelligence/learnings-promoter.ts
 @src/angel/highlights-extractor.ts
 @src/intelligence/retrieval-log.ts
 </context>
@@ -242,7 +242,7 @@ Add a `// 14-07d: emit supersedes soft link` comment marker so reviewers can gre
 
 <task type="auto">
   <name>Task 3: Instrument lesson-promoter.ts for promoted_to</name>
-  <files>src/angel/lesson-promoter.ts</files>
+  <files>src/intelligence/learnings-promoter.ts</files>
   <action>
 After a lesson promotion writes the new lesson artifact AND the originating observation is identifiable:
 
