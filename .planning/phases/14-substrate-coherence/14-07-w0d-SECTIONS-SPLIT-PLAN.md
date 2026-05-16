@@ -46,7 +46,7 @@ The residual `src/assembly/sections.ts` keeps:
 - AC-1: New files exist with the documented exports.
 - AC-2: `src/assembly/sections/index.ts` re-exports the moved functions so existing imports across the codebase work without modification (zero breakage).
 - AC-3: `assembler.ts:857` inline Codebase Context render extracted into `src/assembly/sections/codebase-context.ts`'s exported function; assembler.ts calls the function instead of rendering inline.
-- AC-4: Round-trip parity test (`src/tests/assembly/sections-split.test.ts`) — for a representative fixture, `formatLessonsSection` output is byte-equivalent pre/post split; same for all moved functions.
+- AC-4: Round-trip parity test (`src/tests/assembly/sections-split.test.ts`) — for a representative fixture, every moved function's output is byte-equivalent pre/post split (covers `formatProvenPrinciplesSection`, `formatLearningsSection`, and all other moved functions identified during the survey step).
 - AC-5: `bun run build` green post-split.
 - AC-6: `npx vitest run` full suite green; no regressions.
 - AC-7: `bun run vesna` SC#1 PASS 18/18 (session-start surfaces unchanged behaviorally).
