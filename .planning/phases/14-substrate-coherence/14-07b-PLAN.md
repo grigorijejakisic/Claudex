@@ -487,7 +487,7 @@ Sweep through `src/tests/` for tests that:
 - Reference `artifact_fts` / `vec_artifacts` directly → migrate to `_v17` variants.
 - Hand-roll schema setup that should use `migrateFixtureV36toV37` instead.
 
-This is a sweep — workers B1 and B2 only migrate test files in their own caller's adjacent tests. B3 migrates everything else, plus any global fixture references in `src/tests/helpers/*` (besides v7-unified-schema.ts which B3 just created).
+This is a sweep — workers W1-W4 only migrate test files in their own caller's adjacent tests. W5 migrates everything else, plus any global fixture references in `src/tests/helpers/*` (besides v7-unified-schema.ts which W5 just created).
 
 Be surgical: do not modify test ASSERTIONS, only test SETUP / SEEDING.
   </action>
