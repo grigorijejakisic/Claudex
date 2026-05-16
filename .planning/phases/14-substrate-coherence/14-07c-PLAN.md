@@ -18,7 +18,7 @@ requirements: []
 
 must_haves:
   truths:
-    - "Cutover is operator-gated. The CLI runs in `--dry-run` mode by default; live mode requires `--apply` flag AND a typed confirmation prompt (`type CONFIRM to proceed`). No autonomous worker invokes live mode."
+    - "Cutover is operator-gated **by default** — the CLI runs in `--dry-run` mode unless `--apply` is supplied; `--apply` requires typed `CONFIRM` confirmation unless `--confirm-non-interactive` is also passed. **Per CONTEXT Locked Decision 10 (Option B authorization, operator-confirmed 2026-05-16 18:13): when /auto-orchestrate dispatches Worker C under one-run authorization, the cutover invokes `--apply --confirm-non-interactive` autonomously. The benchmark gate (Vesna / LongMemEval / LoCoMo / cross-project hit rate) remains binding — gate failure halts the cutover even under autonomous mode.** Outside Option B dispatch, the operator-gated default holds."
     - "Cutover is idempotent. Re-running on a post-cutover DB exits with `already_cutover` status code 0 and writes nothing."
     - "Re-vectorization is bulk: `reVectorizeAll` (from 14-07a's `src/core/re-vectorize.ts`) iterates V17 `artifact` and writes vectors into `vec_artifact_v17`. Failures logged to telemetry with `event_kind='re_vectorize_failed'`. Cutover refuses to proceed if failure rate exceeds 5%."
     - "Benchmark gate refuses cutover if ANY of: Vesna < 18/18 PASS, LongMemEval < v6.6.0 baseline (90.6% Oracle with `deepseek-coder-v2:16b`), LoCoMo < v6.6.0 baseline (55.5% with `claude-sonnet-4-6`), cross-project candidate hit rate degraded vs v6.6.0 (currently 18% noise floor post-14-03)."
