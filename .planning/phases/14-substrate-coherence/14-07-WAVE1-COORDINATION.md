@@ -83,46 +83,95 @@ listed here, normal `git add` behavior applies.
 - DDL for legacy `artifacts` table: **read-only mirror flag** added
   by 14-07a; flag flipped to enforced by 14-07c at cutover.
 
-### Plan 14-07b worker B1 (retrieval cluster) owns
+### Plan 14-07b worker W1 (retrieval cluster) owns
 
-- `src/core/hybrid-retrieval.ts` — 8 call sites against
-  legacy `artifacts` API → V17 unified API (exact site list
-  enumerated in 14-07b-PLAN.md).
-- `src/intelligence/retrieval-feedback.ts` — 5 call sites.
-- `src/tests/intelligence/hybrid-retrieval.test.ts` — fixture
-  updates for V17 unified shape (only the fixtures called by B1's
-  migrated files).
+- `src/core/hybrid-retrieval.ts` — 8 call sites against legacy
+  `artifacts` API → V17 unified API (L3 retrieval centerpiece;
+  activation_score reads move to `data` JSON path).
+- `src/intelligence/retrieval-feedback.ts` — 5 call sites
+  (activation_score lifecycle moves to V17 `data` JSON).
+- `src/intelligence/experience-tier.ts` — 1 site (candidate pool
+  query). **Note: FILTER semantics are rewritten in 14-07h (Wave 3
+  option C). This plan only migrates the QUERY SHAPE.**
+- `src/tests/core/hybrid-retrieval.test.ts` — fixture updates for
+  V17 unified shape (only fixtures called by W1's files).
 - `src/tests/intelligence/retrieval-feedback.test.ts` — same.
+- `src/tests/intelligence/experience-tier.test.ts` — same.
 
-### Plan 14-07b worker B2 (ingestion cluster) owns
+### Plan 14-07b worker W2 (ingestion/embedding cluster) owns
 
-- `src/core/file-ingester.ts` — 2 call sites.
-- `src/intelligence/directive-detector.ts` — call sites against
-  legacy `artifacts`.
-- `src/intelligence/retrieval-log.ts` — call sites against legacy
-  `artifacts`.
-- `src/angel/transcript-chunker.ts` — call sites against legacy
-  `artifacts`.
-- `src/tests/angel/file-ingester.test.ts` — fixture updates for
-  V17 unified shape (B2's migrated files only).
-- `src/tests/intelligence/directive-detector.test.ts` — same.
-- `src/tests/intelligence/retrieval-log.test.ts` — same.
-- `src/tests/angel/transcript-chunker.test.ts` — same.
+- `src/core/file-ingester.ts` — 2 sites (INSERT memory_file /
+  session_log / handoff / entity_summary).
+- `src/embeddings/embed-pipeline.ts` — 2 sites (UPDATE embedding;
+  storage shape changes from legacy single-BLOB to V17
+  `artifact_embeddings` sidecar).
+- `src/embeddings/sqlite-vec-backend.ts` — 1 site (JOIN to vec
+  sidecar).
+- `src/tests/core/file-ingester.test.ts` — fixture updates.
+- `src/tests/embeddings/embed-pipeline.test.ts` — same.
+- `src/tests/embeddings/sqlite-vec-backend.test.ts` — same.
 
-### Plan 14-07b worker B3 (writer + tests cluster) owns
+### Plan 14-07b worker W3 (query-surface cluster) owns
 
-- `src/angel/memory-md-writer.ts` — call sites against legacy
-  `artifacts`. **Coordinate with B1/B2**: if B1 or B2's caller
-  migration discovers a memory-md-writer site, they hand it off
-  to B3 via the integration branch.
+- `src/mcp/recall-server.ts` — 2 sites (SELECT by id /
+  artifact_ref; exposed via `claudex_recall`).
+- `src/core/cross-project-search.ts` — 1 site (SELECT
+  cross-project; `claudex_search` expansion).
+- `src/core/observations.ts` — 1 site (SELECT artifact_ref).
+- `src/tests/mcp/recall-server.test.ts` — fixture updates.
+- `src/tests/core/cross-project-search.test.ts` — same.
+- `src/tests/core/observations.test.ts` — same (if exists; else
+  fixture updates colocated with caller).
+
+### Plan 14-07b worker W4 (Angel writers cluster) owns
+
+- `src/angel/consolidator.ts` — 1 site (UPDATE consolidated_into).
+- `src/angel/retention-sweep.ts` — 1 site (DELETE / UPDATE for TTL
+  enforcement). **Note: V17 status enum ('active','stale','superseded')
+  differs from legacy state enum ('fresh','packed','materialized') —
+  TTL semantics may need adjusting per 14-07a's field mapping.**
+- `src/angel/entity-summarizer.ts` — 1 site (INSERT entity_summary,
+  kind='entity_summary').
+- `src/intelligence/intent-predictor.ts` — 1 site (per-turn
+  prediction SELECT).
+- `src/intelligence/batch-reflection.ts` — 1 site (dedup SELECT for
+  learning promotion).
+- `src/tests/angel/consolidator.test.ts` — fixture updates.
+- `src/tests/angel/retention-sweep.test.ts` — same.
+- `src/tests/angel/entity-summarizer.test.ts` — same.
+- `src/tests/intelligence/intent-predictor.test.ts` — same.
+- `src/tests/intelligence/batch-reflection.test.ts` — same.
+
+### Plan 14-07b worker W5 (CLI + tests cluster) owns
+
+- `src/cli/health.ts` — 1 site (INSERT test fixture).
 - `src/tests/helpers/v7-unified-schema.ts` (NEW) — shared fixture
-  helper for the post-Wave-1 unified schema. Other workers consume
-  this; only B3 modifies it.
-- `src/tests/angel/memory-md-writer.test.ts` — fixture updates.
+  helper for the post-Wave-1 unified schema. W1-W4 consume; only W5
+  modifies.
+- `src/tests/cli/health.test.ts` — fixture updates.
 - General sweep across `src/tests/**` for fixtures that reference
-  legacy `artifacts` schema and need migration to V17 unified
-  shape. B3 is the only worker that does test-fixture sweeps
-  outside their own caller's tests.
+  legacy `artifacts` schema and need migration to V17 unified shape.
+  W5 is the only worker that does test-fixture sweeps outside its
+  own caller's tests.
+
+### Files NOT in 14-07b (V17 callers per RCA-3 — no migration needed)
+
+These appeared in the original 3-worker spec but per RCA-3 are
+already V17 callers (or have no legacy `artifacts` reference):
+
+- `src/intelligence/directive-detector.ts` — V17 caller
+  (`kind='directive_rule'`).
+- `src/intelligence/retrieval-log.ts` — V17 caller
+  (`kind='transcript_chunk'`).
+- `src/angel/transcript-chunker.ts` — V17 caller (INSERT against
+  V17 directly).
+- `src/angel/memory-md-writer.ts` — V17 caller (1 SELECT guard
+  against V17). **Not in this plan.**
+
+If any worker discovers a legacy `artifacts` reference in one of
+these files during their sweep, they STOP, file to PM via integration
+branch comment, and the file is added to whichever cluster's worker
+fits best.
 
 ### Plan 14-07c (Worker C) owns
 
