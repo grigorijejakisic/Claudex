@@ -209,7 +209,7 @@ For each migrated site:
 </task>
 
 <task type="auto" worker="W1">
-  <name>Task B1.2: Migrate retrieval-feedback.ts (5 sites)</name>
+  <name>Task W1.2: Migrate retrieval-feedback.ts (5 sites)</name>
   <files>src/intelligence/retrieval-feedback.ts</files>
   <action>
 Same migration shape as B1.1, applied to retrieval-feedback's 5 sites. Read AND write paths in this file — the feedback writer that records retrieval signals into the artifact substrate must write to V17 directly.
@@ -417,7 +417,7 @@ After all 3 workers signal AC-green on their branches, PM merges in order B1 →
 - **Risk 2: Two workers touch the same file accidentally.** Mitigation: file-ownership table in WAVE1-COORDINATION is strict; PM resolves boundary disputes. If a file isn't listed, normal git merge applies.
 - **Risk 3: A migrated read site returns subtly different data shape.** Mitigation: behavioral-equivalence test in each worker — pre-migration baseline of return shape captured; post-migration shape compared byte-by-byte (for primitive types) or structurally (for objects). Any drift surfaces as a test failure.
 - **Risk 4: Test-fixture migration breaks tests for reasons orthogonal to V17.** Mitigation: B3's sweep is surgical (setup-only, not assertions). If a test fails after fixture migration AND it's not due to V17 shape, surface as a real bug discovered by the migration.
-- **Risk 5: Worker B1's retrieval-feedback write path introduces V17 ID derivation pattern (`sha256(payload)`) that differs from 14-07a's transition helper.** Documented as a position-unless-flagged in Task B1.2. If PM flags, alternative is to extend `src/core/artifact-id-map.ts` with `generateV17IdFromPayload` (additive; coordinated callback to 14-07a's owner).
+- **Risk 5: Worker B1's retrieval-feedback write path introduces V17 ID derivation pattern (`sha256(payload)`) that differs from 14-07a's transition helper.** Documented as a position-unless-flagged in Task W1.2. If PM flags, alternative is to extend `src/core/artifact-id-map.ts` with `generateV17IdFromPayload` (additive; coordinated callback to 14-07a's owner).
 - **Risk 6: Behavioral equivalence is hard to prove for tests that were already failing before migration.** Mitigation: baseline the test failures pre-migration in `14-07-WAVE1-STATUS.md`; only NEW failures (not pre-existing) count as regressions.
 </risks>
 
