@@ -1,9 +1,9 @@
 ---
 status: active
-phase: "14-07 spec verified + Wave 0 shipped partial → Wave 1 dispatch needs WAVE1-COORD + 14-07b tasks restructure"
-summary: v7.0.0 spec authored 2026-05-16 morning; operator-triggered verification pass surfaced major errors (wrong file paths, wrong function names, wrong schema mapping, missing 10 caller files, design error in experience-tier). Afternoon: Wave 0 partially shipped (auto-commit hooks LIVE + CLAUDE.md verify-before-done rule LIVE + /verify skill registered). Spec corrections applied to most docs. Locked Decisions 8 (Wave 0) and 9 (experience-tier option C) added to CONTEXT. Remaining: 14-07-WAVE1-COORDINATION restructure to W1-W5; 14-07b <tasks> section restructure; Wave 0 sections-split + Wave 0 plan docs authoring.
-topic: 2026-05-16-v7-spec-corrected-wave0-shipped-partial
-created_at_epoch_ms: 1779809400000
+phase: "14-07 v7.0.0 spec READY for /auto-orchestrate Wave 1 dispatch (operator-gated)"
+summary: v7.0.0 spec authored + verified + corrected on 2026-05-16. Wave 0 mostly shipped (auto-commit hooks LIVE, CLAUDE.md verify-before-done rule LIVE, /verify skill REGISTERED procedural form; w0d sections.ts split is FORWARD work gating Wave 2/3 entry). 9 spec docs corrected for file paths, function names, schema mapping (14-07a loss-map from RCA-3), worker split (W1-W5 for 15 caller files), experience-tier direction (option C). 14-07b has 18 W-worker tasks (verified XML well-formed). Locked Decisions 8 (Wave 0) and 9 (experience-tier preserve cross-project) added. Auto-commit hooks tested via exact-registered-command invocation (session-start tag confirmed firing). /verify run end-to-end against today's diff — VERIFIED. Wave 1 dispatch gated only on operator skim + fresh-session hook test + `/auto-orchestrate` invocation.
+topic: 2026-05-16-v7-ready-for-wave1-dispatch
+created_at_epoch_ms: 1779816600000
 ---
 
 # 2026-05-16 — v7.0.0 spec complete; Wave 1 dispatch operator-gated
