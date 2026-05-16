@@ -460,7 +460,7 @@ export function migrateFixtureV36toV37(db: Database): void;
   </action>
   <verification>
 - File exists with the three exports.
-- All three exports have at least one consumer in B1/B2/B3 tests.
+- All three exports have at least one consumer in W1-W4 cluster tests.
 - Helper tests cover the happy path.
   </verification>
 </task>
