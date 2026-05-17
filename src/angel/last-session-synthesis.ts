@@ -24,6 +24,7 @@ import { createHash } from 'node:crypto';
 import type { Database } from 'better-sqlite3';
 import { fromClaudeCode } from '../intelligence/canonical-session-ir.js';
 import { callLocalLLM } from './llama-client.js';
+import { generate } from './generation-backend.js';
 import { EMBEDDED_PROMPTS } from './embedded-prompts.js';
 
 // ---------------------------------------------------------------------------
