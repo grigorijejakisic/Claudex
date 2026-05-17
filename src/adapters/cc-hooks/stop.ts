@@ -470,7 +470,7 @@ const main = wrapHook('Stop', async (input, ctx) => {
   // Recall flow entry at boundaries
   const hasRecentTopicShift = sessionEvents.some(e =>
     e.event_type === 'topic_shift' &&
-    e.timestamp_epoch > Math.floor(Date.now() / 1000) - 120
+    e.timestamp_epoch_ms > Date.now() - 120000
   );
   const hasCompaction = sessionEvents.some(e => e.event_type === 'compaction');
   if (hasRecentTopicShift || hasCompaction) {
