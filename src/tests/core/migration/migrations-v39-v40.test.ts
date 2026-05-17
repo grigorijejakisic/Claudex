@@ -43,11 +43,13 @@ function tableSql(db: Database.Database, name: string): string {
 }
 
 describe('V39→V40: epoch_ms DEFAULT canonicalization', () => {
-  it('1. fresh-DB initializeSchema reaches TARGET_USER_VERSION = 40', () => {
+  it('1. fresh-DB initializeSchema reaches user_version >= 40 (V40 column DEFAULTs fixed)', () => {
     const db = freshDb();
     const v = (db.pragma('user_version') as Array<{ user_version: number }>)[0].user_version;
-    expect(v).toBe(40);
-    expect(TARGET_USER_VERSION).toBe(40);
+    // V40 is the floor — later migrations (V41+) push higher. The V40
+    // contract is "epoch_ms DEFAULTs are corrected"; the target may move.
+    expect(v).toBeGreaterThanOrEqual(40);
+    expect(TARGET_USER_VERSION).toBeGreaterThanOrEqual(40);
     db.close();
   });
 
