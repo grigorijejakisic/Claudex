@@ -431,6 +431,22 @@ export async function fireEndOfSessionActions(
     error_message: a5Error,
     skip_reason: a5Skip,
   });
+
+  // --- Action 6: 14-07f: hard-link proposer (flag-gated) ---
+  // Only runs when CLAUDEX_HARD_LINK_PROPOSER=1 or =true. Default OFF.
+  // Per Good Child policy: proposer PROPOSES only; operator must confirm.
+  // Does NOT use recordSessionEndAction — proposer emits its own telemetry row.
+  const flag = process.env['CLAUDEX_HARD_LINK_PROPOSER'];
+  if (flag === '1' || flag === 'true') {
+    try {
+      const { runHardLinkProposer } = await import('../../intelligence/hard-link-proposer.js');
+      await runHardLinkProposer({
+        db,
+        session_id: sessionId,
+        project,
+      });
+    } catch { /* non-fatal — proposer failure never blocks session-end completion */ }
+  }
 }
 
 export function runBoundaryTick(
