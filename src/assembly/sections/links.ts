@@ -20,6 +20,7 @@
 
 import type { Database } from 'better-sqlite3';
 import { walkProvenance } from '../../intelligence/provenance-walker.js';
+import { listPendingHardLinks, getDecayCount, DECAY_THRESHOLD } from '../../core/link-writer.js';
 import { estimateTokens } from '../../shared/text-utils.js';
 
 // ─── 14-07g: P2.9 Provenance Chain ───────────────────────────────────────────
