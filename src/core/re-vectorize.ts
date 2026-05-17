@@ -257,9 +257,9 @@ export async function reVectorizeAll(
         ) {
           break;
         }
-        // Transient error — wait before retry.
-        if (attempt < 2) {
-          await sleep([500, 1000, 2000][attempt]);
+        // Transient error — wait before retry (with configurable base delay).
+        if (attempt < 2 && retryBaseDelay > 0) {
+          await sleep(retryBaseDelay * (2 ** attempt)); // 500ms, 1000ms, 2000ms by default
         }
       }
     }
