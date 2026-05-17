@@ -217,7 +217,7 @@ export async function writeCheckpoint(
     try {
       const factRows = db
         .prepare(
-          `SELECT fact FROM verified_facts WHERE session_id = ? ORDER BY created_at_epoch DESC LIMIT 20`
+          `SELECT fact FROM verified_facts WHERE session_id = ? ORDER BY created_at_epoch_ms DESC LIMIT 20`
         )
         .all(sessionId) as Array<{ fact: string }>;
       verifiedFacts = factRows.map((r) => r.fact);
