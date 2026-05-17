@@ -401,3 +401,142 @@ describe('extractHighlightsForSession — degraded-flag discipline', () => {
     }
   });
 });
+
+// ---------------------------------------------------------------------------
+// Phase 14-07d extracted_from soft-link emission
+// ---------------------------------------------------------------------------
+
+function buildV38HighlightsDb(): DatabaseType {
+  const db = new Database(':memory:');
+  db.pragma('foreign_keys = ON');
+  applyV17DDL(db);
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS schema_versions (
+      version INTEGER PRIMARY KEY,
+      applied_at_epoch_ms INTEGER NOT NULL DEFAULT (unixepoch() * 1000)
+    );
+    CREATE TABLE IF NOT EXISTS session_highlights (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      session_id TEXT NOT NULL, project TEXT NOT NULL,
+      mental_model TEXT, open_questions TEXT, reframes TEXT,
+      tools_introduced TEXT, decisions_not_made TEXT, posture_context TEXT,
+      degraded INTEGER NOT NULL DEFAULT 0, degraded_reason TEXT, degraded_model TEXT,
+      created_at_epoch_ms INTEGER NOT NULL, re_extracted_at_epoch_ms INTEGER,
+      UNIQUE(session_id, project)
+    );
+    CREATE TABLE IF NOT EXISTS telemetry (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      session_id TEXT, event_kind TEXT, detail TEXT,
+      latency_ms INTEGER, adapter TEXT,
+      timestamp_epoch_ms INTEGER DEFAULT (strftime('%s','now') * 1000)
+    );
+  `);
+  migrateV37toV38(db);
+  return db;
+}
+
+function makeTmpProjectForV38(): { projectDir: string; sessionId: string; cleanup: () => void } {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'claudex-extractor-v38-'));
+  const sessionId = 'v38-session-' + Math.random().toString(36).slice(2, 8);
+  const sessDir = path.join(tmp, 'Sessions');
+  fs.mkdirSync(sessDir);
+  fs.writeFileSync(
+    path.join(sessDir, `2026-05-17_${sessionId}.md`),
+    `## User\n_2026-05-17T10:00:00+02:00_\n\nHow does the link graph work?\n\n## Assistant\n_2026-05-17T10:00:05+02:00_\n\nSoft links commit autonomously; hard links require operator confirmation.\n`,
+    'utf8',
+  );
+  return {
+    projectDir: tmp,
+    sessionId,
+    cleanup: () => fs.rmSync(tmp, { recursive: true, force: true }),
+  };
+}
+
+describe('Phase 14-07d extracted_from emission', () => {
+  let savedApiKey07d: string | undefined;
+
+  beforeEach(() => {
+    _setOpusCallableForTest(null);
+    _setFallbackCallableForTest(null);
+    savedApiKey07d = process.env.ANTHROPIC_API_KEY;
+    delete process.env.ANTHROPIC_API_KEY;
+  });
+
+  afterEach(() => {
+    _setOpusCallableForTest(null);
+    _setFallbackCallableForTest(null);
+    if (savedApiKey07d === undefined) delete process.env.ANTHROPIC_API_KEY;
+    else process.env.ANTHROPIC_API_KEY = savedApiKey07d;
+  });
+
+  it('successful extraction with N highlights: extracted_from soft_link emitted (when artifacts exist)', async () => {
+    const db = buildV38HighlightsDb();
+    const { projectDir, sessionId, cleanup } = makeTmpProjectForV38();
+    try {
+      _setFallbackCallableForTest(async () => ({
+        mental_model: 'soft-link graph is the new substrate',
+        open_questions: [{ question: 'is BGE reranker healthy?', context: 'Angel logs' }],
+        reframes: [],
+        tools_introduced: [],
+        decisions_not_made: [],
+      }));
+
+      // Pre-seed V17 artifact rows so the extracted_from link can be emitted.
+      db.prepare(
+        `INSERT INTO artifact(id, kind, session_id, project, body, created_at_epoch_ms, updated_at_epoch_ms)
+         VALUES ('highlight-v38-001', 'session_highlight', ?, 'p1', 'highlight body', ?, ?)`
+      ).run(sessionId, Date.now(), Date.now());
+      db.prepare(
+        `INSERT INTO artifact(id, kind, session_id, project, body, created_at_epoch_ms, updated_at_epoch_ms)
+         VALUES ('session-log-v38-001', 'session_log', ?, 'p1', 'session log body', ?, ?)`
+      ).run(sessionId, Date.now(), Date.now());
+
+      await extractHighlightsForSession({
+        db: db as unknown as DatabaseType, sessionId, project: 'p1', projectDir, config: DEFAULT_ANGEL_CONFIG,
+      });
+
+      // Verify the extraction succeeded (not degraded)
+      const row = getHighlightsBySessionId(db as unknown as DatabaseType, sessionId, 'p1');
+      expect(row?.degraded).toBe(false);
+
+      // Verify extracted_from soft_link was emitted
+      const links = db.prepare(
+        `SELECT type, src_artifact_id, dst_artifact_id FROM soft_link WHERE type = 'extracted_from'`
+      ).all() as Array<{ type: string; src_artifact_id: string; dst_artifact_id: string }>;
+
+      expect(links).toHaveLength(1);
+      expect(links[0].src_artifact_id).toBe('highlight-v38-001');
+      expect(links[0].dst_artifact_id).toBe('session-log-v38-001');
+    } finally {
+      cleanup();
+      db.close();
+    }
+  });
+
+  it('degraded extraction: no soft_links emitted', async () => {
+    const db = buildV38HighlightsDb();
+    const { projectDir, sessionId, cleanup } = makeTmpProjectForV38();
+    try {
+      // Both LLM paths fail → degraded=true, empty result
+      _setFallbackCallableForTest(async () => {
+        throw new Error('local LLM down in 07d test');
+      });
+
+      await extractHighlightsForSession({
+        db: db as unknown as DatabaseType, sessionId, project: 'p1', projectDir,
+        config: { ...DEFAULT_ANGEL_CONFIG, localModel: 'glm-5.1:cloud' },
+      });
+
+      // Verify degraded=true
+      const row = getHighlightsBySessionId(db as unknown as DatabaseType, sessionId, 'p1');
+      expect(row?.degraded).toBe(true);
+
+      // No soft_link rows — degraded extraction produces no links
+      const linkCount = (db.prepare(`SELECT COUNT(*) AS n FROM soft_link`).get() as { n: number }).n;
+      expect(linkCount).toBe(0);
+    } finally {
+      cleanup();
+      db.close();
+    }
+  });
+});
