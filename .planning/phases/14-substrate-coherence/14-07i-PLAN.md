@@ -36,7 +36,7 @@ must_haves:
       provides: "Tests for retrieval metadata surfaced through return shape"
       contains: "match_query|match_kind|score|metadata"
   key_links:
-    - from: "src/assembly/sections.ts (formatCodebaseContextSection)"
+    - from: "src/assembly/sections/codebase-context.ts (formatCodebaseContextSection)"
       to: "src/core/hybrid-retrieval.ts (retrieval candidates with metadata)"
       via: "Section formatter consumes metadata from retrieval to render annotation lines"
       pattern: "match_query"
