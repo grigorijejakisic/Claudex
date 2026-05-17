@@ -15,6 +15,8 @@
 export {
   formatProvenPrinciplesSection,
   formatLearningsSection,
+  // 14-07h exports:
+  formatLessonsSectionFromDir,
   // 14-07j exports:
   formatLessonsWithInlineExpansion,
   inlineExpandLesson,
