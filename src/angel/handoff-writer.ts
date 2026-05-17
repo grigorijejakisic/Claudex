@@ -387,12 +387,17 @@ export function writeHandoff(targetPath: string, input: HandoffInput, opts?: Wri
           `).get(project, newRow.id) as { id: string } | undefined
         : undefined;
 
-      recordSupersedes({
-        db,
-        session_id: sessionId,
-        new_handoff_artifact_id: newRow?.id ?? '',
-        prior_handoff_artifact_id: priorRow?.id ?? null,
-      });
+      // If the new handoff is not yet ingested as a V17 artifact, skip
+      // emission — there is nothing to link from. The plan allows this
+      // (truths: "if either is missing, the soft-link write is skipped").
+      if (newRow) {
+        recordSupersedes({
+          db,
+          session_id: sessionId,
+          new_handoff_artifact_id: newRow.id,
+          prior_handoff_artifact_id: priorRow?.id ?? null,
+        });
+      }
     } catch {
       // Non-fatal: soft-link emission errors must never surface to callers.
     }
