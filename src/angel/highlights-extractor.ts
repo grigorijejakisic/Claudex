@@ -36,6 +36,7 @@ import { upsertHighlights } from '../intelligence/session-highlights.js';
 import { recordFrameExtractionFallback } from '../core/telemetry-signals.js';
 import { callLocalLLM } from './llama-client.js';
 import type { AngelConfig } from './types.js';
+import { recordExtractedFrom } from '../intelligence/soft-link-writers.js';
 
 const FRAME_EXTRACTION_PROMPT = `You are analyzing a session transcript to extract the session's FRAME — the mental model, open questions, reframes, tools introduced, decisions not made, and posture context.
 
