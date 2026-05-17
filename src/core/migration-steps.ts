@@ -4222,3 +4222,186 @@ export function migrateV40toV39(db: Database): void {
     db.exec(`INSERT OR IGNORE INTO schema_versions(version) VALUES (39)`);
   } catch { /* non-critical */ }
 }
+
+// ---------------------------------------------------------------------------
+// V42 → V43: rename 24 legacy _epoch columns to _epoch_ms + scale by 1000
+// ---------------------------------------------------------------------------
+
+/**
+ * Migration V42 → V43 — Phase 14-09b legacy _epoch rename + scale.
+ *
+ * 24 columns across 16 tables that still use the legacy `_epoch` (seconds)
+ * convention are renamed to `_epoch_ms` (milliseconds) and their values are
+ * scaled by 1000. The DEFAULT expressions are fixed via writable_schema.
+ *
+ * Context: V35 canonicalized 7 tables; this migration closes the remaining
+ * 24-column scar. See context/measurements/2026-05-18-legacy-epoch-columns-audit.md.
+ *
+ * Pattern follows migrateV39toV40 exactly:
+ *   1. RENAME + backfill inside a transaction (idempotent via hasColumn guards).
+ *   2. DDL DEFAULT fix via writable_schema + unsafeMode OUTSIDE the transaction.
+ *   3. Stamp PRAGMA user_version = 43.
+ *
+ * Reverse: migrateV43toV42 renames _ms → _epoch and down-scales by 1000 (lossy
+ * for non-round values, but acceptable for emergency rollback only).
+ */
+export function migrateV42toV43(db: Database): void {
+  // [table, oldColumnName, newColumnName]
+  const renames: Array<[string, string, string]> = [
+    ['thread_state', 'updated_at_epoch', 'updated_at_epoch_ms'],
+    ['checkpoint_tracking', 'last_checkpoint_epoch', 'last_checkpoint_epoch_ms'],
+    ['checkpoint_tracking', 'updated_at_epoch', 'updated_at_epoch_ms'],
+    ['checkpoint_tracking', 'last_tick_epoch', 'last_tick_epoch_ms'],
+    ['verified_facts', 'created_at_epoch', 'created_at_epoch_ms'],
+    ['file_leases', 'granted_at_epoch', 'granted_at_epoch_ms'],
+    ['artifact_claims', 'claimed_at_epoch', 'claimed_at_epoch_ms'],
+    ['session_events', 'timestamp_epoch', 'timestamp_epoch_ms'],
+    ['session_journal', 'timestamp_epoch', 'timestamp_epoch_ms'],
+    ['artifact_links', 'created_at_epoch', 'created_at_epoch_ms'],
+    ['artifact_links', 'valid_at_epoch', 'valid_at_epoch_ms'],
+    ['artifact_links', 'invalid_at_epoch', 'invalid_at_epoch_ms'],
+    ['capability_boundaries', 'last_updated_epoch', 'last_updated_epoch_ms'],
+    ['conversation_turns', 'timestamp_epoch', 'timestamp_epoch_ms'],
+    ['artifact_access_log', 'timestamp_epoch', 'timestamp_epoch_ms'],
+    ['knowledge_gaps', 'detected_at_epoch', 'detected_at_epoch_ms'],
+    ['knowledge_gaps', 'resolved_at_epoch', 'resolved_at_epoch_ms'],
+    ['temporal_profile', 'updated_at_epoch', 'updated_at_epoch_ms'],
+    ['action_transitions', 'last_epoch', 'last_epoch_ms'],
+    ['solution_outcomes', 'created_at_epoch', 'created_at_epoch_ms'],
+    ['entity_aliases', 'created_at_epoch', 'created_at_epoch_ms'],
+    ['artifacts', 'timestamp_epoch', 'timestamp_epoch_ms'],
+    ['artifacts', 'last_materialized_epoch', 'last_materialized_epoch_ms'],
+    ['code_index', 'last_indexed_epoch', 'last_indexed_epoch_ms'],
+  ];
+
+  // Step 1: rename + scale inside a transaction.
+  // Idempotent: each entry is skipped if old column is gone OR new column already exists.
+  const tx = db.transaction(() => {
+    for (const [table, oldCol, newCol] of renames) {
+      if (!hasTable(db, table)) continue;
+      if (hasColumn(db, table, oldCol) && !hasColumn(db, table, newCol)) {
+        db.exec(`ALTER TABLE "${table}" RENAME COLUMN "${oldCol}" TO "${newCol}"`);
+        // Scale: stored values are in seconds; multiply by 1000 to get ms.
+        // Threshold 1e11: values > 1e11 are already in ms range (3001-09-09).
+        db.exec(
+          `UPDATE "${table}" SET "${newCol}" = "${newCol}" * 1000 WHERE "${newCol}" > 0 AND "${newCol}" < 100000000000`,
+        );
+      }
+    }
+  });
+  tx();
+
+  // Step 2: rewrite DDL DEFAULT (unixepoch()) → DEFAULT (unixepoch() * 1000)
+  // on every table touched. Must run OUTSIDE any transaction.
+  // SQLite's ALTER TABLE RENAME COLUMN auto-updates index DDL (3.25+) so we
+  // do not need to drop/recreate indexes manually.
+  const tables = [...new Set(renames.map(([t]) => t))];
+  const anyDb = db as unknown as { unsafeMode?: (v: boolean) => void };
+  if (typeof anyDb.unsafeMode === 'function') anyDb.unsafeMode(true);
+  db.pragma('writable_schema = 1');
+  try {
+    const stmt = db.prepare(
+      `UPDATE sqlite_master
+       SET sql = replace(sql, 'DEFAULT (unixepoch())', 'DEFAULT (unixepoch() * 1000)')
+       WHERE type = 'table' AND name = ?`,
+    );
+    for (const t of tables) {
+      if (hasTable(db, t)) stmt.run(t);
+    }
+  } finally {
+    db.pragma('writable_schema = 0');
+    if (typeof anyDb.unsafeMode === 'function') anyDb.unsafeMode(false);
+  }
+
+  // Step 3: stamp version.
+  db.pragma('user_version = 43');
+  try {
+    db.exec(`INSERT OR IGNORE INTO schema_versions(version) VALUES (43)`);
+  } catch { /* non-critical */ }
+}
+
+/**
+ * Reverse migration: V43 → V42.
+ *
+ * Renames _epoch_ms columns back to _epoch and down-scales by 1000 (INTEGER
+ * division — lossy for sub-second precision, acceptable for emergency rollback).
+ * DDL DEFAULT expressions are restored to unixepoch().
+ *
+ * NOTE: Only reverses columns that were actually renamed by migrateV42toV43.
+ * If the new column already existed before the forward migration (i.e., the
+ * old column never existed), this reverse is a no-op for that column.
+ */
+export function migrateV43toV42(db: Database): void {
+  // Mirror the forward renames in reverse order.
+  const reverseRenames: Array<[string, string, string]> = [
+    ['thread_state', 'updated_at_epoch_ms', 'updated_at_epoch'],
+    ['checkpoint_tracking', 'last_checkpoint_epoch_ms', 'last_checkpoint_epoch'],
+    ['checkpoint_tracking', 'updated_at_epoch_ms', 'updated_at_epoch'],
+    ['checkpoint_tracking', 'last_tick_epoch_ms', 'last_tick_epoch'],
+    ['verified_facts', 'created_at_epoch_ms', 'created_at_epoch'],
+    ['file_leases', 'granted_at_epoch_ms', 'granted_at_epoch'],
+    ['artifact_claims', 'claimed_at_epoch_ms', 'claimed_at_epoch'],
+    ['session_events', 'timestamp_epoch_ms', 'timestamp_epoch'],
+    ['session_journal', 'timestamp_epoch_ms', 'timestamp_epoch'],
+    ['artifact_links', 'created_at_epoch_ms', 'created_at_epoch'],
+    ['artifact_links', 'valid_at_epoch_ms', 'valid_at_epoch'],
+    ['artifact_links', 'invalid_at_epoch_ms', 'invalid_at_epoch'],
+    ['capability_boundaries', 'last_updated_epoch_ms', 'last_updated_epoch'],
+    ['conversation_turns', 'timestamp_epoch_ms', 'timestamp_epoch'],
+    ['artifact_access_log', 'timestamp_epoch_ms', 'timestamp_epoch'],
+    ['knowledge_gaps', 'detected_at_epoch_ms', 'detected_at_epoch'],
+    ['knowledge_gaps', 'resolved_at_epoch_ms', 'resolved_at_epoch'],
+    ['temporal_profile', 'updated_at_epoch_ms', 'updated_at_epoch'],
+    ['action_transitions', 'last_epoch_ms', 'last_epoch'],
+    ['solution_outcomes', 'created_at_epoch_ms', 'created_at_epoch'],
+    ['entity_aliases', 'created_at_epoch_ms', 'created_at_epoch'],
+    ['artifacts', 'timestamp_epoch_ms', 'timestamp_epoch'],
+    ['artifacts', 'last_materialized_epoch_ms', 'last_materialized_epoch'],
+    ['code_index', 'last_indexed_epoch_ms', 'last_indexed_epoch'],
+  ];
+
+  // Step 1: rename + down-scale inside a transaction. Idempotent via guards.
+  // We only reverse columns that we actually renamed forward — if the new
+  // column didn't exist before our forward migration, it was already _ms
+  // (a fresh-DB column with the correct name). To detect this we check that
+  // the old (pre-V43) name is absent AND the new (post-V43) name is present.
+  const tx = db.transaction(() => {
+    for (const [table, msCol, secCol] of reverseRenames) {
+      if (!hasTable(db, table)) continue;
+      // Only reverse if the _ms column exists and the _sec column doesn't.
+      if (hasColumn(db, table, msCol) && !hasColumn(db, table, secCol)) {
+        db.exec(`ALTER TABLE "${table}" RENAME COLUMN "${msCol}" TO "${secCol}"`);
+        // Down-scale: divide by 1000. Lossy for non-round values.
+        db.exec(
+          `UPDATE "${table}" SET "${secCol}" = "${secCol}" / 1000 WHERE "${secCol}" > 100000000000`,
+        );
+      }
+    }
+  });
+  tx();
+
+  // Step 2: revert DDL DEFAULT (unixepoch() * 1000) → DEFAULT (unixepoch()).
+  const tables = [...new Set(reverseRenames.map(([t]) => t))];
+  const anyDb = db as unknown as { unsafeMode?: (v: boolean) => void };
+  if (typeof anyDb.unsafeMode === 'function') anyDb.unsafeMode(true);
+  db.pragma('writable_schema = 1');
+  try {
+    const stmt = db.prepare(
+      `UPDATE sqlite_master
+       SET sql = replace(sql, 'DEFAULT (unixepoch() * 1000)', 'DEFAULT (unixepoch())')
+       WHERE type = 'table' AND name = ?`,
+    );
+    for (const t of tables) {
+      if (hasTable(db, t)) stmt.run(t);
+    }
+  } finally {
+    db.pragma('writable_schema = 0');
+    if (typeof anyDb.unsafeMode === 'function') anyDb.unsafeMode(false);
+  }
+
+  // Step 3: stamp version.
+  db.pragma('user_version = 42');
+  try {
+    db.exec(`INSERT OR IGNORE INTO schema_versions(version) VALUES (42)`);
+  } catch { /* non-critical */ }
+}
