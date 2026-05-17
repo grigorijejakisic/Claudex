@@ -148,7 +148,7 @@ describe('formatPendingReviewLinksSection', () => {
       type: 'triggered_by',
       proposed_confidence: 0.9,
       proposed_by_session: 'sess',
-      proposer_rationale: 'decayed',
+      proposer_rationale: 'This link was previously proposed and rejected by operator.',
     });
     expect(decayedId).not.toBeNull();
     db.prepare(`UPDATE hard_link SET decay_count = ? WHERE id = ?`).run(DECAY_THRESHOLD, decayedId);
