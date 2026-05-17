@@ -1325,7 +1325,7 @@ export async function hybridSearchAsync(
  * initial TTL and current TTL plus materialization events.
  *
  * For simplicity and correctness, we compute activation from the available data:
- * - Uses last_materialized_epoch or timestamp_epoch as last access time
+ * - Uses last_materialized_epoch_ms or timestamp_epoch_ms as last access time
  * - Uses a base access count of 1 (creation = 1 access)
  */
 export function computeActivation(artifact: ArtifactRow): number {
