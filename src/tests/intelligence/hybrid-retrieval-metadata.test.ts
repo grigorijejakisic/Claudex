@@ -142,20 +142,20 @@ describe('hybrid-retrieval-metadata (14-07i)', () => {
     // In hybridSearchSync there is only FTS + recency.
     // FTS always takes precedence over recency-only for match_kind.
     seedArtifact(db, {
-      title: 'multichannel-test keyword unique zymurgy2',
-      body: 'multichannel body content',
+      title: 'multichannel test keyword unique zymurgy2',
+      body: 'multichannel body content for test',
     });
 
-    const results = hybridSearchSync(db, 'multichannel-test keyword', 'test-project', { limit: 5 });
+    const results = hybridSearchSync(db, 'multichannel test keyword unique', 'test-project', { limit: 5 });
 
     // FTS-matched candidate should carry match_kind='fts'
     const hit = results.find(r =>
-      (r.summary ?? '').includes('multichannel-test'),
+      (r.summary ?? '').includes('multichannel test keyword'),
     );
     expect(hit).toBeDefined();
     // FTS hit in sync path → 'fts'
     expect(hit!.match_kind).toBe('fts');
-    expect(hit!.match_query).toBe('multichannel-test keyword');
+    expect(hit!.match_query).toBe('multichannel test keyword unique');
   });
 
   it('4. Recency-only candidate: no match_kind (not FTS, not vector)', () => {
