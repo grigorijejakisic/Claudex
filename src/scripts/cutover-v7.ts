@@ -845,6 +845,7 @@ async function main() {
   process.exit(result.exit_code);
 }
 
+// cutover-v7 is never imported by another entry point, so __filename check is safe.
 const _cutoverScriptFile: string =
   typeof __filename !== 'undefined'
     ? __filename
