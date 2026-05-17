@@ -378,8 +378,13 @@ export function parseCrossProjectOutput(stdout: string): GateRawResult {
  * if the file is missing or malformed.
  */
 export function loadBaselines(baselinePath?: string): BaselineFile {
+  // __dirname is defined in CJS bundles; fall back to import.meta.url in ESM.
+  const _scriptDir: string =
+    typeof __dirname !== 'undefined'
+      ? __dirname
+      : path.dirname(fileURLToPath(import.meta.url));
   const defaultPath = path.resolve(
-    path.dirname(fileURLToPath(import.meta.url)),
+    _scriptDir,
     '../../.planning/phases/14-substrate-coherence/14-07-WAVE1-BASELINES.json'
   );
   const filePath = baselinePath ?? defaultPath;
