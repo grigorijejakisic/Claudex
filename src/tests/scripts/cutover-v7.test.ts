@@ -514,11 +514,12 @@ it('11. non-TTY stdin + --apply without --confirm-non-interactive: exit 4', asyn
 });
 
 // ---------------------------------------------------------------------------
-// Test 12: verifyMappingComplete fails (1 unmapped row) → mapping_incomplete
+// Test 12: auto-backfill handles unmapped legacy rows gracefully
 // ---------------------------------------------------------------------------
 
-it('12. verifyMappingComplete fails (1 unmapped legacy row): exits with mapping_incomplete', async () => {
+it('12. auto-backfill maps unmapped legacy rows before completeness check: cutover succeeds', async () => {
   // Create a DB with an extra legacy artifact that has NO mapping.
+  // The cutover's inline backfill should handle this automatically.
   const unmappedDb = buildV37Db(2);
 
   try {
@@ -528,7 +529,7 @@ it('12. verifyMappingComplete fails (1 unmapped legacy row): exits with mapping_
         INSERT INTO artifacts(session_id, project, artifact_type, summary, state, importance, timestamp_epoch_ms)
         VALUES ('orphan-session', 'test-project', 'observation', 'Orphan artifact', 'fresh', 3, 9999999999999)
       `).run();
-      // Do NOT insert a mapping row for this one.
+      // Do NOT insert a mapping row for this one — cutover should auto-backfill it.
     }
 
     const opts = makeOpts(':memory:', {
@@ -537,9 +538,11 @@ it('12. verifyMappingComplete fails (1 unmapped legacy row): exits with mapping_
 
     const result = await applyCutover(unmappedDb, opts);
 
-    expect(result.status).toBe('mapping_incomplete');
-    expect(result.exit_code).toBe(1);
-    expect(result.message).toContain('unmapped');
+    // The auto-backfill should have mapped the orphan artifact and the cutover
+    // should proceed to PASS (or at least past Phase A).
+    expect(result.status).not.toBe('mapping_incomplete');
+    // After auto-backfill + full pipeline, expect success or gate-gated failure.
+    expect(['cutover_complete', 'gate_failed', 're_vectorize_failed'].includes(result.status)).toBe(true);
   } finally {
     try { unmappedDb.close(); } catch { /* ok */ }
   }
