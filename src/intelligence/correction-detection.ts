@@ -90,7 +90,7 @@ export function findCausalEvent(
       `SELECT id, event_type, entity, action, detail
        FROM session_events
        WHERE session_id = ?
-       ORDER BY timestamp_epoch DESC
+       ORDER BY timestamp_epoch_ms DESC
        LIMIT ?`
     ).all(sessionId, lookback) as Array<{
       id: number;
