@@ -324,12 +324,13 @@ export function penalizeUnreferencedArtifacts(
   project: string,
 ): void {
   try {
+    // 14-07b: migrated from legacy artifacts — JOIN against V17 artifact table via rowid
     // Find artifacts with N+ retrievals that were NEVER referenced
     const candidates = cachedPrepare(db,
       `SELECT re.artifact_id, COUNT(*) as total_retrievals,
               SUM(CASE WHEN re.was_referenced = 1 THEN 1 ELSE 0 END) as referenced_count
        FROM retrieval_events re
-       JOIN artifacts a ON a.id = re.artifact_id
+       JOIN artifact a ON a.rowid = re.artifact_id
        WHERE a.project = ? AND re.was_referenced IS NOT NULL
        GROUP BY re.artifact_id
        HAVING total_retrievals >= ? AND referenced_count = 0`
@@ -341,10 +342,10 @@ export function penalizeUnreferencedArtifacts(
 
     for (const c of candidates) {
       // Idempotence guard: only penalize if score is still above MIN_SCORE floor.
-      // Old guard checked > SCORE_NEVER_REFERENCED (-0.05) which is always true
-      // since MIN_SCORE (0.1) clamps scores above that — compounding penalty endlessly.
+      // 14-07b: migrated from legacy artifacts — retrieval_score in data JSON
       const current = cachedPrepare(db,
-        `SELECT retrieval_score FROM artifacts WHERE id = ?`
+        `SELECT COALESCE(json_extract(data, '$.retrieval_score'), 1.0) AS retrieval_score
+         FROM artifact WHERE rowid = ?`
       ).get(c.artifact_id) as { retrieval_score: number } | undefined;
       if (current && current.retrieval_score > MIN_SCORE) {
         updateRetrievalScore(db, c.artifact_id, SCORE_NEVER_REFERENCED);
