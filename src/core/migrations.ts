@@ -69,6 +69,9 @@ import {
   hasTable,
   hasColumn,
 } from './migration-steps.js';
+
+// Expose migrateV42toV43 for tests that need direct access.
+export { migrateV42toV43 } from './migration-steps.js';
 import { loadSqliteVec } from './sqlite-vec-loader.js';
 
 // Re-export migrateV14toV15 for direct use from initializeSchema fresh-DB path.
