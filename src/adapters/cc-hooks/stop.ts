@@ -276,7 +276,7 @@ const main = wrapHook('Stop', async (input, ctx) => {
       const recentArtifacts = cachedPrepare(ctx.db,
         `SELECT id, summary FROM artifacts
          WHERE project = ? AND state IN ('fresh', 'materialized')
-         ORDER BY timestamp_epoch DESC LIMIT 15`
+         ORDER BY timestamp_epoch_ms DESC LIMIT 15`
       ).all(routedProject) as Array<{ id: number; summary: string }>;
 
       if (recentArtifacts.length > 0) {
