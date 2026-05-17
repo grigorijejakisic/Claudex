@@ -87,9 +87,12 @@ PM (me) is the only authority for resolving boundary disputes.
 - `src/intelligence/experience-tier.ts` — add project-scope filter
   to the passive injection path. Cross-project patterns no longer
   surface in passive injection (still queryable via claudex_search).
-- `src/assembly/sections.ts` — H touches the **lessons section
-  formatter** (not yet exported by name; H surveys + decides during
-  authoring). H owns ONLY this function.
+- `src/assembly/sections/lessons.ts` — H touches the **lessons section
+  formatters**: `formatProvenPrinciplesSection` and/or `formatLearningsSection`.
+  H surveys during authoring and decides which function(s) to extend for
+  trigger-style rendering. H owns these functions ONLY. (Wave 0 w0d split
+  moved them here from the monolithic sections.ts; they are re-exported from
+  sections.ts for backwards compat.)
 - `src/tests/angel/memory-md-writer.test.ts` — extend with
   regenerator round-trip test (10 regens preserve User Notes +
   Lessons index).
