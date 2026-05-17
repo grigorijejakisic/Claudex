@@ -57,14 +57,22 @@ strict-sequential by wave. Wave 3 starts after Wave 2 ships.
 | H | 14-07h (regenerator + lessons + experience scoping) | `phase-14-07/h-lessons-regen` | parallel start |
 | I | 14-07i (codebase-context annotation) | `phase-14-07/i-codebase-annot` | parallel start |
 | J | 14-07j (link-aware lesson inline-expansion) | `phase-14-07/j-link-aware` | parallel start (Wave 2 link graph already live) |
+| K | 14-07k (last-session synthesis) | `phase-14-07/k-last-session-synth` | parallel start — independent of H/I/J file-set |
+| L | 14-07l (continuous handoff refresh) | `phase-14-07/l-continuous-handoff` | parallel start — depends on 14-07d soft-link substrate (Wave 2; live by Wave 3 entry) |
 
 Sequencing:
 ```
-H, I, J  (all parallel from wave start)
+H, I, J, K, L  (all parallel from wave start)
 ```
 
-No pre-fanout block. All three workers start together. File-ownership
-table below enforces non-collision in `src/assembly/sections.ts`.
+No pre-fanout block. All five workers start together. File-ownership
+table below enforces non-collision. K and L are independently
+parallel-safe with H/I/J — K creates a NEW section file
+(`src/assembly/sections/last-session-synthesis.ts`) that does not
+overlap with H's lessons or I's codebase-context formatters. L touches
+`src/angel/handoff-writer.ts` (additive `recordDecisionShift`) and
+`src/intelligence/directive-detector.ts` (additive
+`classifyDecisionBoundary`) — neither file is owned by H/I/J.
 
 ---
 
