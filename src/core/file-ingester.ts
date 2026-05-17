@@ -369,33 +369,84 @@ export async function ingestFileArtifacts(
     const ingestTx = db.transaction(() => {
       for (const src of sources) {
         try {
-          // Store file's actual mtime as timestamp_epoch_ms (ms precision).
+          // Store file's actual mtime as created_at_epoch_ms (ms precision).
           // This makes the mtime comparison in scanDirectory accurate:
-          // file.mtimeMs vs artifact.timestamp_epoch_ms is apples-to-apples.
+          // file.mtimeMs vs artifact.created_at_epoch_ms is apples-to-apples.
           const fileMtimeEpoch = src.mtimeMs;
 
           // Cross-project user memories use __global__ scope so they're
           // visible from any project's hybrid retrieval.
           const targetProject = src.globalScope ? '__global__' : project;
-          // User memories get elevated importance — they're identity facts
-          const targetImportance = src.globalScope ? 5 : 3;
+          // User memories get elevated importance — they're identity facts.
+          // V17 confidence is 0-1; legacy importance was 1-5.
+          // targetImportance=5 → confidence=1.0; targetImportance=3 → confidence=0.6
+          const targetConfidence = src.globalScope ? 1.0 : 0.6;
 
+          // 14-07b: migrated from legacy artifacts — Site 1 (read existing)
           const existing = cachedPrepare(db,
-            `SELECT id, summary FROM artifacts
-             WHERE project = ? AND artifact_type = ? AND artifact_ref = ?
+            `SELECT id, title FROM artifact
+             WHERE project = ? AND kind = ?
+               AND json_extract(data, '$.artifact_ref') = ?
              LIMIT 1`
-          ).get(targetProject, src.type, src.path) as { id: number; summary: string } | undefined;
+          ).get(targetProject, src.type, src.path) as { id: string; title: string } | undefined;
 
           if (existing) {
+            // 14-07b: migrated from legacy artifacts — Site 1 (UPDATE existing)
             cachedPrepare(db,
-              `UPDATE artifacts SET summary = ?, content = ?, timestamp_epoch_ms = ?, importance = ?
+              `UPDATE artifact
+               SET title = ?,
+                   body = ?,
+                   created_at_epoch_ms = ?,
+                   updated_at_epoch_ms = ?,
+                   confidence = ?,
+                   data = json_set(data,
+                     '$.artifact_ref', ?,
+                     '$.file_mtime_ms', ?
+                   )
                WHERE id = ?`
-            ).run(src.summary, src.content, fileMtimeEpoch, targetImportance, existing.id);
+            ).run(
+              src.summary,
+              src.content,
+              fileMtimeEpoch,
+              fileMtimeEpoch,
+              targetConfidence,
+              src.path,
+              fileMtimeEpoch,
+              existing.id,
+            );
           } else {
+            // 14-07b: migrated from legacy artifacts — Site 2 (INSERT new)
+            // V17 TEXT ID: sha256(file_path + kind + project + mtime).slice(0, 32)
+            const v17Id = createHash('sha256')
+              .update(`${src.path}:${src.type}:${targetProject}:${fileMtimeEpoch}`)
+              .digest('hex')
+              .slice(0, 32);
+
+            const now = fileMtimeEpoch;
+            const dataSidecar = JSON.stringify({
+              artifact_ref: src.path,
+              file_mtime_ms: fileMtimeEpoch,
+              ttl: 0,
+            });
+
             cachedPrepare(db,
-              `INSERT INTO artifacts (session_id, project, artifact_type, artifact_ref, summary, content, state, ttl, importance, timestamp_epoch_ms)
-               VALUES (?, ?, ?, ?, ?, ?, 'packed', 0, ?, ?)`
-            ).run(sessionId, targetProject, src.type, src.path, src.summary, src.content, targetImportance, fileMtimeEpoch);
+              `INSERT INTO artifact (
+                id, kind, title, body, scope, status, confidence,
+                created_at_epoch_ms, updated_at_epoch_ms,
+                session_id, project, data
+               ) VALUES (?, ?, ?, ?, 'project', 'active', ?, ?, ?, ?, ?, ?)`
+            ).run(
+              v17Id,
+              src.type,
+              src.summary,
+              src.content,
+              targetConfidence,
+              now,
+              now,
+              sessionId,
+              targetProject,
+              dataSidecar,
+            );
           }
           result.ingested++;
         } catch {
