@@ -3658,3 +3658,131 @@ export function clearLegacyReadOnly(db: Database): { rows_cleared: number } {
   tx();
   return { rows_cleared: flipped };
 }
+
+// ---------------------------------------------------------------------------
+// V37 → V38  (Phase 14-07-LINKS-SCHEMA)
+// ---------------------------------------------------------------------------
+
+/**
+ * Forward migration: V37 → V38.
+ *
+ * Creates the knowledge-graph link substrate:
+ *   - soft_link  — autonomous-write tier (supersedes, promoted_to, extracted_from, references)
+ *   - hard_link  — propose-confirm tier per Good Child policy (triggered_by, evidence_for, contradicts)
+ *   - hard_link_history — audit trail for hard-link state transitions
+ *
+ * All three tables reference `artifact.id` (V17 TEXT hash) via FK.
+ * Migration is idempotent: CREATE TABLE IF NOT EXISTS guards prevent double-apply.
+ * Wrapped in a single transaction for atomicity.
+ *
+ * Reverse: `migrateV38toV37` — drops the three tables (rollback only).
+ *
+ * Per Phase 14-07-CONTEXT Locked Decisions:
+ *   - Project denormalization: project column copied from src artifact at write time.
+ *   - DECAY_THRESHOLD default = 3 (enforced by link-writer.ts helpers, not DDL).
+ *   - FK ON DELETE RESTRICT: preserves link-graph integrity; future soft-delete patterns
+ *     must archive artifacts without DELETEing them.
+ */
+export function migrateV37toV38(db: Database): void {
+  const tx = db.transaction(() => {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS soft_link (
+        id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+        src_artifact_id     TEXT NOT NULL,
+        dst_artifact_id     TEXT NOT NULL,
+        type                TEXT NOT NULL CHECK (type IN ('supersedes', 'promoted_to', 'extracted_from', 'references')),
+        confidence          REAL NOT NULL DEFAULT 1.0 CHECK (confidence >= 0.0 AND confidence <= 1.0),
+        created_by_session  TEXT NOT NULL,
+        created_at_epoch_ms INTEGER NOT NULL,
+        project             TEXT NOT NULL,
+        data                TEXT,
+        FOREIGN KEY (src_artifact_id) REFERENCES artifact(id) ON DELETE RESTRICT,
+        FOREIGN KEY (dst_artifact_id) REFERENCES artifact(id) ON DELETE RESTRICT,
+        UNIQUE (src_artifact_id, dst_artifact_id, type)
+      );
+      CREATE INDEX IF NOT EXISTS idx_soft_link_src     ON soft_link(src_artifact_id, type);
+      CREATE INDEX IF NOT EXISTS idx_soft_link_dst     ON soft_link(dst_artifact_id, type);
+      CREATE INDEX IF NOT EXISTS idx_soft_link_project ON soft_link(project);
+
+      CREATE TABLE IF NOT EXISTS hard_link (
+        id                      INTEGER PRIMARY KEY AUTOINCREMENT,
+        src_artifact_id         TEXT NOT NULL,
+        dst_artifact_id         TEXT NOT NULL,
+        type                    TEXT NOT NULL CHECK (type IN ('triggered_by', 'evidence_for', 'contradicts')),
+        proposed_confidence     REAL NOT NULL CHECK (proposed_confidence >= 0.0 AND proposed_confidence <= 1.0),
+        proposed_by_session     TEXT NOT NULL,
+        proposed_at_epoch_ms    INTEGER NOT NULL,
+        confirmed_by_session    TEXT,
+        confirmed_at_epoch_ms   INTEGER,
+        rejected_by_session     TEXT,
+        rejected_at_epoch_ms    INTEGER,
+        decay_count             INTEGER NOT NULL DEFAULT 0 CHECK (decay_count >= 0),
+        proposer_rationale      TEXT,
+        project                 TEXT NOT NULL,
+        FOREIGN KEY (src_artifact_id) REFERENCES artifact(id) ON DELETE RESTRICT,
+        FOREIGN KEY (dst_artifact_id) REFERENCES artifact(id) ON DELETE RESTRICT,
+        UNIQUE (src_artifact_id, dst_artifact_id, type)
+      );
+      CREATE INDEX IF NOT EXISTS idx_hard_link_src     ON hard_link(src_artifact_id, type);
+      CREATE INDEX IF NOT EXISTS idx_hard_link_dst     ON hard_link(dst_artifact_id, type);
+      CREATE INDEX IF NOT EXISTS idx_hard_link_project ON hard_link(project);
+    `);
+
+    // Partial index for pending hard links — guarded against older SQLite that
+    // may not support WHERE clauses on indexes. Falls back gracefully.
+    try {
+      db.exec(`
+        CREATE INDEX IF NOT EXISTS idx_hard_link_pending
+          ON hard_link(project, confirmed_by_session)
+          WHERE confirmed_by_session IS NULL;
+      `);
+    } catch {
+      // Older SQLite — partial index not supported. Full index already covers the column.
+    }
+
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS hard_link_history (
+        id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+        hard_link_id        INTEGER NOT NULL,
+        action              TEXT NOT NULL CHECK (action IN ('proposed', 'confirmed', 'rejected', 'decayed')),
+        session_id          TEXT NOT NULL,
+        action_at_epoch_ms  INTEGER NOT NULL,
+        details             TEXT,
+        FOREIGN KEY (hard_link_id) REFERENCES hard_link(id) ON DELETE CASCADE
+      );
+      CREATE INDEX IF NOT EXISTS idx_hard_link_history_link ON hard_link_history(hard_link_id);
+    `);
+
+    // Stamp version.
+    db.pragma('user_version = 38');
+    try {
+      db.exec(`INSERT OR IGNORE INTO schema_versions(version) VALUES (38)`);
+    } catch { /* non-critical: schema_versions may not exist on test DBs */ }
+  });
+
+  tx();
+}
+
+/**
+ * Reverse migration: V38 → V37.
+ *
+ * Drops the three link tables (and their indexes, which SQLite drops automatically).
+ * Use only for rollback — data in soft_link and hard_link is lost.
+ * Idempotent: safe to call on a V37 DB that never had the link tables.
+ */
+export function migrateV38toV37(db: Database): void {
+  const tx = db.transaction(() => {
+    // Drop history first (FK references hard_link).
+    db.exec(`DROP TABLE IF EXISTS hard_link_history`);
+    db.exec(`DROP TABLE IF EXISTS hard_link`);
+    db.exec(`DROP TABLE IF EXISTS soft_link`);
+
+    // Stamp version.
+    db.pragma('user_version = 37');
+    try {
+      db.exec(`INSERT OR IGNORE INTO schema_versions(version) VALUES (37)`);
+    } catch { /* non-critical */ }
+  });
+
+  tx();
+}
