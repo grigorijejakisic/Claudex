@@ -934,15 +934,15 @@ describe('SubagentStop hook logic', () => {
 
     // Look up start event timestamp
     const startRow = cachedPrepare(db,
-      `SELECT timestamp_epoch FROM session_events
+      `SELECT timestamp_epoch_ms FROM session_events
        WHERE session_id = ? AND event_type = 'subagent_start' AND entity = ?
-       ORDER BY timestamp_epoch DESC LIMIT 1`
-    ).get('test-s1', 'agent-xyz') as { timestamp_epoch: number } | undefined;
+       ORDER BY timestamp_epoch_ms DESC LIMIT 1`
+    ).get('test-s1', 'agent-xyz') as { timestamp_epoch_ms: number } | undefined;
 
     expect(startRow).toBeDefined();
 
     // Record stop event with computed duration
-    const durationS = Math.floor(Date.now() / 1000) - startRow!.timestamp_epoch;
+    const durationS = Math.floor((Date.now() - startRow!.timestamp_epoch_ms) / 1000);
     const detail = JSON.stringify({
       agent_type: 'code-reviewer',
       transcript_path: '/tmp/transcript.jsonl',
