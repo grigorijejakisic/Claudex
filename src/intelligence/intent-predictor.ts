@@ -88,19 +88,21 @@ function predictLayer0(db: Database, project: string, sessionId: string): Predic
     ).get(project, sessionId) as { session_id: string; topic: string | null; summary: string | null } | undefined;
 
     if (thread?.topic && !thread.summary) {
-      // Unfinished thread — gather related artifact IDs
+      // 14-07b: migrated from legacy artifacts — read V17 artifact table
+      // V17 status mapping: 'active' covers legacy 'fresh' and 'materialized' states
+      // V17 ids are TEXT; returned as strings. artifactIds array accepts number | string at runtime.
       const artifacts = cachedPrepare(db,
-        `SELECT id FROM artifacts
-         WHERE session_id = ? AND state IN ('fresh', 'materialized')
-         ORDER BY importance DESC LIMIT 10`
-      ).all(thread.session_id) as Array<{ id: number }>;
+        `SELECT id FROM artifact
+         WHERE session_id = ? AND status = 'active'
+         ORDER BY confidence DESC, created_at_epoch_ms DESC LIMIT 10`
+      ).all(thread.session_id) as Array<{ id: string }>;
 
       return {
         intent: 'continuation',
         topic: thread.topic,
         confidence: 0.8,
         layer: 0,
-        artifactIds: artifacts.map(a => a.id),
+        artifactIds: artifacts.map(a => a.id as any),
         reason: `Unfinished thread: "${thread.topic}"`,
       };
     }
