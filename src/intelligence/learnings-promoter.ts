@@ -6,6 +6,7 @@ import type { Database } from 'better-sqlite3';
 import { upsertLearning, getLearningsByProject } from '../core/learnings.js';
 import { normalizeForDedup, findDuplicate } from './semantic-dedup.js';
 import { redactContent } from '../extraction/redaction.js';
+import { recordPromotedTo } from './soft-link-writers.js';
 
 const MAX_LEARNINGS_PER_PROJECT = 50;
 
@@ -16,12 +17,31 @@ const MAX_LEARNINGS_PER_PROJECT = 50;
  * - New learnings inserted with promotion_count = 1
  * - Enforces 50-per-project cap by pruning lowest-promoted, oldest entries
  * Non-throwing.
+ *
+ * Phase 14-07d: if `sessionId` and `observationArtifactId` are both provided,
+ * a `promoted_to` soft link is emitted from the observation artifact to the
+ * newly-created/promoted lesson artifact (V17 ID). If either is missing, or if
+ * the promotion is derived from an aggregate of multiple observations (the
+ * normal code path for text-string promotions), the soft link is skipped with
+ * `soft_link_skipped` telemetry. The primary write contract is unchanged.
  */
 export function promoteLearnings(params: {
   db: Database;
   project: string;
   agentId?: string;
   sessionLearnings: string[];
+  /**
+   * Phase 14-07d: session ID for soft-link emission. Required alongside
+   * observationArtifactId to emit a promoted_to link.
+   */
+  sessionId?: string;
+  /**
+   * Phase 14-07d: V17 artifact ID of the originating observation.
+   * When provided alongside sessionId, a promoted_to soft link is emitted
+   * for each newly-inserted learning. When omitted, the emission is skipped
+   * with soft_link_skipped (multi_source_aggregate reason).
+   */
+  observationArtifactId?: string;
 }): { promoted: number; inserted: number; pruned: number } {
   try {
     const { db, project, agentId, sessionLearnings } = params;
