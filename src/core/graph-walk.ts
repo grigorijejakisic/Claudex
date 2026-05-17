@@ -189,7 +189,7 @@ export function graphWalkFromSeeds(
           const typeMultiplier = LINK_TYPE_MULTIPLIERS[link.link_type] ?? 1.0;
           if (typeMultiplier === 0) continue;
           const sourceScore = currentScores.get(link.source_id) ?? 0;
-          const linkAge = link.valid_at_epoch ? Math.max(0, now - link.valid_at_epoch) : 0;
+          const linkAge = link.valid_at_epoch_ms ? Math.max(0, now - link.valid_at_epoch_ms) : 0;
           const temporalDecay = linkAge > 0 ? Math.exp(-linkAge / TEMPORAL_DECAY_SIGMA) : 1.0;
           const walkScore = sourceScore * opts.dampening * link.strength * typeMultiplier * temporalDecay;
           if (walkScore < opts.minScore) continue;
