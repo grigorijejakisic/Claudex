@@ -27,7 +27,10 @@ export const DEFAULT_CONFIG: DirectiveDetectorConfig = {
   thresholdUniversal: 0.85,
   dedupCosineThreshold: 0.80,
   reinforcementCap: 50,
-  model: 'glm-5.1:cloud',
+  // Default model for directive detection. Routes through generation-backend:
+  // - Claude subprocess default (haiku — fast classification at production quality)
+  // - Ollama revert via CLAUDEX_GENERATION_BACKEND=ollama uses this string literally
+  model: 'haiku',
   dryRun: false,
 };
 
