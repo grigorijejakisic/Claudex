@@ -15,7 +15,6 @@ import Database from 'better-sqlite3';
 import { getDbPath } from '../shared/paths.js';
 import { getProjectId } from '../shared/scope-detector.js';
 import { searchArtifactsGlobal } from '../core/artifacts.js';
-import type { ArtifactRow } from '../core/artifacts.js';
 import { hybridSearchSync, hybridSearchAsync } from '../core/hybrid-retrieval.js';
 import { getSessionEvents } from '../core/session-events.js';
 import { cachedPrepare } from '../core/stmt-cache.js';
