@@ -104,10 +104,10 @@ PM (me) is the only authority for resolving boundary disputes.
 
 ### Plan 14-07i (Worker I — codebase-context annotation) owns
 
-- `src/assembly/sections.ts` — touches the **codebase-context
-  section formatter**. I owns ONLY this function. (Surveys existing
-  formatter functions during authoring; coordinates with H/J via
-  PM.)
+- `src/assembly/sections/codebase-context.ts` — touches
+  `formatCodebaseContextSection`. I owns ONLY this function.
+  (Wave 0 w0d split extracted it from assembler.ts:857 and placed it here.
+  It is re-exported from sections.ts for backwards compat.)
 - `src/core/hybrid-retrieval.ts` — surface the retrieval
   query + score in the returned candidate metadata so the assembler
   can render the reason. Additive; existing return shape extended,
