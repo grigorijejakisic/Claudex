@@ -374,6 +374,112 @@ export async function searchArtifactsVec(
 }
 
 /**
+ * Semantic search over vec_artifact_v17 (V17 unified artifact table).
+ *
+ * 14-07b: migrated from legacy vec_artifacts + artifacts JOIN.
+ * This function JOINs vec_artifact_v17 with the V17 unified artifact table.
+ * Returns V17-shaped SearchResult objects (kind instead of artifact_type,
+ * confidence instead of importance, title instead of summary).
+ *
+ * The KNN search runs over vec_artifact_v17; results are JOINed with the
+ * artifact table to apply filters (project, status, kind) and reconstruct
+ * the payload.
+ */
+export async function searchArtifactsVecV17(
+  embedding: number[],
+  project: string,
+  limit: number = 10,
+  filters?: {
+    minConfidence?: number;
+    kinds?: string[];
+    excludeStale?: boolean;
+  },
+  _config?: Partial<QdrantConfig>,
+): Promise<SearchResult[]> {
+  return withDb(db => {
+    const queryVec = encodeVector(embedding);
+    // Over-fetch to allow for filter attrition. Bounded at 200 to keep cost sane.
+    const knnLimit = Math.min(200, Math.max(limit * 4, 40));
+
+    const excludeStale = filters?.excludeStale !== false;
+    const minConfidence = filters?.minConfidence ?? null;
+    const kinds = filters?.kinds ?? null;
+
+    // 14-07b: migrated from legacy artifacts — JOIN to V17 artifact
+    const where: string[] = ['a.project = ?'];
+    const params: unknown[] = [queryVec, knnLimit, project];
+
+    if (excludeStale) {
+      where.push(`a.status IN ('active', 'superseded')`);
+    }
+    if (minConfidence != null) {
+      where.push('a.confidence >= ?');
+      params.push(minConfidence);
+    }
+    if (kinds && kinds.length > 0) {
+      const placeholders = kinds.map(() => '?').join(',');
+      where.push(`a.kind IN (${placeholders})`);
+      for (const k of kinds) params.push(k);
+    }
+
+    const sql = `
+      SELECT
+        v.rowid AS vec_rowid,
+        v.distance AS distance,
+        a.id AS artifact_id,
+        a.project AS project,
+        a.kind AS kind,
+        a.confidence AS confidence,
+        a.status AS status,
+        a.session_id AS session_id,
+        a.created_at_epoch_ms AS created_at_epoch_ms,
+        a.supersedes_id AS supersedes_id,
+        a.title AS title
+      FROM vec_artifact_v17 v
+      JOIN artifact a ON a.rowid = v.rowid
+      WHERE v.embedding MATCH ?
+        AND v.k = ?
+        AND ${where.join(' AND ')}
+      ORDER BY v.distance
+      LIMIT ?
+    `;
+    params.push(limit);
+
+    const rows = db.prepare(sql).all(...params) as Array<{
+      vec_rowid: number | bigint;
+      distance: number;
+      artifact_id: string;
+      project: string;
+      kind: string;
+      confidence: number | null;
+      status: string;
+      session_id: string | null;
+      created_at_epoch_ms: number;
+      supersedes_id: string | null;
+      title: string | null;
+    }>;
+
+    return rows.map(r => ({
+      // Use vec_rowid as numeric id (callers that need V17 TEXT id use artifact_id in payload)
+      id: typeof r.vec_rowid === 'bigint' ? Number(r.vec_rowid) : r.vec_rowid,
+      score: distanceToScore(r.distance),
+      payload: {
+        artifact_id: r.artifact_id,
+        project: r.project,
+        // V17 shape: kind + confidence + status (not artifact_type + importance + state)
+        kind: r.kind,
+        confidence: r.confidence ?? 0.0,
+        status: r.status,
+        session_id: r.session_id,
+        created_at_epoch_ms: r.created_at_epoch_ms,
+        superseded: r.supersedes_id != null,
+        title: r.title ?? '',
+      },
+    }));
+  }, []);
+}
+
+/**
  * Search experience patterns by embedding similarity. Scoped to current
  * project + __global__ (same as Qdrant backend).
  */
