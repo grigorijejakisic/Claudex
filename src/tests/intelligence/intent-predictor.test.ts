@@ -142,11 +142,15 @@ describe('intent-predictor', () => {
       insertSession(db, 'curr-sess', project, 'active');
       insertThread(db, 'prev-sess', 'schema migration', null);
 
-      // Create some artifacts in the previous session
+      // 14-07b: migrated from legacy artifacts — insert into V17 artifact table
+      // V17 field mapping: state='fresh' → status='active', importance=4 → confidence=0.8
+      const { createHash } = require('node:crypto');
+      const v17Id = createHash('sha256').update('test:decision:prev-sess:schema').digest('hex').slice(0, 32);
       db.prepare(
-        `INSERT INTO artifacts (session_id, project, artifact_type, summary, content, importance, state)
-         VALUES (?, ?, 'decision', 'Schema V10 migration plan', 'content here', 4, 'fresh')`
-      ).run('prev-sess', project);
+        `INSERT OR IGNORE INTO artifact(id, kind, title, body, scope, status, confidence,
+            created_at_epoch_ms, updated_at_epoch_ms, session_id, project, data)
+         VALUES (?, 'decision', 'Schema V10 migration plan', 'content here', 'project', 'active', 0.8, ?, ?, ?, ?, '{}')`
+      ).run(v17Id, Date.now(), Date.now(), 'prev-sess', project);
 
       const result = predictSessionIntent(db, project, 'curr-sess');
       expect(result).not.toBeNull();
