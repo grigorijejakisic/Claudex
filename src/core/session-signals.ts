@@ -57,9 +57,9 @@ export function createSignal(
     const expires = ttl ? nowMs + ttl * 1000 : null;
 
     const result = cachedPrepare(db,
-      `INSERT INTO session_signals (session_id, project, signal_type, target, detail, expires_at_epoch_ms)
-       VALUES (?, ?, ?, ?, ?, ?)`
-    ).run(sessionId, project, signalType, target, detail ?? null, expires);
+      `INSERT INTO session_signals (session_id, project, signal_type, target, detail, created_at_epoch_ms, expires_at_epoch_ms)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`
+    ).run(sessionId, project, signalType, target, detail ?? null, nowMs, expires);
 
     return Number(result.lastInsertRowid);
   } catch {
