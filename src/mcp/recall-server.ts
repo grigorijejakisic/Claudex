@@ -1275,6 +1275,78 @@ server.registerTool(
 );
 
 // ---------------------------------------------------------------------------
+// claudex_recent_sessions — deterministic "what happened to us recently?"
+// surface (Phase 14-09). Reads the session_termination table (V42) joined
+// with thread_state for topic. Answers "why did the last N sessions stop?"
+// without LLM synthesis — fast, exact, no Ollama dependency.
+// ---------------------------------------------------------------------------
+
+server.registerTool(
+  'claudex_recent_sessions',
+  {
+    description: 'Recent session terminations with end reasons (endsession | crash | compact | idle_close | unknown) and the last user directive that preceded the close. Use for "why did the last session stop?", "what was I working on?", "did the prior session crash or close cleanly?". Deterministic structured data — no LLM. Reads session_termination (V42) written by session-end / stop-failure / pre-compact hooks. Crash inference at session-start back-fills any orphaned active session with stale heartbeat.',
+    inputSchema: {
+      limit: z.number().optional().describe('How many recent terminations to return (default 10).'),
+      project: z.string().optional().describe('Filter to a specific project (default: all projects).'),
+      exclude_session_id: z.string().optional().describe('Exclude a session_id from results — usually the current session.'),
+    },
+  },
+  async ({ limit, project, exclude_session_id }) => {
+    try {
+      const rows = getRecentTerminations(getDb(), {
+        limit: limit ?? 10,
+        project,
+        excludeSessionId: exclude_session_id,
+      });
+
+      // Enrich with topic from thread_state when available — one extra
+      // JOIN-shaped pass, kept here rather than in the core module so the
+      // module stays focused on termination data and the MCP tool owns the
+      // presentation shape.
+      const db = getDb();
+      const topicStmt = db.prepare(
+        `SELECT topic FROM thread_state WHERE session_id = ? LIMIT 1`,
+      );
+      const enriched = rows.map((r) => {
+        let topic: string | null = null;
+        try {
+          const t = topicStmt.get(r.session_id) as { topic?: string } | undefined;
+          topic = t?.topic ?? null;
+        } catch { /* thread_state may be missing on very old DBs */ }
+        return {
+          session_id: r.session_id,
+          project: r.project,
+          ended_at: new Date(r.ended_at_epoch_ms).toISOString(),
+          ended_at_epoch_ms: r.ended_at_epoch_ms,
+          end_reason: r.end_reason,
+          last_user_directive: r.last_user_directive,
+          last_assistant_text: r.last_assistant_text,
+          observation_count: r.observation_count,
+          topic,
+        };
+      });
+
+      return {
+        content: [{
+          type: 'text',
+          text: JSON.stringify({
+            sessions: enriched,
+            count: enriched.length,
+          }, null, 2),
+        }],
+      };
+    } catch (err) {
+      return {
+        content: [{
+          type: 'text',
+          text: JSON.stringify({ error: err instanceof Error ? err.message : String(err) }),
+        }],
+      };
+    }
+  },
+);
+
+// ---------------------------------------------------------------------------
 // Start
 // ---------------------------------------------------------------------------
 
