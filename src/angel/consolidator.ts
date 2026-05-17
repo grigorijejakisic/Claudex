@@ -136,16 +136,21 @@ export async function buildClusters(
     const artifactToObsId = new Map<number, number>();
     if (db && batchIds.size > 0) {
       try {
-        // Look up artifacts whose artifact_ref matches a batch observation ID
+        // 14-07b: migrated from legacy artifacts
+        // Look up V17 artifact rows whose data.artifact_ref matches a batch observation ID.
+        // artifact_id_map.legacy_id gives us the INTEGER needed to map back to obsId.
         const placeholders = [...batchIds].map(() => '?').join(',');
         const rows = db.prepare(
-          `SELECT id, CAST(artifact_ref AS INTEGER) as obs_id
-           FROM artifacts
-           WHERE artifact_type = 'observation' AND artifact_ref IS NOT NULL
-             AND CAST(artifact_ref AS INTEGER) IN (${placeholders})`
-        ).all(...batchIds) as Array<{ id: number; obs_id: number }>;
+          `SELECT m.legacy_id AS art_legacy_id,
+                  CAST(json_extract(a.data, '$.artifact_ref') AS INTEGER) AS obs_id
+           FROM artifact a
+           INNER JOIN artifact_id_map m ON m.v17_id = a.id
+           WHERE a.kind = 'observation'
+             AND json_extract(a.data, '$.artifact_ref') IS NOT NULL
+             AND CAST(json_extract(a.data, '$.artifact_ref') AS INTEGER) IN (${placeholders})`
+        ).all(...batchIds) as Array<{ art_legacy_id: number; obs_id: number }>;
         for (const row of rows) {
-          if (row.obs_id > 0) artifactToObsId.set(row.id, row.obs_id);
+          if (row.obs_id > 0) artifactToObsId.set(row.art_legacy_id, row.obs_id);
         }
       } catch { /* non-fatal — clustering degrades gracefully */ }
     }
