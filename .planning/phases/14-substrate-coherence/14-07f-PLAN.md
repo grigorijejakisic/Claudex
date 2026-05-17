@@ -510,7 +510,7 @@ New test file. Tests:
 - AC-5: Decayed tuples (decay_count >= DECAY_THRESHOLD) skipped via skipped_decayed counter.
 - AC-6: max_proposals_per_run enforced; top by confidence.
 - AC-7: Per-run telemetry with all counters emitted.
-- AC-8: `formatPendingReviewLinksSection` added to sections.ts as the ONLY new function in that file from this plan.
+- AC-8: `formatPendingReviewLinksSection` added to `sections/links.ts` (Wave 0 placeholder) as the ONLY new function in that file from this plan; re-exported from `sections/index.ts`.
 - AC-9: Cascade wired at P2.8 (between P2.7 and P2.9); F coordinates with G on P2.9 position.
 - AC-10: Pending Review section renders pending rows with type, summary, confidence, rationale, id.
 - AC-11: Decayed tuples excluded from section.
