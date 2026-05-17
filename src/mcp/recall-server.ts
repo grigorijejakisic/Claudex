@@ -32,6 +32,7 @@ import { buildNarrationDirective, setNarrationSilent } from '../intelligence/nar
 import { recordRetrieval } from '../intelligence/retrieval-log.js';
 import { lookupV17ByLegacy } from '../core/artifact-id-map.js';
 import { handleClaudexTrace } from './tools/claudex-trace.js';
+import { getRecentTerminations } from '../core/session-termination.js';
 
 // ---------------------------------------------------------------------------
 // DB connection
