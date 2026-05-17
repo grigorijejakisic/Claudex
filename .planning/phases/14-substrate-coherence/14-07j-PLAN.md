@@ -92,7 +92,7 @@ After this plan lands:
 
 <anti_scope>
 - Do NOT modify H's lessons-section function shape. J EXTENDS the function; J does NOT rewrite it. Coordinate via WAVE3-COORDINATION's enforced merge order (H first, J rebases).
-- Do NOT modify any other function in `src/assembly/sections.ts`. J owns ONLY the extension to formatProvenPrinciplesSection.
+- Do NOT modify any other function in `src/assembly/sections/lessons.ts`. J owns ONLY the extension to `formatProvenPrinciplesSection`. Do NOT touch `src/assembly/sections.ts` (the residual file) at all.
 - Do NOT modify lesson files. Trigger frontmatter is read-only for this plan.
 - Do NOT modify MEMORY.md regenerator (14-07h territory).
 - Do NOT modify experience-tier filter (14-07h territory).
