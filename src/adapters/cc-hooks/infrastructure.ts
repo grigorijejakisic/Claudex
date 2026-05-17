@@ -191,6 +191,19 @@ export function getTranscriptPath(input: HookInput): string | undefined {
  */
 export function wrapHook(hookName: string, handler: HookHandler): () => Promise<void> {
   return async () => {
+    // Phase 14-08: recursive-hook short-circuit. When claudex spawns the
+    // `claude` CLI as a generation backend (callClaudeSubprocess), the child
+    // process inherits the env and would normally run all claudex hooks too —
+    // creating a phantom session row, polluting telemetry, and potentially
+    // enqueuing CHR work for the child claude. The wrapper sets this env var
+    // on every subprocess; every hook bails out before any DB / stdin work.
+    // The child claude's stdout is consumed by the wrapper, so emitting an
+    // empty object on stdout is safe (and required by the CC hook contract).
+    if (process.env['CLAUDEX_GENERATION_CHILD'] === '1') {
+      writeStdout({});
+      return;
+    }
+
     const startMs = Date.now();
     let ctx: BootstrapResult | null = null;
     let input: HookInput | null = null;
