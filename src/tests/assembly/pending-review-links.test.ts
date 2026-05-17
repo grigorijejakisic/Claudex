@@ -161,8 +161,8 @@ describe('formatPendingReviewLinksSection', () => {
     expect(result).toContain('[evidence_for]');
     // The section should exist (A3→A4 is there).
     expect(result).not.toBeNull();
-    // Verify decayed one's rationale is absent.
-    expect(result).not.toContain('decayed');
+    // Verify decayed one's rationale text ('This link was previously proposed') is absent.
+    expect(result).not.toContain('This link was previously proposed and rejected');
   });
 
   it('returns null when ALL pending links are decayed', () => {
