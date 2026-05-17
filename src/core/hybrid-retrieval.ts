@@ -735,9 +735,12 @@ export function applyRetrievalInducedSuppression(
     for (const [artifactId, rrfScore] of rrfScores) {
       // Delegate suppression decision to memory policy
       if (policy.shouldSuppressCandidate(rrfScore) && !selectedIds.has(artifactId)) {
+        // 14-07b: migrated from legacy artifacts — activation_score lives in data JSON on V17
         cachedPrepare(db,
-          `UPDATE artifacts SET activation_score = MAX(?, activation_score - ?)
-           WHERE id = ? AND activation_score IS NOT NULL`
+          `UPDATE artifact
+           SET data = json_set(data, '$.activation_score',
+             MAX(?, COALESCE(json_extract(data, '$.activation_score'), 1.0) - ?))
+           WHERE rowid = ? AND json_extract(data, '$.activation_score') IS NOT NULL`
         ).run(RIF_ACTIVATION_FLOOR, RIF_DECREMENT, artifactId);
       }
     }
