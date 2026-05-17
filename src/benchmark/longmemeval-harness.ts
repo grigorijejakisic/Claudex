@@ -164,7 +164,7 @@ function ingestInstance(
 
       // Store as artifact for FTS5 + vector search
       cachedPrepare(db,
-        `INSERT INTO artifacts (project, session_id, artifact_type, content, summary, importance, timestamp_epoch)
+        `INSERT INTO artifacts (project, session_id, artifact_type, content, summary, importance, timestamp_epoch_ms)
          VALUES (?, ?, 'observation', ?, ?, ?, ?)`
       ).run(
         qid,
@@ -172,7 +172,7 @@ function ingestInstance(
         content,
         `${datePrefix}${turn.content.substring(0, 200)}`,
         turn.has_answer ? 5 : 3, // Boost importance of evidence turns
-        i * 86400 + t,
+        (i * 86400 + t) * 1000,
       );
       turnCount++;
     }
