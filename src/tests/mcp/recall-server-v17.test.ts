@@ -326,12 +326,18 @@ describe('claudex_recall V17 migration — defensive fallback', () => {
     `).run();
     const legacyId = Number(result.lastInsertRowid);
 
-    // V17 lookup returns null (no mapping) but legacy fallback is separate path.
-    // Verify that lookupV17ByLegacy correctly returns null.
-    const v17Id = lookupV17ByLegacy(db, legacyId);
-    expect(v17Id).toBeNull();
+    // lookupV17ByLegacy throws when artifact_id_map table is absent.
+    // The handler wraps it in try/catch and falls through to the legacy path.
+    // Verify the try/catch defensive behavior: the function throws on missing table.
+    let threwOnMissingTable = false;
+    try {
+      lookupV17ByLegacy(db, legacyId);
+    } catch {
+      threwOnMissingTable = true;
+    }
+    expect(threwOnMissingTable).toBe(true);
 
-    // The legacy fallback query should still find the row.
+    // The legacy fallback query (used by the handler after try/catch) should still find the row.
     const legacyRow = cachedPrepare(db,
       `SELECT id, artifact_type, summary, content, artifact_ref, project, importance
          FROM artifacts WHERE id = ?`
