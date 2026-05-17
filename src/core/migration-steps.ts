@@ -4111,6 +4111,69 @@ export function migrateV40toV41(db: Database): void {
 }
 
 /**
+ * Migration V41 → V42 — session_termination table.
+ *
+ * First-class structured record of HOW each session ended. Replaces the
+ * post-hoc LLM-extracted termination inference (which silently failed when
+ * Ollama was down, leaving "why did the last session stop?" unanswerable
+ * without raw SQL spelunking).
+ *
+ * Written deterministically at end-of-session by the responsible hook:
+ *   - 'endsession' — operator ran /endsession (session-end hook)
+ *   - 'crash'      — CC API failed mid-turn (stop-failure hook + inference
+ *                    at next session-start from orphaned status='active' rows)
+ *   - 'compact'    — context compaction triggered (pre-compact hook)
+ *   - 'idle_close' — Angel auto-close after sustained idle (boundary detector)
+ *   - 'unknown'    — fallback if no hook fired (very rare)
+ *
+ * Captures last_user_directive (the operator's final prompt) and
+ * last_assistant_text (the agent's last response) so the next session-start
+ * can recall "what was happening when we stopped" without an LLM.
+ */
+export function migrateV41toV42(db: Database): void {
+  const tx = db.transaction(() => {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS session_termination (
+        session_id              TEXT PRIMARY KEY,
+        project                 TEXT NOT NULL,
+        ended_at_epoch_ms       INTEGER NOT NULL DEFAULT (unixepoch() * 1000),
+        end_reason              TEXT NOT NULL
+          CHECK (end_reason IN ('endsession', 'crash', 'compact', 'idle_close', 'unknown')),
+        last_user_directive     TEXT,
+        last_assistant_text     TEXT,
+        observation_count       INTEGER NOT NULL DEFAULT 0,
+        recorded_at_epoch_ms    INTEGER NOT NULL DEFAULT (unixepoch() * 1000)
+      );
+      CREATE INDEX IF NOT EXISTS idx_session_termination_recent
+        ON session_termination(ended_at_epoch_ms DESC);
+      CREATE INDEX IF NOT EXISTS idx_session_termination_project_recent
+        ON session_termination(project, ended_at_epoch_ms DESC);
+    `);
+
+    db.pragma('user_version = 42');
+    try {
+      db.exec(`INSERT OR IGNORE INTO schema_versions(version) VALUES (42)`);
+    } catch { /* non-critical */ }
+  });
+  tx();
+}
+
+/**
+ * Reverse migration: V42 → V41. Drops session_termination. Operator should
+ * not normally run this — termination history would be lost.
+ */
+export function migrateV42toV41(db: Database): void {
+  const tx = db.transaction(() => {
+    db.exec(`DROP TABLE IF EXISTS session_termination`);
+    db.pragma('user_version = 41');
+    try {
+      db.exec(`INSERT OR IGNORE INTO schema_versions(version) VALUES (41)`);
+    } catch { /* non-critical */ }
+  });
+  tx();
+}
+
+/**
  * Reverse migration: V41 → V40. Drops the CHR queue table. Pending rows
  * are lost — the Stop hook will write a fresh row next turn, so this is
  * safe to roll back without coordinated cleanup.
