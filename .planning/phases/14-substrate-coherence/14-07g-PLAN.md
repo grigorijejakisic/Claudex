@@ -7,7 +7,8 @@ wave: 2
 depends_on: ["07-LINKS-SCHEMA"]
 files_modified:
   - src/intelligence/provenance-walker.ts (NEW)
-  - src/assembly/sections.ts
+  - src/assembly/sections/links.ts (Wave 0 w0d placeholder; G adds formatProvenanceChainSection)
+  - src/assembly/sections/index.ts (add re-export of formatProvenanceChainSection)
   - src/assembly/assembler.ts
   - src/tests/intelligence/provenance-walker.test.ts (NEW)
   - src/tests/assembly/provenance-chain.test.ts (NEW)
