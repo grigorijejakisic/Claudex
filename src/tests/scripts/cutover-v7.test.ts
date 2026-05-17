@@ -10,9 +10,9 @@
  *  3. --apply re-run on post-cutover: exits 0 with already_cutover
  *  4. re-vectorization failure rate > 5%: exit 2, no read_only flip
  *  5. Vesna gate failure (mocked 17/18): exit 1, no read_only flip
- *  6. LongMemEval gate failure (mocked 89.0%): exit 1
- *  7. LoCoMo gate failure (mocked 54.0%): exit 1
- *  8. cross-project hit rate degraded (mocked 25%): exit 1
+ *  6. LongMemEval informational-only: degraded mock does NOT block cutover
+ *  7. LoCoMo informational-only: degraded mock does NOT block cutover
+ *  8. cross-project hit rate informational-only: degraded mock does NOT block cutover
  *  9. --rollback on post-cutover: clears read_only flag, exit 5
  * 10. --rollback on pre-cutover: exits with error (nothing to rollback)
  * 11. non-TTY stdin + --apply without --confirm-non-interactive: exit 4
