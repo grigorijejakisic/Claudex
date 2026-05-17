@@ -21,8 +21,8 @@ export interface CheckpointMeta {
   data: string | null;
   mirror_path: string | null;
   error: string | null;
-  created_at_epoch: number;
-  updated_at_epoch: number;
+  created_at_epoch_ms: number;
+  updated_at_epoch_ms: number;
 }
 
 /** Working context section. */
