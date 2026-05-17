@@ -20,6 +20,7 @@ import { initializeSchema } from '../../core/migrations.js';
 import {
   assembleExperienceTier,
   RECENCY_DAYS,
+  type ExperienceInjectionScope,
 } from '../../intelligence/experience-tier.js';
 import type { HandleSet } from '../../core/cross-project-equivalence.js';
 
@@ -114,9 +115,19 @@ const SCHEMA_MIGRATION_HANDLES: HandleSet = {
 
 describe('assembleExperienceTier — V17 artifact table (query shape)', () => {
   let db: Database.Database;
+  let prevScope: string | undefined;
 
   beforeEach(() => { db = createTestDb(); });
-  afterEach(() => { db.close(); });
+  afterEach(() => {
+    db.close();
+    if (prevScope === undefined) delete process.env.CLAUDEX_EXPERIENCE_SCOPE;
+    else process.env.CLAUDEX_EXPERIENCE_SCOPE = prevScope;
+  });
+
+  function setScope(s: ExperienceInjectionScope): void {
+    prevScope = process.env.CLAUDEX_EXPERIENCE_SCOPE;
+    process.env.CLAUDEX_EXPERIENCE_SCOPE = s;
+  }
 
   // 14-07b Test ET-1
   it('returns null when no cross-project V17 artifacts exist', () => {
@@ -126,8 +137,9 @@ describe('assembleExperienceTier — V17 artifact table (query shape)', () => {
     expect(result).toBeNull();
   });
 
-  // 14-07b Test ET-2
-  it('finds V17 artifacts from other projects via rowid join', () => {
+  // 14-07b Test ET-2 (14-07h: requires all_projects scope for cross-project surfacing)
+  it('finds V17 artifacts from other projects via rowid join (all_projects mode)', () => {
+    setScope('all_projects');
     // Seed artifact in a different project
     seedV17ArtifactWithPattern(db, {
       title: 'Schema migration lesson from project-alpha',
@@ -149,12 +161,15 @@ describe('assembleExperienceTier — V17 artifact table (query shape)', () => {
     expect(result!.section).toContain('project-alpha');
   });
 
-  // 14-07b Test ET-3
-  it('excludes artifacts from the current project', () => {
-    // Seed artifact in SAME project — should be excluded by a.project != ?
+  // 14-07b Test ET-3 (14-07h: same_project_only is the new default — same-project artifacts surface)
+  it('same_project_only (default): same-project artifacts surface for current project', () => {
+    // 14-07h: The old behavior was "exclude artifacts from current project" (cross-project-only).
+    // New default is same_project_only — same-project artifacts DO surface.
+    // all_projects mode (CLAUDEX_EXPERIENCE_SCOPE=all_projects) restores cross-project behavior.
+    setScope('same_project_only');
     seedV17ArtifactWithPattern(db, {
-      title: 'Same project artifact not cross-project',
-      body: 'This is in the same project so it should not surface',
+      title: 'Same project artifact — should surface in same_project_only mode',
+      body: 'This is in the same project and should surface',
       project: 'current-project',
       kind: 'learning',
       taskPattern: 'schema-migration-design',
@@ -163,7 +178,8 @@ describe('assembleExperienceTier — V17 artifact table (query shape)', () => {
     const result = assembleExperienceTier(
       db, 'test-sess', 1, 'current-project', SCHEMA_MIGRATION_HANDLES
     );
-    expect(result).toBeNull();
+    // same_project_only: same-project artifacts are included in pool and pass the filter.
+    expect(result).not.toBeNull();
   });
 
   // 14-07b Test ET-4
