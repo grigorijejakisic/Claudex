@@ -287,26 +287,6 @@ describe('learnings promoter', () => {
 // Phase 14-07d promoted_to emission
 // ---------------------------------------------------------------------------
 
-function buildV38Db(): Database.Database {
-  const db = new Database(':memory:');
-  db.pragma('foreign_keys = ON');
-  applyV17DDL(db);
-  db.exec(`
-    CREATE TABLE IF NOT EXISTS schema_versions (
-      version INTEGER PRIMARY KEY,
-      applied_at_epoch_ms INTEGER NOT NULL DEFAULT (unixepoch() * 1000)
-    );
-    CREATE TABLE IF NOT EXISTS telemetry (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      session_id TEXT, event_kind TEXT, detail TEXT,
-      latency_ms INTEGER, adapter TEXT,
-      timestamp_epoch_ms INTEGER DEFAULT (strftime('%s','now') * 1000)
-    );
-  `);
-  migrateV37toV38(db);
-  return db;
-}
-
 function insertV38Artifact(db: Database.Database, id: string, kind: string, project: string): void {
   db.prepare(`
     INSERT OR IGNORE INTO artifact(id, kind, body, created_at_epoch_ms, updated_at_epoch_ms, project)
