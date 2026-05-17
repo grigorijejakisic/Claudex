@@ -245,7 +245,7 @@ Implementation:
 - Chain length > 1: section rendered with header + bullets.
 - Each entry shows kind, summary, link_type, hop_distance.
 - Budget cap enforced; truncation when over.
-- Cascade position P2.9 (after P2.8); no other function in sections.ts modified.
+- Cascade position P2.9 (after P2.8); no other function in sections/links.ts modified; re-export present in sections/index.ts.
   </verification>
 </task>
 
