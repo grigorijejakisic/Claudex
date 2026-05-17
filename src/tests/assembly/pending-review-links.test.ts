@@ -15,7 +15,7 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import Database from 'better-sqlite3';
 import { initializeSchema } from '../../core/migrations.js';
-import { proposeHardLink, rejectHardLink, DECAY_THRESHOLD } from '../../core/link-writer.js';
+import { proposeHardLink, DECAY_THRESHOLD } from '../../core/link-writer.js';
 import { formatPendingReviewLinksSection } from '../../assembly/sections/links.js';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
