@@ -333,8 +333,11 @@ describe('walkProvenance', () => {
       created_by_session: 'sess-1',
     });
 
-    // Delete the upstream artifact (dead reference)
+    // Temporarily disable FK enforcement to simulate a dead reference
+    // (as can happen via data inconsistency or direct DB manipulation).
+    db.pragma('foreign_keys = OFF');
     db.prepare(`DELETE FROM artifact WHERE id = ?`).run('ghost');
+    db.pragma('foreign_keys = ON');
 
     // Walker should silently skip the deleted artifact
     const result = walkProvenance({ db, start_artifact_id: 'decision-12', session_id: 'sess-1' });
