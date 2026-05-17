@@ -478,8 +478,7 @@ export async function heartbeatTick(ctx: HeartbeatContext): Promise<TickResult> 
     // applies inside classifyTurnAsDecisionBoundary — within-throttle rows
     // are marked processed without firing a refresh.
     try {
-      const { drainChrQueue } = await import('./chr-async.js');
-      const chrResult = await drainChrQueue(ctx.db);
+      const chrResult = await drainChrQueueImported(ctx.db);
       if (chrResult.drained > 0) {
         console.log(`[hb-trace] chr-drain drained=${chrResult.drained} refreshed=${chrResult.refreshed} no_boundary=${chrResult.no_boundary} errors=${chrResult.errors} ${Date.now() - start}ms`);
       }
