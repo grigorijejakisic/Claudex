@@ -207,8 +207,8 @@ export function indexFile(
 
     // Store in DB
     cachedPrepare(db,
-      `INSERT OR REPLACE INTO code_index (project, file_path, last_indexed_epoch, ast_hash, symbols, call_graph, imports, exports)
-       VALUES (?, ?, unixepoch(), ?, ?, ?, ?, ?)`
+      `INSERT OR REPLACE INTO code_index (project, file_path, last_indexed_epoch_ms, ast_hash, symbols, call_graph, imports, exports)
+       VALUES (?, ?, unixepoch() * 1000, ?, ?, ?, ?, ?)`
     ).run(
       project,
       filePath,
