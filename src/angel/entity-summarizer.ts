@@ -156,11 +156,12 @@ export async function generateEntitySummaries(
             `[${e.project}] ${e.action}: ${(e.detail ?? '').substring(0, 100)}`
           ).join('\n');
 
-          summary = await callLocalLLM({
+          summary = await generate({
             prompt: `Summarize this entity in 2-3 sentences based on the evidence. Entity: "${entity.entity_name}"\nEvidence:\n${evidenceText}\n\nOutput only the summary.`,
-            // Budget for Gemma's reasoning_content overhead — a 200-token
-            // budget burns on reasoning and returns truncated summaries.
+            model: 'sonnet',
             maxTokens: 1024,
+            db,
+            subsystem: 'entity_summarizer',
           });
         } catch { /* LLM failed — use template */ }
 
