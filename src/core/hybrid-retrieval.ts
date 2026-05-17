@@ -1366,15 +1366,16 @@ export function spreadActivation(
   artifactId: number,
 ): void {
   try {
-    // Get the source artifact's activation score
+    // 14-07b: migrated from legacy artifacts — activation_score is in data JSON on V17
     const source = cachedPrepare(db,
-      `SELECT activation_score FROM artifacts WHERE id = ?`
+      `SELECT COALESCE(json_extract(data, '$.activation_score'), 1.0) AS activation_score
+       FROM artifact WHERE rowid = ?`
     ).get(artifactId) as { activation_score: number | null } | undefined;
 
     if (!source) return;
     const sourceActivation = source.activation_score ?? 1.0;
 
-    // Get all links where this artifact is the source
+    // Get all links where this artifact is the source (artifact_links uses rowid-based IDs)
     const links = cachedPrepare(db,
       `SELECT target_id, strength FROM artifact_links WHERE source_id = ?`
     ).all(artifactId) as Array<{ target_id: number; strength: number }>;
@@ -1383,17 +1384,19 @@ export function spreadActivation(
       const boost = SPREAD_FACTOR * link.strength * sourceActivation;
       if (boost <= 0) continue;
 
-      // Read current activation, apply boost, write back — skip packed artifacts
+      // 14-07b: migrated from legacy artifacts — read status + activation from V17 data JSON
       const target = cachedPrepare(db,
-        `SELECT activation_score, state FROM artifacts WHERE id = ?`
+        `SELECT COALESCE(json_extract(data, '$.activation_score'), 0) AS activation_score,
+                status AS state FROM artifact WHERE rowid = ?`
       ).get(link.target_id) as { activation_score: number | null; state: string } | undefined;
 
-      if (!target || target.state === 'packed') continue;
+      if (!target || target.state === 'stale') continue;
       const currentActivation = target.activation_score ?? 0;
       const newActivation = Math.min(currentActivation + boost, 10.0); // Cap to prevent unbounded growth
 
+      // 14-07b: migrated from legacy artifacts — write activation to data JSON
       cachedPrepare(db,
-        `UPDATE artifacts SET activation_score = ? WHERE id = ?`
+        `UPDATE artifact SET data = json_set(data, '$.activation_score', ?) WHERE rowid = ?`
       ).run(newActivation, link.target_id);
     }
   } catch {
