@@ -3786,3 +3786,72 @@ export function migrateV38toV37(db: Database): void {
 
   tx();
 }
+
+// V38 → V39  (Phase 14-07l — Continuous Handoff Refresh throttle table)
+// ---------------------------------------------------------------------------
+
+/**
+ * Forward migration: V38 → V39.
+ *
+ * Creates the `handoff_refresh_state` table used by the Continuous Handoff
+ * Refresh (CHR) system (Phase 14-07l) to track per-session throttle state.
+ *
+ * Schema:
+ *   - session_id TEXT PRIMARY KEY — one row per active session
+ *   - project TEXT NOT NULL — project this session belongs to
+ *   - last_refresh_epoch_ms INTEGER NOT NULL — epoch_ms of last CHR refresh
+ *   - refresh_count INTEGER NOT NULL DEFAULT 0 — total refreshes for session
+ *   - updated_at_epoch_ms INTEGER NOT NULL — last upsert timestamp
+ *
+ * Index: idx_handoff_refresh_session ON handoff_refresh_state(session_id)
+ * (PK already covers this; the explicit index is kept for plan contract compliance.)
+ *
+ * Migration is idempotent: CREATE TABLE IF NOT EXISTS guards prevent double-apply.
+ * Wrapped in a single transaction for atomicity.
+ *
+ * Reverse: `migrateV39toV38` — drops the table (rollback only).
+ */
+export function migrateV38toV39(db: Database): void {
+  const tx = db.transaction(() => {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS handoff_refresh_state (
+        session_id            TEXT PRIMARY KEY,
+        project               TEXT NOT NULL,
+        last_refresh_epoch_ms INTEGER NOT NULL,
+        refresh_count         INTEGER NOT NULL DEFAULT 0,
+        updated_at_epoch_ms   INTEGER NOT NULL DEFAULT (strftime('%s','now') * 1000)
+      );
+      CREATE INDEX IF NOT EXISTS idx_handoff_refresh_session
+        ON handoff_refresh_state(session_id);
+    `);
+
+    // Stamp version.
+    db.pragma('user_version = 39');
+    try {
+      db.exec(`INSERT OR IGNORE INTO schema_versions(version) VALUES (39)`);
+    } catch { /* non-critical: schema_versions may not exist on test DBs */ }
+  });
+
+  tx();
+}
+
+/**
+ * Reverse migration: V39 → V38.
+ *
+ * Drops the handoff_refresh_state table.
+ * Use only for rollback — throttle state is lost.
+ * Idempotent: safe to call on a V38 DB that never had the table.
+ */
+export function migrateV39toV38(db: Database): void {
+  const tx = db.transaction(() => {
+    db.exec(`DROP TABLE IF EXISTS handoff_refresh_state`);
+
+    // Stamp version.
+    db.pragma('user_version = 38');
+    try {
+      db.exec(`INSERT OR IGNORE INTO schema_versions(version) VALUES (38)`);
+    } catch { /* non-critical */ }
+  });
+
+  tx();
+}
