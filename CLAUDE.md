@@ -29,6 +29,8 @@ These are archival v4-ship-time numbers; not used as ship gates per the v4 audit
 <!-- critical: drift-risk=safety, domains=hooks,cc-hooks -->
 - **Hook deadlock**: Never call CC's CLIProxyAPI from a hook — use Ollama instead.
 - **Fire-and-forget**: Always await in hooks. Only Angel/OpenClaw can fire-and-forget.
+<!-- critical: drift-risk=quality, domains=ship,phase-close,review -->
+- **Verified is the only kind of done.** Any ship report, phase-close summary, "all PASS" claim, or "everything landed" assertion REQUIRES `/verify` evidence in the same message — N claims / M verified / K unverified, with diff against the session-start tag, relevant tests run, and grep against the actual code for every named function/flag/file. If `/verify` is unavailable, run the equivalent steps manually and surface what was checked. Self-reported success without verification is how the 2026-05-17 v7.0.0 ship landed a stale cutover-v7 test that nobody caught until the next session. Don't repeat that. The burn: ship reports compound trust; an unverified one corrupts the substrate's record of what's working.
 
 ## Build & Test
 
