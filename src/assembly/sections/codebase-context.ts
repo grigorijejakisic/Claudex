@@ -28,6 +28,9 @@ export interface CodebaseContextFile {
   match_kind?: 'fts' | 'vector';
 }
 
+/** Max display length for match_query in the annotation line. */
+const ANNOTATION_QUERY_DISPLAY_MAX = 50;
+
 /**
  * Renders the Codebase Context section given a list of relevant files and a
  * path-shortener function.
@@ -41,6 +44,13 @@ export interface CodebaseContextFile {
  *
  * Returns the section string (never null — caller checks length > 0 before
  * using), or an empty string if no files provided.
+ *
+ * 14-07i: codebase-context annotation — when a file has `match_query` and
+ * `score` metadata (populated by hybrid retrieval), a one-line annotation is
+ * rendered between the path and the symbol list:
+ *   - `<path>` — matched "<truncated_query>" (score <N.NN>, <kind>) — <symbols>
+ * When metadata is absent the existing format is used:
+ *   - `<path>`: <symbols>
  *
  * @param files          Relevant files from findRelevantFiles.
  * @param shortenPath    Path-shortener for cache-stable relative paths.
@@ -59,7 +69,29 @@ export function formatCodebaseContextSection(
       .slice(0, 5)
       .map(s => `${s.kind} ${s.name}`)
       .join(', ');
-    codeParts.push(`- \`${relPath}\`: ${topSymbols || '(no exports)'}`);
+    const symbolsStr = topSymbols || '(no exports)';
+
+    // 14-07i: codebase-context annotation
+    // Render annotation when match_query is non-empty and score is present.
+    const hasAnnotation =
+      typeof f.match_query === 'string' &&
+      f.match_query.length > 0 &&
+      typeof f.score === 'number';
+
+    if (hasAnnotation) {
+      // Truncate query for display (≤50 chars, ellipsize if longer)
+      const displayQuery =
+        f.match_query!.length > ANNOTATION_QUERY_DISPLAY_MAX
+          ? f.match_query!.substring(0, ANNOTATION_QUERY_DISPLAY_MAX) + '…'
+          : f.match_query!;
+      const scoreStr = f.score!.toFixed(2);
+      const kindStr = f.match_kind ?? 'fts';
+      codeParts.push(
+        `- \`${relPath}\` — matched "${displayQuery}" (score ${scoreStr}, ${kindStr}) — ${symbolsStr}`
+      );
+    } else {
+      codeParts.push(`- \`${relPath}\`: ${symbolsStr}`);
+    }
   }
 
   return `## Codebase Context\n${codeParts.join('\n')}`;
