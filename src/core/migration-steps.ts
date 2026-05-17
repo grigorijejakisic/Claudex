@@ -3426,3 +3426,228 @@ CREATE INDEX IF NOT EXISTS idx_telemetry_kind ON telemetry(event_kind, timestamp
   tx();
   return true;
 }
+
+// ---------------------------------------------------------------------------
+// Phase 14-07c — Read-only enforcement helpers
+// ---------------------------------------------------------------------------
+
+/**
+ * Phase 14-07c — flip legacy `artifacts` table to read-only.
+ *
+ * Sets `read_only = 1` on every row in the legacy `artifacts` table.
+ * Installs three SQLite triggers (BEFORE INSERT / UPDATE / DELETE) that
+ * RAISE(ABORT, ...) when the flag is set, providing DB-level enforcement
+ * that cannot be bypassed by callers that skip the application-layer guard.
+ * Updates `schema_versions` with a metadata row marking the flip epoch.
+ *
+ * Idempotent: if all rows already have `read_only = 1`, returns
+ * `{ rows_flipped: 0, already_flipped: true }` without re-installing triggers.
+ *
+ * Called by `src/scripts/cutover-v7.ts` in Phase D (after benchmark gate passes).
+ * NOT called by `migrateV36toV37` — the migration only adds the column (DEFAULT 0);
+ * the flip is the cutover, not the migration.
+ */
+export function flipLegacyArtifactsReadOnly(
+  db: Database
+): { rows_flipped: number; already_flipped: boolean } {
+  if (!hasTable(db, 'artifacts')) {
+    // No legacy table — nothing to flip. Treat as already_flipped.
+    return { rows_flipped: 0, already_flipped: true };
+  }
+  if (!hasColumn(db, 'artifacts', 'read_only')) {
+    // Column doesn't exist (pre-V37 DB) — cannot flip.
+    throw new Error(
+      'flipLegacyArtifactsReadOnly: artifacts.read_only column missing. ' +
+      'Run migrateV36toV37 first.'
+    );
+  }
+
+  // Idempotency check: count rows that are NOT yet read-only.
+  const notFlipped = (
+    db.prepare(`SELECT COUNT(*) AS n FROM artifacts WHERE read_only = 0`).get() as { n: number }
+  ).n;
+
+  if (notFlipped === 0) {
+    // All rows already read-only — triggers may or may not be installed.
+    // Install triggers idempotently (IF NOT EXISTS guards).
+    _installReadOnlyTriggers(db);
+    return { rows_flipped: 0, already_flipped: true };
+  }
+
+  // Flip all rows and install triggers in one transaction.
+  const tx = db.transaction(() => {
+    db.exec(`UPDATE artifacts SET read_only = 1`);
+    _installReadOnlyTriggers(db);
+
+    // Record the flip in schema_versions as a metadata marker.
+    try {
+      const svCols = (db.pragma('table_info(schema_versions)') as Array<{ name: string }>).map(c => c.name);
+      if (svCols.includes('applied_at_epoch_ms')) {
+        db.exec(
+          `INSERT OR IGNORE INTO schema_versions(version, applied_at_epoch_ms) ` +
+          `VALUES (3701, ${Date.now()})`
+        );
+      } else if (svCols.includes('applied_at_epoch')) {
+        db.exec(
+          `INSERT OR IGNORE INTO schema_versions(version, applied_at_epoch) ` +
+          `VALUES (3701, ${Math.floor(Date.now() / 1000)})`
+        );
+      } else {
+        db.exec(`INSERT OR IGNORE INTO schema_versions(version) VALUES (3701)`);
+      }
+    } catch { /* schema_versions tracking is non-critical */ }
+  });
+
+  tx();
+  return { rows_flipped: notFlipped, already_flipped: false };
+}
+
+/**
+ * Phase 14-07c — install (or re-install) the three read-only SQLite triggers
+ * on the legacy `artifacts` table.
+ *
+ * Triggers fire BEFORE INSERT / UPDATE / DELETE and RAISE(ABORT, ...) when
+ * at least one row has `read_only = 1`.  Using `COUNT(*) ... LIMIT 1` on the
+ * representative row check is safe because `flipLegacyArtifactsReadOnly` sets
+ * ALL rows to 1; the flag is uniform across the table post-cutover.
+ *
+ * `CREATE TRIGGER IF NOT EXISTS` makes this idempotent — calling it twice
+ * is a no-op.
+ */
+function _installReadOnlyTriggers(db: Database): void {
+  try {
+    db.exec(`
+      CREATE TRIGGER IF NOT EXISTS prevent_legacy_insert_post_cutover
+        BEFORE INSERT ON artifacts
+        WHEN (SELECT COUNT(*) FROM artifacts WHERE read_only = 1 LIMIT 1) > 0
+        BEGIN
+          SELECT RAISE(ABORT,
+            'legacy artifacts table is read-only post-cutover; write to V17 artifact table instead');
+        END;
+    `);
+  } catch { /* trigger may already exist under a different schema version */ }
+
+  try {
+    db.exec(`
+      CREATE TRIGGER IF NOT EXISTS prevent_legacy_update_post_cutover
+        BEFORE UPDATE ON artifacts
+        WHEN OLD.read_only = 1
+        BEGIN
+          SELECT RAISE(ABORT,
+            'legacy artifacts table is read-only post-cutover; write to V17 artifact table instead');
+        END;
+    `);
+  } catch { /* non-fatal */ }
+
+  try {
+    db.exec(`
+      CREATE TRIGGER IF NOT EXISTS prevent_legacy_delete_post_cutover
+        BEFORE DELETE ON artifacts
+        WHEN OLD.read_only = 1
+        BEGIN
+          SELECT RAISE(ABORT,
+            'legacy artifacts table is read-only post-cutover; write to V17 artifact table instead');
+        END;
+    `);
+  } catch { /* non-fatal */ }
+}
+
+/**
+ * Phase 14-07c — runtime application-layer enforcement guard.
+ *
+ * Checks whether the legacy `artifacts` table is currently in read-only mode
+ * (any row has `read_only = 1`). If so, patches `db.prepare` so that any
+ * call that targets `artifacts` with INSERT, UPDATE, or DELETE throws an
+ * explicit application-layer error before the SQL is even sent to SQLite.
+ *
+ * This is a belt-and-suspenders guard on top of the DB-level triggers
+ * installed by `flipLegacyArtifactsReadOnly`. Application-layer enforcement
+ * catches the error at prepare time, providing clearer stack traces than
+ * SQLite trigger RAISE errors.
+ *
+ * Optional — call at DB open time post-cutover to add the application-layer
+ * guard. The SQLite triggers are the primary enforcement; this is supplementary.
+ *
+ * Idempotent — calling multiple times has no additional effect (uses a symbol
+ * flag on the db instance to detect double-patching).
+ *
+ * @throws If `read_only` column is missing (pre-V37 DB).
+ */
+export function enforceLegacyReadOnly(db: Database): void {
+  if (!hasTable(db, 'artifacts')) return;
+  if (!hasColumn(db, 'artifacts', 'read_only')) {
+    throw new Error(
+      'enforceLegacyReadOnly: artifacts.read_only column missing. ' +
+      'Run migrateV36toV37 first.'
+    );
+  }
+
+  // Check current state — skip if flag is not set.
+  try {
+    const count = (
+      db.prepare(`SELECT COUNT(*) AS n FROM artifacts WHERE read_only = 1`).get() as { n: number }
+    ).n;
+    if (count === 0) return; // Not in read-only mode yet — nothing to enforce.
+  } catch {
+    return; // Cannot read flag — skip enforcement.
+  }
+
+  // Patch db.prepare to detect and reject legacy write statements.
+  // Use a symbol flag on the db object to detect double-patching.
+  const patchedKey = '__claudex_legacy_readonly_patched__';
+  const dbAny = db as unknown as Record<string, unknown>;
+  if (dbAny[patchedKey]) return; // Already patched.
+
+  const originalPrepare = db.prepare.bind(db);
+  dbAny['prepare'] = function (sql: string, ...rest: unknown[]) {
+    const upper = sql.trim().toUpperCase();
+    // Detect mutations targeting the artifacts table.
+    const isLegacyWrite =
+      (upper.startsWith('INSERT') || upper.startsWith('UPDATE') || upper.startsWith('DELETE')) &&
+      /\bartifacts\b/i.test(sql);
+
+    if (isLegacyWrite) {
+      throw new Error(
+        'enforceLegacyReadOnly: attempted write to legacy artifacts table post-cutover. ' +
+        'Write to V17 artifact table instead.\nSQL: ' + sql.slice(0, 200)
+      );
+    }
+    return (originalPrepare as (...a: unknown[]) => unknown)(sql, ...rest);
+  };
+  dbAny[patchedKey] = true;
+}
+
+/**
+ * Phase 14-07c — clear read-only flag on legacy artifacts (rollback support).
+ *
+ * Sets `read_only = 0` on all rows and drops the three enforcement triggers.
+ * Used by `cutover-v7.ts --rollback` to undo the flag flip without touching
+ * V17 artifact rows (the V17 unified shape remains; only the flag is cleared).
+ *
+ * Idempotent — calling on a non-flipped table is a no-op.
+ *
+ * @returns `{ rows_cleared }` — number of rows that had their flag cleared.
+ */
+export function clearLegacyReadOnly(db: Database): { rows_cleared: number } {
+  if (!hasTable(db, 'artifacts')) return { rows_cleared: 0 };
+  if (!hasColumn(db, 'artifacts', 'read_only')) return { rows_cleared: 0 };
+
+  const flipped = (
+    db.prepare(`SELECT COUNT(*) AS n FROM artifacts WHERE read_only = 1`).get() as { n: number }
+  ).n;
+
+  if (flipped === 0) return { rows_cleared: 0 };
+
+  const tx = db.transaction(() => {
+    db.exec(`UPDATE artifacts SET read_only = 0`);
+    // Drop triggers so callers can write to artifacts again.
+    try { db.exec(`DROP TRIGGER IF EXISTS prevent_legacy_insert_post_cutover`); } catch { /* ok */ }
+    try { db.exec(`DROP TRIGGER IF EXISTS prevent_legacy_update_post_cutover`); } catch { /* ok */ }
+    try { db.exec(`DROP TRIGGER IF EXISTS prevent_legacy_delete_post_cutover`); } catch { /* ok */ }
+    // Remove the schema_versions marker.
+    try { db.exec(`DELETE FROM schema_versions WHERE version = 3701`); } catch { /* ok */ }
+  });
+
+  tx();
+  return { rows_cleared: flipped };
+}
