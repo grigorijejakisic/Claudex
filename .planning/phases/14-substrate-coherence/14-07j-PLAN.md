@@ -44,7 +44,7 @@ must_haves:
       to: "src/intelligence/provenance-walker.ts (walkProvenance) OR src/mcp/tools/claudex-trace.ts (handleClaudexTrace)"
       via: "Reuses Wave 2's graph walker; either provenance (directed) or trace (general); J authors decision: claudex_trace's BFS is more general for relevance scoring"
       pattern: "handleClaudexTrace|walkProvenance"
-    - from: "src/assembly/sections.ts (formatProvenPrinciplesSection extended)"
+    - from: "src/assembly/sections/lessons.ts (formatProvenPrinciplesSection extended)"
       to: "src/intelligence/lesson-relevance.ts (selectTopKLessons)"
       via: "Section formatter consults relevance scorer to pick which lessons to inline"
       pattern: "selectTopKLessons"
