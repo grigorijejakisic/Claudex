@@ -240,7 +240,8 @@ describe('pruneStaleFileArtifacts', () => {
       const pruned = await pruneStaleFileArtifacts(db, 'test-project');
       expect(pruned).toBe(1);
 
-      const count = db.prepare(`SELECT COUNT(*) as c FROM artifacts WHERE artifact_type = 'session_log'`).get() as { c: number };
+      // 14-07b: query V17 artifact table
+      const count = db.prepare(`SELECT COUNT(*) as c FROM artifact WHERE kind = 'session_log'`).get() as { c: number };
       expect(count.c).toBe(0);
     } finally {
       db.close();
