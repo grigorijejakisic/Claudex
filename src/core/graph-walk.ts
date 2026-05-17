@@ -11,7 +11,7 @@
  *   - Dampening: 0.5 per hop (score halves at each step)
  *   - Min walk score: 0.05 (prune low-signal paths)
  *   - Link-type multipliers: caused_by=2.0, supports=1.5, related=1.0, contradicts=0
- *   - Excludes invalidated links (invalid_at_epoch IS NOT NULL)
+ *   - Excludes invalidated links (invalid_at_epoch_ms IS NOT NULL)
  *   - Returns walked artifacts sorted by walk_score DESC
  *
  * All public functions are non-throwing with safe defaults.
