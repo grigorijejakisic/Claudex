@@ -249,17 +249,17 @@ function retrieveContext(
   if (queryEmbedding) {
     try {
       const candidates = db.prepare(
-        `SELECT id, content, embedding, timestamp_epoch FROM artifacts
+        `SELECT id, content, embedding, timestamp_epoch_ms FROM artifacts
          WHERE project = ? AND embedding IS NOT NULL
          ORDER BY importance DESC LIMIT 200`
       ).all(project) as Array<{
-        id: number; content: string; embedding: Buffer; timestamp_epoch: number;
+        id: number; content: string; embedding: Buffer; timestamp_epoch_ms: number;
       }>;
 
       const scored: Array<{ id: number; content: string; sim: number; timestamp: number }> = [];
       for (const c of candidates) {
         const vec = new Float32Array(c.embedding.buffer, c.embedding.byteOffset, c.embedding.byteLength / 4);
-        scored.push({ id: c.id, content: c.content, sim: cosineSimilarity(queryEmbedding, vec), timestamp: c.timestamp_epoch });
+        scored.push({ id: c.id, content: c.content, sim: cosineSimilarity(queryEmbedding, vec), timestamp: c.timestamp_epoch_ms });
       }
       scored.sort((a, b) => b.sim - a.sim);
 
