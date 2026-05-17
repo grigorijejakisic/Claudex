@@ -72,7 +72,7 @@ export interface DecisionResult {
   source: string;
   session_id: string;
   project: string;
-  timestamp_epoch: number;
+  timestamp_epoch_ms: number;
 }
 
 export interface StatsResult {
