@@ -132,6 +132,11 @@ export function renderLessonFrontmatter(
     lines.push(`last_fired_at_epoch: ${frontmatter.last_fired_at_epoch}`);
   }
 
+  // Phase 14-07h: trigger field — optional condition string for session-start display.
+  if (frontmatter.trigger && frontmatter.trigger.trim().length > 0) {
+    lines.push(`trigger: ${frontmatter.trigger.trim()}`);
+  }
+
   lines.push('---');
   return lines.join('\n') + '\n';
 }
