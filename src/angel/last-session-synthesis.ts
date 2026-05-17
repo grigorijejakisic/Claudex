@@ -448,7 +448,9 @@ function _truncateToTokens(
  * Throws if not found.
  */
 function _loadPromptTemplate(version: string): string {
-  // Canonical location: src/angel/prompts/last-session-synthesis-v1.md
+  // Canonical location: src/angel/prompts/last-session-synthesis-v1.md (dev hot-edit).
+  // Production fallback: embedded string constant from embedded-prompts.ts —
+  // bundled into the .cjs at build time so dist/ deployments never miss the prompt.
   const candidates = [
     path.join(__dirname, 'prompts', `last-session-synthesis-${version}.md`),
     // Fallback for dist/ layout where __dirname is dist/angel/
@@ -458,12 +460,18 @@ function _loadPromptTemplate(version: string): string {
   ];
 
   for (const candidate of candidates) {
-    if (fs.existsSync(candidate)) {
-      return fs.readFileSync(candidate, 'utf-8');
-    }
+    try {
+      if (fs.existsSync(candidate)) {
+        return fs.readFileSync(candidate, 'utf-8');
+      }
+    } catch { /* ignore — fall through to embedded */ }
   }
 
-  throw new Error(`Prompt template not found: last-session-synthesis-${version}.md (searched: ${candidates.join(', ')})`);
+  // Embedded fallback — ships in every bundle, no IO required.
+  const embedded = EMBEDDED_PROMPTS[`last-session-synthesis-${version}`];
+  if (embedded) return embedded;
+
+  throw new Error(`Prompt template not found: last-session-synthesis-${version}.md (no embedded fallback for version=${version})`);
 }
 
 /**
