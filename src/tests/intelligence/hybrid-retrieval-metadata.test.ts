@@ -190,17 +190,17 @@ describe('hybrid-retrieval-metadata (14-07i)', () => {
     // The implementation never overwrites match_kind in the rerank block — validated
     // by reading the implementation and the type definition.
     seedArtifact(db, {
-      title: 'rerank-preservation-test keyword zymurgy3',
+      title: 'rerank preservation test keyword zymurgy5',
       body: 'reranker test artifact body',
     });
 
-    const results = hybridSearchSync(db, 'rerank-preservation-test', 'test-project', { limit: 5 });
+    const results = hybridSearchSync(db, 'rerank preservation test keyword', 'test-project', { limit: 5 });
 
-    const hit = results.find(r => (r.summary ?? '').includes('rerank-preservation-test'));
+    const hit = results.find(r => (r.summary ?? '').includes('rerank preservation test'));
     if (hit) {
       // Original channel is FTS (sync path) — reranker doesn't change this
       expect(hit.match_kind).toBe('fts');
-      expect(hit.match_query).toBe('rerank-preservation-test');
+      expect(hit.match_query).toBe('rerank preservation test keyword');
     }
   });
 
