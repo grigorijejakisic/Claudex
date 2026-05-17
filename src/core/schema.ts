@@ -426,10 +426,10 @@ CREATE TABLE IF NOT EXISTS verified_facts (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   session_id TEXT NOT NULL,
   fact TEXT NOT NULL,
-  created_at_epoch INTEGER NOT NULL DEFAULT (unixepoch())
+  created_at_epoch_ms INTEGER NOT NULL DEFAULT (unixepoch() * 1000)
 );
 CREATE INDEX IF NOT EXISTS idx_verified_facts_session
-  ON verified_facts(session_id, created_at_epoch DESC);
+  ON verified_facts(session_id, created_at_epoch_ms DESC);
 
 -- experience_patterns: cross-session failure pattern memory with ExpeL scoring
 CREATE TABLE IF NOT EXISTS experience_patterns (
