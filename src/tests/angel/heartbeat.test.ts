@@ -175,8 +175,9 @@ function ensureProjectDirs(): void {
 function seedSession(d: Database.Database, sessionId: string, project: string): void {
   createSession(d, { session_id: sessionId, project, cwd: '/tmp', source: 'test' });
   // Mark the session completed so auto-close detection won't touch it.
+  // Phase 14-08: ended_at_epoch_ms is in ms (V40 fixed the DEFAULT slip).
   d.prepare(`UPDATE sessions SET status='completed', ended_at_epoch_ms=? WHERE session_id=?`)
-    .run(Math.floor(Date.now() / 1000), sessionId);
+    .run(Date.now(), sessionId);
 }
 
 function seedTurns(d: Database.Database, sessionId: string, project: string, count: number): void {
