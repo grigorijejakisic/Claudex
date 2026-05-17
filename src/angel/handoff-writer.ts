@@ -11,6 +11,7 @@
  *   summary: <one-line summary>      # OPTIONAL but RECOMMENDED — Phase 5 SC#4 prime reads this
  *   topic: <slug>                    # OPTIONAL — used by MEMORY.md `## Handoff` one-line
  *   created_at_epoch_ms: <ms>        # OPTIONAL — auto-set by writer if not provided
+ *   last_refresh_epoch_ms: <ms>      # Phase 14-07l — set by CHR on each decision-boundary refresh
  *   ---
  *
  * Body (locked order):
@@ -30,12 +31,17 @@
  * Phase 14-01: parseHandoffHeader now supports an optional opts overload.
  * When opts.db is supplied, null-return paths emit a 'handoff_parse_failed'
  * telemetry row (best-effort; wrapped in try/catch; non-throwing).
+ *
+ * Phase 14-07l: recordDecisionShift — CHR boundary-driven refresh of ACTIVE.md.
+ * Preserves created_at_epoch_ms; updates last_refresh_epoch_ms; appends
+ * boundary entry to the correct section; emits supersedes soft-link.
  */
 
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import type { Database } from 'better-sqlite3';
 import { recordSupersedes } from '../intelligence/soft-link-writers.js';
+import { resolveProjectPath, getHandoffsDir } from '../shared/paths-extended.js';
 
 export type HandoffStatus = 'active' | 'archived' | 'paused';
 
