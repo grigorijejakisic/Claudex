@@ -176,6 +176,7 @@ export function runMigrations(db: Database): void {
     [34, () => { migrateV34toV35(db); }],
     [35, () => { migrateV35toV36(db); }],
     [36, () => { migrateV36toV37(db); }],
+    [37, () => { migrateV37toV38(db); }],
   ];
 
   // Handle special cases for version 0 and 1
