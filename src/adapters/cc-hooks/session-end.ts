@@ -99,6 +99,21 @@ const main = wrapHook('SessionEnd', async (input, ctx) => {
     emitErrorTelemetry(ctx.db, input.session_id, 'session_end/transcript_ingestion_enqueue', e);
   }
 
+  // Phase 14-07k: LLM-driven structured synthesis (non-blocking on failure).
+  // Runs LAST so hook completion is not delayed by Ollama latency in the
+  // common case where Ollama is slow or unavailable.
+  // synthesizeLastSession is itself non-throwing, but defensive guard in place.
+  try {
+    const transcriptPath = getTranscriptPath(input);
+    await synthesizeLastSession(input.session_id, ctx.db, {
+      project: ctx.project,
+      jsonl_path: transcriptPath,
+    });
+  } catch {
+    // Defensive: synthesizeLastSession should not throw, but if it does,
+    // session-end hook completes cleanly.
+  }
+
   return {};
 });
 
