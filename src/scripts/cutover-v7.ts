@@ -362,13 +362,13 @@ export async function applyCutover(
             .update(row.summary + body)
             .digest('hex');
           const v17Id = createHashFn('sha256')
-            .update(`${row.id}:${row.project}:${row.timestamp_epoch}:${contentHash}`)
+            .update(`${row.id}:${row.project}:${row.ts}:${contentHash}`)
             .digest('hex')
             .slice(0, 32);
 
           insertArtifact.run(
             v17Id, row.artifact_type || 'observation', row.summary || '', body,
-            'session', 'active', 0.7, row.timestamp_epoch, now,
+            'session', 'active', 0.7, row.ts, now,
             row.session_id || 'unknown', row.project
           );
           const r = insertMap.run(row.id, v17Id, now, row.project);
