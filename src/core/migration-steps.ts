@@ -3989,41 +3989,45 @@ export function migrateV39toV40(db: Database): void {
     'episodic_events',
   ];
 
+  // Step 1: backfill bad rows. Threshold 1e11 ms = 1973-03-05 — any _ms
+  // value smaller than that is unambiguously a seconds-value stored as ms.
   const tx = db.transaction(() => {
-    // Step 1: backfill bad rows. Threshold 1e11 ms = 1973-03-05 — any _ms
-    // value smaller than that is unambiguously a seconds-value stored as ms.
     for (const [table, col] of backfillTargets) {
       if (!hasTable(db, table) || !hasColumn(db, table, col)) continue;
       db.exec(
         `UPDATE ${table} SET ${col} = ${col} * 1000 WHERE ${col} > 0 AND ${col} < 100000000000`,
       );
     }
-
-    // Step 2: rewrite DDL DEFAULT (unixepoch()) → DEFAULT (unixepoch() * 1000).
-    // Uses writable_schema PRAGMA — documented SQLite mechanism for altering
-    // DEFAULT expressions in place without copying rows.
-    db.pragma('writable_schema = 1');
-    try {
-      const stmt = db.prepare(
-        `UPDATE sqlite_master
-         SET sql = replace(sql, 'DEFAULT (unixepoch())', 'DEFAULT (unixepoch() * 1000)')
-         WHERE type = 'table' AND name = ?`,
-      );
-      for (const t of ddlTables) {
-        if (hasTable(db, t)) stmt.run(t);
-      }
-    } finally {
-      db.pragma('writable_schema = 0');
-    }
-
-    // Stamp version.
-    db.pragma('user_version = 40');
-    try {
-      db.exec(`INSERT OR IGNORE INTO schema_versions(version) VALUES (40)`);
-    } catch { /* non-critical: schema_versions may not exist on test DBs */ }
   });
-
   tx();
+
+  // Step 2: rewrite DDL DEFAULT (unixepoch()) → DEFAULT (unixepoch() * 1000).
+  // Uses writable_schema PRAGMA + better-sqlite3 unsafeMode — documented SQLite
+  // mechanism for altering DEFAULT expressions without copying rows. Must run
+  // outside any transaction and outside unsafeMode-incompatible state.
+  // Both pragmas are scoped — we restore them on the way out.
+  const anyDb = db as unknown as { unsafeMode?: (v: boolean) => void };
+  if (typeof anyDb.unsafeMode === 'function') anyDb.unsafeMode(true);
+  db.pragma('writable_schema = 1');
+  try {
+    const stmt = db.prepare(
+      `UPDATE sqlite_master
+       SET sql = replace(sql, 'DEFAULT (unixepoch())', 'DEFAULT (unixepoch() * 1000)')
+       WHERE type = 'table' AND name = ?`,
+    );
+    for (const t of ddlTables) {
+      if (hasTable(db, t)) stmt.run(t);
+    }
+  } finally {
+    db.pragma('writable_schema = 0');
+    if (typeof anyDb.unsafeMode === 'function') anyDb.unsafeMode(false);
+  }
+
+  // Step 3: stamp version.
+  db.pragma('user_version = 40');
+  try {
+    db.exec(`INSERT OR IGNORE INTO schema_versions(version) VALUES (40)`);
+  } catch { /* non-critical: schema_versions may not exist on test DBs */ }
 }
 
 /**
