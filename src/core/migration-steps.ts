@@ -3225,3 +3225,162 @@ function _populateArtifactIdMapInTransaction(db: Database): void {
       )
   `);
 }
+
+// ── V37 telemetry DDL ─────────────────────────────────────────────────────
+
+/**
+ * V37 telemetry DDL — extends the V36 CHECK constraint to include
+ * 're_vectorize_failed'. Stays in sync with TELEMETRY_SCHEMA in schema.ts.
+ */
+const TELEMETRY_SCHEMA_V37 = `
+CREATE TABLE IF NOT EXISTS telemetry (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  session_id TEXT NOT NULL,
+  event_kind TEXT NOT NULL CHECK (event_kind IN (
+    'hook_invocation', 'injection', 'observation_capture', 'decision_capture',
+    'checkpoint_write', 'enrichment', 'topic_shift', 'dedup', 'decay_prune', 'error',
+    'reranker_fallback',
+    'cross_project_ambiguous', 'cross_project_query_expansion',
+    'episodic_write_failure',
+    'signal_reread_after_surface', 'signal_retrieval_fallback',
+    'signal_transcript_injection_acceptance', 'signal_retrieved_but_unapplied',
+    'handoff_parse_failed',
+    'session_end_action',
+    're_vectorize_failed'
+  )),
+  detail TEXT NOT NULL DEFAULT '{}' CHECK (json_valid(detail)),
+  latency_ms REAL,
+  timestamp_epoch_ms INTEGER NOT NULL DEFAULT (unixepoch() * 1000),
+  adapter TEXT DEFAULT 'unknown'
+);
+CREATE INDEX IF NOT EXISTS idx_telemetry_session ON telemetry(session_id, timestamp_epoch_ms DESC);
+CREATE INDEX IF NOT EXISTS idx_telemetry_kind ON telemetry(event_kind, timestamp_epoch_ms DESC);
+`;
+
+/**
+ * Probe whether the current telemetry CHECK constraint admits 're_vectorize_failed'.
+ * Used as the V37 idempotency guard for the telemetry step.
+ */
+function _telemetryAcceptsReVectorizeFailed(db: Database): boolean {
+  if (!hasTable(db, 'telemetry')) return false;
+  const row = db.prepare(
+    `SELECT sql FROM sqlite_master WHERE type='table' AND name='telemetry'`
+  ).get() as { sql?: string } | undefined;
+  return !!row?.sql && row.sql.includes("'re_vectorize_failed'");
+}
+
+/**
+ * Internal helper: extend telemetry CHECK enum to include 're_vectorize_failed'.
+ * Same rebuild-and-copy pattern as V19→V20 and subsequent telemetry extensions.
+ * Must be called inside migrateV36toV37's transaction.
+ */
+function _extendTelemetryForV37(db: Database): void {
+  if (!hasTable(db, 'telemetry')) return;
+  if (!hasColumn(db, 'telemetry', 'event_kind')) return;
+  if (_telemetryAcceptsReVectorizeFailed(db)) return;
+
+  db.exec(`ALTER TABLE telemetry RENAME TO telemetry_v36_for_v37;`);
+  db.exec(`DROP INDEX IF EXISTS idx_telemetry_session;`);
+  db.exec(`DROP INDEX IF EXISTS idx_telemetry_kind;`);
+
+  db.exec(TELEMETRY_SCHEMA_V37);
+
+  db.exec(`
+    INSERT INTO telemetry (id, session_id, event_kind, detail, latency_ms, timestamp_epoch_ms, adapter)
+    SELECT id, session_id, event_kind, detail, latency_ms, timestamp_epoch_ms, adapter
+    FROM telemetry_v36_for_v37;
+  `);
+
+  db.exec(`DROP TABLE telemetry_v36_for_v37;`);
+}
+
+/**
+ * V37 → V36: Reverse migration for rollback only.
+ *
+ * - DROP TABLE artifact_id_map (indexes dropped with table automatically).
+ * - DROP TABLE vec_artifact_v17 (vec0 virtual table).
+ * - Attempt to DROP COLUMN read_only from artifacts (SQLite 3.35+ required;
+ *   if DROP COLUMN fails, leave column in place — DEFAULT 0, benign).
+ * - Rebuild telemetry without 're_vectorize_failed'.
+ * - Decrement PRAGMA user_version to 36.
+ *
+ * NOTE: V17 artifact rows populated during migration are NOT dropped on rollback.
+ * The artifact table is canonical post-cutover; only the mapping table is transient.
+ * A post-rollback cleanup migration drops orphaned artifact rows if needed.
+ */
+export function migrateV37toV36(db: Database): boolean {
+  if (!hasTable(db, 'artifact_id_map')) {
+    // Already at V36 or lower — nothing to unwind.
+    return true;
+  }
+
+  const tx = db.transaction(() => {
+    // 1. Drop artifact_id_map (its indexes are dropped automatically).
+    db.exec(`DROP TABLE IF EXISTS artifact_id_map`);
+
+    // 2. Drop vec_artifact_v17 (vec0 virtual table).
+    try {
+      db.exec(`DROP TABLE IF EXISTS vec_artifact_v17`);
+    } catch { /* vec0 may not be loadable on rollback — leave in place if drop fails */ }
+
+    // 3. Attempt to drop read_only column from artifacts (SQLite 3.35+).
+    if (hasTable(db, 'artifacts') && hasColumn(db, 'artifacts', 'read_only')) {
+      try {
+        db.exec(`ALTER TABLE artifacts DROP COLUMN read_only`);
+      } catch {
+        // Older SQLite — leave column in place. DEFAULT 0 and harmless.
+      }
+    }
+
+    // 4. Rebuild telemetry without 're_vectorize_failed'.
+    if (hasTable(db, 'telemetry') && _telemetryAcceptsReVectorizeFailed(db)) {
+      db.exec(`ALTER TABLE telemetry RENAME TO telemetry_v37_reverse;`);
+      db.exec(`DROP INDEX IF EXISTS idx_telemetry_session;`);
+      db.exec(`DROP INDEX IF EXISTS idx_telemetry_kind;`);
+
+      // Recreate with V36 schema (without re_vectorize_failed).
+      db.exec(`
+CREATE TABLE IF NOT EXISTS telemetry (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  session_id TEXT NOT NULL,
+  event_kind TEXT NOT NULL CHECK (event_kind IN (
+    'hook_invocation', 'injection', 'observation_capture', 'decision_capture',
+    'checkpoint_write', 'enrichment', 'topic_shift', 'dedup', 'decay_prune', 'error',
+    'reranker_fallback',
+    'cross_project_ambiguous', 'cross_project_query_expansion',
+    'episodic_write_failure',
+    'signal_reread_after_surface', 'signal_retrieval_fallback',
+    'signal_transcript_injection_acceptance', 'signal_retrieved_but_unapplied',
+    'handoff_parse_failed',
+    'session_end_action'
+  )),
+  detail TEXT NOT NULL DEFAULT '{}' CHECK (json_valid(detail)),
+  latency_ms REAL,
+  timestamp_epoch_ms INTEGER NOT NULL DEFAULT (unixepoch() * 1000),
+  adapter TEXT DEFAULT 'unknown'
+);
+CREATE INDEX IF NOT EXISTS idx_telemetry_session ON telemetry(session_id, timestamp_epoch_ms DESC);
+CREATE INDEX IF NOT EXISTS idx_telemetry_kind ON telemetry(event_kind, timestamp_epoch_ms DESC);
+      `);
+
+      // Copy rows; drop re_vectorize_failed rows (not admissible in V36 enum).
+      db.exec(`
+        INSERT INTO telemetry (id, session_id, event_kind, detail, latency_ms, timestamp_epoch_ms, adapter)
+        SELECT id, session_id, event_kind, detail, latency_ms, timestamp_epoch_ms, adapter
+        FROM telemetry_v37_reverse
+        WHERE event_kind != 're_vectorize_failed';
+      `);
+
+      db.exec(`DROP TABLE telemetry_v37_reverse;`);
+    }
+
+    // 5. Stamp version.
+    db.pragma('user_version = 36');
+    try {
+      db.exec(`INSERT OR IGNORE INTO schema_versions(version) VALUES (36)`);
+    } catch { /* non-critical */ }
+  });
+
+  tx();
+  return true;
+}
