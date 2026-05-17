@@ -100,6 +100,20 @@ const main = wrapHook('SessionEnd', async (input, ctx) => {
     emitErrorTelemetry(ctx.db, input.session_id, 'session_end/transcript_ingestion_enqueue', e);
   }
 
+  // Phase 14-09: deterministic session_termination row. Independent of LSS
+  // (Ollama-free). Captures end_reason + last_user_directive + last_assistant_text
+  // so the next session-start can answer "why did we stop?" without an LLM call.
+  try {
+    const { last_user_directive, last_assistant_text } = readLastTurnTexts(ctx.db, input.session_id);
+    recordSessionTermination(ctx.db, {
+      session_id: input.session_id,
+      project: ctx.project,
+      end_reason: 'endsession',
+      last_user_directive,
+      last_assistant_text,
+    });
+  } catch { /* non-blocking */ }
+
   // Phase 14-07k: LLM-driven structured synthesis (non-blocking on failure).
   // Runs LAST so hook completion is not delayed by Ollama latency in the
   // common case where Ollama is slow or unavailable.
