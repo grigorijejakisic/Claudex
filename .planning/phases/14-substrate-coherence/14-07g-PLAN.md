@@ -61,7 +61,7 @@ Two deliverables in one plan:
 
 1. **`src/intelligence/provenance-walker.ts`** — BFS walker over INCOMING links. Walks from a decision artifact backwards through evidence_for / triggered_by / extracted_from / references links to source observations. Handles cycles, hop caps, ordering.
 
-2. **`formatProvenanceChainSection`** — new function in `src/assembly/sections.ts`. Invokes the walker, formats the chain as a `## Provenance Chain` assembly section at P2.9 in the cascade. Heuristic-gated: renders only when the pivot implies a decision context.
+2. **`formatProvenanceChainSection`** — new function in `src/assembly/sections/links.ts` (Wave 0 placeholder file). Invokes the walker, formats the chain as a `## Provenance Chain` assembly section at P2.9 in the cascade. Heuristic-gated: renders only when the pivot implies a decision context.
 
 After this plan lands:
 - When operator pivots to a decision-shaped topic, the assembler surfaces the chain of artifacts that led to it.
