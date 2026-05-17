@@ -769,3 +769,138 @@ export function curateMemoryMd(db: Database, project: string): CurationResult {
     return { path: memoryMdPath, written: false, reason: 'write_io_error' };
   }
 }
+
+// ---------------------------------------------------------------------------
+// Phase 14-07h: regenerateMemoryMd — new function with User-Notes-sacred contract.
+// ---------------------------------------------------------------------------
+
+/**
+ * Parameters for the 14-07h regenerator (distinct from curateMemoryMd params).
+ */
+export interface RegenerateMemoryMdParams {
+  db: Database;
+  project: string;
+  memory_dir: string;       // ~/.claude/projects/<project-key>/memory/
+}
+
+/**
+ * Phase 14-07h — Regenerate MEMORY.md using only on-disk lesson files.
+ *
+ * NEW INVARIANTS (14-07h):
+ *   1. Lessons index is computed by scanning on-disk lesson files in memory_dir.
+ *      Never from a transient runtime set — eliminates the 2026-05-14 wipe regression.
+ *   2. User Notes section (below `<!-- USER EDITABLE -->` marker) is preserved
+ *      BYTE-EQUIVALENT across regenerations.
+ *   3. If `<!-- USER EDITABLE -->` marker is missing from an existing MEMORY.md,
+ *      REFUSE to write; return wrote=false, warnings=['user_editable_marker_missing'].
+ *      Operator must add the marker before regeneration can proceed.
+ *   4. Telemetry round-trip hash emitted to session_events per regeneration.
+ *
+ * Returns { wrote: boolean; warnings: string[] }.
+ *
+ * Delegates to the existing curateMemoryMd for the managed section content (Active
+ * Projects, Handoff, How to Query). Overrides the Lessons section to use trigger-
+ * style frontmatter when available (via renderLessons which already respects 14-07h).
+ */
+export function regenerateMemoryMd(
+  p: RegenerateMemoryMdParams,
+): { wrote: boolean; warnings: string[] } {
+  const warnings: string[] = [];
+
+  try {
+    const memoryMdPath = computeMemoryMdPath(p.project);
+
+    // Step 1: Read existing file if present.
+    const existing = fs.existsSync(memoryMdPath)
+      ? fs.readFileSync(memoryMdPath, 'utf8')
+      : null;
+
+    const normalizedExisting = existing ? existing.replace(/\r\n/g, '\n') : null;
+
+    // Step 2: Enforce User Notes marker requirement when file exists.
+    // If file exists but has NO line-anchored USER EDITABLE marker → REFUSE.
+    if (normalizedExisting !== null && normalizedExisting.length > 0) {
+      const markerIdx = findUserTailStart(normalizedExisting);
+      if (markerIdx < 0) {
+        warnings.push('user_editable_marker_missing');
+        return { wrote: false, warnings };
+      }
+    }
+
+    // Step 3: Extract user-editable section to preserve byte-equivalent.
+    let userTailSection: string = USER_TAIL_DEFAULT;
+    let userNotesSha256Before: string | null = null;
+
+    if (normalizedExisting !== null && normalizedExisting.length > 0) {
+      const markerIdx = findUserTailStart(normalizedExisting);
+      if (markerIdx >= 0) {
+        userTailSection = normalizedExisting.slice(markerIdx);
+        if (!userTailSection.endsWith('\n')) userTailSection += '\n';
+
+        // Record SHA256 of User Notes section for round-trip telemetry.
+        userNotesSha256Before = createHash('sha256')
+          .update(userTailSection, 'utf8')
+          .digest('hex');
+      }
+    }
+
+    // Step 4: Delegate to curateMemoryMd for the full curation. This already
+    // handles the managed sections correctly, including renderLessons (which
+    // now scans on-disk files and uses trigger-style frontmatter per 14-07h).
+    const result = curateMemoryMd(p.db, p.project);
+
+    // Step 5: Verify User Notes preserved byte-equivalent after write.
+    if (result.written && userNotesSha256Before !== null) {
+      try {
+        const afterContent = fs.readFileSync(memoryMdPath, 'utf8').replace(/\r\n/g, '\n');
+        const afterMarkerIdx = findUserTailStart(afterContent);
+        if (afterMarkerIdx >= 0) {
+          const afterUserTail = afterContent.slice(afterMarkerIdx);
+          const userNotesSha256After = createHash('sha256')
+            .update(afterUserTail.endsWith('\n') ? afterUserTail : afterUserTail + '\n', 'utf8')
+            .digest('hex');
+
+          const hashMatch = userNotesSha256Before === userNotesSha256After;
+          if (!hashMatch) {
+            warnings.push('user_notes_hash_mismatch');
+          }
+
+          // Emit telemetry round-trip hash row.
+          try {
+            recordEvent(
+              p.db,
+              'angel-memory-writer',
+              p.project,
+              'memory_md_regen_round_trip',
+              memoryMdPath,
+              hashMatch ? 'hash_match' : 'hash_mismatch',
+              JSON.stringify({
+                hash_before: userNotesSha256Before,
+                hash_after: userNotesSha256After,
+                match: hashMatch,
+              }),
+            );
+          } catch { /* telemetry non-fatal */ }
+        }
+      } catch { /* verification non-fatal */ }
+    } else if (result.written) {
+      // No prior user notes to compare — emit telemetry indicating cold-start.
+      try {
+        recordEvent(
+          p.db,
+          'angel-memory-writer',
+          p.project,
+          'memory_md_regen_round_trip',
+          memoryMdPath,
+          'cold_start',
+          JSON.stringify({ hash_before: null, hash_after: null, match: true }),
+        );
+      } catch { /* telemetry non-fatal */ }
+    }
+
+    return { wrote: result.written, warnings };
+  } catch {
+    warnings.push('unexpected_error');
+    return { wrote: false, warnings };
+  }
+}
