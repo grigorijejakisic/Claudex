@@ -961,7 +961,17 @@ export function loadBoundaryClassifierPrompt(version = 'v1', reload = false): st
     }
   } catch { /* fall through */ }
 
-  // Inline fallback — minimal but valid.
+  // Bundled embedded fallback — the full prompt with few-shot examples,
+  // shipped in the .cjs at build time so dist/ deployments don't run in
+  // degraded mode. See src/angel/embedded-prompts.ts.
+  const embedded = EMBEDDED_PROMPTS[`decision-boundary-classifier-${version}`];
+  if (embedded) {
+    _cachedBoundaryPrompt = embedded;
+    return _cachedBoundaryPrompt;
+  }
+
+  // Last-ditch minimal fallback — degraded mode, no few-shot. Only reached
+  // for unknown versions without an embedded entry.
   _cachedBoundaryPrompt = `You classify user-assistant exchanges as decision boundaries.
 Output STRICT JSON: {"is_decision_boundary":bool,"boundary_type":"operator_pivot"|"operator_confirm"|"agent_position"|"spec_change"|null,"summary":string|null,"confidence":number}
 USER: {user_text}
