@@ -231,17 +231,17 @@ CREATE TABLE IF NOT EXISTS decisions (
     'confirmation', 'direction', 'rejection', 'explicit'
   )),
   fingerprint TEXT NOT NULL,
-  timestamp_epoch INTEGER NOT NULL DEFAULT (unixepoch()),
+  timestamp_epoch_ms INTEGER NOT NULL DEFAULT (unixepoch() * 1000),
   updated_at_epoch INTEGER NOT NULL DEFAULT (unixepoch()),
   UNIQUE(session_id, fingerprint)
 );
 
 CREATE INDEX IF NOT EXISTS idx_decisions_session
-  ON decisions(session_id, timestamp_epoch DESC);
+  ON decisions(session_id, timestamp_epoch_ms DESC);
 
--- getDecisionsByProject: WHERE project=? ORDER BY timestamp_epoch DESC
+-- getDecisionsByProject: WHERE project=? ORDER BY timestamp_epoch_ms DESC
 CREATE INDEX IF NOT EXISTS idx_decisions_project
-  ON decisions(project, timestamp_epoch DESC);
+  ON decisions(project, timestamp_epoch_ms DESC);
 
 -- thread_state
 CREATE TABLE IF NOT EXISTS thread_state (
