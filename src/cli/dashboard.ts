@@ -136,10 +136,10 @@ export function queryDecisions(db: Database.Database, project?: string, session?
     if (session) {
       return db
         .prepare(
-          `SELECT content, source, session_id, project, timestamp_epoch
+          `SELECT content, source, session_id, project, timestamp_epoch_ms
            FROM decisions
            WHERE session_id = ?
-           ORDER BY timestamp_epoch DESC
+           ORDER BY timestamp_epoch_ms DESC
            LIMIT 100`
         )
         .all(session) as DecisionResult[];
@@ -147,19 +147,19 @@ export function queryDecisions(db: Database.Database, project?: string, session?
     if (project) {
       return db
         .prepare(
-          `SELECT content, source, session_id, project, timestamp_epoch
+          `SELECT content, source, session_id, project, timestamp_epoch_ms
            FROM decisions
            WHERE project = ?
-           ORDER BY timestamp_epoch DESC
+           ORDER BY timestamp_epoch_ms DESC
            LIMIT 100`
         )
         .all(project) as DecisionResult[];
     }
     return db
       .prepare(
-        `SELECT content, source, session_id, project, timestamp_epoch
+        `SELECT content, source, session_id, project, timestamp_epoch_ms
          FROM decisions
-         ORDER BY timestamp_epoch DESC
+         ORDER BY timestamp_epoch_ms DESC
          LIMIT 100`
       )
       .all() as DecisionResult[];
