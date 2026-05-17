@@ -325,6 +325,17 @@ export async function runCrossProjectHitRate(opts: RunnerOpts): Promise<GateRawR
   }
 
   const stdout = (result.stdout ?? '') + (result.stderr ?? '');
+
+  // Detect "script not found" error from bun (exit code != 0 with no parseable output).
+  if (result.status !== 0 && !stdout.trim()) {
+    throw new Error(
+      `cross-project-hit-rate script not found in package.json. ` +
+      `Add a "cross-project-hit-rate" script that measures the cross-project noise rate ` +
+      `and outputs a JSON line like {"noise_rate": 0.18}. ` +
+      `This gate is required before cutover can proceed.`
+    );
+  }
+
   return parseCrossProjectOutput(stdout);
 }
 
