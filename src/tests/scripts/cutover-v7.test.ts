@@ -321,69 +321,70 @@ it('5. Vesna gate failure (mocked 17/18 = 0.944 < 0.97 baseline): exit 1', async
 });
 
 // ---------------------------------------------------------------------------
-// Test 6: LongMemEval gate failure (mocked 89.0%) → exit 1
+// Test 6: LongMemEval is informational — degraded mock does NOT block cutover
+// (Gate redesign per feedback_benchmarks_are_sanity_not_gates.md: only Vesna
+// + data integrity bind cutover; LongMemEval moved to informational via
+// run-wave1-benchmarks.ts --full.)
 // ---------------------------------------------------------------------------
 
-it('6. LongMemEval gate failure (mocked 89.0% < 90.6% baseline): exit 1', async () => {
-  const failingRunners: GateRunners = {
+it('6. LongMemEval informational: degraded mock (89.0%) does NOT block cutover', async () => {
+  const degradedRunners: GateRunners = {
     ...passingRunners(),
-    runLongMemEval: async () => ({ measured: 0.890, details: { source: 'mock_fail' } }),
+    runLongMemEval: async () => ({ measured: 0.890, details: { source: 'mock_degraded' } }),
   };
 
   const opts = makeOpts(':memory:', {
-    gateRunners: failingRunners,
+    gateRunners: degradedRunners,
     gateResultsPath: tmpGateResultsPath,
   });
 
   const result = await applyCutover(db, opts);
 
-  expect(result.status).toBe('gate_failed');
-  expect(result.exit_code).toBe(1);
-  expect(result.message).toContain('longmemeval_oracle');
+  expect(result.status).toBe('cutover_complete');
+  expect(result.exit_code).toBe(0);
 });
 
 // ---------------------------------------------------------------------------
-// Test 7: LoCoMo gate failure (mocked 54.0%) → exit 1
+// Test 7: LoCoMo is informational — degraded mock does NOT block cutover
 // ---------------------------------------------------------------------------
 
-it('7. LoCoMo gate failure (mocked 54.0% < 55.5% baseline): exit 1', async () => {
-  const failingRunners: GateRunners = {
+it('7. LoCoMo informational: degraded mock (54.0%) does NOT block cutover', async () => {
+  const degradedRunners: GateRunners = {
     ...passingRunners(),
-    runLoCoMo: async () => ({ measured: 0.540, details: { source: 'mock_fail' } }),
+    runLoCoMo: async () => ({ measured: 0.540, details: { source: 'mock_degraded' } }),
   };
 
   const opts = makeOpts(':memory:', {
-    gateRunners: failingRunners,
+    gateRunners: degradedRunners,
     gateResultsPath: tmpGateResultsPath,
   });
 
   const result = await applyCutover(db, opts);
 
-  expect(result.status).toBe('gate_failed');
-  expect(result.exit_code).toBe(1);
-  expect(result.message).toContain('locomo');
+  expect(result.status).toBe('cutover_complete');
+  expect(result.exit_code).toBe(0);
 });
 
 // ---------------------------------------------------------------------------
-// Test 8: cross-project hit rate degraded (mocked 25%) → exit 1
+// Test 8: cross-project hit rate is informational — degraded mock does NOT
+// block cutover
 // ---------------------------------------------------------------------------
 
-it('8. cross-project hit rate degraded (mocked 25% > 20% threshold): exit 1', async () => {
-  const failingRunners: GateRunners = {
+it('8. cross-project hit rate informational: degraded mock (25%) does NOT block cutover', async () => {
+  const degradedRunners: GateRunners = {
     ...passingRunners(),
-    runCrossProjectHitRate: async () => ({ measured: 0.25, details: { source: 'mock_fail' } }),
+    runCrossProjectHitRate: async () => ({ measured: 0.25, details: { source: 'mock_degraded' } }),
   };
 
   const opts = makeOpts(':memory:', {
-    gateRunners: failingRunners,
+    gateRunners: degradedRunners,
     gateResultsPath: tmpGateResultsPath,
   });
 
   const result = await applyCutover(db, opts);
 
-  expect(result.status).toBe('gate_failed');
-  expect(result.exit_code).toBe(1);
-  expect(result.message).toContain('cross_project_hit_rate');
+  expect(result.status).toBe('cutover_complete');
+  expect(result.exit_code).toBe(0);
 });
 
 // ---------------------------------------------------------------------------
