@@ -166,7 +166,7 @@ describe('hybrid-retrieval-metadata (14-07i)', () => {
     });
 
     // Query for something unrelated — the artifact appears in recency channel only
-    const results = hybridSearchSync(db, 'zymurgy-unique-query-that-wont-match-zyxwv', 'test-project', { limit: 5 });
+    const results = hybridSearchSync(db, 'zymurgy unique query that wont match zyxwv', 'test-project', { limit: 5 });
 
     // For any recency-only result (match_kind undefined), that's the fallback
     for (const r of results) {
