@@ -51,6 +51,10 @@ export interface LessonFrontmatter {
   // heartbeat to 'background' after N=8 weeks without firing.
   tier?: 'foreground' | 'background';
   last_fired_at_epoch?: number;
+  // Phase 14-07h: optional trigger condition. When present, the regenerator
+  // and sections formatter use this instead of truncated body as the display line.
+  // Example: "When facing an open design question with 2+ defensible options, ..."
+  trigger?: string;
 }
 
 /**
