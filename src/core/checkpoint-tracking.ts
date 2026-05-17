@@ -104,13 +104,13 @@ export function recordThresholdHit(
       thresholds.push(threshold);
       cachedPrepare(db,
         `UPDATE checkpoint_tracking
-         SET thresholds_hit = ?, updated_at_epoch = unixepoch()
+         SET thresholds_hit = ?, updated_at_epoch_ms = unixepoch() * 1000
          WHERE session_id = ?`
       ).run(JSON.stringify(thresholds), sessionId);
     } else {
       cachedPrepare(db,
-        `INSERT INTO checkpoint_tracking (session_id, thresholds_hit, updated_at_epoch)
-         VALUES (?, ?, unixepoch())`
+        `INSERT INTO checkpoint_tracking (session_id, thresholds_hit, updated_at_epoch_ms)
+         VALUES (?, ?, unixepoch() * 1000)`
       ).run(sessionId, JSON.stringify([threshold]));
     }
   });
