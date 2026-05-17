@@ -162,18 +162,24 @@ export function parseLLMSynthesisOutput(
 
     if (!validateSynthesisSchema(parsed)) {
       if (db) {
-        // Diagnostic: surface the field types so we can spot type drift.
         const obj = parsed as Record<string, unknown>;
-        const typeMap: Record<string, string> = {};
-        for (const k of Object.keys(obj)) {
-          const v = obj[k];
-          typeMap[k] = v === null ? 'null' : Array.isArray(v) ? `array[${v.length}]` : typeof v;
-        }
+        // Scan all pivot/position elements for shape violations.
+        const scanArr = (arr: unknown, requiredSummaryKey: string): string => {
+          if (!Array.isArray(arr)) return 'not-array';
+          for (let i = 0; i < arr.length; i++) {
+            const el = arr[i];
+            if (!el || typeof el !== 'object') return `element[${i}] not-object`;
+            const e = el as Record<string, unknown>;
+            if (typeof e['at_turn'] !== 'number') return `element[${i}].at_turn type=${typeof e['at_turn']} value=${JSON.stringify(e['at_turn'])}`;
+            if (typeof e[requiredSummaryKey] !== 'string') return `element[${i}].${requiredSummaryKey} type=${typeof e[requiredSummaryKey]}`;
+          }
+          return 'ok';
+        };
         _emitLssTelemetry(db, sessionId, 'schema_invalid', {
           parsed_keys: Object.keys(obj).join(','),
-          types: JSON.stringify(typeMap),
+          pivot_scan: scanArr(obj['operator_pivots'], 'pivot_summary'),
+          position_scan: scanArr(obj['agent_positions'], 'position_summary'),
           confidence_raw: obj['confidence'],
-          first_pivot: Array.isArray(obj['operator_pivots']) ? JSON.stringify((obj['operator_pivots'] as unknown[])[0]).slice(0, 200) : 'not-array',
         });
       }
       return null;
