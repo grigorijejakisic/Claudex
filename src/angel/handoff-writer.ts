@@ -41,7 +41,8 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import type { Database } from 'better-sqlite3';
 import { recordSupersedes } from '../intelligence/soft-link-writers.js';
-import { resolveProjectPath, getHandoffsDir } from '../shared/paths-extended.js';
+import { resolveProjectPath } from '../shared/scope-detector.js';
+import { getHandoffsDir } from '../shared/paths.js';
 
 export type HandoffStatus = 'active' | 'archived' | 'paused';
 
