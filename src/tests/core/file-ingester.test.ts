@@ -80,8 +80,8 @@ describe('ingestFileArtifacts', () => {
       const r2 = await ingestFileArtifacts(db, 'sess-1', 'test-project', tmpDir);
       expect(r2.ingested).toBe(0);
 
-      // Still only 1 artifact
-      const count = db.prepare(`SELECT COUNT(*) as c FROM artifacts WHERE artifact_type = 'session_log'`).get() as { c: number };
+      // Still only 1 artifact — 14-07b: query V17 artifact table
+      const count = db.prepare(`SELECT COUNT(*) as c FROM artifact WHERE kind = 'session_log'`).get() as { c: number };
       expect(count.c).toBe(1);
     } finally {
       db.close();
