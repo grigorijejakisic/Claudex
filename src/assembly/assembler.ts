@@ -502,6 +502,30 @@ export function assembleFullContext(params: FullAssemblyParams): InjectPayload {
       }
     } catch { /* non-fatal — section is advisory, never blocks assembly */ }
 
+    // 14-07g: P2.9 Provenance Chain — walks INCOMING links from the most recent
+    // decision artifact when the session pivot implies a decision context.
+    // Heuristic-gated: renders only when pivot_topic contains 'decision',
+    // 'checkpoint', or 'we decided', OR when an explicit decision artifact ID is
+    // passed. Budget cap: 800 tokens. Non-fatal — never blocks assembly.
+    try {
+      const pivotTopic = params.searchQuery ?? '';
+      const provenanceSection = formatProvenanceChainSection({
+        db: params.db,
+        project: params.project,
+        session_id: params.sessionId ?? 'unknown',
+        pivot_topic: pivotTopic,
+        budget_tokens: Math.min(800, budget),
+      });
+      if (provenanceSection) {
+        const cost = estimateTokens(provenanceSection);
+        if (cost <= budget) {
+          sections.push(provenanceSection);
+          budget -= cost;
+          sources.push('provenance_chain');
+        }
+      }
+    } catch { /* non-fatal — section is advisory, never blocks assembly */ }
+
     // Priority 3: Checkpoint — skipLearnings because Priority 4 injects them separately.
     // Phase 13.1 Fix #6 (2026-05-15): apply the ACTIVE.md freshness floor
     // (`activeFloorEpochMs`, read once at the top of this assembler call)
