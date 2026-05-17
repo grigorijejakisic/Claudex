@@ -137,6 +137,11 @@ describe('V42→V43: legacy _epoch rename + scale', () => {
     const db = freshDb();
     for (const [table, oldCol, newCol] of RENAMED) {
       if (!hasTable(db, table)) continue;
+      const hasOld = hasColumn(db, table, oldCol);
+      const hasNew = hasColumn(db, table, newCol);
+      if (!hasNew || hasOld) {
+        console.log(`DIAG: ${table}.${oldCol}→${newCol}: hasOld=${hasOld} hasNew=${hasNew}`);
+      }
       // New column must exist.
       expect(hasColumn(db, table, newCol)).toBe(true);
       // Old column must not exist (it was renamed or never existed with the old name).
