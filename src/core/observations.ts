@@ -169,13 +169,35 @@ export async function insertObservationWithDedup(
           ?? (typeof best.id === 'number' ? best.id : 0))
         : 0;
 
-      // Look up observation ID from artifact
+      // 14-07b: migrated from legacy artifacts — look up artifact_ref via V17 artifact table.
+      // artifact_ref moved to data JSON sidecar in V17. Bridge via artifact_id_map when
+      // the Qdrant-returned artifactId is a legacy INTEGER.
       let existingObsId = 0;
       if (artifactId > 0) {
-        const artifact = cachedPrepare(db,
-          `SELECT artifact_ref FROM artifacts WHERE id = ? AND artifact_type = 'observation'`
-        ).get(artifactId) as { artifact_ref: string | null } | undefined;
-        existingObsId = artifact?.artifact_ref ? Number(artifact.artifact_ref) : 0;
+        // Try V17 path first: bridge legacy INTEGER → V17 TEXT id, read artifact_ref from data JSON.
+        let resolvedRef: string | null = null;
+        try {
+          const v17Id = lookupV17ByLegacy(db, artifactId);
+          if (v17Id) {
+            const v17Artifact = cachedPrepare(db,
+              `SELECT json_extract(data, '$.artifact_ref') AS artifact_ref
+                 FROM artifact WHERE id = ? AND kind = 'observation'`
+            ).get(v17Id) as { artifact_ref: string | null } | undefined;
+            resolvedRef = v17Artifact?.artifact_ref ?? null;
+          }
+        } catch { /* V17 path unavailable — try legacy fallback */ }
+
+        // Defensive fallback: legacy artifacts table for pre-migration rows.
+        if (resolvedRef === null) {
+          try {
+            const legacyArtifact = cachedPrepare(db,
+              `SELECT artifact_ref FROM artifacts WHERE id = ? AND artifact_type = 'observation'`
+            ).get(artifactId) as { artifact_ref: string | null } | undefined;
+            resolvedRef = legacyArtifact?.artifact_ref ?? null;
+          } catch { /* neither table present — non-fatal */ }
+        }
+
+        existingObsId = resolvedRef ? Number(resolvedRef) : 0;
 
         // Verify the observation still exists in SQLite
         if (existingObsId > 0) {
