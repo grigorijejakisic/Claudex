@@ -150,6 +150,9 @@ function parseFrontmatter(raw: string): LessonFrontmatter | null {
       } else if (key === 'last_fired_at_epoch') {
         const n = Number(value);
         if (Number.isFinite(n)) state.last_fired_at_epoch = n;
+      } else if (key === 'trigger') {
+        // Phase 14-07h: trigger field — optional condition string
+        if (value.length > 0) state.trigger = value;
       }
       continue;
     }
