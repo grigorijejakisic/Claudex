@@ -203,9 +203,9 @@ function ingestConversation(
 
       // Also store as artifact so hybrid retrieval FTS5 can find it
       cachedPrepare(db,
-        `INSERT INTO artifacts (project, session_id, artifact_type, content, summary, importance, timestamp_epoch)
+        `INSERT INTO artifacts (project, session_id, artifact_type, content, summary, importance, timestamp_epoch_ms)
          VALUES (?, ?, 'observation', ?, ?, 3, ?)`
-      ).run(sampleId, sessionId, turnContent, `${turn.speaker}: ${turn.text.substring(0, 200)}`, turnEpoch);
+      ).run(sampleId, sessionId, turnContent, `${turn.speaker}: ${turn.text.substring(0, 200)}`, turnEpoch * 1000);
 
       observationCount++;
     }
@@ -217,14 +217,14 @@ function ingestConversation(
       for (const [speaker, facts] of Object.entries(sessionObs)) {
         for (const [fact, diaId] of facts) {
           cachedPrepare(db,
-            `INSERT INTO artifacts (project, session_id, artifact_type, content, summary, importance, timestamp_epoch)
+            `INSERT INTO artifacts (project, session_id, artifact_type, content, summary, importance, timestamp_epoch_ms)
              VALUES (?, ?, 'observation', ?, ?, 4, ?)`
           ).run(
             sampleId,
             sessionId,
             `${datePrefix}${fact}`,
             `[${speaker}] ${datePrefix}${fact}`,
-            sessionNum * 86400,
+            sessionNum * 86400 * 1000,
           );
           observationCount++;
         }
@@ -236,9 +236,9 @@ function ingestConversation(
     const summary = conv.session_summary?.[summaryKey];
     if (summary) {
       cachedPrepare(db,
-        `INSERT INTO artifacts (project, session_id, artifact_type, content, summary, importance, timestamp_epoch)
+        `INSERT INTO artifacts (project, session_id, artifact_type, content, summary, importance, timestamp_epoch_ms)
          VALUES (?, ?, 'session_log', ?, ?, 3, ?)`
-      ).run(sampleId, sessionId, `${datePrefix}${summary}`, `Session ${sessionNum} summary (${dateTime || 'unknown date'})`, sessionNum * 86400);
+      ).run(sampleId, sessionId, `${datePrefix}${summary}`, `Session ${sessionNum} summary (${dateTime || 'unknown date'})`, sessionNum * 86400 * 1000);
     }
   }
 
