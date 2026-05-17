@@ -297,7 +297,7 @@ export function pruneSessionEvents(db: Database, config: RetentionConfig): numbe
 /**
  * Prune old retrieval_events.
  *
- * retrieval_events has a timestamp_epoch column (confirmed in schema DDL).
+ * retrieval_events has a timestamp_epoch_ms column (confirmed in schema DDL).
  */
 export function pruneRetrievalEvents(db: Database, config: RetentionConfig): number {
   try {
