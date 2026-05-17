@@ -226,15 +226,15 @@ export function detectStuckSession(
     if (recentAdvisory) return null; // Already warned recently
 
     // Signal 1: Repeated tool failures in last 20 minutes
-    const twentyMinAgo = now - 1200;
+    const twentyMinAgoMs = nowMs - 1200000;
     const failures = cachedPrepare(db,
       `SELECT action, COUNT(*) as c FROM session_events
-       WHERE session_id = ? AND timestamp_epoch > ?
+       WHERE session_id = ? AND timestamp_epoch_ms > ?
          AND (action LIKE '%error%' OR action LIKE '%fail%')
        GROUP BY action
        HAVING c >= 3
        LIMIT 1`
-    ).get(sessionId, twentyMinAgo) as { action: string; c: number } | undefined;
+    ).get(sessionId, twentyMinAgoMs) as { action: string; c: number } | undefined;
 
     if (failures) {
       return {
