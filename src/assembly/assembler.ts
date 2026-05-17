@@ -717,8 +717,8 @@ function buildGaugeTiming(db: Database, sessionId?: string): GaugeTimingContext 
       timing.sessionStartEpoch = sessionRow.created_at_epoch_ms;
     }
     const tracking = getCheckpointTracking(db, sessionId);
-    if (tracking?.last_checkpoint_epoch) {
-      timing.lastCompactionEpoch = tracking.last_checkpoint_epoch;
+    if (tracking?.last_checkpoint_epoch_ms) {
+      timing.lastCompactionEpoch = Math.floor(tracking.last_checkpoint_epoch_ms / 1000);
     }
   } catch { /* non-fatal */ }
   return timing;
