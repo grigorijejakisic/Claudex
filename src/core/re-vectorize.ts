@@ -40,6 +40,12 @@ export interface ReVectorizeAllParams extends ReVectorizeParams {
   batch_size?: number;
   /** Fired after each batch completes. `done` = total rows processed so far, `total` = grand total. */
   on_progress?: (done: number, total: number) => void;
+  /**
+   * Base delay in milliseconds between retry attempts. Default: 500.
+   * Set to 0 in tests to avoid sleep overhead (the injectable callable eliminates
+   * the need for real backoff in test scenarios).
+   */
+  retry_base_delay_ms?: number;
 }
 
 export interface ReVectorizeAllResult {
