@@ -574,11 +574,11 @@ export function updateActionTransitions(
 
     // Insert or update transition counts for consecutive pairs
     const upsertStmt = cachedPrepare(db,
-      `INSERT INTO action_transitions (project, from_action, to_action, count, last_epoch)
-       VALUES (?, ?, ?, 1, unixepoch())
+      `INSERT INTO action_transitions (project, from_action, to_action, count, last_epoch_ms)
+       VALUES (?, ?, ?, 1, unixepoch() * 1000)
        ON CONFLICT(project, from_action, to_action) DO UPDATE SET
          count = action_transitions.count + 1,
-         last_epoch = unixepoch()`
+         last_epoch_ms = unixepoch() * 1000`
     );
 
     // Deduplicate consecutive pairs to avoid over-counting repetitive sequences
