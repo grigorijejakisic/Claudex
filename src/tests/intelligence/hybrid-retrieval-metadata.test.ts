@@ -252,11 +252,11 @@ describe('hybrid-retrieval-metadata (14-07i)', () => {
     // Verify that existing code that ignores match_query/match_kind still works.
     // hybridSearchSync returns ScoredArtifact[]; destructuring omits the new fields.
     seedArtifact(db, {
-      title: 'backward-compat-test keyword',
-      body: 'backward compat body',
+      title: 'backward compat test keyword unique',
+      body: 'backward compat body content',
     });
 
-    const results = hybridSearchSync(db, 'backward-compat-test', 'test-project', { limit: 5 });
+    const results = hybridSearchSync(db, 'backward compat test keyword', 'test-project', { limit: 5 });
 
     // Existing usage pattern: only access hybrid_score, summary, content
     for (const r of results) {
