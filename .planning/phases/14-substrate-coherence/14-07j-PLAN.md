@@ -6,7 +6,7 @@ type: execute
 wave: 3
 depends_on: ["07-LINKS-SCHEMA", "07h"]
 files_modified:
-  - src/assembly/sections.ts
+  - src/assembly/sections/lessons.ts (Wave 0 w0d split; J extends formatProvenPrinciplesSection post-H-merge)
   - src/intelligence/lesson-relevance.ts (NEW)
   - src/tests/intelligence/lesson-relevance.test.ts (NEW)
   - src/tests/assembly/lesson-inline-expansion.test.ts (NEW)
