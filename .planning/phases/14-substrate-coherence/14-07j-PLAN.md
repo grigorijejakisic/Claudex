@@ -211,9 +211,9 @@ Implementation:
 
 <task type="auto">
   <name>Task 2: Extend formatProvenPrinciplesSection for inline-expansion</name>
-  <files>src/assembly/sections.ts</files>
+  <files>src/assembly/sections/lessons.ts</files>
   <action>
-Extend H's `formatProvenPrinciplesSection`. CRITICAL: this Task happens AFTER H lands (per WAVE3-COORDINATION merge order). J rebases onto integration branch and extends the function — does NOT rewrite H's shape.
+Extend H's `formatProvenPrinciplesSection` in `src/assembly/sections/lessons.ts`. CRITICAL: this Task happens AFTER H lands (per WAVE3-COORDINATION merge order). J rebases onto integration branch and extends the function in `sections/lessons.ts` — does NOT rewrite H's shape. Do NOT touch `src/assembly/sections.ts` (the residual file).
 
 Extended behavior:
 
