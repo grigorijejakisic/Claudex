@@ -236,7 +236,7 @@ export function parseLongMemEvalOutput(stdout: string): GateRawResult {
 export async function runLoCoMo(opts: RunnerOpts): Promise<GateRawResult> {
   const cwd = opts.cwd ?? process.cwd();
 
-  const args = ['run', 'locomo', '--', '--model=claude-sonnet-4-6'];
+  const args = ['run', 'bench:locomo', '--', '--model=claude-sonnet-4-6'];
   const result = spawnSync('bun', args, {
     cwd,
     encoding: 'utf8',
