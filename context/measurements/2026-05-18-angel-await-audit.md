@@ -4,7 +4,9 @@
 
 ## Result
 
-**No unbounded awaits remain.** Every external-IO await in Angel + embeddings has either an `AbortSignal.timeout(...)`, a wrapper-level kill-after-N-seconds, or an inline `setTimeout` race. The 2026-05-14 hang shape cannot recur in production code paths.
+**No active hang vector** — every external-IO await on the heartbeat-driven path is bounded by the outer 5-min `Promise.race` watchdog at `heartbeat.ts:1815`, AND every individual call has its own timeout (`AbortSignal.timeout`, wrapper-level kill, or `setTimeout` race) where possible. The 2026-05-14 hang shape cannot recur in production paths.
+
+**One narrow residual risk documented**: `user-profile-sync.ts` uses `fsp.readdir`/`stat`/`readFile` with no per-op timeout. Currently safe because that function only runs from the heartbeat (covered by the 5-min watchdog). If a future caller invokes it outside the watchdog AND the user's `~/.claude/projects/` is on a stalled network mount, those fs ops could hang. Adding per-op `Promise.race(10s)` would close this preemptively — filed as a follow-up. See "Identified residual risks" section below.
 
 ## Audited surfaces
 
