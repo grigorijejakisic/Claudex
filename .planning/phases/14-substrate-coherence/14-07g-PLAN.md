@@ -88,7 +88,8 @@ After this plan lands:
 @.planning/phases/14-substrate-coherence/14-07-LINKS-SCHEMA-PLAN.md
 @.planning/phases/14-substrate-coherence/14-07f-PLAN.md
 @src/core/link-writer.ts
-@src/assembly/sections.ts
+@src/assembly/sections/links.ts
+@src/assembly/sections/index.ts
 @src/assembly/assembler.ts
 </context>
 
