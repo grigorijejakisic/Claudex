@@ -35,7 +35,7 @@ export function getCheckpointTracking(
   const row = cachedPrepare(db, 'SELECT * FROM checkpoint_tracking WHERE session_id = ?')
     .get(sessionId);
 
-  if (!row || !hasFields(row, ['session_id', 'thresholds_hit', 'observation_count', 'post_compact_pending', 'updated_at_epoch'])) {
+  if (!row || !hasFields(row, ['session_id', 'thresholds_hit', 'observation_count', 'post_compact_pending', 'updated_at_epoch_ms'])) {
     return undefined;
   }
 
