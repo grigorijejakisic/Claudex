@@ -273,14 +273,14 @@ export function pruneSessionJournal(db: Database, config: RetentionConfig): numb
 /**
  * Prune old session_events, preserving 'angel_processed' events forever.
  *
- * session_events has a timestamp_epoch column (confirmed in schema DDL).
+ * session_events has a timestamp_epoch_ms column (renamed from timestamp_epoch in V43).
  */
 export function pruneSessionEvents(db: Database, config: RetentionConfig): number {
   try {
-    const eventsCutoff = cutoff(config.sessionEventsRetentionDays);
+    const eventsCutoff = cutoffMs(config.sessionEventsRetentionDays);
     const result = cachedPrepare(db, `
       DELETE FROM session_events
-      WHERE timestamp_epoch < ?
+      WHERE timestamp_epoch_ms < ?
         AND event_type != 'angel_processed'
       LIMIT ?
     `).run(eventsCutoff, BATCH_LIMIT);
