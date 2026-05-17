@@ -1,5 +1,8 @@
 /**
  * Tests for the file-to-artifact ingester (Claudex Recall).
+ *
+ * 14-07b: Updated test fixtures to query V17 artifact table instead of legacy
+ * artifacts table. The ingester now writes to artifact (V17 unified schema).
  */
 
 import Database from 'better-sqlite3';
