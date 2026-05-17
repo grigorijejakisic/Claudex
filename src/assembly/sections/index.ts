@@ -15,6 +15,16 @@
 export {
   formatProvenPrinciplesSection,
   formatLearningsSection,
+  // 14-07j exports:
+  formatLessonsWithInlineExpansion,
+  inlineExpandLesson,
+  readLessonTrigger,
+  INLINE_EXPANSION_BUDGET_TOKENS,
+  PER_LESSON_BODY_TOKEN_CAP,
+} from './lessons.js';
+
+export type {
+  LessonsSectionParams,
 } from './lessons.js';
 
 export type {
