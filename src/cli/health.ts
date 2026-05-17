@@ -78,7 +78,7 @@ const EXPECTED_TABLES: Record<string, ColumnDef[]> = {
     { name: 'content', notNull: true },
     { name: 'source', notNull: true },
     { name: 'fingerprint', notNull: true },
-    { name: 'timestamp_epoch', notNull: true, hasDefault: true },
+    { name: 'timestamp_epoch_ms', notNull: true, hasDefault: true },
     { name: 'updated_at_epoch', notNull: true, hasDefault: true },
   ],
   thread_state: [
