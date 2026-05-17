@@ -86,6 +86,35 @@ export function promoteLearnings(params: {
         inserted++;
         // Refresh in-memory list so subsequent iterations see the new entry
         existing = [...existing, { content: redacted, fingerprint: fp } as (typeof existing)[number]];
+
+        // 14-07d: emit promoted_to soft link for the new learning artifact.
+        if (sessionId && observationArtifactId) {
+          try {
+            // Lessons are stored in the `learnings` table (not V17 artifact table).
+            // Look up the artifact row by fingerprint to get the V17 artifact ID.
+            const lessonArtifact = db.prepare(
+              `SELECT id FROM artifact WHERE kind = 'learning' AND project = ? AND title = ? ORDER BY created_at_epoch_ms DESC LIMIT 1`
+            ).get(project, fp) as { id: string } | undefined;
+
+            if (lessonArtifact) {
+              recordPromotedTo({
+                db,
+                session_id: sessionId,
+                observation_artifact_id: observationArtifactId,
+                lesson_artifact_id: lessonArtifact.id,
+              });
+            }
+          } catch {
+            // Non-fatal: soft-link emission errors must never surface to callers.
+          }
+        } else if (sessionId && !observationArtifactId) {
+          // Multi-source or aggregate promotion — emit skipped telemetry.
+          try {
+            db.prepare(
+              `INSERT INTO telemetry (session_id, event_kind, detail, adapter) VALUES (?, 'soft_link_skipped', ?, '14-07d-soft-link-writers')`
+            ).run(sessionId, JSON.stringify({ reason: 'multi_source_aggregate', site: 'recordPromotedTo', project }));
+          } catch { /* non-fatal */ }
+        }
       }
     }
 
