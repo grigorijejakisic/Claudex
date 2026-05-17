@@ -34,6 +34,41 @@ export const RECENCY_DAYS = 14;
 export const STAGE1_OVERLAP_BOOST_THRESHOLD = 3;
 const ALREADY_INJECTED_PENALTY = -10;
 
+// 14-07h: project-scope filter for passive injection.
+/** Configures how broadly the experience tier surfaces candidates in passive injection. */
+export type ExperienceInjectionScope = 'same_project_only' | 'all_projects';
+
+/** Read scope from env var; default same_project_only. */
+export function getExperienceScope(): ExperienceInjectionScope {
+  const env = process.env.CLAUDEX_EXPERIENCE_SCOPE;
+  if (env === 'all_projects') return 'all_projects';
+  return 'same_project_only';
+}
+
+/**
+ * Phase 14-07h — Filter pattern candidates by project scope at the passive injection point.
+ *
+ * 'same_project_only' (default): only patterns where the pattern's origin project
+ * matches current_project.
+ *
+ * 'all_projects': legacy behavior — no filter applied.
+ *
+ * @param candidates  The candidate pool (may include cross-project entries).
+ * @param current_project  The project the current session is running in.
+ * @param scope  Filtering mode. Default: same_project_only.
+ * @returns Filtered array (or original when scope=all_projects).
+ */
+export function filterToProjectScope(
+  candidates: CandidateRow[],
+  current_project: string,
+  scope: ExperienceInjectionScope,
+): CandidateRow[] {
+  // 14-07h: project-scope filter
+  if (scope === 'all_projects') return candidates;
+  if (!current_project) return [];
+  return candidates.filter(c => c.project === current_project);
+}
+
 export interface ExperienceTierResult {
   section: string;
   tokenCost: number;
