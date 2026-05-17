@@ -200,6 +200,13 @@ server.registerTool(
       id: number; type: string; summary: string; provenance: string;
       importance: number; project: string; source: string; score: number;
       recall_text?: string;
+      /**
+       * Phase 14-09: V17 canonical TEXT artifact id. Stable handle that
+       * round-trips into claudex_recall(artifact_id=...). The numeric `id`
+       * field is the SQLite rowid (NOT stable across rebuilds) and should
+       * not be used for lookup.
+       */
+      artifact_id?: string;
     };
 
     // Channel 1: Artifacts via hybrid search (FTS5 + Qdrant KNN + recency)
