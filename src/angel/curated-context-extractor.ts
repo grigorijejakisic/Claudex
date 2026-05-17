@@ -377,7 +377,7 @@ function getSessionTurns(db: Database, sessionId: string): ConversationTurn[] {
   try {
     return cachedPrepare(
       db,
-      `SELECT id, session_id, project, turn_number, user_text, assistant_text, timestamp_epoch
+      `SELECT id, session_id, project, turn_number, user_text, assistant_text, timestamp_epoch_ms
          FROM conversation_turns
         WHERE session_id = ?
         ORDER BY turn_number ASC`,
