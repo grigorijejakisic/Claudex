@@ -320,18 +320,25 @@ export function pruneRetrievalEvents(db: Database, config: RetentionConfig): num
 /**
  * Two cleanup targets for artifact_links.
  *
- * - Orphan links: source_id or target_id no longer exists in artifacts
+ * - Orphan links: source_id or target_id no longer exists in V17 artifact (or legacy artifacts)
  * - Weak stale links: strength < 0.3 AND valid_at_epoch past 1-year threshold
+ *
+ * 14-07b: migrated from legacy artifacts — orphan check now uses V17 artifact table.
+ * artifact_links.source_id / target_id are INTEGER legacy IDs bridged via artifact_id_map.
+ * An orphan exists when neither legacy artifacts NOR artifact_id_map has the ID.
  */
 export function pruneArtifactLinks(db: Database, _config: RetentionConfig): number {
   let total = 0;
 
   try {
-    // Orphan cleanup: dangling references from either end
+    // Orphan cleanup: dangling references from either end.
+    // A link is orphaned only if the ID is gone from BOTH legacy artifacts and artifact_id_map.
+    // During the transition window, V17 is the authoritative store; artifact_id_map covers
+    // rows that were migrated. Any ID not in artifact_id_map.legacy_id was never migrated.
     const orphans = cachedPrepare(db, `
       DELETE FROM artifact_links
-      WHERE source_id NOT IN (SELECT id FROM artifacts)
-         OR target_id NOT IN (SELECT id FROM artifacts)
+      WHERE source_id NOT IN (SELECT legacy_id FROM artifact_id_map)
+         OR target_id NOT IN (SELECT legacy_id FROM artifact_id_map)
       LIMIT ?
     `).run(BATCH_LIMIT);
     total += orphans.changes;
