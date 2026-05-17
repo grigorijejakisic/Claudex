@@ -112,8 +112,11 @@ function synthesizeHandlesFromArtifact(summary: string, content: string | null):
 }
 
 /**
- * Pull cross-project candidates: artifacts of relevant kinds with a
- * task_pattern fingerprint, in projects OTHER than the current one.
+ * Pull candidate artifacts with a task_pattern fingerprint.
+ *
+ * 14-07h: Pool is now ALL-projects (project filter moved downstream to filterToProjectScope).
+ * In same_project_only mode (default), only same-project candidates survive the downstream
+ * filter. In all_projects mode (legacy env var), cross-project candidates are included.
  *
  * Bounded candidate pool (200) ordered by recency. Scoring narrows further.
  */
@@ -123,8 +126,8 @@ function fetchCandidatePool(
   poolLimit: number = 200,
 ): CandidateRow[] {
   // 14-07b: migrated from legacy artifacts — query shape updated to V17 artifact table.
-  // NOTE: FILTER SEMANTICS (project-scope, substantive gate) are preserved unchanged;
-  // only the table name and column names are updated. Filter rewrite is 14-07h (Wave 3).
+  // 14-07h: removed `a.project != ?` cross-project-only filter; project-scope filtering
+  // is now handled downstream by filterToProjectScope per ExperienceInjectionScope config.
   return cachedPrepare(db,
     `SELECT a.rowid AS artifact_id,
             a.project AS project,
@@ -139,7 +142,6 @@ function fetchCandidatePool(
        FROM artifact a
        INNER JOIN artifact_task_pattern atp ON atp.artifact_id = a.rowid
       WHERE atp.task_pattern != '__abstain__'
-        AND a.project != ?
         AND (
           a.kind IN ('learning','decision','memory_file','flow','milestone','entity_summary','handoff',
                      'mental_model','directive_rule','critical_rule','angel_opinion','experience_pattern')
@@ -151,7 +153,7 @@ function fetchCandidatePool(
                  OR a.title GLOB 'Bash: *' OR a.title GLOB 'Grep: *' OR a.title GLOB 'Glob: *')
       ORDER BY a.created_at_epoch_ms DESC
       LIMIT ?`
-  ).all(RECENCY_DAYS, currentProject, poolLimit) as CandidateRow[];
+  ).all(RECENCY_DAYS, poolLimit) as CandidateRow[];
 }
 
 /**
