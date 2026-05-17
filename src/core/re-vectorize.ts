@@ -155,7 +155,7 @@ export async function reVectorizeArtifact(
   // Fetch artifact content from V17 kernel.
   const row = db.prepare(
     `SELECT title, body, rowid FROM artifact WHERE id = ?`
-  ).get(artifact_id) as { title: string | null; body: string; rowid: number } | undefined;
+  ).get(artifact_id) as { title: string | null; body: string; rowid: number | bigint } | undefined;
 
   if (!row) {
     throw new Error(`reVectorizeArtifact: artifact not found: ${artifact_id}`);
