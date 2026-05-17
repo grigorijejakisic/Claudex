@@ -86,7 +86,7 @@ export function getSessionEvents(
 ): SessionEvent[] {
   try {
     return cachedPrepare(db,
-      `SELECT * FROM session_events WHERE session_id = ? ORDER BY timestamp_epoch`
+      `SELECT * FROM session_events WHERE session_id = ? ORDER BY timestamp_epoch_ms`
     ).all(sessionId) as SessionEvent[];
   } catch {
     return [];
