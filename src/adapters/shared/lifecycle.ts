@@ -1068,8 +1068,8 @@ export function detectIdleSession(
     const lastCompaction = compactions[compactions.length - 1];
     const prevCompaction = compactions[compactions.length - 2];
     const workBetween = events.filter(e =>
-      e.timestamp_epoch > prevCompaction.timestamp_epoch &&
-      e.timestamp_epoch < lastCompaction.timestamp_epoch &&
+      e.timestamp_epoch_ms > prevCompaction.timestamp_epoch_ms &&
+      e.timestamp_epoch_ms < lastCompaction.timestamp_epoch_ms &&
       e.event_type !== 'compaction' &&
       e.event_type !== 'user_framing' &&
       e.event_type !== 'topic_shift'
