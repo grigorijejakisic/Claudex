@@ -200,7 +200,7 @@ export interface LessonsSectionParams {
   // 14-07j: inline-expansion fields
   pivot_text?: string;
   pivot_artifact_ids?: string[];
-  /** Number of top lessons to inline. Default DEFAULT_TOP_K (3), capped at MAX_TOP_K (5). */
+  /** Number of top lessons to inline. Default 3 (DEFAULT_TOP_K in lesson-relevance.ts), capped at MAX_TOP_K (5). */
   inline_top_k?: number;
 }
 
