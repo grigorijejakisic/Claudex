@@ -127,6 +127,52 @@ function insertArtifact(
   return result.lastInsertRowid as number;
 }
 
+/**
+ * Insert a V17 artifact row directly into the `artifact` table.
+ * 14-07b: test fixture for migrated retention-sweep tests.
+ * V17 field mapping: importance (1-5) → confidence (0.0-1.0), state → status enum.
+ * Returns the TEXT id.
+ */
+function insertV17Artifact(
+  db: Database.Database,
+  opts: {
+    session_id?: string;
+    project?: string;
+    kind?: string;
+    title?: string;
+    body?: string;
+    status?: 'active' | 'stale' | 'superseded';
+    confidence?: number;
+    supersedes_id?: string | null;
+    created_at_epoch_ms?: number;
+    data?: object;
+  } = {},
+): string {
+  const id = createHash('sha256')
+    .update(`v17-test:${Math.random()}:${Date.now()}`)
+    .digest('hex')
+    .slice(0, 32);
+  db.prepare(
+    `INSERT INTO artifact(id, kind, title, body, scope, status, confidence,
+        created_at_epoch_ms, updated_at_epoch_ms, session_id, project, supersedes_id, data)
+     VALUES (?, ?, ?, ?, 'project', ?, ?, ?, ?, ?, ?, ?, ?)`,
+  ).run(
+    id,
+    opts.kind ?? 'flow',
+    opts.title ?? 'Test artifact',
+    opts.body ?? 'Test body',
+    opts.status ?? 'active',
+    opts.confidence ?? 0.6,
+    opts.created_at_epoch_ms ?? Date.now(),
+    opts.created_at_epoch_ms ?? Date.now(),
+    opts.session_id ?? 'angel',
+    opts.project ?? 'test-project',
+    opts.supersedes_id ?? null,
+    JSON.stringify(opts.data ?? {}),
+  );
+  return id;
+}
+
 /** Insert a retrieval event for an artifact. */
 function insertRetrievalEvent(
   db: Database.Database,
