@@ -54,12 +54,18 @@ export { _setOllamaEmbedCallableForTest, _setGateRunnersForTest };
 // ---------------------------------------------------------------------------
 
 const DEFAULT_DB_PATH = path.join(os.homedir(), '.claudex', 'db', 'claudex.db');
+// __dirname is defined in CJS bundles (esbuild output); falls back to
+// path.dirname(fileURLToPath(import.meta.url)) in ESM dev runs.
+const _scriptDir: string =
+  typeof __dirname !== 'undefined'
+    ? __dirname
+    : path.dirname(fileURLToPath(import.meta.url));
 const GATE_RESULTS_PATH = path.resolve(
-  path.dirname(fileURLToPath(import.meta.url)),
+  _scriptDir,
   '../../.planning/phases/14-substrate-coherence/14-07-WAVE1-GATE-RESULTS.md'
 );
 const BASELINES_PATH = path.resolve(
-  path.dirname(fileURLToPath(import.meta.url)),
+  _scriptDir,
   '../../.planning/phases/14-substrate-coherence/14-07-WAVE1-BASELINES.json'
 );
 
