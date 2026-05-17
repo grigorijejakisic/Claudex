@@ -180,6 +180,15 @@ export async function applySetup(
  */
 export async function resetTestDb(db: Database.Database): Promise<void> {
   try {
+    // 14-07b: scrub probe-scoped rows from the V17 `artifact` table.
+    // Legacy `artifacts` cleanup preserved for transition window (test DBs may have both).
+    db.prepare('DELETE FROM artifact WHERE session_id LIKE ?').run(
+      `${VESNA_TEST_SESSION_PREFIX}%`,
+    );
+  } catch {
+    // Table may not exist on a fresh DB — ignore.
+  }
+  try {
     db.prepare('DELETE FROM artifacts WHERE session_id LIKE ?').run(
       `${VESNA_TEST_SESSION_PREFIX}%`,
     );
