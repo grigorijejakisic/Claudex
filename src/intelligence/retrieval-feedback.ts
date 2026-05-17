@@ -43,8 +43,10 @@ export function updateRetrievalScore(
   signal: number,
 ): void {
   try {
+    // 14-07b: migrated from legacy artifacts — retrieval_score lives in data JSON on V17
     const row = cachedPrepare(db,
-      `SELECT retrieval_score FROM artifacts WHERE id = ?`
+      `SELECT COALESCE(json_extract(data, '$.retrieval_score'), 1.0) AS retrieval_score
+       FROM artifact WHERE rowid = ?`
     ).get(artifactId) as { retrieval_score: number } | undefined;
 
     if (!row) return;
@@ -52,8 +54,9 @@ export function updateRetrievalScore(
     let newScore = row.retrieval_score + signal;
     newScore = Math.max(MIN_SCORE, Math.min(MAX_SCORE, newScore));
 
+    // 14-07b: migrated from legacy artifacts — write retrieval_score into data JSON
     cachedPrepare(db,
-      `UPDATE artifacts SET retrieval_score = ? WHERE id = ?`
+      `UPDATE artifact SET data = json_set(data, '$.retrieval_score', ?) WHERE rowid = ?`
     ).run(newScore, artifactId);
   } catch {
     // Non-throwing
