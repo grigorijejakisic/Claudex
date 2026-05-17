@@ -184,6 +184,61 @@ export async function embedArtifact(
 }
 
 /**
+ * Embed a V17 artifact and write vector to vec_artifact_v17.
+ *
+ * This is the V17 migration path for artifact embeddings. Unlike embedArtifact()
+ * which writes to legacy artifacts.embedding BLOB, this function writes to
+ * vec_artifact_v17 (the vec0 virtual table created by migrateV36toV37).
+ *
+ * 14-07b: migrated from legacy artifacts — embedding write path for V17 unified schema.
+ *
+ * @param db - SQLite database
+ * @param artifactId - V17 TEXT artifact ID (from artifact.id)
+ * @param artifactRowid - artifact.rowid (INTEGER, used as vec0 rowid key)
+ * @param content - text content to embed (title + '\n' + body)
+ * @param metadata - artifact metadata for payload context
+ * @returns true if embedding was written to vec_artifact_v17, false if unavailable
+ */
+export async function embedArtifactV17(
+  db: import('better-sqlite3').Database,
+  artifactId: string,
+  artifactRowid: number,
+  content: string,
+  metadata: {
+    project: string;
+    kind: string;
+    confidence: number;
+    session_id: string;
+    title: string;
+  },
+): Promise<boolean> {
+  try {
+    const embedding = await embedText(content);
+    if (!embedding) return false;
+
+    // Write to vec_artifact_v17 using artifact.rowid as the vec0 rowid.
+    // Use DELETE + INSERT (vec0 doesn't support UPDATE on embedding column).
+    // This mirrors the pattern used by reVectorizeArtifact in re-vectorize.ts.
+    try {
+      const { loadSqliteVec, encodeVector } = await import('../core/sqlite-vec-loader.js');
+      loadSqliteVec(db);
+      const vecBlob = encodeVector(new Float32Array(embedding));
+      const vecRowid = BigInt(artifactRowid);
+      db.prepare(`DELETE FROM vec_artifact_v17 WHERE rowid = ?`).run(vecRowid);
+      db.prepare(`INSERT INTO vec_artifact_v17(rowid, embedding) VALUES (?, ?)`).run(vecRowid, vecBlob);
+    } catch {
+      // vec_artifact_v17 write failure is non-fatal — FTS5 still works.
+      // Log is skipped here (non-throwing by design); caller tracks via result.
+      return false;
+    }
+
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Embed an experience pattern and upsert to Qdrant.
  * Called after createPattern() in the experience scoring pipeline.
  * Non-throwing.
