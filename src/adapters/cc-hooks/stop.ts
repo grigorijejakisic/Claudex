@@ -693,12 +693,16 @@ const main = wrapHook('Stop', async (input, ctx) => {
     }
   } catch { /* non-throwing */ }
 
-  // 14-07l: CHR — classify the just-completed turn for decision-boundary.
-  // Non-blocking: classifyTurnAsDecisionBoundary is itself non-throwing;
-  // this outer try is a defensive guard only.
+  // 14-07l + 14-08 CHR async: enqueue the just-completed turn for boundary
+  // classification. Angel's heartbeat drains the queue out-of-band using the
+  // Claude subprocess backend (Haiku, ~10-15s/call). The 60s throttle on
+  // handoff_refresh_state still applies — within-throttle drains are no-ops.
+  // Synchronous classification (the v7.0.0 design) is preserved behind
+  // CLAUDEX_CHR_SYNC=1 for operators who want per-turn freshness AND accept
+  // the latency cost.
   try {
     const turnUuid = `${input.session_id}-${Date.now()}`;
-    await classifyTurnAsDecisionBoundary({
+    enqueueChrClassification({
       db: ctx.db,
       project: routedProject,
       session_id: input.session_id as string,
