@@ -1169,6 +1169,82 @@ export async function hybridSearchAsync(
       }
     } catch { /* Reranking unavailable — proceed with RRF-only scores */ }
 
+    // 14-07e: link-distance boost (flag-gated)
+    // Applied AFTER the BGE reranker, BEFORE token-budget packing.
+    // Flag-off (default): existing ranking behavior preserved, byte-equivalent.
+    // Flag-on: additive boost for candidates linked to the top-3 reranked seeds.
+    if (process.env.CLAUDEX_LINK_DISTANCE_BOOST === '1' ||
+        process.env.CLAUDEX_LINK_DISTANCE_BOOST === 'true') {
+      try {
+        const boost_weight = parseFloat(
+          process.env.CLAUDEX_LINK_DISTANCE_BOOST_WEIGHT ?? String(BOOST_WEIGHT_DEFAULT)
+        );
+        const query_seeds = scored.slice(0, 3).map(c => {
+          // V17 artifact.id is a TEXT hash; hybrid-retrieval uses rowid (INTEGER) as c.id.
+          // We need the V17 TEXT id for link lookups. Fetch from DB.
+          try {
+            const row = cachedPrepare(db,
+              `SELECT id FROM artifact WHERE rowid = ?`
+            ).get(c.id) as { id: string } | undefined;
+            return row?.id ?? null;
+          } catch {
+            return null;
+          }
+        }).filter((id): id is string => id !== null);
+
+        if (query_seeds.length > 0) {
+          // Telemetry: link_distance_boost_applied (non-throwing; silently fails pre-V39 DBs)
+          try {
+            cachedPrepare(db,
+              `INSERT INTO telemetry (session_id, event_kind, detail, adapter)
+               VALUES (?, 'link_distance_boost_applied', ?, 'hybrid-retrieval')`
+            ).run(
+              options.sessionId ?? 'unknown-session',
+              JSON.stringify({ candidates_in: scored.length, seeds: query_seeds.length, max_hops: 3 }),
+            );
+          } catch { /* Telemetry CHECK may not include this event kind pre-V39 — non-fatal */ }
+
+          const boostedCandidates = applyLinkDistanceBoost(db, {
+            candidates: scored.map(c => ({ artifact_id: '', score: c.hybrid_score, _c: c })),
+            query_artifact_ids: query_seeds,
+            project,
+            max_hops: 3,
+            boost_weight,
+          });
+
+          // The boost returns artifact_id-keyed candidates. We need to map scores back.
+          // Simpler approach: boost operates on scored[] directly by building a proper candidate list.
+          // Re-do this properly:
+          const scoredWithV17 = scored.map(c => {
+            try {
+              const row = cachedPrepare(db,
+                `SELECT id FROM artifact WHERE rowid = ?`
+              ).get(c.id) as { id: string } | undefined;
+              return { artifact_id: row?.id ?? `rowid:${c.id}`, score: c.hybrid_score, _scored: c };
+            } catch {
+              return { artifact_id: `rowid:${c.id}`, score: c.hybrid_score, _scored: c };
+            }
+          });
+
+          const boosted = applyLinkDistanceBoost(db, {
+            candidates: scoredWithV17,
+            query_artifact_ids: query_seeds,
+            project,
+            max_hops: 3,
+            boost_weight,
+          });
+
+          // Map boosted scores back to ScoredArtifact[] in boosted order
+          scored.length = 0;
+          for (const b of boosted) {
+            const original = (b as { _scored: ScoredArtifact })._scored;
+            original.hybrid_score = b.score;
+            scored.push(original);
+          }
+        }
+      } catch { /* Link-distance boost failure must never break retrieval */ }
+    }
+
     // Token budget-aware greedy packing: stop adding results when budget is full.
     let selected: ScoredArtifact[];
     if (options.budgetTokens && options.budgetTokens > 0) {
