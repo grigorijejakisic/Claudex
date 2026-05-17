@@ -343,15 +343,18 @@ async function consolidateCluster(
   }
 
   // Embed the new observation (fire-and-forget, non-blocking)
+  // 14-07b: migrated from legacy artifacts — look up V17 artifact by data.artifact_ref
   try {
     const { embedArtifact } = await import('../embeddings/embed-pipeline.js');
-    // Get the artifact ID we just created
     const artifact = cachedPrepare(db,
-      `SELECT id FROM artifacts WHERE artifact_ref = ? AND artifact_type = 'observation' ORDER BY id DESC LIMIT 1`
-    ).get(String(newId)) as { id: number } | undefined;
+      `SELECT id FROM artifact
+       WHERE kind = 'observation'
+         AND json_extract(data, '$.artifact_ref') = ?
+       ORDER BY created_at_epoch_ms DESC LIMIT 1`
+    ).get(String(newId)) as { id: string } | undefined;
 
     if (artifact) {
-      embedArtifact(db, artifact.id, finalTitle + ' ' + summaryContent, {
+      embedArtifact(db, artifact.id as any, finalTitle + ' ' + summaryContent, {
         project,
         artifact_type: 'observation',
         importance: newImportance,
