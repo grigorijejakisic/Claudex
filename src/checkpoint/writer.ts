@@ -116,9 +116,9 @@ export function shouldTriggerCheckpoint(params: {
     if (tracking?.thresholds_hit?.includes(highestCrossed)) return false;
 
     // Apply debounce
-    if (tracking?.last_checkpoint_epoch) {
-      const nowEpoch = Math.floor(Date.now() / 1000);
-      if (nowEpoch - tracking.last_checkpoint_epoch < debounceSeconds) return false;
+    if (tracking?.last_checkpoint_epoch_ms) {
+      const nowMs = Date.now();
+      if (nowMs - tracking.last_checkpoint_epoch_ms < debounceSeconds * 1000) return false;
     }
 
     return true;
