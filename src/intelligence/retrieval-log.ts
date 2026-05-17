@@ -18,6 +18,7 @@
 import type { Database } from 'better-sqlite3';
 import { cachedPrepare } from '../core/stmt-cache.js';
 import { countTokensCl100k } from '../shared/text-utils.js';
+import { recordReferences } from './soft-link-writers.js';
 
 export type RetrievalSurface =
   | 'claudex_search'
