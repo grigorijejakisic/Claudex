@@ -28,7 +28,7 @@ function createTestDb(): Database.Database {
     CREATE TABLE IF NOT EXISTS code_index (
       project TEXT NOT NULL,
       file_path TEXT NOT NULL,
-      last_indexed_epoch INTEGER NOT NULL DEFAULT (unixepoch()),
+      last_indexed_epoch_ms INTEGER NOT NULL DEFAULT (unixepoch() * 1000),
       ast_hash TEXT,
       symbols TEXT,
       call_graph TEXT,
