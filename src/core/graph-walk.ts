@@ -123,17 +123,17 @@ export function graphWalkFromSeeds(
 
         const placeholders = currentIds.map(() => '?').join(',');
         const links = cachedPrepare(db,
-          `SELECT source_id, target_id, link_type, strength, valid_at_epoch
+          `SELECT source_id, target_id, link_type, strength, valid_at_epoch_ms
            FROM artifact_links
            WHERE source_id IN (${placeholders})
              AND link_type = ?
-             AND invalid_at_epoch IS NULL`
+             AND invalid_at_epoch_ms IS NULL`
         ).all(...currentIds, edgeType) as Array<{
           source_id: number;
           target_id: number;
           link_type: string;
           strength: number;
-          valid_at_epoch: number | null;
+          valid_at_epoch_ms: number | null;
         }>;
 
         const nextScores = new Map<number, number>();
