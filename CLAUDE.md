@@ -11,7 +11,7 @@ Persistent memory system giving LLMs context continuity across sessions. One sha
 - **OpenClaw Bridge** (`src/adapters/openclaw-bridge/`): Long-lived process, in-memory + DB state.
 - **Shared lifecycle** (`src/adapters/shared/lifecycle.ts`): Composable functions all adapters call.
 
-V41 schema, 33+ tables. Single-store design: SQLite is both source of truth AND vector store. Vector search uses sqlite-vec (vec0 virtual tables) embedded in the same `~/.claudex/db/claudex.db` file. Embeddings via Ollama snowflake-arctic-embed2 (1024d). Reranking via BGE-reranker-v2-m3 cross-encoder (Python service on port 7439, supervised by Angel's `RerankerSupervisor` with bounded restart + log capture). Qdrant was removed in session 47 — see `context/specs/SQLITE_VEC_MIGRATION.md`.
+V43 schema (Phase 14-09b — legacy `_epoch` columns fully renamed to `_epoch_ms`), 34+ tables. Single-store design: SQLite is both source of truth AND vector store. Vector search uses sqlite-vec (vec0 virtual tables) embedded in the same `~/.claudex/db/claudex.db` file. Embeddings via Ollama snowflake-arctic-embed2 (1024d). Reranking via BGE-reranker-v2-m3 cross-encoder (Python service on port 7439, supervised by Angel's `RerankerSupervisor` with bounded restart + log capture). Qdrant was removed in session 47 — see `context/specs/SQLITE_VEC_MIGRATION.md`.
 
 ## Generation Backend
 
