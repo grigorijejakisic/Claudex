@@ -135,8 +135,10 @@ function emitTelemetry(
  *
  * Primary check: schema_versions row 3701 exists.
  * Secondary check: all artifacts rows have read_only = 1.
+ *
+ * Exported for test access.
  */
-function isAlreadyCutover(db: Database.Database): boolean {
+export function isAlreadyCutover(db: Database.Database): boolean {
   try {
     // Primary: schema_versions marker.
     const svRow = db.prepare(
