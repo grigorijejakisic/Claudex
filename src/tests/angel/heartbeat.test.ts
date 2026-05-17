@@ -239,6 +239,10 @@ beforeEach(async () => {
   prevUserProfile = process.env.USERPROFILE;
   process.env.HOME = tmpHome;
   process.env.USERPROFILE = tmpHome;
+  // Phase 14-08: pin to Ollama backend so vi.mock on callLocalLLM intercepts
+  // the chunker's LLM call. Production default is 'claude'; this test asserts
+  // chunker / curator semantics, not backend choice.
+  process.env['CLAUDEX_GENERATION_BACKEND'] = 'ollama';
   db = makeDb();
   ensureProjectDirs();
 
