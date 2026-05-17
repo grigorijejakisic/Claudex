@@ -9,7 +9,8 @@ files_modified:
   - src/intelligence/hard-link-proposer.ts (NEW)
   - src/intelligence/link-decay.ts (NEW)
   - src/angel/boundary/boundary-detector.ts
-  - src/assembly/sections.ts
+  - src/assembly/sections/links.ts (Wave 0 w0d placeholder; F adds formatPendingReviewLinksSection)
+  - src/assembly/sections/index.ts (add re-export of formatPendingReviewLinksSection)
   - src/assembly/assembler.ts
   - src/tests/intelligence/hard-link-proposer.test.ts (NEW)
   - src/tests/intelligence/link-decay.test.ts (NEW)
