@@ -496,10 +496,11 @@ function insertHandoffArtifact(
   artifactRef: string,
   createdAt: number = Date.now(),
 ): void {
+  // In V17, the file path is stored in data JSON as data.artifact_ref.
   db.prepare(`
-    INSERT OR IGNORE INTO artifact(id, kind, title, body, artifact_ref, created_at_epoch_ms, updated_at_epoch_ms, project)
+    INSERT OR IGNORE INTO artifact(id, kind, title, body, data, created_at_epoch_ms, updated_at_epoch_ms, project)
     VALUES (?, 'handoff', 'test handoff', 'body', ?, ?, ?, ?)
-  `).run(id, artifactRef, createdAt, createdAt, project);
+  `).run(id, JSON.stringify({ artifact_ref: artifactRef }), createdAt, createdAt, project);
 }
 
 function countSoftLinks07d(db: Database.Database): number {
