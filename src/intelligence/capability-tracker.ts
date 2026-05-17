@@ -242,7 +242,7 @@ export function getWeakDomains(
 ): CapabilityBoundary[] {
   try {
     return cachedPrepare(db,
-      `SELECT id, project, domain, total_interactions, corrections, last_updated_epoch,
+      `SELECT id, project, domain, total_interactions, corrections, last_updated_epoch_ms,
               CAST(corrections AS REAL) / total_interactions as correction_rate
        FROM capability_boundaries
        WHERE project = ?
