@@ -232,12 +232,14 @@ export function formatLessonsWithInlineExpansion(p: LessonsSectionParams): strin
 
     // Select top-K by relevance
     // 14-07j: inline-expansion of top-K lessons
+    // Pass inline_top_k directly (undefined when not set) so selectTopKLessons
+    // can apply the CLAUDEX_LESSON_INLINE_K env var override when no explicit K.
     const topKResults = selectTopKLessons({
       lessons: lessonFiles,
       pivot_text,
       pivot_artifact_ids,
       db,
-      k: inline_top_k ?? DEFAULT_TOP_K,
+      k: inline_top_k,
     });
 
     // Track which file paths are being inline-expanded
