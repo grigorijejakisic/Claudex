@@ -165,8 +165,8 @@ export function parseVesnaOutput(stdout: string): GateRawResult {
 export async function runLongMemEval(opts: RunnerOpts): Promise<GateRawResult> {
   const cwd = opts.cwd ?? process.cwd();
 
-  // Try the bun script alias first, then fall back to the direct harness path.
-  const args = ['run', 'longmemeval', '--', '--mode=oracle', '--model=deepseek-coder-v2:16b'];
+  // Use the bench:longmemeval script alias (defined in package.json).
+  const args = ['run', 'bench:longmemeval', '--', '--mode=oracle', '--model=deepseek-coder-v2:16b'];
   const result = spawnSync('bun', args, {
     cwd,
     encoding: 'utf8',
