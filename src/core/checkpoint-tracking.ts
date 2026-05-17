@@ -80,7 +80,7 @@ export function clearPostCompactPending(
   sessionId: string
 ): void {
   cachedPrepare(db,
-    `UPDATE checkpoint_tracking SET post_compact_pending = 0, updated_at_epoch = unixepoch()
+    `UPDATE checkpoint_tracking SET post_compact_pending = 0, updated_at_epoch_ms = unixepoch() * 1000
      WHERE session_id = ?`
   ).run(sessionId);
 }
