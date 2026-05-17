@@ -283,6 +283,7 @@ beforeEach(async () => {
 afterEach(() => {
   if (prevHome === undefined) delete process.env.HOME; else process.env.HOME = prevHome;
   if (prevUserProfile === undefined) delete process.env.USERPROFILE; else process.env.USERPROFILE = prevUserProfile;
+  delete process.env['CLAUDEX_GENERATION_BACKEND'];
   try { db.close(); } catch { /* ignore */ }
   try { fs.rmSync(tmpHome, { recursive: true, force: true }); } catch { /* ignore */ }
 });
