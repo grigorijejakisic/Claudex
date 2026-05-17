@@ -16,6 +16,7 @@ import { recordEvent } from '../../core/session-events.js';
 import { writeEnvironmentalEvent } from '../../core/episodic-events.js';
 import { emitCleanEndsessionClose } from './session-end-close-marker.js';
 import { enqueueSessionIngestion } from '../../ingestion/ingest-session.js';
+import { synthesizeLastSession } from '../../angel/last-session-synthesis.js';
 
 const main = wrapHook('SessionEnd', async (input, ctx) => {
   const gauge = getTokenGauge({
