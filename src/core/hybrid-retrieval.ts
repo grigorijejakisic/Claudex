@@ -1179,21 +1179,27 @@ export async function hybridSearchAsync(
         const boost_weight = parseFloat(
           process.env.CLAUDEX_LINK_DISTANCE_BOOST_WEIGHT ?? String(BOOST_WEIGHT_DEFAULT)
         );
-        const query_seeds = scored.slice(0, 3).map(c => {
-          // V17 artifact.id is a TEXT hash; hybrid-retrieval uses rowid (INTEGER) as c.id.
-          // We need the V17 TEXT id for link lookups. Fetch from DB.
+
+        // Resolve V17 TEXT ids for scored candidates (hybrid-retrieval uses rowid INTEGER)
+        const resolveV17Id = (rowidInt: number): string | null => {
           try {
             const row = cachedPrepare(db,
               `SELECT id FROM artifact WHERE rowid = ?`
-            ).get(c.id) as { id: string } | undefined;
+            ).get(rowidInt) as { id: string } | undefined;
             return row?.id ?? null;
           } catch {
             return null;
           }
-        }).filter((id): id is string => id !== null);
+        };
+
+        // Top-3 reranked results become the boost seeds
+        const query_seeds = scored.slice(0, 3)
+          .map(c => resolveV17Id(c.id))
+          .filter((id): id is string => id !== null);
 
         if (query_seeds.length > 0) {
-          // Telemetry: link_distance_boost_applied (non-throwing; silently fails pre-V39 DBs)
+          // Telemetry: link_distance_boost_applied.
+          // Non-throwing: silently fails on pre-V39 DBs (CHECK constraint won't include this event_kind).
           try {
             cachedPrepare(db,
               `INSERT INTO telemetry (session_id, event_kind, detail, adapter)
@@ -1202,42 +1208,27 @@ export async function hybridSearchAsync(
               options.sessionId ?? 'unknown-session',
               JSON.stringify({ candidates_in: scored.length, seeds: query_seeds.length, max_hops: 3 }),
             );
-          } catch { /* Telemetry CHECK may not include this event kind pre-V39 — non-fatal */ }
+          } catch { /* Telemetry event_kind not in CHECK yet — non-fatal */ }
 
-          const boostedCandidates = applyLinkDistanceBoost(db, {
-            candidates: scored.map(c => ({ artifact_id: '', score: c.hybrid_score, _c: c })),
-            query_artifact_ids: query_seeds,
-            project,
-            max_hops: 3,
-            boost_weight,
-          });
-
-          // The boost returns artifact_id-keyed candidates. We need to map scores back.
-          // Simpler approach: boost operates on scored[] directly by building a proper candidate list.
-          // Re-do this properly:
-          const scoredWithV17 = scored.map(c => {
-            try {
-              const row = cachedPrepare(db,
-                `SELECT id FROM artifact WHERE rowid = ?`
-              ).get(c.id) as { id: string } | undefined;
-              return { artifact_id: row?.id ?? `rowid:${c.id}`, score: c.hybrid_score, _scored: c };
-            } catch {
-              return { artifact_id: `rowid:${c.id}`, score: c.hybrid_score, _scored: c };
-            }
-          });
+          // Build candidate list with V17 ids for the boost function
+          const candidatesForBoost = scored.map(c => ({
+            artifact_id: resolveV17Id(c.id) ?? `rowid:${c.id}`,
+            score: c.hybrid_score,
+            _ref: c,
+          }));
 
           const boosted = applyLinkDistanceBoost(db, {
-            candidates: scoredWithV17,
+            candidates: candidatesForBoost,
             query_artifact_ids: query_seeds,
             project,
             max_hops: 3,
             boost_weight,
           });
 
-          // Map boosted scores back to ScoredArtifact[] in boosted order
+          // Map boosted scores back and rebuild scored[] in the new order
           scored.length = 0;
           for (const b of boosted) {
-            const original = (b as { _scored: ScoredArtifact })._scored;
+            const original = (b as { artifact_id: string; score: number; _ref: ScoredArtifact })._ref;
             original.hybrid_score = b.score;
             scored.push(original);
           }
