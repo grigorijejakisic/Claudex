@@ -139,19 +139,20 @@ export async function applySetup(
         // Writes via the production write surfaces so the deliberation-surfacing routing
         // path (Plan 10-01 routeFromArtifact) can fan out from the artifact reference.
         const { artifact, transcript_chunks } = step.payload;
-        const ref = artifact.tags && artifact.tags.length > 0
+        // 14-07b: migrated from legacy artifacts — write directly to V17 `artifact` table.
+        const deliberationRef = artifact.tags && artifact.tags.length > 0
           ? `vesna:${JSON.stringify(artifact.tags)}`
           : `vesna:${ctx.sessionId}`;
-        createArtifact(
-          db,
-          ctx.sessionId,
-          artifact.project,
-          artifact.kind,
-          ref,
-          artifact.summary.slice(0, 150),
-          artifact.summary,
-          5,
-        );
+        createV17Artifact(db, {
+          kind: artifact.kind,
+          project: artifact.project,
+          title: artifact.summary.slice(0, 150),
+          body: artifact.summary,
+          status: 'active',
+          confidence: 1.0,
+          session_id: ctx.sessionId,
+          data: { artifact_ref: deliberationRef },
+        });
         for (const chunk of transcript_chunks) {
           upsertChunk(db, chunk);
         }
