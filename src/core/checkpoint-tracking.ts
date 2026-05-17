@@ -9,20 +9,20 @@ import { hasFields } from '../shared/db-utils.js';
 
 export interface CheckpointTrackingRow {
   session_id: string;
-  last_checkpoint_epoch: number | null;
+  last_checkpoint_epoch_ms: number | null;
   thresholds_hit: number[];
   observation_count: number;
   post_compact_pending: number;
-  updated_at_epoch: number;
+  updated_at_epoch_ms: number;
 }
 
 interface RawCheckpointTrackingRow {
   session_id: string;
-  last_checkpoint_epoch: number | null;
+  last_checkpoint_epoch_ms: number | null;
   thresholds_hit: string;
   observation_count: number;
   post_compact_pending: number;
-  updated_at_epoch: number;
+  updated_at_epoch_ms: number;
 }
 
 /**
