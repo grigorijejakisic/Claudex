@@ -132,18 +132,17 @@ describe('skipDecayedProposals', () => {
   afterEach(() => { db.close(); });
 
   it('partitions correctly — non-decayed kept, decayed skipped', () => {
-    // Decay A1→A2.
-    for (let i = 0; i < DECAY_THRESHOLD; i++) {
-      const id = proposeHardLink(db, {
-        src_artifact_id: A1,
-        dst_artifact_id: A2,
-        type: 'triggered_by',
-        proposed_confidence: 0.8,
-        proposed_by_session: SESSION,
-        proposer_rationale: 'test',
-      });
-      if (id !== null) rejectHardLink(db, id, `r-sess-${i}`);
-    }
+    // Decay A1→A2 via direct DB (avoids UNIQUE constraint cycle).
+    const id = proposeHardLink(db, {
+      src_artifact_id: A1,
+      dst_artifact_id: A2,
+      type: 'triggered_by',
+      proposed_confidence: 0.8,
+      proposed_by_session: SESSION,
+      proposer_rationale: 'test',
+    });
+    expect(id).not.toBeNull();
+    db.prepare(`UPDATE hard_link SET decay_count = ? WHERE id = ?`).run(DECAY_THRESHOLD, id);
 
     const proposals = [
       { src: A1, dst: A2, type: 'triggered_by' as HardLinkType },  // decayed
@@ -158,18 +157,17 @@ describe('skipDecayedProposals', () => {
   });
 
   it('emits telemetry per skip when session_id provided', () => {
-    // Decay A1→A2.
-    for (let i = 0; i < DECAY_THRESHOLD; i++) {
-      const id = proposeHardLink(db, {
-        src_artifact_id: A1,
-        dst_artifact_id: A2,
-        type: 'triggered_by',
-        proposed_confidence: 0.8,
-        proposed_by_session: SESSION,
-        proposer_rationale: 'test',
-      });
-      if (id !== null) rejectHardLink(db, id, `r-sess-${i}`);
-    }
+    // Decay A1→A2 via direct DB.
+    const id = proposeHardLink(db, {
+      src_artifact_id: A1,
+      dst_artifact_id: A2,
+      type: 'triggered_by',
+      proposed_confidence: 0.8,
+      proposed_by_session: SESSION,
+      proposer_rationale: 'test',
+    });
+    expect(id).not.toBeNull();
+    db.prepare(`UPDATE hard_link SET decay_count = ? WHERE id = ?`).run(DECAY_THRESHOLD, id);
 
     skipDecayedProposals(
       db,
