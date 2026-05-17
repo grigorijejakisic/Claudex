@@ -28,6 +28,7 @@ import {
 } from '../core/curated-context.js';
 import { GLOBAL_PROJECT_SCOPE } from '../shared/constants.js';
 import { callLocalLLM } from './llama-client.js';
+import { generate } from './generation-backend.js';
 import type { ConversationTurn } from './types.js';
 
 // ---------------------------------------------------------------------------
