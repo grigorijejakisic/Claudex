@@ -373,23 +373,8 @@ function renderFrames(
   return blocks.join('\n\n');
 }
 
-/**
- * Priority 4.1: Proven principles — proactive injection of established learnings.
- * Unlike experience warnings (keyword-matched per turn), these are injected
- * unconditionally at session start. They represent the accumulated wisdom that
- * every agent should know, regardless of what the current prompt is about.
- */
-export function formatProvenPrinciplesSection(patterns: ExperiencePattern[]): string | null {
-  if (!patterns || patterns.length === 0) return null;
-
-  let inner = '## Proven Principles\nThe following are patterns extracted from prior sessions across this project. Each entry pairs a recurring context with the lesson that emerged.\n\n';
-
-  for (const p of patterns) {
-    inner += `- **${p.trigger_context}**: ${p.lesson}\n`;
-  }
-
-  return inner.trimEnd();
-}
+// formatProvenPrinciplesSection moved to sections/lessons.ts (Wave 0 split).
+// Re-exported above for backwards compatibility.
 
 /**
  * Priority 1: Identity section from USER.md.
