@@ -845,17 +845,7 @@ export function assembleRegularPrompt(params: RegularPromptParams): InjectPayloa
         try {
           const relevant = findRelevantFiles(params.db, params.project, params.prompt, 3);
           if (relevant.length > 0) {
-            const codeParts: string[] = ['**Relevant files:**'];
-            for (const f of relevant) {
-              const relPath = _shortenPathCacheStable(f.file_path);
-              const topSymbols = f.symbols
-                .filter(s => s.exported)
-                .slice(0, 5)
-                .map(s => `${s.kind} ${s.name}`)
-                .join(', ');
-              codeParts.push(`- \`${relPath}\`: ${topSymbols || '(no exports)'}`);
-            }
-            const codeSection = `## Codebase Context\n${codeParts.join('\n')}`;
+            const codeSection = formatCodebaseContextSection(relevant, _shortenPathCacheStable);
             const cost = estimateTokens(codeSection);
             // Hard cap: 200 tokens for UPS codebase index.
             if (cost <= 200) {
