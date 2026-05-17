@@ -1,6 +1,6 @@
 # Deliberation-surfacing run report
 
-Generated: 2026-05-17T01:37:13.502Z
+Generated: 2026-05-17T01:39:06.426Z
 
 Retrieval baselines per replication: r1=cross_encoder, r2=cross_encoder.
 
