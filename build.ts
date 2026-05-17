@@ -72,6 +72,8 @@ const optionalEntryPoints = [
   'scripts/p4-pre-backup.ts',
   'scripts/phase-5-soak.ts',
   'scripts/phase-11-curate-memory-md.ts',
+  'src/scripts/cutover-v7.ts',
+  'src/scripts/run-wave1-benchmarks.ts',
 ];
 
 /** Hook entry points to smoke test after build.
