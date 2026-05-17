@@ -1,7 +1,7 @@
 import { describe, it } from 'vitest';
 import Database from 'better-sqlite3';
-import { initializeSchema } from '../../core/migrations.js';
-import { hasColumn } from '../../core/migration-steps.js';
+import { initializeSchema } from '../../../core/migrations.js';
+import { hasColumn } from '../../../core/migration-steps.js';
 
 function tableSql(db: Database.Database, name: string): string {
   const row = db.prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name=?").get(name) as { sql: string } | undefined;
