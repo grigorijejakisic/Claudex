@@ -293,13 +293,13 @@ function retrieveContext(
       const entityQuery = [...entities].slice(0, 5).join(' OR ');
       try {
         const hopResults = db.prepare(
-          `SELECT a.id, a.content, a.timestamp_epoch, bm25(artifacts_fts) as rank
+          `SELECT a.id, a.content, a.timestamp_epoch_ms, bm25(artifacts_fts) as rank
            FROM artifacts a
            JOIN artifacts_fts fts ON fts.rowid = a.id
            WHERE artifacts_fts MATCH ? AND a.project = ?
            ORDER BY rank LIMIT ?`
         ).all(entityQuery, project, topK) as Array<{
-          id: number; content: string; timestamp_epoch: number; rank: number;
+          id: number; content: string; timestamp_epoch_ms: number; rank: number;
         }>;
 
         for (let i = 0; i < hopResults.length; i++) {
@@ -308,7 +308,7 @@ function retrieveContext(
             results.set(r.id, {
               content: r.content,
               score: 0.5 / (60 + i), // Lower weight for second-hop results
-              timestamp: r.timestamp_epoch,
+              timestamp: r.timestamp_epoch_ms,
             });
           }
         }
