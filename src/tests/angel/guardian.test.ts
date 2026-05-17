@@ -71,9 +71,9 @@ function insertSession(
 /** Insert an angel_processed event for a session. */
 function markAngelProcessed(db: Database.Database, session_id: string, detail = 'ok'): void {
   db.prepare(
-    `INSERT INTO session_events (session_id, project, event_type, entity, action, detail, timestamp_epoch)
+    `INSERT INTO session_events (session_id, project, event_type, entity, action, detail, timestamp_epoch_ms)
      VALUES (?, 'test-project', 'angel_processed', 'session', 'processed', ?, ?)`,
-  ).run(session_id, detail, now());
+  ).run(session_id, detail, Date.now());
 }
 
 /** Insert a conversation turn. Returns the row id. */
