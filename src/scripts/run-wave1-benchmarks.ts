@@ -241,6 +241,7 @@ export async function runLoCoMo(opts: RunnerOpts): Promise<GateRawResult> {
     cwd,
     encoding: 'utf8',
     timeout: 600_000,
+    shell: process.platform === 'win32',
   });
 
   if (result.error) {
