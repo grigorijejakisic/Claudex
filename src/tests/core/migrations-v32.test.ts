@@ -162,7 +162,7 @@ describe('V31→V32 migration (Phase 8 — v6 transcript ingestion substrate)', 
       db.pragma('user_version = 31');
       runMigrations(db);
       const uv = (db.pragma('user_version') as Array<{ user_version: number }>)[0].user_version;
-      expect(uv).toBe(37);
+      expect(uv).toBe(38);
 
       // transcript_chunk_v6 exists.
       const tc = db.prepare(
