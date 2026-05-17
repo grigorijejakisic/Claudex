@@ -282,12 +282,12 @@ Implementation:
 
 <task type="auto">
   <name>Task 3: formatPendingReviewLinksSection</name>
-  <files>src/assembly/sections.ts, src/assembly/assembler.ts</files>
+  <files>src/assembly/sections/links.ts, src/assembly/sections/index.ts, src/assembly/assembler.ts</files>
   <action>
-Add a NEW function `formatPendingReviewLinksSection` to `src/assembly/sections.ts`. Do NOT modify any other function in this file.
+Add a NEW function `formatPendingReviewLinksSection` to `src/assembly/sections/links.ts`. This file was created as a Wave 0 placeholder; F populates it. Do NOT modify any other file in sections/.
 
 ```typescript
-import { listPendingHardLinks, getDecayCount, DECAY_THRESHOLD } from '../core/link-writer.js';
+import { listPendingHardLinks, getDecayCount, DECAY_THRESHOLD } from '../../core/link-writer.js';
 
 /**
  * Phase 14-07f — Pending Review Links assembly section.
