@@ -108,13 +108,13 @@ describe('ingestFileArtifacts', () => {
       const r2 = await ingestFileArtifacts(db, 'sess-1', 'test-project', tmpDir);
       expect(r2.ingested).toBe(1);
 
-      // Still only 1 artifact (updated, not duplicated)
-      const count = db.prepare(`SELECT COUNT(*) as c FROM artifacts WHERE artifact_type = 'session_log'`).get() as { c: number };
+      // Still only 1 artifact (updated, not duplicated) — 14-07b: query V17 artifact table
+      const count = db.prepare(`SELECT COUNT(*) as c FROM artifact WHERE kind = 'session_log'`).get() as { c: number };
       expect(count.c).toBe(1);
 
-      // Verify content was actually updated
-      const artifact = db.prepare(`SELECT summary FROM artifacts WHERE artifact_type = 'session_log'`).get() as { summary: string };
-      expect(artifact.summary).toContain('Updated');
+      // Verify content was actually updated — 14-07b: title stores the summary
+      const artifact = db.prepare(`SELECT title FROM artifact WHERE kind = 'session_log'`).get() as { title: string };
+      expect(artifact.title).toContain('Updated');
     } finally {
       db.close();
       cleanup(tmpDir);
