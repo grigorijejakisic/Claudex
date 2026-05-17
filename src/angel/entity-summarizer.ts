@@ -126,7 +126,12 @@ export async function generateEntitySummaries(
         const evidenceHash = `${entity.mention_count}:${entity.latest_epoch}`;
 
         // Skip if summary exists and evidence hasn't changed
-        if (existing?.metadata?.includes(evidenceHash)) continue;
+        // 14-07b: metadata is now stored as data JSON sidecar
+        let existingDataParsed: Record<string, unknown> = {};
+        try {
+          if (existing?.data) existingDataParsed = JSON.parse(existing.data);
+        } catch { /* ignore parse errors */ }
+        if (existingDataParsed['evidence_hash'] === evidenceHash) continue;
 
         // Gather evidence for this entity
         const evidence = cachedPrepare(db,
