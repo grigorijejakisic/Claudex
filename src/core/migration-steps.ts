@@ -2970,3 +2970,284 @@ CREATE INDEX IF NOT EXISTS idx_telemetry_kind ON telemetry(event_kind, timestamp
   tx();
   return true;
 }
+
+// ---------------------------------------------------------------------------
+// V36 → V37: Phase 14-07a — Unified artifact schema + artifact_id_map
+// ---------------------------------------------------------------------------
+
+/**
+ * V36→V37: Phase 14-07a — Substrate unification.
+ *
+ * Three additive changes in a single transaction:
+ *   1. Add `read_only` flag column to legacy `artifacts` (default 0; 14-07c
+ *      flips at cutover to refuse new writes to the legacy table).
+ *   2. Create `artifact_id_map` mapping table: legacy INTEGER PK ↔ V17 TEXT
+ *      hash ID. Indexed on v17_id for reverse lookup.
+ *   3. Create `vec_artifact_v17` vec0 virtual table for V17 unified embeddings.
+ *   4. Populate `artifact_id_map` for every existing legacy `artifacts` row,
+ *      inserting corresponding rows into `artifact` (V17 unified table) with
+ *      correct field mapping per RCA-3 loss-map (summary→title, content→body,
+ *      importance (1-5) → confidence (0-1), state→status enum, etc.).
+ *   5. Extend `telemetry.event_kind` CHECK enum with 're_vectorize_failed'.
+ *   6. Bump PRAGMA user_version to 37 + insert schema_versions row.
+ *
+ * Non-destructive: legacy `artifacts` table is NOT dropped, NOT truncated,
+ * NOT structurally altered except for the additive `read_only` column.
+ * The FTS5 triggers on `artifact_fts` continue to sync V17 artifact writes.
+ * Legacy `artifacts_fts` and its triggers are left in place.
+ *
+ * Idempotent: if `artifact_id_map` already exists, the entire body is a no-op.
+ *
+ * Reverse: `migrateV37toV36` drops `artifact_id_map` and `vec_artifact_v17`,
+ * attempts DROP COLUMN `read_only` (no-op on unsupported SQLite), removes
+ * 're_vectorize_failed' from telemetry enum, decrements user_version.
+ */
+export function migrateV36toV37(db: Database): boolean {
+  // Idempotency guard: if the map table already exists, we're already at V37.
+  if (hasTable(db, 'artifact_id_map')) {
+    return true;
+  }
+
+  const tx = db.transaction(() => {
+    // ── Step 1: Add read_only flag column to legacy artifacts ─────────────
+    // Only additive; flag is FALSE during 14-07a. 14-07c flips it to TRUE.
+    if (hasTable(db, 'artifacts') && !hasColumn(db, 'artifacts', 'read_only')) {
+      db.exec(`ALTER TABLE artifacts ADD COLUMN read_only INTEGER NOT NULL DEFAULT 0`);
+    }
+
+    // ── Step 2: Create artifact_id_map mapping table ──────────────────────
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS artifact_id_map (
+        legacy_id          INTEGER PRIMARY KEY,
+        v17_id             TEXT NOT NULL UNIQUE,
+        mapped_at_epoch_ms INTEGER NOT NULL,
+        project            TEXT NOT NULL,
+        FOREIGN KEY (v17_id) REFERENCES artifact(id) ON DELETE RESTRICT
+      );
+      CREATE INDEX IF NOT EXISTS idx_artifact_id_map_v17
+        ON artifact_id_map(v17_id);
+      CREATE INDEX IF NOT EXISTS idx_artifact_id_map_project
+        ON artifact_id_map(project);
+    `);
+
+    // ── Step 3: Create vec_artifact_v17 vec0 table for V17 embeddings ─────
+    // Load sqlite-vec if not already loaded on this connection.
+    loadSqliteVec(db);
+    try {
+      db.exec(`
+        CREATE VIRTUAL TABLE IF NOT EXISTS vec_artifact_v17
+          USING vec0(embedding float[1024]);
+      `);
+    } catch {
+      // Non-fatal if sqlite-vec is unavailable — re-vectorization (14-07c)
+      // will fail loudly at cutover time if vec0 is missing. Migration can
+      // still proceed; the schema gate at cutover enforces vec0 presence.
+    }
+
+    // ── Step 4: Populate artifact_id_map from legacy artifacts ───────────
+    _populateArtifactIdMapInTransaction(db);
+
+    // ── Step 5: Extend telemetry enum with 're_vectorize_failed' ──────────
+    _extendTelemetryForV37(db);
+
+    // ── Step 6: Stamp version ─────────────────────────────────────────────
+    db.pragma('user_version = 37');
+    try {
+      const svCols = (db.pragma('table_info(schema_versions)') as Array<{ name: string }>).map(c => c.name);
+      if (svCols.includes('applied_at_epoch_ms')) {
+        db.exec(`INSERT OR IGNORE INTO schema_versions(version, applied_at_epoch_ms) VALUES (37, unixepoch() * 1000)`);
+      } else if (svCols.includes('applied_at_epoch')) {
+        db.exec(`INSERT OR IGNORE INTO schema_versions(version, applied_at_epoch) VALUES (37, unixepoch())`);
+      } else {
+        db.exec(`INSERT OR IGNORE INTO schema_versions(version) VALUES (37)`);
+      }
+    } catch { /* schema_versions tracking is non-critical */ }
+  });
+
+  tx();
+  return true;
+}
+
+/**
+ * Internal helper: populate `artifact_id_map` from legacy `artifacts` rows.
+ * Must be called inside an existing transaction (migrateV36toV37's tx).
+ *
+ * Per each legacy row:
+ *   1. Derive V17 ID: sha256(legacy_id || ':' || project || ':' || timestamp_epoch_ms || ':' || sha256(summary || COALESCE(content,''))).slice(0,32)
+ *   2. Insert into `artifact` (V17 kernel) with field mapping per RCA-3 loss-map.
+ *   3. Insert into `artifact_id_map`.
+ * Rows already in the map are skipped (INSERT OR IGNORE).
+ *
+ * Field mapping (RCA-3 loss-map):
+ *   summary → title
+ *   content → body
+ *   artifact_type → kind
+ *   importance (1-5 int) → confidence (0.0-1.0 float, formula: importance / 5.0)
+ *   state ('fresh','packed','materialized') → status ('active','stale','superseded')
+ *   timestamp_epoch_ms (ms) → created_at_epoch_ms (ms, same unit post-V35)
+ *   superseded_by (forward INTEGER) → supersedes_id: resolved lazily via artifact_id_map (set NULL on initial pass; 14-07b/c resolves remaining)
+ *   ttl, last_materialized_epoch_ms, retrieval_score, activation_score, valid_until, novelty_score → data JSON sidecar
+ *   artifact_ref → data.artifact_ref (preserved for 14-07b callers)
+ *   embedding BLOB → NOT copied (re-vectorize.ts writes fresh embeddings at 14-07c cutover)
+ */
+function _populateArtifactIdMapInTransaction(db: Database): void {
+  if (!hasTable(db, 'artifacts')) return; // No legacy table → nothing to migrate.
+  if (!hasTable(db, 'artifact')) return;  // V17 kernel must exist.
+
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const { createHash } = require('node:crypto') as typeof import('node:crypto');
+
+  const stateToStatus = (state: string): string => {
+    switch (state) {
+      case 'fresh': return 'active';
+      case 'packed': return 'stale';
+      case 'materialized': return 'superseded';
+      default: return 'active';
+    }
+  };
+
+  const legacyRows = db.prepare(`
+    SELECT id, session_id, project, artifact_type, artifact_ref,
+           summary, content, state, ttl, importance,
+           retrieval_score, timestamp_epoch_ms, last_materialized_epoch_ms,
+           activation_score, superseded_by, valid_until, confidence,
+           novelty_score
+    FROM artifacts
+  `).all() as Array<{
+    id: number;
+    session_id: string;
+    project: string;
+    artifact_type: string;
+    artifact_ref: string | null;
+    summary: string;
+    content: string | null;
+    state: string;
+    ttl: number;
+    importance: number;
+    retrieval_score: number;
+    timestamp_epoch_ms: number;
+    last_materialized_epoch_ms: number | null;
+    activation_score: number;
+    superseded_by: number | null;
+    valid_until: number | null;
+    confidence: number;
+    novelty_score: number;
+  }>;
+
+  const insertArtifactStmt = db.prepare(`
+    INSERT OR IGNORE INTO artifact(
+      id, kind, title, body, scope, status, confidence,
+      created_at_epoch_ms, updated_at_epoch_ms, session_id, project, data
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `);
+
+  const insertMapStmt = db.prepare(`
+    INSERT OR IGNORE INTO artifact_id_map(legacy_id, v17_id, mapped_at_epoch_ms, project)
+    VALUES (?, ?, ?, ?)
+  `);
+
+  const now = Date.now();
+
+  for (const row of legacyRows) {
+    // Derive V17 ID: sha256(legacy_id:project:timestamp_epoch_ms:content_hash).slice(0,32)
+    const contentHash = createHash('sha256')
+      .update(row.summary + (row.content ?? ''))
+      .digest('hex');
+    const v17Id = createHash('sha256')
+      .update(`${row.id}:${row.project}:${row.timestamp_epoch_ms}:${contentHash}`)
+      .digest('hex')
+      .slice(0, 32);
+
+    // Scale importance (1-5) → confidence (0.0-1.0)
+    const v17Confidence = row.importance / 5.0;
+
+    // Map state enum to status enum
+    const v17Status = stateToStatus(row.state);
+
+    // Build data JSON sidecar (all non-kernel legacy fields)
+    const dataSidecar: Record<string, unknown> = {
+      migrated_from_legacy_id: row.id,
+      ttl: row.ttl,
+      retrieval_score: row.retrieval_score,
+      activation_score: row.activation_score,
+      novelty_score: row.novelty_score,
+    };
+    if (row.artifact_ref !== null) dataSidecar['artifact_ref'] = row.artifact_ref;
+    if (row.last_materialized_epoch_ms !== null) dataSidecar['last_materialized_epoch'] = row.last_materialized_epoch_ms;
+    if (row.valid_until !== null) dataSidecar['valid_until'] = row.valid_until;
+    // superseded_by resolution is deferred — resolved post-loop below
+
+    insertArtifactStmt.run(
+      v17Id,
+      row.artifact_type,       // kind = artifact_type (same values)
+      row.summary,             // title = summary
+      row.content ?? '',       // body = content (COALESCE empty string)
+      'project',               // scope = 'project' (all artifacts are project-scoped)
+      v17Status,
+      v17Confidence,
+      row.timestamp_epoch_ms,
+      row.timestamp_epoch_ms,  // updated_at_epoch_ms same as created initially
+      row.session_id,
+      row.project,
+      JSON.stringify(dataSidecar),
+    );
+
+    insertMapStmt.run(row.id, v17Id, now, row.project);
+  }
+
+  // ── Post-loop: resolve supersedes_id (direction flip: superseded_by → supersedes_id) ──
+  // Legacy: artifacts.superseded_by = ID of the artifact that replaces THIS one (forward link).
+  // V17: artifact.supersedes_id = ID of the artifact THIS one replaces (backward link).
+  //
+  // For each legacy row where superseded_by IS NOT NULL (this row was superseded by X):
+  //   The superseding row X "supersedes" this row.
+  //   So: V17 row for X should have supersedes_id = V17 ID of this row.
+  //
+  // We run this as a SQL UPDATE after the full map is populated.
+  db.exec(`
+    UPDATE artifact
+    SET supersedes_id = (
+      SELECT m_superseded.v17_id
+      FROM artifact_id_map m_superseder
+      INNER JOIN artifacts leg_superseder ON leg_superseder.id = m_superseder.legacy_id
+      INNER JOIN artifact_id_map m_superseded ON m_superseded.legacy_id = leg_superseder.id
+      WHERE m_superseder.v17_id = artifact.id
+        AND (
+          SELECT superseded_by
+          FROM artifacts
+          WHERE id IN (
+            SELECT legacy_id FROM artifact_id_map
+            WHERE v17_id = artifact.id
+          )
+        ) IS NULL
+      LIMIT 1
+    )
+    WHERE EXISTS (
+      SELECT 1 FROM artifact_id_map WHERE v17_id = artifact.id
+    )
+  `);
+
+  -- Simpler, correct supersedes_id resolution:
+  -- For each legacy row L with superseded_by = S (L was replaced by S),
+  -- the V17 row for S should record: supersedes_id = V17_id(L).
+  db.exec(`
+    UPDATE artifact
+    SET supersedes_id = (
+      SELECT m_superseded.v17_id
+      FROM artifact_id_map m_superseding
+      INNER JOIN artifacts leg_superseding ON leg_superseding.id = m_superseding.legacy_id
+      INNER JOIN artifacts leg_superseded ON leg_superseded.superseded_by = leg_superseding.id
+      INNER JOIN artifact_id_map m_superseded ON m_superseded.legacy_id = leg_superseded.id
+      WHERE m_superseding.v17_id = artifact.id
+      LIMIT 1
+    )
+    WHERE artifact.supersedes_id IS NULL
+      AND EXISTS (
+        SELECT 1
+        FROM artifact_id_map m_s
+        INNER JOIN artifacts leg_s ON leg_s.id = m_s.legacy_id
+        INNER JOIN artifacts leg_r ON leg_r.superseded_by = leg_s.id
+        WHERE m_s.v17_id = artifact.id
+      )
+  `);
+}
