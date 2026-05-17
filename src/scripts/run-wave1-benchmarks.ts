@@ -171,6 +171,7 @@ export async function runLongMemEval(opts: RunnerOpts): Promise<GateRawResult> {
     cwd,
     encoding: 'utf8',
     timeout: 600_000, // LongMemEval takes a while.
+    shell: process.platform === 'win32',
   });
 
   if (result.error) {
