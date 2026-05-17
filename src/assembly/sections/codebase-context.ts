@@ -12,6 +12,7 @@
  */
 
 import type { SymbolInfo } from '../../indexer/codebase-indexer.js';
+import { estimateTokens } from '../../shared/text-utils.js';
 
 export interface CodebaseContextFile {
   file_path: string;
