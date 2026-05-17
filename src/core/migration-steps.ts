@@ -4038,6 +4038,65 @@ export function migrateV39toV40(db: Database): void {
  * and reintroduce the bug. Use only for emergency rollback where the new
  * DEFAULT itself is suspected.
  */
+/**
+ * Migration V40 → V41 — CHR async queue.
+ *
+ * Phase 14-08 CHR async refactor. The Stop hook previously called
+ * classifyTurnAsDecisionBoundary synchronously, blocking the turn on a
+ * Ollama LLM call (~2-5s, sometimes 60s on timeout). With Claude subprocess
+ * as the new generation backend (typical 10-15s latency), per-turn-sync would
+ * make the turn end feel laggy. This migration adds a queue table that the
+ * Stop hook writes to, and Angel's heartbeat drains.
+ *
+ * The 60s throttle (handoff_refresh_state) still applies — Angel skips rows
+ * that would violate it. Old rows are retained for 7 days, then GC'd.
+ */
+export function migrateV40toV41(db: Database): void {
+  const tx = db.transaction(() => {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS chr_pending_classifications (
+        id                     INTEGER PRIMARY KEY AUTOINCREMENT,
+        session_id             TEXT NOT NULL,
+        project                TEXT NOT NULL,
+        user_text              TEXT,
+        assistant_text         TEXT NOT NULL,
+        source_turn_uuid       TEXT NOT NULL,
+        enqueued_at_epoch_ms   INTEGER NOT NULL DEFAULT (unixepoch() * 1000),
+        processed_at_epoch_ms  INTEGER,
+        attempt_count          INTEGER NOT NULL DEFAULT 0,
+        last_error             TEXT
+      );
+      CREATE INDEX IF NOT EXISTS idx_chr_pending_unprocessed
+        ON chr_pending_classifications(processed_at_epoch_ms, enqueued_at_epoch_ms)
+        WHERE processed_at_epoch_ms IS NULL;
+      CREATE INDEX IF NOT EXISTS idx_chr_pending_session
+        ON chr_pending_classifications(session_id, enqueued_at_epoch_ms DESC);
+    `);
+
+    db.pragma('user_version = 41');
+    try {
+      db.exec(`INSERT OR IGNORE INTO schema_versions(version) VALUES (41)`);
+    } catch { /* non-critical */ }
+  });
+  tx();
+}
+
+/**
+ * Reverse migration: V41 → V40. Drops the CHR queue table. Pending rows
+ * are lost — the Stop hook will write a fresh row next turn, so this is
+ * safe to roll back without coordinated cleanup.
+ */
+export function migrateV41toV40(db: Database): void {
+  const tx = db.transaction(() => {
+    db.exec(`DROP TABLE IF EXISTS chr_pending_classifications`);
+    db.pragma('user_version = 40');
+    try {
+      db.exec(`INSERT OR IGNORE INTO schema_versions(version) VALUES (40)`);
+    } catch { /* non-critical */ }
+  });
+  tx();
+}
+
 export function migrateV40toV39(db: Database): void {
   const ddlTables = [
     'checkpoint_meta',
