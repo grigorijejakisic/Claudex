@@ -255,11 +255,7 @@ export async function runHardLinkProposer(p: ProposerParams): Promise<ProposerRe
 
   const artifacts = db.prepare(`
     SELECT id, kind,
-           COALESCE(
-             SUBSTR(content, 1, 200),
-             SUBSTR(summary, 1, 200),
-             '(no summary)'
-           ) AS summary
+           COALESCE(title, SUBSTR(body, 1, 200), '(no content)') AS summary
     FROM artifact
     WHERE project = ?
       AND created_at_epoch_ms >= ?
