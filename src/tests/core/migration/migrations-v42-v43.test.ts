@@ -90,7 +90,6 @@ function buildV42LikeDb(): Database.Database {
   // In production, these tables would have old columns from pre-V35 migrations.
 
   // session_events: schema.ts has `timestamp_epoch` (old name) — already present.
-  // verified_facts: schema.ts has `created_at_epoch` (old name) — already present.
   // thread_state: schema.ts has `updated_at_epoch` (old name) — already present.
   // checkpoint_tracking: schema.ts has `updated_at_epoch`, `last_checkpoint_epoch` — present.
   // artifact_links: schema.ts has `created_at_epoch`, `valid_at_epoch`, `invalid_at_epoch` — present.
@@ -98,8 +97,6 @@ function buildV42LikeDb(): Database.Database {
   // knowledge_gaps: schema.ts has `detected_at_epoch`, `resolved_at_epoch` — present.
   // temporal_profile: schema.ts has `updated_at_epoch` — present.
   // action_transitions: schema.ts has `last_epoch` — present.
-  // solution_outcomes: schema.ts has `created_at_epoch` — present.
-  // entity_aliases: schema.ts has `created_at_epoch` — present.
   // artifact_access_log: schema.ts has `timestamp_epoch` — present.
 
   // session_journal: schema.ts already uses timestamp_epoch_ms — add the old column for testing.
@@ -111,6 +108,21 @@ function buildV42LikeDb(): Database.Database {
   // conversation_turns: schema.ts uses timestamp_epoch_ms — add old column for testing.
   if (hasTable(db, 'conversation_turns') && !hasColumn(db, 'conversation_turns', 'timestamp_epoch')) {
     db.exec(`ALTER TABLE conversation_turns ADD COLUMN timestamp_epoch INTEGER`);
+  }
+
+  // verified_facts: schema.ts now uses created_at_epoch_ms (V43+) — add old column for testing.
+  if (hasTable(db, 'verified_facts') && !hasColumn(db, 'verified_facts', 'created_at_epoch')) {
+    db.exec(`ALTER TABLE verified_facts ADD COLUMN created_at_epoch INTEGER`);
+  }
+
+  // solution_outcomes: schema.ts now uses created_at_epoch_ms (V43+) — add old column for testing.
+  if (hasTable(db, 'solution_outcomes') && !hasColumn(db, 'solution_outcomes', 'created_at_epoch')) {
+    db.exec(`ALTER TABLE solution_outcomes ADD COLUMN created_at_epoch INTEGER`);
+  }
+
+  // entity_aliases: schema.ts now uses created_at_epoch_ms (V43+) — add old column for testing.
+  if (hasTable(db, 'entity_aliases') && !hasColumn(db, 'entity_aliases', 'created_at_epoch')) {
+    db.exec(`ALTER TABLE entity_aliases ADD COLUMN created_at_epoch INTEGER`);
   }
 
   // artifacts (legacy): schema.ts uses timestamp_epoch_ms — add old columns for testing.
