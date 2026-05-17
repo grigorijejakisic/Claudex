@@ -3638,12 +3638,19 @@ export function clearLegacyReadOnly(db: Database): { rows_cleared: number } {
 
   if (flipped === 0) return { rows_cleared: 0 };
 
+  // IMPORTANT: Drop the enforcement triggers FIRST, before updating the rows.
+  // The triggers fire BEFORE UPDATE with condition OLD.read_only = 1, which
+  // would block the rollback UPDATE. Dropping triggers first makes the UPDATE safe.
+  // Use db.exec (not db.prepare) so the application-layer guard (which patched
+  // db.prepare) doesn't block the DROP TRIGGER or UPDATE statements.
+  try { db.exec(`DROP TRIGGER IF EXISTS prevent_legacy_insert_post_cutover`); } catch { /* ok */ }
+  try { db.exec(`DROP TRIGGER IF EXISTS prevent_legacy_update_post_cutover`); } catch { /* ok */ }
+  try { db.exec(`DROP TRIGGER IF EXISTS prevent_legacy_delete_post_cutover`); } catch { /* ok */ }
+
+  // Now update the rows (triggers are gone; application-layer guard may still be active,
+  // but it patches db.prepare — we use db.exec here to bypass it).
   const tx = db.transaction(() => {
     db.exec(`UPDATE artifacts SET read_only = 0`);
-    // Drop triggers so callers can write to artifacts again.
-    try { db.exec(`DROP TRIGGER IF EXISTS prevent_legacy_insert_post_cutover`); } catch { /* ok */ }
-    try { db.exec(`DROP TRIGGER IF EXISTS prevent_legacy_update_post_cutover`); } catch { /* ok */ }
-    try { db.exec(`DROP TRIGGER IF EXISTS prevent_legacy_delete_post_cutover`); } catch { /* ok */ }
     // Remove the schema_versions marker.
     try { db.exec(`DELETE FROM schema_versions WHERE version = 3701`); } catch { /* ok */ }
   });
