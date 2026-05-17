@@ -58,13 +58,14 @@ describe('applySetup — artifact step', () => {
       ctx,
     );
 
+    // 14-07b: setup now writes to V17 `artifact` table (title/kind instead of summary/artifact_type)
     const rows = db
-      .prepare(`SELECT session_id, project, summary, artifact_type FROM artifacts WHERE session_id = ?`)
-      .all(ctx.sessionId) as Array<{ session_id: string; project: string; summary: string; artifact_type: string }>;
+      .prepare(`SELECT session_id, project, title, kind FROM artifact WHERE session_id = ?`)
+      .all(ctx.sessionId) as Array<{ session_id: string; project: string; title: string; kind: string }>;
     expect(rows).toHaveLength(1);
     expect(rows[0].project).toBe('claudex-v3');
-    expect(rows[0].artifact_type).toBe('decision');
-    expect(rows[0].summary).toContain('BGE');
+    expect(rows[0].kind).toBe('decision');
+    expect(rows[0].title).toContain('BGE');
   });
 });
 
