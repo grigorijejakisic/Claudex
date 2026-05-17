@@ -58,6 +58,7 @@ import {
   migrateV35toV36,
   migrateV36toV37,
   migrateV37toV38,
+  migrateV38toV39,
   migrateSchemaFixes,
   cleanupOrphanTables,
   upgradeV2SchemaInPlace,
