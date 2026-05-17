@@ -215,6 +215,56 @@ export async function extractHighlightsForSession(params: ExtractHighlightsParam
     degraded_model: degradedModel,
     created_at_epoch_ms: Date.now(),
   });
+
+  // 14-07d: emit extracted_from soft links (post-write; non-blocking).
+  // Only emit when we have a non-degraded extraction (degraded=true means
+  // the result was empty/minimal; no meaningful highlight artifact to link).
+  if (!degraded) {
+    try {
+      // Look up the highlight artifact in the V17 artifact table.
+      // session_highlights rows may be represented in the artifact table
+      // post-Wave-1 migration as kind='session_highlight'.
+      const highlightArtifact = db.prepare(
+        `SELECT id FROM artifact
+         WHERE kind = 'session_highlight' AND session_id = ? AND project = ?
+         ORDER BY created_at_epoch_ms DESC
+         LIMIT 1`
+      ).get(sessionId, project) as { id: string } | undefined;
+
+      // Look up the session frame artifact (kind='session_log' from the Sessions/ directory).
+      const sessionFrameArtifact = db.prepare(
+        `SELECT id FROM artifact
+         WHERE kind = 'session_log' AND session_id = ? AND project = ?
+         ORDER BY created_at_epoch_ms DESC
+         LIMIT 1`
+      ).get(sessionId, project) as { id: string } | undefined;
+
+      if (highlightArtifact && sessionFrameArtifact) {
+        // 14-07d: emit extracted_from soft link per highlight.
+        recordExtractedFrom({
+          db,
+          session_id: sessionId,
+          highlight_artifact_id: highlightArtifact.id,
+          session_frame_artifact_id: sessionFrameArtifact.id,
+        });
+      } else {
+        // V17 artifact rows not yet present (pre-Wave-1 migration or file
+        // not yet ingested) — skip silently with telemetry.
+        try {
+          db.prepare(
+            `INSERT INTO telemetry (session_id, event_kind, detail, adapter) VALUES (?, 'soft_link_skipped', ?, '14-07d-soft-link-writers')`
+          ).run(sessionId, JSON.stringify({
+            reason: 'artifact_not_found',
+            site: 'recordExtractedFrom',
+            has_highlight: !!highlightArtifact,
+            has_session_frame: !!sessionFrameArtifact,
+          }));
+        } catch { /* non-fatal */ }
+      }
+    } catch {
+      // Non-fatal: soft-link emission errors must never surface to callers.
+    }
+  }
 }
 
 /**
