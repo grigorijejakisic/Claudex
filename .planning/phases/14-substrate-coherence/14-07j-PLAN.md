@@ -55,7 +55,7 @@ Two deliverables in one plan:
 
 1. **`src/intelligence/lesson-relevance.ts`** — relevance scoring helpers. Per-lesson combined score of trigger-match + link-distance to current pivot artifacts. Used by the assembler to select top-K lessons to inline.
 
-2. **Extended `formatProvenPrinciplesSection`** — H ships the baseline lessons section formatter (14-07h); J extends it to inline-expand the top-K lessons by relevance. The rest of the lessons stay as pointer lines per H's rendering.
+2. **Extended `formatProvenPrinciplesSection`** — H ships the baseline lessons section formatter in `sections/lessons.ts` (14-07h); J rebases onto H's branch and extends the function in `sections/lessons.ts` to inline-expand the top-K lessons by relevance. The rest of the lessons stay as pointer lines per H's rendering.
 
 After this plan lands:
 - Top 2-3 lessons relevant to the current pivot appear FULL-BODY in the assembler's lessons section.
