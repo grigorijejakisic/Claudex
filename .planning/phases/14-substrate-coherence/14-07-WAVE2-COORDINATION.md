@@ -167,8 +167,11 @@ PM (me) is the only authority for resolving boundary disputes.
 - `src/intelligence/provenance-walker.ts` (NEW) — walks the link
   graph from a checkpoint decision (or any artifact) back to its
   source observations. Returns an ordered chain.
-- `src/assembly/sections.ts` — **adds** `formatProvenanceChainSection`
-  function. G owns ONLY this function.
+- `src/assembly/sections/links.ts` — **adds** `formatProvenanceChainSection`
+  function. G owns ONLY this function. (Wave 0 w0d split created this file;
+  G populates it alongside F's function.)
+- `src/assembly/sections/index.ts` — **adds** re-export of
+  `formatProvenanceChainSection`.
 - `src/assembly/assembler.ts` — wires the new section into the
   cascade order. Coordinates with F on position.
 - `src/tests/intelligence/provenance-walker.test.ts` (NEW).
