@@ -4049,26 +4049,25 @@ export function migrateV40toV39(db: Database): void {
     'episodic_events',
   ];
 
-  const tx = db.transaction(() => {
-    db.pragma('writable_schema = 1');
-    try {
-      const stmt = db.prepare(
-        `UPDATE sqlite_master
-         SET sql = replace(sql, 'DEFAULT (unixepoch() * 1000)', 'DEFAULT (unixepoch())')
-         WHERE type = 'table' AND name = ?`,
-      );
-      for (const t of ddlTables) {
-        if (hasTable(db, t)) stmt.run(t);
-      }
-    } finally {
-      db.pragma('writable_schema = 0');
+  const anyDb = db as unknown as { unsafeMode?: (v: boolean) => void };
+  if (typeof anyDb.unsafeMode === 'function') anyDb.unsafeMode(true);
+  db.pragma('writable_schema = 1');
+  try {
+    const stmt = db.prepare(
+      `UPDATE sqlite_master
+       SET sql = replace(sql, 'DEFAULT (unixepoch() * 1000)', 'DEFAULT (unixepoch())')
+       WHERE type = 'table' AND name = ?`,
+    );
+    for (const t of ddlTables) {
+      if (hasTable(db, t)) stmt.run(t);
     }
+  } finally {
+    db.pragma('writable_schema = 0');
+    if (typeof anyDb.unsafeMode === 'function') anyDb.unsafeMode(false);
+  }
 
-    db.pragma('user_version = 39');
-    try {
-      db.exec(`INSERT OR IGNORE INTO schema_versions(version) VALUES (39)`);
-    } catch { /* non-critical */ }
-  });
-
-  tx();
+  db.pragma('user_version = 39');
+  try {
+    db.exec(`INSERT OR IGNORE INTO schema_versions(version) VALUES (39)`);
+  } catch { /* non-critical */ }
 }
