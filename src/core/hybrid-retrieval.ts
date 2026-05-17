@@ -977,8 +977,9 @@ export async function hybridSearchAsync(
           // Hydrate walked artifact rows from SQLite
           for (let i = 0; i < walked.length; i++) {
             try {
+              // 14-07b: migrated from legacy artifacts — hydrate from V17 artifact via rowid
               const row = cachedPrepare(db,
-                'SELECT * FROM artifacts WHERE id = ?'
+                `SELECT ${V17_TO_ARTIFACT_ROW_SELECT} FROM artifact a WHERE a.rowid = ?`
               ).get(walked[i].artifactId) as ArtifactRow | undefined;
 
               if (row) {
