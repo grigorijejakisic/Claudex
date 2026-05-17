@@ -250,7 +250,7 @@ function predictLayer2(db: Database, project: string): PredictionResult | null {
          WHERE project = ? AND status = 'completed'
          ORDER BY created_at_epoch_ms DESC LIMIT 1
        )
-       ORDER BY timestamp_epoch DESC LIMIT 3`
+       ORDER BY timestamp_epoch_ms DESC LIMIT 3`
     ).all(project, project) as Array<{ event_type: string }>;
 
     if (lastEvents.length === 0) return null;
