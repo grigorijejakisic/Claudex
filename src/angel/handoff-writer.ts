@@ -302,6 +302,9 @@ export function renderHandoffMarkdown(input: HandoffInput): string {
   if (input.created_at_epoch_ms !== undefined) {
     headerLines.push(`created_at_epoch_ms: ${input.created_at_epoch_ms}`);
   }
+  if (input.last_refresh_epoch_ms !== undefined) {
+    headerLines.push(`last_refresh_epoch_ms: ${input.last_refresh_epoch_ms}`);
+  }
   headerLines.push('---');
 
   const epoch = input.created_at_epoch_ms ?? Date.now();
