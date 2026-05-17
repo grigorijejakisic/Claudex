@@ -146,10 +146,17 @@ describe('resetTestDb', () => {
 
     await resetTestDb(db);
 
-    const probeRows = db
+    // 14-07b: probe rows now written to V17 `artifact` table — verify V17 cleanup
+    const probeRowsV17 = db
+      .prepare(`SELECT 1 FROM artifact WHERE session_id LIKE 'vesna-probe-%'`)
+      .all();
+    expect(probeRowsV17).toHaveLength(0);
+
+    // Legacy `artifacts` cleanup preserved for transition window
+    const probeRowsLegacy = db
       .prepare(`SELECT 1 FROM artifacts WHERE session_id LIKE 'vesna-probe-%'`)
       .all();
-    expect(probeRows).toHaveLength(0);
+    expect(probeRowsLegacy).toHaveLength(0);
 
     const ambientRows = db
       .prepare(`SELECT 1 FROM artifacts WHERE session_id = 'untagged-real-session'`)
