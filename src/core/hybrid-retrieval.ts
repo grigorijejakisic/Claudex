@@ -1244,11 +1244,17 @@ export function decayActivationScores(
   project: string,
 ): { packed: number; total: number } {
   try {
+    // 14-07b: migrated from legacy artifacts — read from V17 artifact table
     // Batch read + JS compute (SQLite doesn't have LN())
     const artifacts = cachedPrepare(db,
-      `SELECT id, importance, timestamp_epoch_ms, last_materialized_epoch_ms, state
-       FROM artifacts
-       WHERE project = ? AND state != 'packed'`
+      `SELECT
+         a.rowid AS id,
+         COALESCE(a.confidence * 5.0, 3.0) AS importance,
+         a.created_at_epoch_ms AS timestamp_epoch_ms,
+         COALESCE(json_extract(a.data, '$.last_materialized_epoch'), a.created_at_epoch_ms) AS last_materialized_epoch_ms,
+         a.status AS state
+       FROM artifact a
+       WHERE a.project = ? AND ${V17_NOT_STALE}`
     ).all(project) as Array<{
       id: number;
       importance: number;
@@ -1259,12 +1265,13 @@ export function decayActivationScores(
 
     if (artifacts.length === 0) return { packed: 0, total: 0 };
 
+    // 14-07b: migrated from legacy artifacts — activation_score and status in V17 data/status
     const updateStmt = cachedPrepare(db,
-      `UPDATE artifacts SET activation_score = ? WHERE id = ?`
+      `UPDATE artifact SET data = json_set(data, '$.activation_score', ?) WHERE rowid = ?`
     );
 
     const packStmt = cachedPrepare(db,
-      `UPDATE artifacts SET state = 'packed', activation_score = ? WHERE id = ?`
+      `UPDATE artifact SET status = 'stale', data = json_set(data, '$.activation_score', ?) WHERE rowid = ?`
     );
 
     let packed = 0;
