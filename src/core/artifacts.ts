@@ -22,7 +22,20 @@ export type ArtifactType = 'observation' | 'learning' | 'decision' | 'hot_file' 
 
 /** Row shape returned from artifact queries. */
 export interface ArtifactRow {
+  /**
+   * SQLite rowid for V17-backed rows OR the legacy `artifacts.id` INTEGER for
+   * pre-cutover rows. NOT a stable canonical ID — it changes across rebuilds
+   * and re-vectorize. External callers should prefer `artifact_id` (the V17
+   * TEXT primary key) when present.
+   */
   id: number;
+  /**
+   * V17 canonical TEXT artifact id. Set on rows sourced from the V17 `artifact`
+   * table. Undefined for rows sourced from the legacy `artifacts` table
+   * (pre-cutover only). Phase 14-09: this is the recall-stable handle that
+   * round-trips between claudex_search and claudex_recall.
+   */
+  artifact_id?: string;
   session_id: string;
   project: string;
   artifact_type: ArtifactType;
