@@ -921,7 +921,7 @@ export interface ClassifyBoundaryOpts {
 const BOUNDARY_CLASSIFIER_PROMPT_VERSION = 'v1';
 
 /** Default model for boundary classification (cheap, local). */
-const BOUNDARY_CLASSIFIER_DEFAULT_MODEL = process.env['CLAUDEX_CHR_MODEL'] ?? 'llama3.1:8b';
+const BOUNDARY_CLASSIFIER_DEFAULT_MODEL = process.env['CLAUDEX_CHR_MODEL'] ?? 'haiku';
 
 /** Cached classifier prompt template. */
 let _cachedBoundaryPrompt: string | null = null;
