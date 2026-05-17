@@ -361,6 +361,91 @@ export async function runV17Migration(opts: RunnerOpts): Promise<RunnerResult> {
   }
 }
 
+// ─── Phase 14-07-LINKS-SCHEMA: Link-table DDL extension ──────────────
+
+/**
+ * Applies the knowledge-graph link-table DDL to an open Database connection.
+ *
+ * Creates (idempotently):
+ *   - soft_link        — autonomous-write tier
+ *   - hard_link        — propose-confirm tier (Good Child policy)
+ *   - hard_link_history — audit trail for hard-link state transitions
+ *
+ * This function mirrors the pattern of `applyV17DDL` — it is a pure DDL
+ * helper that can be called from migration step V37→V38 or from any
+ * diagnostic / test that needs the link-table schema on an open connection.
+ *
+ * Called by `migrateV37toV38` in `src/core/migration-steps.ts`.
+ * DO NOT call from within the V17 runner's Phase B transaction — link tables
+ * are a Wave 2 (V38) concern, not a V17 concern.
+ */
+export function applyLinkTablesDDL(db: Database): void {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS soft_link (
+      id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+      src_artifact_id     TEXT NOT NULL,
+      dst_artifact_id     TEXT NOT NULL,
+      type                TEXT NOT NULL CHECK (type IN ('supersedes', 'promoted_to', 'extracted_from', 'references')),
+      confidence          REAL NOT NULL DEFAULT 1.0 CHECK (confidence >= 0.0 AND confidence <= 1.0),
+      created_by_session  TEXT NOT NULL,
+      created_at_epoch_ms INTEGER NOT NULL,
+      project             TEXT NOT NULL,
+      data                TEXT,
+      FOREIGN KEY (src_artifact_id) REFERENCES artifact(id) ON DELETE RESTRICT,
+      FOREIGN KEY (dst_artifact_id) REFERENCES artifact(id) ON DELETE RESTRICT,
+      UNIQUE (src_artifact_id, dst_artifact_id, type)
+    );
+    CREATE INDEX IF NOT EXISTS idx_soft_link_src     ON soft_link(src_artifact_id, type);
+    CREATE INDEX IF NOT EXISTS idx_soft_link_dst     ON soft_link(dst_artifact_id, type);
+    CREATE INDEX IF NOT EXISTS idx_soft_link_project ON soft_link(project);
+
+    CREATE TABLE IF NOT EXISTS hard_link (
+      id                      INTEGER PRIMARY KEY AUTOINCREMENT,
+      src_artifact_id         TEXT NOT NULL,
+      dst_artifact_id         TEXT NOT NULL,
+      type                    TEXT NOT NULL CHECK (type IN ('triggered_by', 'evidence_for', 'contradicts')),
+      proposed_confidence     REAL NOT NULL CHECK (proposed_confidence >= 0.0 AND proposed_confidence <= 1.0),
+      proposed_by_session     TEXT NOT NULL,
+      proposed_at_epoch_ms    INTEGER NOT NULL,
+      confirmed_by_session    TEXT,
+      confirmed_at_epoch_ms   INTEGER,
+      rejected_by_session     TEXT,
+      rejected_at_epoch_ms    INTEGER,
+      decay_count             INTEGER NOT NULL DEFAULT 0 CHECK (decay_count >= 0),
+      proposer_rationale      TEXT,
+      project                 TEXT NOT NULL,
+      FOREIGN KEY (src_artifact_id) REFERENCES artifact(id) ON DELETE RESTRICT,
+      FOREIGN KEY (dst_artifact_id) REFERENCES artifact(id) ON DELETE RESTRICT,
+      UNIQUE (src_artifact_id, dst_artifact_id, type)
+    );
+    CREATE INDEX IF NOT EXISTS idx_soft_link_src_2  ON hard_link(src_artifact_id, type);
+    CREATE INDEX IF NOT EXISTS idx_hard_link_dst     ON hard_link(dst_artifact_id, type);
+    CREATE INDEX IF NOT EXISTS idx_hard_link_project ON hard_link(project);
+
+    CREATE TABLE IF NOT EXISTS hard_link_history (
+      id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+      hard_link_id        INTEGER NOT NULL,
+      action              TEXT NOT NULL CHECK (action IN ('proposed', 'confirmed', 'rejected', 'decayed')),
+      session_id          TEXT NOT NULL,
+      action_at_epoch_ms  INTEGER NOT NULL,
+      details             TEXT,
+      FOREIGN KEY (hard_link_id) REFERENCES hard_link(id) ON DELETE CASCADE
+    );
+    CREATE INDEX IF NOT EXISTS idx_hard_link_history_link ON hard_link_history(hard_link_id);
+  `);
+
+  // Partial index (pending hard links) — guarded for older SQLite.
+  try {
+    db.exec(`
+      CREATE INDEX IF NOT EXISTS idx_hard_link_pending
+        ON hard_link(project, confirmed_by_session)
+        WHERE confirmed_by_session IS NULL;
+    `);
+  } catch {
+    // Partial indexes unsupported — full column index above covers queries.
+  }
+}
+
 // ─── Helpers ─────────────────────────────────────────────────────────
 
 function randomUuid(): string {
