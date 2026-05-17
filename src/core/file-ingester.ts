@@ -202,19 +202,26 @@ async function scanCrossProjectUserMemories(
 
 /**
  * Loads existing file artifact timestamps for mtime comparison.
- * Returns a map of artifact_ref → timestamp_epoch_ms (in ms).
+ * Returns a map of artifact_ref → created_at_epoch_ms (in ms).
+ *
+ * 14-07b: migrated from legacy artifacts → V17 artifact table.
+ * artifact_ref is stored in data JSON as data.artifact_ref.
  */
 function loadExistingTimestamps(db: Database, project: string): Map<string, number> {
   try {
+    // 14-07b: migrated from legacy artifacts
     const rows = cachedPrepare(db,
-      `SELECT artifact_ref, timestamp_epoch_ms FROM artifacts
-       WHERE project = ? AND artifact_type IN ('memory_file', 'session_log', 'handoff')
-         AND artifact_ref IS NOT NULL`
-    ).all(project) as Array<{ artifact_ref: string; timestamp_epoch_ms: number }>;
+      `SELECT json_extract(data, '$.artifact_ref') AS artifact_ref,
+              created_at_epoch_ms
+       FROM artifact
+       WHERE project = ?
+         AND kind IN ('memory_file', 'session_log', 'handoff')
+         AND json_extract(data, '$.artifact_ref') IS NOT NULL`
+    ).all(project) as Array<{ artifact_ref: string; created_at_epoch_ms: number }>;
 
     const map = new Map<string, number>();
     for (const row of rows) {
-      map.set(row.artifact_ref, row.timestamp_epoch_ms); // already in ms
+      map.set(row.artifact_ref, row.created_at_epoch_ms); // already in ms
     }
     return map;
   } catch {
