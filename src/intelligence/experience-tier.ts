@@ -25,7 +25,7 @@ import { estimateTokens } from '../shared/text-utils.js';
 import { scaleBudget } from '../shared/constants.js';
 import { stageOneHandleOverlap, type HandleSet } from '../core/cross-project-equivalence.js';
 import { formatExperienceTierSection, type ExperienceTierItem } from '../assembly/sections.js';
-import { substantiveSqlClause } from '../core/artifact-filters.js';
+// 14-07b: substantiveSqlClause no longer needed — V17 substantive filter is inlined in fetchCandidatePool
 
 export const TIER_BUDGET = 200;
 export const TOP_K = 3;
