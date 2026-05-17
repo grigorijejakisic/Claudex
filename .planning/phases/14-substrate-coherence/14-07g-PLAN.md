@@ -181,12 +181,17 @@ Skip 'contradicts' in provenance walking: contradict links represent disagreemen
 
 <task type="auto">
   <name>Task 2: formatProvenanceChainSection</name>
-  <files>src/assembly/sections.ts, src/assembly/assembler.ts</files>
+  <files>src/assembly/sections/links.ts, src/assembly/sections/index.ts, src/assembly/assembler.ts</files>
   <action>
-Add new function `formatProvenanceChainSection` to `src/assembly/sections.ts`. Do NOT modify any other function.
+Add new function `formatProvenanceChainSection` to `src/assembly/sections/links.ts`. This file was created as a Wave 0 placeholder; G populates it. Do NOT modify any other function.
+
+Also add a re-export to `src/assembly/sections/index.ts`:
+```typescript
+export { formatProvenanceChainSection } from './links.js';
+```
 
 ```typescript
-import { walkProvenance } from '../intelligence/provenance-walker.js';
+import { walkProvenance } from '../../intelligence/provenance-walker.js';
 
 export interface ProvenanceChainSectionParams {
   db: Database;
