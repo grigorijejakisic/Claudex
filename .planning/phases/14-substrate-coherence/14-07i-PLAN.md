@@ -6,7 +6,7 @@ type: execute
 wave: 3
 depends_on: []
 files_modified:
-  - src/assembly/sections.ts
+  - src/assembly/sections/codebase-context.ts (Wave 0 w0d split; I modifies formatCodebaseContextSection)
   - src/core/hybrid-retrieval.ts
   - src/tests/assembly/codebase-context-annotation.test.ts (NEW)
   - src/tests/intelligence/hybrid-retrieval-metadata.test.ts (NEW)
