@@ -86,23 +86,34 @@ function fetchCandidatePool(
   currentProject: string,
   poolLimit: number = 200,
 ): CandidateRow[] {
+  // 14-07b: migrated from legacy artifacts — query shape updated to V17 artifact table.
+  // NOTE: FILTER SEMANTICS (project-scope, substantive gate) are preserved unchanged;
+  // only the table name and column names are updated. Filter rewrite is 14-07h (Wave 3).
   return cachedPrepare(db,
-    `SELECT a.id AS artifact_id,
+    `SELECT a.rowid AS artifact_id,
             a.project AS project,
-            a.summary AS summary,
-            a.content AS content,
+            a.title AS summary,
+            a.body AS content,
             atp.task_pattern AS task_pattern,
             atp.classifier_confidence AS classifier_confidence,
-            a.timestamp_epoch_ms AS timestamp_epoch_ms,
-            CASE WHEN a.timestamp_epoch_ms >= (unixepoch('now', '-' || ? || ' days') * 1000) THEN 1 ELSE 0 END AS recent,
+            a.created_at_epoch_ms AS timestamp_epoch_ms,
+            CASE WHEN a.created_at_epoch_ms >= (unixepoch('now', '-' || ? || ' days') * 1000) THEN 1 ELSE 0 END AS recent,
             NULL AS helpful_yn,
             'artifact' AS artifact_kind
-       FROM artifacts a
-       INNER JOIN artifact_task_pattern atp ON atp.artifact_id = a.id
+       FROM artifact a
+       INNER JOIN artifact_task_pattern atp ON atp.artifact_id = a.rowid
       WHERE atp.task_pattern != '__abstain__'
         AND a.project != ?
-        AND ${substantiveSqlClause('a')}
-      ORDER BY a.timestamp_epoch_ms DESC
+        AND (
+          a.kind IN ('learning','decision','memory_file','flow','milestone','entity_summary','handoff',
+                     'mental_model','directive_rule','critical_rule','angel_opinion','experience_pattern')
+          OR (a.kind = 'observation'
+              AND COALESCE(a.confidence * 5.0, 0) >= 4
+              AND LENGTH(COALESCE(a.title, '')) >= 60)
+        )
+        AND NOT (a.title GLOB 'Read: *' OR a.title GLOB 'Edit: *' OR a.title GLOB 'Write: *'
+                 OR a.title GLOB 'Bash: *' OR a.title GLOB 'Grep: *' OR a.title GLOB 'Glob: *')
+      ORDER BY a.created_at_epoch_ms DESC
       LIMIT ?`
   ).all(RECENCY_DAYS, currentProject, poolLimit) as CandidateRow[];
 }
