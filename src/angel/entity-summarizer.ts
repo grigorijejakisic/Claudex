@@ -21,8 +21,8 @@
 
 import type { Database } from 'better-sqlite3';
 import { cachedPrepare } from '../core/stmt-cache.js';
-import { ulid } from 'ulid';
 import { callLocalLLM } from './llama-client.js';
+import { createHash } from 'node:crypto';
 
 export interface EntitySummaryResult {
   entities_summarized: number;
