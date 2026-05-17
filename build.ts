@@ -76,6 +76,10 @@ const optionalEntryPoints = [
   'src/scripts/run-wave1-benchmarks.ts',
   'src/scripts/cross-project-hit-rate.ts',
   'src/scripts/simulate-hard-link-ux.ts',
+  'src/scripts/backfill-session-synthesis.ts',
+  'src/scripts/migrate-lesson-trigger.ts',
+  'src/scripts/migrate-handoff.ts',
+  'src/scripts/migrate-lesson-frontmatter.ts',
 ];
 
 /** Hook entry points to smoke test after build.
