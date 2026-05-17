@@ -17,6 +17,15 @@ export interface CodebaseContextFile {
   file_path: string;
   symbols: SymbolInfo[];
   relevance: number;
+  // 14-07i: codebase-context annotation — optional retrieval metadata fields.
+  // Populated when the file was surfaced via hybrid retrieval (match_query + match_kind).
+  // When absent, the formatter falls back to the existing format (path: symbols).
+  /** The query string that matched this file, already truncated to ≤200 chars at source. */
+  match_query?: string;
+  /** Final hybrid score for this candidate, as returned by hybrid retrieval. */
+  score?: number;
+  /** Which retrieval channel was responsible for this candidate's score. */
+  match_kind?: 'fts' | 'vector';
 }
 
 /**
