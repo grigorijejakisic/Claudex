@@ -167,6 +167,7 @@ beforeEach(() => {
 
 afterEach(() => {
   try { db.close(); } catch { /* ok */ }
+  // Always restore global DI state after each test.
   _setOllamaEmbedCallableForTest(null);
   _setGateRunnersForTest(null);
   if (fs.existsSync(tmpGateResultsPath)) {
