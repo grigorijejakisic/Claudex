@@ -331,9 +331,34 @@ export async function heartbeatTick(ctx: HeartbeatContext): Promise<TickResult> 
       ]);
     }
 
+    // Phase 14-08: give-up after N persistent Phase 2 failures. Without this,
+    // a session that consistently times out (e.g., a transcript too large for
+    // the local LLM, a stuck Ollama path) gets retried every heartbeat tick
+    // forever — wasting one PHASE2_AWAIT_TIMEOUT_MS per session per tick and
+    // blocking the rest of the batch. After MAX_PHASE2_RETRIES timeouts the
+    // session is marked `angel_processed / permanently_failed` so it falls
+    // out of `getUnprocessedSessions`. Successful sessions are also marked
+    // `angel_processed / processed` so they stop being reprocessed each tick.
+    const MAX_PHASE2_RETRIES = 3;
+    const countPhase2FailuresForSession = (sidShort: string): number => {
+      try {
+        const r = ctx.db.prepare(
+          `SELECT COUNT(*) AS n FROM telemetry
+           WHERE session_id = 'angel-heartbeat'
+             AND event_kind = 'error'
+             AND json_extract(detail, '$.session_id_short') = ?
+             AND json_extract(detail, '$.subsystem') LIKE 'heartbeat/phase2%failed'`
+        ).get(sidShort) as { n: number };
+        return r.n;
+      } catch { return 0; }
+    };
+
     for (const session of unprocessed) {
       const sid = session.session_id.slice(0, 8);
       console.log(`[hb-trace] phase2 session=${sid} START`);
+
+      let directivesOk = false;
+      let domainsOk = false;
 
       // Phase 2a (P2): Directive detection — runs BEFORE generic pattern
       // extraction so that `directive_rule` artifacts are in place before the
@@ -351,6 +376,7 @@ export async function heartbeatTick(ctx: HeartbeatContext): Promise<TickResult> 
           'extractDirectives',
         );
         console.log(`[hb-trace] phase2 session=${sid} extractDirectives OK`);
+        directivesOk = true;
         result.directives_extracted =
           (result.directives_extracted ?? 0) + dirResult.inserted + dirResult.updated;
         if (dirResult.errors > 0) {
