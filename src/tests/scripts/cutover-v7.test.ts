@@ -70,16 +70,14 @@ function buildV37Db(legacyArtifactCount = 0): Database.Database {
     if (!hasColumn(db, 'artifacts', 'read_only')) {
       try { db.exec(`ALTER TABLE artifacts ADD COLUMN read_only INTEGER NOT NULL DEFAULT 0`); } catch { /* ok */ }
     }
-    const insert = db.prepare(`
+
+    const nowMs = Date.now();
+
+    // Insert legacy artifact rows and immediately collect their IDs.
+    const insertLegacy = db.prepare(`
       INSERT INTO artifacts(session_id, project, artifact_type, summary, state, importance, timestamp_epoch_ms)
       VALUES (?, 'test-project', 'observation', ?, 'fresh', 3, ?)
     `);
-    for (let i = 0; i < legacyArtifactCount; i++) {
-      insert.run(`session-${i}`, `Summary ${i}`, 1700000000000 + i);
-    }
-
-    // Also insert corresponding artifact_id_map and V17 artifact rows.
-    const nowMs = Date.now();
     const insertArtifact = db.prepare(`
       INSERT OR IGNORE INTO artifact(id, kind, title, body, created_at_epoch_ms, updated_at_epoch_ms, project)
       VALUES (?, 'observation', ?, ?, ?, ?, 'test-project')
@@ -89,11 +87,15 @@ function buildV37Db(legacyArtifactCount = 0): Database.Database {
       VALUES (?, ?, ?, 'test-project')
     `);
 
-    const legacyRows = db.prepare(`SELECT id, summary FROM artifacts`).all() as Array<{ id: number; summary: string }>;
-    for (const row of legacyRows) {
-      const v17Id = `v17-${row.id.toString().padStart(32, '0')}`.slice(0, 32);
-      insertArtifact.run(v17Id, row.summary, `Body ${row.id}`, nowMs, nowMs);
-      insertMap.run(row.id, v17Id, nowMs);
+    for (let i = 0; i < legacyArtifactCount; i++) {
+      const legacyResult = insertLegacy.run(`session-${i}`, `Summary ${i}`, nowMs + i);
+      const legacyId = Number(legacyResult.lastInsertRowid);
+      // Generate a valid 32-char hex-style ID for the V17 row.
+      const v17Id = `${legacyId.toString(16).padStart(8, '0')}${'0'.repeat(24)}`;
+      // Insert V17 artifact row first (so FK constraint is satisfied).
+      insertArtifact.run(v17Id, `Summary ${i}`, `Body ${i}`, nowMs + i, nowMs + i);
+      // Then insert the mapping.
+      insertMap.run(legacyId, v17Id, nowMs);
     }
   }
 
