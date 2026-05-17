@@ -341,7 +341,7 @@ export async function processToolAndPressure(params: ToolObservationParams): Pro
   // In tool-heavy turns with 10+ calls, ticking per call over-decrements TTL.
   // Guard: DB-persisted epoch check — works cross-process (CC hooks are separate Node processes).
   try {
-    const now = Math.floor(Date.now() / 1000);
+    const now = Date.now();
     if (shouldTickArtifactTTL(params.db, params.sessionId, now, params.project)) {
       tickArtifactTTL(params.db, params.project);
     }
