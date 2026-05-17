@@ -556,23 +556,26 @@ function searchLikeFallback(
   const keywords = tokenizeQuery(query, 5);
   if (keywords.length === 0) return [];
 
-  const conditions = keywords.map(() => '(LOWER(a.summary) LIKE ? OR LOWER(a.content) LIKE ?)').join(' OR ');
+  // 14-07b: migrated from legacy artifacts — V17 uses title/body instead of summary/content
+  const conditions = keywords.map(() => '(LOWER(a.title) LIKE ? OR LOWER(a.body) LIKE ?)').join(' OR ');
   const likeParams = keywords.flatMap(k => [`%${k}%`, `%${k}%`]);
-  const supersededFilter = excludeSuperseded ? 'AND a.superseded_by IS NULL' : '';
+  // 14-07b: migrated from legacy artifacts — V17 uses status instead of superseded_by
+  const supersededFilter = excludeSuperseded ? `AND ${V17_NOT_SUPERSEDED}` : '';
   const projectFilter = globalScope ? '' : 'AND a.project = ?';
-  // Phase 14 Plan 14-04: P2.7 substantive-only filter
-  const substantiveFilter = substantiveOnly ? `AND ${substantiveSqlClause('a')}` : '';
+  // 14-07b: migrated from legacy artifacts — use v17SubstantiveSqlClause for artifact table
+  const substantiveFilter = substantiveOnly ? `AND ${v17SubstantiveSqlClause('a')}` : '';
   const orderPrefix = globalScope
     ? 'CASE WHEN a.project = ? THEN 0 ELSE 1 END,'
     : '';
 
-  const sql = `SELECT a.* FROM artifacts a
+  // 14-07b: migrated from legacy artifacts
+  const sql = `SELECT ${V17_TO_ARTIFACT_ROW_SELECT} FROM artifact a
      WHERE (${conditions})
        ${projectFilter}
        ${supersededFilter}
        ${substantiveFilter}
      ORDER BY ${orderPrefix}
-       a.importance DESC, a.timestamp_epoch_ms DESC
+       a.confidence DESC, a.created_at_epoch_ms DESC
      LIMIT ?`;
 
   const params = globalScope
