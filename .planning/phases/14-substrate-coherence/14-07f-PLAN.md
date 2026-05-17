@@ -72,7 +72,7 @@ must_haves:
       to: "src/intelligence/hard-link-proposer.ts (runHardLinkProposer)"
       via: "Boundary detector schedules proposer at post-session-end, behind flag"
       pattern: "CLAUDEX_HARD_LINK_PROPOSER"
-    - from: "src/assembly/sections.ts (formatPendingReviewLinksSection)"
+    - from: "src/assembly/sections/links.ts (formatPendingReviewLinksSection)"
       to: "src/core/link-writer.ts (listPendingHardLinks)"
       via: "Section formatter reads pending hard links for the current project"
       pattern: "listPendingHardLinks"
