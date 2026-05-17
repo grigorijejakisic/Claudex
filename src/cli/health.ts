@@ -417,6 +417,9 @@ export function checkWriteRead(db: Database.Database): CheckResult {
       VALUES ('__health_check__', '__health__', 'flow', 'test')`,
     artifacts: `INSERT INTO artifacts (session_id, project, artifact_type, summary, state, ttl, importance)
       VALUES ('__health_check__', '__health__', 'observation', 'test', 'fresh', 3, 3)`,
+    // V17 unified artifact — Phase 14-07b: migrated from legacy artifacts
+    artifact: `INSERT OR IGNORE INTO artifact (id, kind, title, body, status, confidence, created_at_epoch_ms, updated_at_epoch_ms, session_id, project, data)
+      VALUES ('__health_check_v17__', 'observation', 'health check', '', 'active', 0.6, 0, 0, '__health_check__', '__health__', '{}')`,
     verified_facts: `INSERT INTO verified_facts (session_id, fact)
       VALUES ('__health_check__', 'test')`,
     telemetry: `INSERT INTO telemetry (session_id, event_kind, detail)
