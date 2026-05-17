@@ -325,8 +325,8 @@ export function getChangedFiles(
   try {
     const rows = cachedPrepare(db,
       `SELECT file_path, symbols FROM code_index
-       WHERE project = ? AND last_indexed_epoch > ?
-       ORDER BY last_indexed_epoch DESC LIMIT 20`
+       WHERE project = ? AND last_indexed_epoch_ms > ?
+       ORDER BY last_indexed_epoch_ms DESC LIMIT 20`
     ).all(project, sinceEpoch) as Array<{ file_path: string; symbols: string }>;
 
     return rows.map(r => ({
