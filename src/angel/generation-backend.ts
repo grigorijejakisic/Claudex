@@ -36,12 +36,21 @@ import {
 export type GenerationBackend = 'claude' | 'ollama';
 
 /**
- * Resolve the active generation backend from env. Defaults to 'claude'.
- * Tests can override by setting process.env.CLAUDEX_GENERATION_BACKEND.
+ * Resolve the active generation backend from env.
+ *
+ *   - Production default: 'claude' (subprocess via MAX OAuth).
+ *   - Vitest default: 'ollama' (so existing vi.mock('llama-client') intercepts
+ *     work without per-test backend overrides). Production behavior is
+ *     exercised directly via the claude-subprocess.test.ts suite.
+ *   - Explicit override always wins: CLAUDEX_GENERATION_BACKEND=ollama|claude.
  */
 export function resolveBackend(): GenerationBackend {
   const v = process.env['CLAUDEX_GENERATION_BACKEND'];
   if (v === 'ollama') return 'ollama';
+  if (v === 'claude') return 'claude';
+  // Vitest sets process.env.VITEST='true' automatically. In that context,
+  // route through Ollama by default so the mock-callLocalLLM pattern works.
+  if (process.env['VITEST'] === 'true') return 'ollama';
   return 'claude';
 }
 
