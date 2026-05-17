@@ -166,11 +166,13 @@ async function segmentViaLLM(turns: ConvTurn[]): Promise<Segment[] | null> {
   }));
   const userPrompt = `Turns:\n${JSON.stringify(preview)}`;
 
-  const raw = await callLocalLLM({
+  const raw = await generate({
     system: SEGMENT_SYSTEM_PROMPT,
     prompt: userPrompt,
+    model: 'haiku',
     temperature: 0.2,
     maxTokens: 1024,
+    subsystem: 'transcript_chunker',
   });
 
   const turnNumbers = turns.map(t => t.turn_number);
