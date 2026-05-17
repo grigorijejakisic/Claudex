@@ -615,10 +615,15 @@ export function formatHumanReadable(output: BenchmarkRunOutput): string {
     const status = r.passed ? 'PASS' : 'FAIL';
     const delta = r.measured - r.baseline;
     const deltaStr = delta >= 0 ? `+${(delta * 100).toFixed(1)}%` : `${(delta * 100).toFixed(1)}%`;
-    lines.push(`  ${label}: ${measuredStr.padEnd(8)} ${status}  (baseline ${baselineStr}, delta ${deltaStr})`);
+    const bindingTag = r.binding ? '[BINDING]' : '[info]   ';
+    lines.push(`  ${bindingTag} ${label}: ${measuredStr.padEnd(8)} ${status}  (baseline ${baselineStr}, delta ${deltaStr})`);
 
     if (!r.passed) {
-      lines.push(`    *** GATE FAIL: measured ${measuredStr} ${r.threshold_comparison === '>=' ? '<' : '>'} threshold ${formatMeasured(r.gate, r.threshold)}`);
+      if (r.binding) {
+        lines.push(`    *** GATE FAIL: measured ${measuredStr} ${r.threshold_comparison === '>=' ? '<' : '>'} threshold ${formatMeasured(r.gate, r.threshold)}`);
+      } else {
+        lines.push(`    (informational fail: measured ${measuredStr} ${r.threshold_comparison === '>=' ? '<' : '>'} threshold ${formatMeasured(r.gate, r.threshold)}; not blocking)`);
+      }
     }
   }
 
