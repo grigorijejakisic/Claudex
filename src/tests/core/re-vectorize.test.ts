@@ -170,7 +170,7 @@ describe('reVectorizeAll', () => {
 
     const result = await reVectorizeAll(db, {
       batch_size: 5,
-      // Disable retry backoff in tests (would make tests slow).
+      retry_base_delay_ms: 0, // No sleep between retries in tests.
     });
 
     expect(result.total).toBe(10);
