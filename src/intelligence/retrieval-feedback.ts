@@ -406,11 +406,12 @@ export function recordWasReferenced(
     }
 
     // Cache artifact summaries to avoid repeated lookups
+    // 14-07b: migrated from legacy artifacts — V17 uses title as the summary field
     const artifactIds = [...new Set(unscoredEvents.map(e => e.artifact_id))];
     const summaryMap = new Map<number, string>();
     for (const aid of artifactIds) {
       const row = cachedPrepare(db,
-        `SELECT summary FROM artifacts WHERE id = ?`
+        `SELECT COALESCE(title, '') AS summary FROM artifact WHERE rowid = ?`
       ).get(aid) as { summary: string } | undefined;
       if (row) summaryMap.set(aid, row.summary);
     }
