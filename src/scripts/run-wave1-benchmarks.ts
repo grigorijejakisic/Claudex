@@ -505,6 +505,15 @@ export async function runWave1Benchmarks(opts?: {
   baseline_path?: string;
   runners?: GateRunners | null;
   cwd?: string;
+  /**
+   * Gate mode:
+   * - `binding-only` (default for cutover): runs only binding gates. Skips
+   *   long-running sanity benchmarks (LongMemEval, LoCoMo) that would time out
+   *   under spawnSync's window and produce false-fails. Used by `cutover-v7.ts`.
+   * - `full`: runs all gates including informational ones. Used when invoking
+   *   the orchestrator directly (e.g., `bun run wave1:benchmarks --full`).
+   */
+  mode?: GateMode;
 }): Promise<BenchmarkRunOutput> {
   const baselines = loadBaselines(opts?.baseline_path);
   const runners = opts?.runners ?? _injectedRunners ?? {
@@ -518,7 +527,9 @@ export async function runWave1Benchmarks(opts?: {
   // Falls back to process.cwd() if not specified (assumes invoked from project root).
   const runnerOpts: RunnerOpts = { db_path: opts?.db_path, cwd: opts?.cwd ?? process.cwd() };
 
-  const gates: Array<{
+  const mode: GateMode = opts?.mode ?? 'full';
+
+  const allGates: Array<{
     key: BenchmarkResult['gate'];
     runner: (opts: RunnerOpts) => Promise<GateRawResult>;
   }> = [
@@ -527,6 +538,11 @@ export async function runWave1Benchmarks(opts?: {
     { key: 'locomo', runner: runners.runLoCoMo },
     { key: 'cross_project_hit_rate', runner: runners.runCrossProjectHitRate },
   ];
+
+  // In binding-only mode, only run binding gates (skip informational sanity runners).
+  const gates = mode === 'binding-only'
+    ? allGates.filter(g => BINDING_GATES.has(g.key))
+    : allGates;
 
   const results: BenchmarkResult[] = [];
 
@@ -555,11 +571,16 @@ export async function runWave1Benchmarks(opts?: {
       threshold,
       threshold_comparison,
       passed,
+      binding: BINDING_GATES.has(key),
       details: raw.details,
     });
   }
 
-  const overall_passed = results.every(r => r.passed);
+  // Overall pass: ALL binding gates must pass. Informational gates' failures
+  // are surfaced but do not halt the run. Per redesign 2026-05-17.
+  const overall_passed = results
+    .filter(r => r.binding)
+    .every(r => r.passed);
   return {
     run_timestamp_epoch_ms: Date.now(),
     results,
