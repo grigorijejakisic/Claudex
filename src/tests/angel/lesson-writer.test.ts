@@ -6,7 +6,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import { writeLesson, computeLessonFilePath, renderLessonFrontmatter } from '../../angel/lesson-writer.js';
+import { writeLesson, computeLessonFilePath, renderLessonFrontmatter, readLessonTrigger } from '../../angel/lesson-writer.js';
 import { parseLessonFile } from '../../angel/lesson-reader.js';
 
 const project = 'lesson-writer-proj';
