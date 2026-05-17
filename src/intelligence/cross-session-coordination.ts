@@ -41,22 +41,22 @@ export function getCrossSessionActivity(
   currentSessionId: string,
 ): CrossSessionActivity[] {
   try {
-    const oneHourAgo = Math.floor(Date.now() / 1000) - 3600;
+    const oneHourAgoMs = Date.now() - 3600000;
 
     // Single query: sessions + topic + last activity (was 1 + 4×N = 21 queries)
     const sessions = cachedPrepare(db,
       `SELECT s.session_id, s.name, s.observation_count,
               t.topic,
-              MAX(o.timestamp_epoch) AS last_activity_epoch
+              MAX(o.timestamp_epoch_ms) AS last_activity_epoch
        FROM sessions s
        JOIN observations o ON o.session_id = s.session_id
        LEFT JOIN thread_state t ON t.session_id = s.session_id
        WHERE s.project = ? AND s.session_id != ? AND s.status = 'active'
-         AND o.timestamp_epoch > ?
+         AND o.timestamp_epoch_ms > ?
        GROUP BY s.session_id
        ORDER BY last_activity_epoch DESC
        LIMIT 5`
-    ).all(project, currentSessionId, oneHourAgo) as Array<{
+    ).all(project, currentSessionId, oneHourAgoMs) as Array<{
       session_id: string; name: string | null; observation_count: number;
       topic: string | null; last_activity_epoch: number;
     }>;
@@ -72,15 +72,15 @@ export function getCrossSessionActivity(
        FROM observations o, json_each(o.files_modified)
        WHERE o.session_id IN (${placeholders})
          AND o.tool_name IN ('Edit', 'Write')
-         AND o.timestamp_epoch > ?
+         AND o.timestamp_epoch_ms > ?
          AND json_each.value != ''`
-    ).all(...sessionIds, oneHourAgo) as Array<{ session_id: string; file_path: string }>;
+    ).all(...sessionIds, oneHourAgoMs) as Array<{ session_id: string; file_path: string }>;
 
     const toolsRows = db.prepare(
       `SELECT DISTINCT session_id, tool_name FROM observations
        WHERE session_id IN (${placeholders})
-         AND timestamp_epoch > ?`
-    ).all(...sessionIds, oneHourAgo) as Array<{ session_id: string; tool_name: string }>;
+         AND timestamp_epoch_ms > ?`
+    ).all(...sessionIds, oneHourAgoMs) as Array<{ session_id: string; tool_name: string }>;
 
     // Group by session
     const filesMap = new Map<string, string[]>();
