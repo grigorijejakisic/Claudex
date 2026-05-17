@@ -76,7 +76,7 @@ After this plan lands:
 
 <anti_scope>
 - Do NOT modify hybrid-retrieval ranking math. The metadata fields are READ-ONLY surfaces of what the existing pipeline already computed.
-- Do NOT modify any function in `src/assembly/sections.ts` other than the codebase-context formatter. I owns ONLY this function per WAVE3-COORDINATION.
+- Do NOT modify any function in `src/assembly/sections/codebase-context.ts` other than `formatCodebaseContextSection`. I owns ONLY this function per WAVE3-COORDINATION. Do NOT touch `src/assembly/sections.ts` (the residual file) at all.
 - Do NOT modify the lessons section formatter (14-07h / 14-07j territory).
 - Do NOT add new MCP tools.
 - Do NOT change the assembler cascade order.
