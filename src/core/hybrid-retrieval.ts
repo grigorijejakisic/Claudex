@@ -485,11 +485,11 @@ function searchFts5Channel(
 
     // Build FTS5 query (deduped — FTS5 can't boost individual terms)
     const ftsQuery = [...new Set(keywords)].join(' OR ');
-    const supersededFilter = excludeSuperseded ? 'AND a.superseded_by IS NULL' : '';
+    // 14-07b: migrated from legacy artifacts — V17 uses status instead of superseded_by
+    const supersededFilter = excludeSuperseded ? `AND ${V17_NOT_SUPERSEDED}` : '';
     const projectFilter = globalScope ? '' : 'AND a.project = ?';
-    // Phase 14 Plan 14-04: P2.7 substantive-only filter — DB-layer via SQL clause
-    // (legacy artifacts table has artifact_type column; clause is parameterless)
-    const substantiveFilter = substantiveOnly ? `AND ${substantiveSqlClause('a')}` : '';
+    // 14-07b: migrated from legacy artifacts — use v17SubstantiveSqlClause for artifact table
+    const substantiveFilter = substantiveOnly ? `AND ${v17SubstantiveSqlClause('a')}` : '';
     const orderPrefix = globalScope
       ? 'CASE WHEN a.project = ? THEN 0 ELSE 1 END,'
       : '';
@@ -497,15 +497,16 @@ function searchFts5Channel(
     // Fetch extra results so post-boost re-ranking has room to promote proper noun matches
     const fetchLimit = uniqueProperNouns.length > 0 ? limit * 2 : limit;
 
-    const sql = `SELECT a.* FROM artifacts a
-       JOIN artifacts_fts fts ON fts.rowid = a.id
-       WHERE artifacts_fts MATCH ?
+    // 14-07b: migrated from legacy artifacts — artifact_fts is the V17 FTS5 table (title+body)
+    const sql = `SELECT ${V17_TO_ARTIFACT_ROW_SELECT} FROM artifact a
+       JOIN artifact_fts fts ON fts.rowid = a.rowid
+       WHERE artifact_fts MATCH ?
          ${projectFilter}
          ${supersededFilter}
          ${substantiveFilter}
        ORDER BY ${orderPrefix}
-         bm25(artifacts_fts, 2.0, 1.0),
-         a.importance DESC
+         bm25(artifact_fts, 2.0, 1.0),
+         a.confidence DESC
        LIMIT ?`;
 
     const params = globalScope
