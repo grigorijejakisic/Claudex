@@ -13,7 +13,7 @@ export interface DecisionRow {
   content: string;
   source: string;
   fingerprint: string;
-  timestamp_epoch: number;
+  timestamp_epoch_ms: number;
   updated_at_epoch: number;
 }
 
