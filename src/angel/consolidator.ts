@@ -242,11 +242,11 @@ ${obsTexts}
 
 Respond with ONLY the consolidated summary text, nothing else.`;
 
-    const text = await callLocalLLM({
+    const text = await generate({
       prompt,
-      // Budget for Gemma's reasoning_content overhead — 512 burns on
-      // reasoning and leaves no room for the consolidated summary.
+      model: 'sonnet',
       maxTokens: 2048,
+      subsystem: 'consolidator',
     });
     return text || null;
   } catch {
