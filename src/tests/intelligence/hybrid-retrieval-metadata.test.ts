@@ -228,17 +228,17 @@ describe('hybrid-retrieval-metadata (14-07i)', () => {
   it('7. match_query truncated to ~200 chars when source query is longer', () => {
     // Seed an artifact that matches the long query
     seedArtifact(db, {
-      title: 'truncation-test longquery',
+      title: 'truncation test longquery unique zymurgy6',
       body: 'body content for truncation test',
     });
 
-    // Build a query longer than 200 chars
-    const longQuery = 'truncation-test longquery ' + 'x'.repeat(200);
+    // Build a query longer than 200 chars that starts with a matchable prefix
+    const longQuery = 'truncation test longquery ' + 'x'.repeat(200);
     expect(longQuery.length).toBeGreaterThan(200);
 
     const results = hybridSearchSync(db, longQuery, 'test-project', { limit: 5 });
 
-    const hit = results.find(r => (r.summary ?? '').includes('truncation-test'));
+    const hit = results.find(r => (r.summary ?? '').includes('truncation test longquery'));
     if (hit && hit.match_kind === 'fts') {
       expect(typeof hit.match_query).toBe('string');
       // Truncation: match_query must be ≤200 chars
