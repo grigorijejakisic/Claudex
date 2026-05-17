@@ -23,7 +23,6 @@ import { createSession } from '../core/sessions.js';
 import {
   runHardLinkProposer,
   _setLLMCallableForTest,
-  formatPendingReviewLinksSection as formatSection,
 } from '../intelligence/hard-link-proposer.js';
 import { formatPendingReviewLinksSection } from '../assembly/sections/links.js';
 import { rejectHardLink } from '../core/link-writer.js';
