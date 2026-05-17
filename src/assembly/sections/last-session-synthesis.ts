@@ -157,7 +157,7 @@ function _renderSection(s: LastSessionSynthesis): string {
  * Renders a budget-constrained version of the synthesis.
  * Progressively drops bullets (oldest first) until under LSS_SECTION_BUDGET_TOKENS.
  */
-function _truncateTobudget(s: LastSessionSynthesis): string {
+function _truncateToBudget(s: LastSessionSynthesis): string {
   // Start with 1 pivot and 1 position, expand until budget is hit
   const pivotsSorted = [...(s.operator_pivots ?? [])].sort((a, b) => b.at_turn - a.at_turn);
   const positionsSorted = [...(s.agent_positions ?? [])].sort((a, b) => b.at_turn - a.at_turn);
