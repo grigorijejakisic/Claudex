@@ -22,6 +22,8 @@ import {
   _setOpusCallableForTest,
   _setFallbackCallableForTest,
 } from '../../angel/highlights-extractor.js';
+import { applyV17DDL } from '../../core/migration/v17-ddl.js';
+import { migrateV37toV38 } from '../../core/migration-steps.js';
 // Phase 14 Plan 14-00 (2026-05-15): the Opus path is now gated by either
 // a test hook or the ANTHROPIC_API_KEY env var. Tests that exercise the
 // Opus path set _setOpusCallableForTest, which opens the gate. Tests for
