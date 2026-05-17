@@ -66,6 +66,115 @@ export function formatLearningsSection(learnings: LearningRow[]): string | null 
   }
 }
 
+// ─── 14-07h: lessons section formatter (J extends post-merge for inline-expansion) ──────────
+
+/** Lesson filename pattern (mirrors lesson-reader.ts, includes reference/user files). */
+const LESSON_FILENAME_RE = /^(feedback|project|process|reference|user)_([a-z0-9][a-z0-9_-]{0,59})\.md$/;
+
+/** Max chars for trigger display before truncation (14-07h). */
+const TRIGGER_MAX_CHARS = 120;
+
+/** Max chars for truncated-body fallback display (14-07h). */
+const BODY_FALLBACK_MAX_CHARS = 60;
+
+/**
+ * Phase 14-07h — lessons section formatter from memory_dir scan.
+ *
+ * Renders the lessons pointer list at session-start. For each lesson
+ * file, reads the `trigger:` frontmatter if present and uses it as
+ * the display title. Falls back to truncated-body for lessons without trigger.
+ *
+ * Sort: mtime DESC, tiebreak by filename ASC.
+ * Budget cap: cuts list when budget reached; appends "... and N more lessons available".
+ * Returns null when no lesson files found in memory_dir.
+ *
+ * 14-07j extends this via formatLessonsWithInlineExpansion (post-merge).
+ * H ships this function first; J adds inline-expansion as additional behavior.
+ * // 14-07h: lessons section formatter (J extends post-merge for inline-expansion)
+ */
+export function formatLessonsSectionFromDir(params: {
+  db: Database;
+  project: string;
+  memory_dir: string;
+  budget_tokens: number;
+}): string | null {
+  try {
+    if (!fs.existsSync(params.memory_dir)) return null;
+
+    const entries = fs.readdirSync(params.memory_dir);
+    const lessonFiles = entries.filter(name => LESSON_FILENAME_RE.test(name));
+
+    if (lessonFiles.length === 0) return null;
+
+    // Sort by mtime DESC, tiebreak filename ASC.
+    const withMtime = lessonFiles.map(name => {
+      const filePath = path.join(params.memory_dir, name);
+      let mtime = 0;
+      try { mtime = fs.statSync(filePath).mtimeMs; } catch { /* ignore */ }
+      return { name, filePath, mtime };
+    });
+    withMtime.sort((a, b) => {
+      if (b.mtime !== a.mtime) return b.mtime - a.mtime;
+      return a.name.localeCompare(b.name);
+    });
+
+    const lines: string[] = ['## Lessons'];
+    const TOKEN_ESTIMATE_PER_LINE = 20;
+    let tokenBudgetUsed = TOKEN_ESTIMATE_PER_LINE; // header line budget
+    let skipped = 0;
+
+    for (const { name, filePath } of withMtime) {
+      const trigger = readLessonTrigger(filePath);
+
+      let display: string;
+      if (trigger && trigger.length > 0) {
+        display = trigger.length > TRIGGER_MAX_CHARS
+          ? trigger.slice(0, TRIGGER_MAX_CHARS - 1) + '…'
+          : trigger;
+      } else {
+        // Fallback: read body and extract first meaningful line.
+        let bodyText = '';
+        try {
+          const raw = fs.readFileSync(filePath, 'utf8');
+          const normalized = raw.replace(/\r\n/g, '\n');
+          const endFm = normalized.indexOf('\n---\n', 4);
+          if (endFm >= 0) {
+            bodyText = normalized.slice(endFm + 5).replace(/^\n+/, '');
+          }
+        } catch { /* ignore */ }
+
+        let firstLine = '(no content)';
+        for (const line of bodyText.split('\n')) {
+          const trimmed = line.trim().replace(/^#+\s+|^[-*]\s+/, '').replace(/\s+/g, ' ').trim();
+          if (trimmed.length > 0) { firstLine = trimmed; break; }
+        }
+        display = firstLine.length > BODY_FALLBACK_MAX_CHARS
+          ? firstLine.slice(0, BODY_FALLBACK_MAX_CHARS - 1) + '…'
+          : firstLine;
+      }
+
+      const lineStr = `- [${display}](${name})`;
+      const lineTokens = Math.ceil(lineStr.length / 4) + 2;
+
+      if (tokenBudgetUsed + lineTokens > params.budget_tokens) {
+        skipped++;
+        continue;
+      }
+
+      lines.push(lineStr);
+      tokenBudgetUsed += lineTokens;
+    }
+
+    if (skipped > 0) {
+      lines.push(`... and ${skipped} more lessons available`);
+    }
+
+    return lines.join('\n');
+  } catch {
+    return null;
+  }
+}
+
 // ─── 14-07j: Link-aware inline-expansion of top-K lessons ─────────────────────
 
 /**
