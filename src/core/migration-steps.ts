@@ -3196,47 +3196,22 @@ function _populateArtifactIdMapInTransaction(db: Database): void {
   }
 
   // ── Post-loop: resolve supersedes_id (direction flip: superseded_by → supersedes_id) ──
-  // Legacy: artifacts.superseded_by = ID of the artifact that replaces THIS one (forward link).
-  // V17: artifact.supersedes_id = ID of the artifact THIS one replaces (backward link).
+  // Legacy semantics: artifacts.superseded_by = S means "I (this row L) was replaced by row S".
+  // V17 semantics: artifact.supersedes_id = L means "I (row S) replaced row L".
   //
-  // For each legacy row where superseded_by IS NOT NULL (this row was superseded by X):
-  //   The superseding row X "supersedes" this row.
-  //   So: V17 row for X should have supersedes_id = V17 ID of this row.
+  // So: for each legacy row L with superseded_by = S (non-null),
+  //   find the V17 row for S (the superseding row),
+  //   and set that V17 row's supersedes_id = V17_id(L) (the superseded row's V17 ID).
   //
-  // We run this as a SQL UPDATE after the full map is populated.
-  db.exec(`
-    UPDATE artifact
-    SET supersedes_id = (
-      SELECT m_superseded.v17_id
-      FROM artifact_id_map m_superseder
-      INNER JOIN artifacts leg_superseder ON leg_superseder.id = m_superseder.legacy_id
-      INNER JOIN artifact_id_map m_superseded ON m_superseded.legacy_id = leg_superseder.id
-      WHERE m_superseder.v17_id = artifact.id
-        AND (
-          SELECT superseded_by
-          FROM artifacts
-          WHERE id IN (
-            SELECT legacy_id FROM artifact_id_map
-            WHERE v17_id = artifact.id
-          )
-        ) IS NULL
-      LIMIT 1
-    )
-    WHERE EXISTS (
-      SELECT 1 FROM artifact_id_map WHERE v17_id = artifact.id
-    )
-  `);
-
-  -- Simpler, correct supersedes_id resolution:
-  -- For each legacy row L with superseded_by = S (L was replaced by S),
-  -- the V17 row for S should record: supersedes_id = V17_id(L).
+  // SQL: For each artifact in V17 whose legacy_id = S,
+  //   find any legacy row L where L.superseded_by = S,
+  //   and set supersedes_id = artifact_id_map[L.id].v17_id.
   db.exec(`
     UPDATE artifact
     SET supersedes_id = (
       SELECT m_superseded.v17_id
       FROM artifact_id_map m_superseding
-      INNER JOIN artifacts leg_superseding ON leg_superseding.id = m_superseding.legacy_id
-      INNER JOIN artifacts leg_superseded ON leg_superseded.superseded_by = leg_superseding.id
+      INNER JOIN artifacts leg_superseded ON leg_superseded.superseded_by = m_superseding.legacy_id
       INNER JOIN artifact_id_map m_superseded ON m_superseded.legacy_id = leg_superseded.id
       WHERE m_superseding.v17_id = artifact.id
       LIMIT 1
@@ -3244,10 +3219,9 @@ function _populateArtifactIdMapInTransaction(db: Database): void {
     WHERE artifact.supersedes_id IS NULL
       AND EXISTS (
         SELECT 1
-        FROM artifact_id_map m_s
-        INNER JOIN artifacts leg_s ON leg_s.id = m_s.legacy_id
-        INNER JOIN artifacts leg_r ON leg_r.superseded_by = leg_s.id
-        WHERE m_s.v17_id = artifact.id
+        FROM artifact_id_map m_superseding
+        INNER JOIN artifacts leg_superseded ON leg_superseded.superseded_by = m_superseding.legacy_id
+        WHERE m_superseding.v17_id = artifact.id
       )
   `);
 }
