@@ -159,7 +159,7 @@ function isPromotableContent(content: string): boolean {
 // ---------------------------------------------------------------------------
 
 /**
- * Ensure checkpoint_tracking has a last_tick_epoch column for cross-process
+ * Ensure checkpoint_tracking has a last_tick_epoch_ms column for cross-process
  * artifact TTL throttling. Idempotent — safe to call on every invocation.
  * Module-level flag prevents redundant ALTER TABLE after first successful call.
  */
@@ -169,8 +169,8 @@ function ensureTickEpochColumn(db: Database.Database): void {
   try {
     // Check if column exists via pragma
     const cols = db.pragma('table_info(checkpoint_tracking)') as Array<{ name: string }>;
-    if (!cols.some(c => c.name === 'last_tick_epoch')) {
-      db.exec('ALTER TABLE checkpoint_tracking ADD COLUMN last_tick_epoch INTEGER NOT NULL DEFAULT 0');
+    if (!cols.some(c => c.name === 'last_tick_epoch_ms')) {
+      db.exec('ALTER TABLE checkpoint_tracking ADD COLUMN last_tick_epoch_ms INTEGER NOT NULL DEFAULT 0');
     }
     _tickColumnEnsured = true;
   } catch {
