@@ -507,16 +507,21 @@ export async function ingestFileArtifacts(
 /**
  * Removes artifacts for files that no longer exist on disk.
  * Uses async file existence checks. Non-throwing.
+ *
+ * 14-07b: migrated from legacy artifacts → V17 artifact table.
+ * artifact_ref is stored in data JSON as data.artifact_ref.
  */
 export async function pruneStaleFileArtifacts(db: Database, project: string): Promise<number> {
   try {
     const fileTypes = ['memory_file', 'session_log', 'handoff'];
     const placeholders = fileTypes.map(() => '?').join(',');
+    // 14-07b: migrated from legacy artifacts
     const rows = cachedPrepare(db,
-      `SELECT id, artifact_ref FROM artifacts
-       WHERE project = ? AND artifact_type IN (${placeholders})
-         AND artifact_ref IS NOT NULL`
-    ).all(project, ...fileTypes) as Array<{ id: number; artifact_ref: string }>;
+      `SELECT id, json_extract(data, '$.artifact_ref') AS artifact_ref
+       FROM artifact
+       WHERE project = ? AND kind IN (${placeholders})
+         AND json_extract(data, '$.artifact_ref') IS NOT NULL`
+    ).all(project, ...fileTypes) as Array<{ id: string; artifact_ref: string }>;
 
     let pruned = 0;
     const checks = await Promise.allSettled(
@@ -533,7 +538,8 @@ export async function pruneStaleFileArtifacts(db: Database, project: string): Pr
     for (const check of checks) {
       if (check.status === 'fulfilled' && !check.value.exists) {
         try {
-          cachedPrepare(db, `DELETE FROM artifacts WHERE id = ?`).run(check.value.id);
+          // 14-07b: migrated from legacy artifacts — DELETE from V17 artifact
+          cachedPrepare(db, `DELETE FROM artifact WHERE id = ?`).run(check.value.id);
           pruned++;
         } catch { /* skip */ }
       }
