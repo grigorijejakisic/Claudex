@@ -78,8 +78,8 @@ describe('V31→V32 migration (Phase 8 — v6 transcript ingestion substrate)', 
   beforeEach(() => { db = new Database(':memory:'); });
   afterEach(() => { db.close(); });
 
-  it('TARGET_USER_VERSION is 36', () => {
-    expect(TARGET_USER_VERSION).toBe(36);
+  it('TARGET_USER_VERSION is 37', () => {
+    expect(TARGET_USER_VERSION).toBe(37);
   });
 
   describe('migrateV31toV32 — base-table fresh-DB', () => {
