@@ -913,7 +913,8 @@ export interface ClassifyBoundaryOpts {
   user_text: string | null;     // null = agent-only turn (skip)
   assistant_text: string;
   prompt_version?: string;      // default 'v1'
-  llm_model?: string;           // default env or 'llama3.1:8b'
+  llm_model?: string;           // default env or 'haiku' (claude subprocess)
+  timeoutMs?: number;           // default 30_000 (haiku ~10-15s typical)
   signal?: AbortSignal;         // for timeout
 }
 
