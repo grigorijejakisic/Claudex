@@ -321,7 +321,7 @@ export function pruneRetrievalEvents(db: Database, config: RetentionConfig): num
  * Two cleanup targets for artifact_links.
  *
  * - Orphan links: source_id or target_id no longer exists in V17 artifact (or legacy artifacts)
- * - Weak stale links: strength < 0.3 AND valid_at_epoch past 1-year threshold
+ * - Weak stale links: strength < 0.3 AND valid_at_epoch_ms past 1-year threshold
  *
  * 14-07b: migrated from legacy artifacts — orphan check now uses V17 artifact table.
  * artifact_links.source_id / target_id are INTEGER legacy IDs bridged via artifact_id_map.
