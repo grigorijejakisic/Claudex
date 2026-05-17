@@ -3044,6 +3044,33 @@ export function migrateV36toV37(db: Database): boolean {
       // still proceed; the schema gate at cutover enforces vec0 presence.
     }
 
+    // ── Step 3.5: kind_registry schema repair ────────────────────────────
+    // V17 DDL defines `kind_registry` with `first_seen_epoch_ms` /
+    // `last_seen_epoch_ms`. Some test fixtures and pre-V35 DBs may have the
+    // older column names (`first_seen_epoch`, `last_seen_epoch`) that the
+    // V34→V35 rename missed (e.g., kind_registry created AFTER V35 ran).
+    // The `artifact_register_kind` trigger (V17 DDL) fires on every artifact
+    // INSERT during Step 4 and writes to `first_seen_epoch_ms` — if the
+    // column is missing, the migration aborts. Ensure the V17-shape columns
+    // exist before Step 4.
+    if (hasTable(db, 'kind_registry')) {
+      const krCols = new Set(
+        (db.pragma('table_info(kind_registry)') as Array<{ name: string }>).map((c) => c.name),
+      );
+      if (!krCols.has('first_seen_epoch_ms')) {
+        db.exec("ALTER TABLE kind_registry ADD COLUMN first_seen_epoch_ms INTEGER NOT NULL DEFAULT 0");
+        if (krCols.has('first_seen_epoch')) {
+          db.exec("UPDATE kind_registry SET first_seen_epoch_ms = first_seen_epoch * 1000 WHERE first_seen_epoch_ms = 0");
+        }
+      }
+      if (!krCols.has('last_seen_epoch_ms')) {
+        db.exec("ALTER TABLE kind_registry ADD COLUMN last_seen_epoch_ms INTEGER NOT NULL DEFAULT 0");
+        if (krCols.has('last_seen_epoch')) {
+          db.exec("UPDATE kind_registry SET last_seen_epoch_ms = last_seen_epoch * 1000 WHERE last_seen_epoch_ms = 0");
+        }
+      }
+    }
+
     // ── Step 4: Populate artifact_id_map from legacy artifacts ───────────
     _populateArtifactIdMapInTransaction(db);
 
