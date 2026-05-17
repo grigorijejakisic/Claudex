@@ -27,7 +27,6 @@ import { computeArtifactScore } from './hybrid-retrieval.js';
 import type { ArtifactRow } from './artifacts.js';
 import type { TaskShapeResult } from './task-shape-detector.js';
 import { readCrossProjectSearchFlag } from '../shared/claude-md-flags.js';
-import { lookupLegacyByV17 } from './artifact-id-map.js';
 
 const CANDIDATE_POOL_SIZE = 50;
 const RESULTS_LIMIT = 10;
