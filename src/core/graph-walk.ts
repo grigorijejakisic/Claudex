@@ -139,7 +139,7 @@ export function graphWalkFromSeeds(
         const nextScores = new Map<number, number>();
         for (const link of links) {
           const sourceScore = currentScores.get(link.source_id) ?? 0;
-          const linkAge = link.valid_at_epoch ? Math.max(0, now - link.valid_at_epoch) : 0;
+          const linkAge = link.valid_at_epoch_ms ? Math.max(0, now - link.valid_at_epoch_ms) : 0;
           const temporalDecay = linkAge > 0 ? Math.exp(-linkAge / TEMPORAL_DECAY_SIGMA) : 1.0;
           // Apply link-type multiplier even in MPFP — preserves caused_by(2x), supports(1.5x) advantage
           const typeMultiplier = LINK_TYPE_MULTIPLIERS[link.link_type] ?? 1.0;
