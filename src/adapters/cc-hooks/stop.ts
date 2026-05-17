@@ -240,7 +240,7 @@ const main = wrapHook('Stop', async (input, ctx) => {
           project: routedProject,
           topic: thread.topic ?? '',
           summary: thread.summary.slice(0, 500),
-          timestamp_epoch: Math.floor(Date.now() / 1000),
+          timestamp_epoch_ms: Date.now(),
         });
         if (pushed) {
           ctx.db.prepare('UPDATE thread_state SET qdrant_synced = 1 WHERE session_id = ?')
