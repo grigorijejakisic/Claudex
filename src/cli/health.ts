@@ -206,6 +206,23 @@ const EXPECTED_TABLES: Record<string, ColumnDef[]> = {
     { name: 'strength', notNull: true, hasDefault: true },
     { name: 'created_at_epoch', notNull: true, hasDefault: true },
   ],
+  // V17 unified artifact kernel — Phase 14-07b: migrated from legacy artifacts
+  artifact: [
+    { name: 'id', notNull: true },
+    { name: 'kind', notNull: true },
+    { name: 'title' },
+    { name: 'body', notNull: true },
+    { name: 'scope' },
+    { name: 'status', notNull: true, hasDefault: true },
+    { name: 'confidence' },
+    { name: 'created_at_epoch_ms', notNull: true },
+    { name: 'updated_at_epoch_ms', notNull: true },
+    { name: 'session_id' },
+    { name: 'project' },
+    { name: 'embedding_ref' },
+    { name: 'supersedes_id' },
+    { name: 'data', notNull: true, hasDefault: true },
+  ],
   retrieval_events: [
     { name: 'id', notNull: true },
     { name: 'artifact_id', notNull: true },
