@@ -3998,6 +3998,20 @@ export function migrateV39toV40(db: Database): void {
         `UPDATE ${table} SET ${col} = ${col} * 1000 WHERE ${col} > 0 AND ${col} < 100000000000`,
       );
     }
+
+    // Step 1.5: drop legacy `_epoch` columns on kind_registry. V14→V15 created
+    // them as NOT NULL (no DEFAULT); V35 added `_epoch_ms` siblings but never
+    // dropped the legacy. Any INSERT that omits the old columns now fails with
+    // "NOT NULL constraint failed: kind_registry.first_seen_epoch". SQLite
+    // 3.35+ supports ALTER TABLE DROP COLUMN (better-sqlite3 bundles 3.45+).
+    if (hasTable(db, 'kind_registry')) {
+      if (hasColumn(db, 'kind_registry', 'first_seen_epoch')) {
+        try { db.exec('ALTER TABLE kind_registry DROP COLUMN first_seen_epoch'); } catch { /* indices/triggers might block — non-fatal */ }
+      }
+      if (hasColumn(db, 'kind_registry', 'last_seen_epoch')) {
+        try { db.exec('ALTER TABLE kind_registry DROP COLUMN last_seen_epoch'); } catch { /* non-fatal */ }
+      }
+    }
   });
   tx();
 
