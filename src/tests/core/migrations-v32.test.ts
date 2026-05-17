@@ -243,7 +243,7 @@ describe('V31→V32 migration (Phase 8 — v6 transcript ingestion substrate)', 
       incDb.pragma('user_version = 31');
       runMigrations(incDb);
       const incUv = (incDb.pragma('user_version') as Array<{ user_version: number }>)[0].user_version;
-      expect(incUv).toBe(37);
+      expect(incUv).toBe(38);
       const incShape = incDb.prepare(
         "SELECT sql FROM sqlite_master WHERE name='transcript_chunk_v6'"
       ).get() as { sql: string };
