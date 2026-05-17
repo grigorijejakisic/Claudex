@@ -11,8 +11,17 @@
  * take pre-fetched data.
  */
 
+import * as fs from 'fs';
+import * as path from 'path';
+import type { Database } from 'better-sqlite3';
 import type { ExperiencePattern } from '../../intelligence/experience-patterns.js';
 import type { LearningRow } from '../../core/learnings.js';
+import { estimateTokens } from '../../shared/text-utils.js';
+import {
+  selectTopKLessons,
+  readLessonTrigger,
+  DEFAULT_TOP_K,
+} from '../../intelligence/lesson-relevance.js';
 
 /**
  * Priority 4.1: Proven principles — proactive injection of established learnings.
