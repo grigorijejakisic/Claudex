@@ -628,8 +628,9 @@ async function searchVectorChannel(
       if (!artifactId) continue;
 
       try {
-        const row = cachedPrepare(db,
-          'SELECT * FROM artifacts WHERE id = ?'
+        // 14-07b: migrated from legacy artifacts — hydrate from V17 artifact via rowid
+      const row = cachedPrepare(db,
+          `SELECT ${V17_TO_ARTIFACT_ROW_SELECT} FROM artifact a WHERE a.rowid = ?`
         ).get(artifactId) as ArtifactRow | undefined;
 
         if (row) {
