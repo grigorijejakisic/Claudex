@@ -274,11 +274,12 @@ export function runBatchReflection(
       const content = contentParts.join('\n');
       const summary = `[Reflection] ${cluster.keywords.slice(0, 3).join(', ')} — ${cluster.items.length} learnings`;
 
-      // Dedup: skip if an artifact with the same summary already exists for this project
+      // 14-07b: migrated from legacy artifacts — dedup against V17 artifact table
+      // V17 field mapping: summary → title
       try {
         const existing = cachedPrepare(db,
-          `SELECT id FROM artifacts WHERE project = ? AND summary = ? LIMIT 1`
-        ).get(project, summary) as { id: number } | undefined;
+          `SELECT id FROM artifact WHERE project = ? AND title = ? LIMIT 1`
+        ).get(project, summary) as { id: string } | undefined;
         if (existing) continue; // Already have this reflection
       } catch { /* non-fatal — proceed with creation */ }
 
