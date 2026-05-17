@@ -81,25 +81,22 @@ describe('isDecayed', () => {
     expect(isDecayed(db, A1, A2, TYPE)).toBe(false);
   });
 
-  it('returns true at DECAY_THRESHOLD', async () => {
-    // Propose + reject DECAY_THRESHOLD times.
-    for (let i = 0; i < DECAY_THRESHOLD; i++) {
-      const id = proposeHardLink(db, {
-        src_artifact_id: A1,
-        dst_artifact_id: A2,
-        type: TYPE,
-        proposed_confidence: 0.8,
-        proposed_by_session: SESSION,
-        proposer_rationale: 'test',
-      });
-      if (id !== null) {
-        rejectHardLink(db, id, `reject-sess-${i}`);
-      }
-    }
+  it('returns true at DECAY_THRESHOLD', () => {
+    // Propose once, then force decay_count to DECAY_THRESHOLD via direct DB.
+    const id = proposeHardLink(db, {
+      src_artifact_id: A1,
+      dst_artifact_id: A2,
+      type: TYPE,
+      proposed_confidence: 0.8,
+      proposed_by_session: SESSION,
+      proposer_rationale: 'test',
+    });
+    expect(id).not.toBeNull();
+    db.prepare(`UPDATE hard_link SET decay_count = ? WHERE id = ?`).run(DECAY_THRESHOLD, id);
     expect(isDecayed(db, A1, A2, TYPE)).toBe(true);
   });
 
-  it('returns true above DECAY_THRESHOLD', async () => {
+  it('returns true above DECAY_THRESHOLD', () => {
     // Force decay_count above threshold via direct DB manipulation.
     const id = proposeHardLink(db, {
       src_artifact_id: A1,
