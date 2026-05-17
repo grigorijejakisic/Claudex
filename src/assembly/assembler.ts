@@ -34,6 +34,7 @@ import {
   formatRulesReminderSection,
   renderSessionContinuity,
   renderExperienceWarnings as formatExperienceWarningsSection,
+  formatCodebaseContextSection,
 } from './sections.js';
 import { getLatestHighlights } from '../intelligence/session-highlights.js';
 import {
