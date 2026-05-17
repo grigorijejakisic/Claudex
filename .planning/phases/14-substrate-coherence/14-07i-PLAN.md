@@ -71,7 +71,7 @@ After this plan lands:
 @.planning/phases/14-substrate-coherence/14-07-CONTEXT.md
 @.planning/phases/14-substrate-coherence/14-07-WAVE3-COORDINATION.md
 @src/core/hybrid-retrieval.ts
-@src/assembly/sections.ts
+@src/assembly/sections/codebase-context.ts
 </context>
 
 <anti_scope>
