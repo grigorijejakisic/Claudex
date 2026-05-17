@@ -197,7 +197,7 @@ const EXPECTED_TABLES: Record<string, ColumnDef[]> = {
     { name: 'entity', notNull: true },
     { name: 'action', notNull: true },
     { name: 'detail' },
-    { name: 'timestamp_epoch', notNull: true, hasDefault: true },
+    { name: 'timestamp_epoch_ms', notNull: true, hasDefault: true },
   ],
   artifact_links: [
     { name: 'source_id', notNull: true },

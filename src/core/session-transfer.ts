@@ -92,7 +92,7 @@ export function packageSessionContext(
     // Background: recent conversation turns
     const turns = cachedPrepare(db,
       `SELECT user_text, assistant_text FROM conversation_turns
-       WHERE session_id = ? ORDER BY timestamp_epoch DESC LIMIT 10`
+       WHERE session_id = ? ORDER BY timestamp_epoch_ms DESC LIMIT 10`
     ).all(sourceSessionId) as Array<{ user_text: string | null; assistant_text: string | null }>;
 
     // Assessment: failed approaches (from failure signals this session created)
