@@ -55,15 +55,20 @@ const ANNOTATION_QUERY_DISPLAY_MAX = 50;
  *
  * @param files          Relevant files from findRelevantFiles.
  * @param shortenPath    Path-shortener for cache-stable relative paths.
+ * @param budgetTokens   Optional token budget. When provided, files are added
+ *                       greedily until the budget is exhausted. The LAST file
+ *                       is dropped (not the annotations) to stay within budget.
+ *                       When omitted, all files are rendered (caller enforces cap).
  */
 export function formatCodebaseContextSection(
   files: CodebaseContextFile[],
   shortenPath: (fp: string) => string,
+  budgetTokens?: number,
 ): string {
   if (!files || files.length === 0) return '';
 
-  const codeParts: string[] = ['**Relevant files:**'];
-  for (const f of files) {
+  /** Render a single file line (with annotation if metadata present). */
+  function renderFileLine(f: CodebaseContextFile): string {
     const relPath = shortenPath(f.file_path);
     const topSymbols = f.symbols
       .filter(s => s.exported)
@@ -87,13 +92,35 @@ export function formatCodebaseContextSection(
           : f.match_query!;
       const scoreStr = f.score!.toFixed(2);
       const kindStr = f.match_kind ?? 'fts';
-      codeParts.push(
-        `- \`${relPath}\` — matched "${displayQuery}" (score ${scoreStr}, ${kindStr}) — ${symbolsStr}`
-      );
-    } else {
-      codeParts.push(`- \`${relPath}\`: ${symbolsStr}`);
+      return `- \`${relPath}\` — matched "${displayQuery}" (score ${scoreStr}, ${kindStr}) — ${symbolsStr}`;
     }
+    return `- \`${relPath}\`: ${symbolsStr}`;
   }
 
-  return `## Codebase Context\n${codeParts.join('\n')}`;
+  // 14-07i: budget-aware greedy file selection.
+  // When budgetTokens is set, stop adding files once the next file would overflow.
+  // AC-10: drop the trailing file, not the annotations.
+  const header = '**Relevant files:**';
+  const sectionPrefix = '## Codebase Context\n';
+  const headerCost = estimateTokens(sectionPrefix + header);
+
+  let fileLines: string[];
+  if (budgetTokens !== undefined && budgetTokens > 0) {
+    fileLines = [];
+    let usedTokens = headerCost;
+    for (const f of files) {
+      const line = renderFileLine(f);
+      const lineCost = estimateTokens('\n' + line);
+      if (usedTokens + lineCost > budgetTokens && fileLines.length > 0) break;
+      fileLines.push(line);
+      usedTokens += lineCost;
+    }
+  } else {
+    fileLines = files.map(renderFileLine);
+  }
+
+  if (fileLines.length === 0) return '';
+
+  const codeParts: string[] = [header, ...fileLines];
+  return `${sectionPrefix}${codeParts.join('\n')}`;
 }
