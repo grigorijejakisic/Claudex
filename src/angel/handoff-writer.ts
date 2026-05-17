@@ -58,6 +58,8 @@ export interface HandoffInput {
   summary?: string;
   topic?: string;
   created_at_epoch_ms?: number;
+  /** Phase 14-07l: epoch_ms of the most-recent CHR refresh. Optional; backward-compatible. */
+  last_refresh_epoch_ms?: number;
   whatWeFound: string;
   whatWeDecided: string;
   whatsNext: string;
