@@ -481,13 +481,23 @@ export function pruneObservations(db: Database, config: RetentionConfig): { dele
     // This ensures contradicted observations are marked consumed rather than blindly age-pruned.
     const superseded = resolveContradictions(db);
 
+    // 14-07b: migrated from legacy artifacts
+    // Observation retrieval guard: check V17 artifact table via data.artifact_ref JSON field.
+    // An observation is "recently retrieved" if a V17 artifact of kind='observation' with
+    // data.artifact_ref = obs.id has a retrieval_events entry.
     // Tier 1: Low importance (1-2), older than config days
     const lowCutoffMs = cutoffMs(config.observationLowImpRetentionDays ?? 30);
     const lowResult = cachedPrepare(db,
       `DELETE FROM observations
        WHERE importance <= 2
          AND timestamp_epoch_ms < ?
-         AND id NOT IN (SELECT CAST(a.artifact_ref AS INTEGER) FROM artifacts a JOIN retrieval_events re ON a.id = re.artifact_id WHERE a.artifact_type = 'observation')
+         AND id NOT IN (
+           SELECT CAST(json_extract(a.data, '$.artifact_ref') AS INTEGER)
+           FROM artifact a
+           JOIN retrieval_events re ON a.id = re.artifact_id
+           WHERE a.kind = 'observation'
+             AND json_extract(a.data, '$.artifact_ref') IS NOT NULL
+         )
        LIMIT 500`
     ).run(lowCutoffMs);
     totalDeleted += lowResult.changes;
@@ -498,7 +508,13 @@ export function pruneObservations(db: Database, config: RetentionConfig): { dele
       `DELETE FROM observations
        WHERE importance = 3
          AND timestamp_epoch_ms < ?
-         AND id NOT IN (SELECT CAST(a.artifact_ref AS INTEGER) FROM artifacts a JOIN retrieval_events re ON a.id = re.artifact_id WHERE a.artifact_type = 'observation')
+         AND id NOT IN (
+           SELECT CAST(json_extract(a.data, '$.artifact_ref') AS INTEGER)
+           FROM artifact a
+           JOIN retrieval_events re ON a.id = re.artifact_id
+           WHERE a.kind = 'observation'
+             AND json_extract(a.data, '$.artifact_ref') IS NOT NULL
+         )
        LIMIT 500`
     ).run(medCutoffMs);
     totalDeleted += medResult.changes;
@@ -509,7 +525,13 @@ export function pruneObservations(db: Database, config: RetentionConfig): { dele
       `DELETE FROM observations
        WHERE importance >= 4
          AND timestamp_epoch_ms < ?
-         AND id NOT IN (SELECT CAST(a.artifact_ref AS INTEGER) FROM artifacts a JOIN retrieval_events re ON a.id = re.artifact_id WHERE a.artifact_type = 'observation')
+         AND id NOT IN (
+           SELECT CAST(json_extract(a.data, '$.artifact_ref') AS INTEGER)
+           FROM artifact a
+           JOIN retrieval_events re ON a.id = re.artifact_id
+           WHERE a.kind = 'observation'
+             AND json_extract(a.data, '$.artifact_ref') IS NOT NULL
+         )
        LIMIT 500`
     ).run(highCutoffMs);
     totalDeleted += highResult.changes;
