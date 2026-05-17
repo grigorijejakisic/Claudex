@@ -161,7 +161,21 @@ export function parseLLMSynthesisOutput(
     }
 
     if (!validateSynthesisSchema(parsed)) {
-      if (db) _emitLssTelemetry(db, sessionId, 'schema_invalid', { parsed_keys: Object.keys(parsed as Record<string, unknown>).join(',') });
+      if (db) {
+        // Diagnostic: surface the field types so we can spot type drift.
+        const obj = parsed as Record<string, unknown>;
+        const typeMap: Record<string, string> = {};
+        for (const k of Object.keys(obj)) {
+          const v = obj[k];
+          typeMap[k] = v === null ? 'null' : Array.isArray(v) ? `array[${v.length}]` : typeof v;
+        }
+        _emitLssTelemetry(db, sessionId, 'schema_invalid', {
+          parsed_keys: Object.keys(obj).join(','),
+          types: JSON.stringify(typeMap),
+          confidence_raw: obj['confidence'],
+          first_pivot: Array.isArray(obj['operator_pivots']) ? JSON.stringify((obj['operator_pivots'] as unknown[])[0]).slice(0, 200) : 'not-array',
+        });
+      }
       return null;
     }
 
