@@ -83,7 +83,7 @@ function predictLayer0(db: Database, project: string, sessionId: string): Predic
        FROM thread_state ts
        JOIN sessions s ON s.session_id = ts.session_id
        WHERE s.project = ? AND ts.session_id != ?
-       ORDER BY ts.updated_at_epoch DESC
+       ORDER BY ts.updated_at_epoch_ms DESC
        LIMIT 1`
     ).get(project, sessionId) as { session_id: string; topic: string | null; summary: string | null } | undefined;
 
