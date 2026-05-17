@@ -164,6 +164,34 @@ export function inferCrashedSessions(
 }
 
 /**
+ * Read the last user message + last assistant message from conversation_turns
+ * for a session. Used by hook writers to populate session_termination without
+ * each hook duplicating the query.
+ *
+ * Returns null fields when no turn rows exist (zero-turn session).
+ */
+export function readLastTurnTexts(
+  db: Database,
+  sessionId: string,
+): { last_user_directive: string | null; last_assistant_text: string | null } {
+  let lastUser: string | null = null;
+  let lastAssistant: string | null = null;
+  try {
+    const row = cachedPrepare(
+      db,
+      `SELECT user_text, assistant_text FROM conversation_turns
+       WHERE session_id = ?
+       ORDER BY turn_number DESC LIMIT 1`,
+    ).get(sessionId) as { user_text?: string | null; assistant_text?: string | null } | undefined;
+    if (row) {
+      lastUser = row.user_text ?? null;
+      lastAssistant = row.assistant_text ?? null;
+    }
+  } catch { /* schema mismatch — leave null */ }
+  return { last_user_directive: lastUser, last_assistant_text: lastAssistant };
+}
+
+/**
  * Read recent session terminations for a project (or all projects when project
  * is omitted). Ordered by ended_at_epoch_ms DESC. Used by the new
  * `claudex_recent_sessions` MCP tool and by the session-start "Last Session"
