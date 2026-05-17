@@ -1,14 +1,18 @@
 /**
  * Unified embedding pipeline — embed-at-write for all artifact types.
  *
- * Orchestrates: Ollama embedding generation → Qdrant upsert → SQLite BLOB fallback.
+ * Orchestrates: Ollama embedding generation → vec_artifact_v17 (V17 path) + SQLite BLOB fallback.
  * Graceful degradation chain:
- *   Ollama + Qdrant → full semantic search
- *   Ollama only → SQLite BLOB + app-level cosine (slower fallback)
+ *   Ollama + vec_artifact_v17 → full semantic search on V17 artifacts
+ *   Ollama + legacy artifacts.embedding BLOB → legacy path (pre-14-07b callers)
  *   Neither → FTS5-only (current behavior, always works)
  *
  * All public functions are non-throwing. Embedding failures must never
  * block the primary write path (SQLite observation/artifact creation).
+ *
+ * 14-07b: Added embedArtifactV17() for writing embeddings to vec_artifact_v17
+ * (the V17 unified vector store). Legacy embedArtifact() retained for backward
+ * compatibility with callers that have not yet migrated.
  */
 
 import { EmbeddingProvider } from './embedding-provider.js';
