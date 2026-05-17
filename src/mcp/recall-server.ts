@@ -635,21 +635,23 @@ server.registerTool(
 server.registerTool(
   'claudex_recall',
   {
-    description: 'Retrieve a specific artifact by ID or file path. Use when you have an exact reference ("Get artifact #3074", "Show me the handoff").',
+    description: 'Retrieve a specific artifact. PREFER `artifact_id` (V17 TEXT id from claudex_search results) — it is the stable canonical handle. `id` (number) is the SQLite rowid and is NOT stable across rebuilds. `artifact_ref` is the file-path/external reference. Use for "Get artifact:abc123…", "Show me the handoff at /path/X".',
     inputSchema: {
-      id: z.number().optional().describe('Artifact ID'),
-      artifact_ref: z.string().optional().describe('Artifact reference (file path)'),
+      artifact_id: z.string().optional().describe('Preferred. V17 canonical TEXT artifact id (32-char hex). Round-trips from claudex_search results via the artifact_id field.'),
+      id: z.number().optional().describe('Legacy/internal: SQLite rowid OR pre-cutover artifacts.id INTEGER. Unstable handle — use artifact_id when possible.'),
+      artifact_ref: z.string().optional().describe('Artifact reference (file path or external ref).'),
     },
     _meta: {
       'anthropic/searchHint': 'artifact file specific ID reference lookup get retrieve',
     },
   },
-  async ({ id, artifact_ref }) => {
+  async ({ artifact_id, id, artifact_ref }) => {
+    const validArtifactId = typeof artifact_id === 'string' && artifact_id.length > 0 ? artifact_id : null;
     const validId = id != null && Number.isInteger(id) && id > 0 ? id : null;
     const ref = artifact_ref ?? null;
 
-    if (!validId && !ref) {
-      return { content: [{ type: 'text', text: JSON.stringify({ error: 'id or artifact_ref required' }) }] };
+    if (!validArtifactId && !validId && !ref) {
+      return { content: [{ type: 'text', text: JSON.stringify({ error: 'artifact_id, id, or artifact_ref required' }) }] };
     }
 
     // 14-07b: migrated from legacy artifacts — reads V17 artifact table.
