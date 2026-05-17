@@ -13,7 +13,7 @@ import * as os from 'os';
 import * as path from 'path';
 import type Database from 'better-sqlite3';
 import { openDatabase } from '../../core/storage.js';
-import { createArtifact } from '../../core/artifacts.js';
+import { createV17Artifact } from '../../tests/helpers/v7-unified-schema.js';
 import { upsertChunk } from '../../ingestion/upsert-chunk.js';
 import type { SetupStep } from './types.js';
 
