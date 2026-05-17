@@ -11,7 +11,18 @@ Persistent memory system giving LLMs context continuity across sessions. One sha
 - **OpenClaw Bridge** (`src/adapters/openclaw-bridge/`): Long-lived process, in-memory + DB state.
 - **Shared lifecycle** (`src/adapters/shared/lifecycle.ts`): Composable functions all adapters call.
 
-V15 schema, 33 tables. Single-store design: SQLite is both source of truth AND vector store. Vector search uses sqlite-vec (vec0 virtual tables) embedded in the same `~/.claudex/db/claudex.db` file. Embeddings via Ollama snowflake-arctic-embed2 (1024d). Reranking via BGE-reranker-v2-m3 cross-encoder (Python service on port 7439, supervised by Angel's `RerankerSupervisor` with bounded restart + log capture). Qdrant was removed in session 47 — see `context/specs/SQLITE_VEC_MIGRATION.md`.
+V41 schema, 33+ tables. Single-store design: SQLite is both source of truth AND vector store. Vector search uses sqlite-vec (vec0 virtual tables) embedded in the same `~/.claudex/db/claudex.db` file. Embeddings via Ollama snowflake-arctic-embed2 (1024d). Reranking via BGE-reranker-v2-m3 cross-encoder (Python service on port 7439, supervised by Angel's `RerankerSupervisor` with bounded restart + log capture). Qdrant was removed in session 47 — see `context/specs/SQLITE_VEC_MIGRATION.md`.
+
+## Generation Backend
+
+LLM generation routes through `src/angel/generation-backend.ts` (the `generate()` front door). Two backends:
+
+- **`claude` (default)**: spawns the local `claude --print` CLI as a subprocess (Phase 14-08). Uses MAX OAuth from `~/.claude/.credentials.json`. Quality: Sonnet for synthesis (LSS, highlights, entity-summarizer, consolidator, curated-context); Haiku for classification (CHR, directives, domain, hard-link-proposer, transcript-chunker). Latency ~10-15s/call but cost ≈ $0.001-0.03/call (cached prompts).
+- **`ollama` (revert)**: the legacy `callLocalLLM` path against the local Ollama daemon. Stays available for emergency rollback via `CLAUDEX_GENERATION_BACKEND=ollama`. Vitest defaults to `ollama` so existing `vi.mock('llama-client')` patterns intercept without per-test backend overrides.
+
+Embeddings (`arctic-embed2` 1024d) and reranking (BGE cross-encoder on port 7439) stay local — Anthropic ships neither. "Services down: Ollama" remains load-bearing for *retrieval* but no longer for *memory generation*.
+
+When the wrapper spawns `claude`, it sets `CLAUDEX_GENERATION_CHILD=1` in the child env. The `wrapHook` infrastructure short-circuits every claudex hook on that env so the child claude doesn't recursively run all 26 hooks against its own ephemeral session.
 
 ## Benchmarks (archival — NOT ship gates)
 
