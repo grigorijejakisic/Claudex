@@ -46,8 +46,8 @@ function insertThread(
   summary: string | null,
 ): void {
   db.prepare(
-    `INSERT INTO thread_state (session_id, topic, summary, key_exchanges, updated_at_epoch)
-     VALUES (?, ?, ?, '[]', unixepoch())`
+    `INSERT INTO thread_state (session_id, topic, summary, key_exchanges, updated_at_epoch_ms)
+     VALUES (?, ?, ?, '[]', unixepoch() * 1000)`
   ).run(sessionId, topic, summary);
 }
 
