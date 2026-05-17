@@ -340,6 +340,27 @@ export function assembleFullContext(params: FullAssemblyParams): InjectPayload {
     const { floorMs: activeFloorEpochMs } =
       readActiveHandoffFloor(params.projectDir);
 
+    // Priority 0: Last Session Synthesis (Phase 14-07k).
+    // Renders FIRST — above identity, handoff, and all other sections.
+    // Silent fallback: returns '' when no synthesis exists for this project.
+    // Post-compaction skips this (session context already in LLM window).
+    if (!params.isPostCompaction) {
+      try {
+        const lsSection = formatLastSessionSynthesisSection({
+          db: params.db,
+          project: params.project,
+        });
+        if (lsSection) {
+          const cost = estimateTokens(lsSection);
+          if (cost <= budget) {
+            sections.push(lsSection);
+            budget -= cost;
+            sources.push('last_session_synthesis');
+          }
+        }
+      } catch { /* non-fatal — LSS section never blocks assembly */ }
+    }
+
     // Post-compaction skips identity, project, and session continuity sections —
     // these are already in the LLM's context from the system prompt (CLAUDE.md, /starthere).
     // Saves ~780 tokens per compaction recovery.
