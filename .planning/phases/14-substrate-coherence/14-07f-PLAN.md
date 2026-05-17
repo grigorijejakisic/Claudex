@@ -321,12 +321,18 @@ Implementation:
 6. Budget cap: if rendering exceeds `budget_tokens`, truncate the list and append "... and N more pending. Review via claudex_trace or direct DB." Each row uses ~80 tokens; budget 600 → ~7 rows max.
 7. Surface end-of-section guidance: `To confirm or reject: call confirmHardLink(id) or rejectHardLink(id) via the future MCP tool, or update via direct DB.`
 
+Also add a re-export to `src/assembly/sections/index.ts`:
+```typescript
+export { formatPendingReviewLinksSection } from './links.js';
+```
+
 In `src/assembly/assembler.ts`:
 
 - Locate the cascade section ordering (P2.x list).
 - Insert `formatPendingReviewLinksSection` invocation at P2.8 between P2.7 Project Knowledge and what 14-07g will add at P2.9.
 - Pass `budget_tokens = 600`.
 - Add `// 14-07f: P2.8 Pending Review Links` comment marker.
+- Import via `from './sections.js'` (the re-export shim) — not directly from sections/links.js.
 
 **Coordination with 14-07g:** assembler.ts is also touched by G. F's invocation goes at P2.8; G's at P2.9. PM enforces order.
   </action>
@@ -336,7 +342,8 @@ In `src/assembly/assembler.ts`:
 - Decayed tuples excluded from output.
 - Budget cap enforced; truncation message appended when over.
 - Cascade position P2.8 (between P2.7 and P2.9).
-- No other function in sections.ts modified.
+- No other function in sections/links.ts modified.
+- Re-export present in sections/index.ts.
   </verification>
 </task>
 
