@@ -183,5 +183,5 @@ export interface ConversationTurn {
   turn_number: number;
   user_text: string | null;
   assistant_text: string | null;
-  timestamp_epoch: number;
+  timestamp_epoch_ms: number;
 }
