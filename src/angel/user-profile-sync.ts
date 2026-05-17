@@ -251,31 +251,30 @@ function upsertGlobalUserArtifact(db: Database, file: UserMemoryFile): boolean {
   try {
     // Use filename as the stable ref key — independent of which project dir it came from
     const refKey = `user_memory:${file.filename}`;
-    const nowEpoch = Math.floor(Date.now() / 1000);
-    const fileMtimeEpoch = Math.floor(file.mtimeMs / 1000);
+    const fileMtimeMs = file.mtimeMs; // already milliseconds
 
     const existing = cachedPrepare(db,
-      `SELECT id, timestamp_epoch FROM artifacts
+      `SELECT id, timestamp_epoch_ms FROM artifacts
        WHERE project = ? AND artifact_type = 'memory_file' AND artifact_ref = ?
        LIMIT 1`
-    ).get(GLOBAL_PROJECT, refKey) as { id: number; timestamp_epoch: number } | undefined;
+    ).get(GLOBAL_PROJECT, refKey) as { id: number; timestamp_epoch_ms: number } | undefined;
 
     if (existing) {
       // Only update if the file is newer than what we have
-      if (fileMtimeEpoch <= existing.timestamp_epoch) return false;
+      if (fileMtimeMs <= existing.timestamp_epoch_ms) return false;
 
       cachedPrepare(db,
-        `UPDATE artifacts SET summary = ?, content = ?, timestamp_epoch = ?, importance = 5
+        `UPDATE artifacts SET summary = ?, content = ?, timestamp_epoch_ms = ?, importance = 5
          WHERE id = ?`
-      ).run(file.summary, file.content, fileMtimeEpoch, existing.id);
+      ).run(file.summary, file.content, fileMtimeMs, existing.id);
       return true;
     }
 
     // Insert new global user artifact
     cachedPrepare(db,
-      `INSERT INTO artifacts (session_id, project, artifact_type, artifact_ref, summary, content, state, ttl, importance, timestamp_epoch)
+      `INSERT INTO artifacts (session_id, project, artifact_type, artifact_ref, summary, content, state, ttl, importance, timestamp_epoch_ms)
        VALUES ('angel', ?, 'memory_file', ?, ?, ?, 'packed', 0, 5, ?)`
-    ).run(GLOBAL_PROJECT, refKey, file.summary, file.content, fileMtimeEpoch);
+    ).run(GLOBAL_PROJECT, refKey, file.summary, file.content, fileMtimeMs);
 
     return true;
   } catch {
