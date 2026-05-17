@@ -16,7 +16,7 @@
  * 12. FK constraint: hard_link insert without matching dst artifact raises
  * 13. ON DELETE RESTRICT: deleting an artifact referenced by soft_link raises
  * 14. hard_link_history ON DELETE CASCADE: deleting hard_link removes its history rows
- * 15. TARGET_USER_VERSION === 38
+ * 15. TARGET_USER_VERSION === 39
  */
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
@@ -317,7 +317,7 @@ describe('FK constraints', () => {
 });
 
 describe('TARGET_USER_VERSION', () => {
-  it('test-15: TARGET_USER_VERSION is 38', () => {
-    expect(TARGET_USER_VERSION).toBe(38);
+  it('test-15: TARGET_USER_VERSION is 39', () => {
+    expect(TARGET_USER_VERSION).toBe(39);
   });
 });

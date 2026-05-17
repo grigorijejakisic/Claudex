@@ -78,8 +78,8 @@ describe('V31→V32 migration (Phase 8 — v6 transcript ingestion substrate)', 
   beforeEach(() => { db = new Database(':memory:'); });
   afterEach(() => { db.close(); });
 
-  it('TARGET_USER_VERSION is 38', () => {
-    expect(TARGET_USER_VERSION).toBe(38);
+  it('TARGET_USER_VERSION is 39', () => {
+    expect(TARGET_USER_VERSION).toBe(39);
   });
 
   describe('migrateV31toV32 — base-table fresh-DB', () => {
@@ -148,10 +148,10 @@ describe('V31→V32 migration (Phase 8 — v6 transcript ingestion substrate)', 
       }
     });
 
-    it('user_version reports 38 after fresh init', () => {
+    it('user_version reports 39 after fresh init', () => {
       initializeSchema(db);
       const uv = (db.pragma('user_version') as Array<{ user_version: number }>)[0].user_version;
-      expect(uv).toBe(38);
+      expect(uv).toBe(39);
     });
   });
 
@@ -162,7 +162,7 @@ describe('V31→V32 migration (Phase 8 — v6 transcript ingestion substrate)', 
       db.pragma('user_version = 31');
       runMigrations(db);
       const uv = (db.pragma('user_version') as Array<{ user_version: number }>)[0].user_version;
-      expect(uv).toBe(38);
+      expect(uv).toBe(39);
 
       // transcript_chunk_v6 exists.
       const tc = db.prepare(
@@ -228,7 +228,7 @@ describe('V31→V32 migration (Phase 8 — v6 transcript ingestion substrate)', 
       const freshDb = new Database(':memory:');
       initializeSchema(freshDb);
       const freshUv = (freshDb.pragma('user_version') as Array<{ user_version: number }>)[0].user_version;
-      expect(freshUv).toBe(38);
+      expect(freshUv).toBe(39);
       const freshShape = freshDb.prepare(
         "SELECT sql FROM sqlite_master WHERE name='transcript_chunk_v6'"
       ).get() as { sql: string };
@@ -243,7 +243,7 @@ describe('V31→V32 migration (Phase 8 — v6 transcript ingestion substrate)', 
       incDb.pragma('user_version = 31');
       runMigrations(incDb);
       const incUv = (incDb.pragma('user_version') as Array<{ user_version: number }>)[0].user_version;
-      expect(incUv).toBe(38);
+      expect(incUv).toBe(39);
       const incShape = incDb.prepare(
         "SELECT sql FROM sqlite_master WHERE name='transcript_chunk_v6'"
       ).get() as { sql: string };

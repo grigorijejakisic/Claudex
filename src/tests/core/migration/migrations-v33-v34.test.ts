@@ -154,12 +154,12 @@ describe('V33→V34 migration (Phase 14 Plan 14-02)', () => {
     expect(cols).not.toContain('project_id');
   });
 
-  // --- Test 2: user_version reaches current TARGET_USER_VERSION (bumped to 38 by Plan 14-07-LINKS-SCHEMA)
-  it('T2: TARGET_USER_VERSION is 38 and fresh-DB reaches it', () => {
-    expect(TARGET_USER_VERSION).toBe(38);
+  // --- Test 2: user_version reaches current TARGET_USER_VERSION (bumped to 39 by Plan 14-07l-CHR)
+  it('T2: TARGET_USER_VERSION is 39 and fresh-DB reaches it', () => {
+    expect(TARGET_USER_VERSION).toBe(39);
     db = freshDb();
     const uv = (db.pragma('user_version') as Array<{ user_version: number }>)[0].user_version;
-    expect(uv).toBe(38);
+    expect(uv).toBe(39);
   });
 
   // --- Test 3: INSERT + SELECT round-trip using `project` column

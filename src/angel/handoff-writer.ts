@@ -492,8 +492,9 @@ export function recordDecisionShift(
     if (raw.includes(p.source_turn_uuid)) return noop;
 
     // 4. Format the boundary entry line.
+    // Include full source_turn_uuid for idempotency detection on re-run.
     const iso = new Date().toISOString().replace('T', ' ').slice(0, 19) + 'Z';
-    const entryLine = `- [${iso}] [${p.boundary_type}] ${p.summary} (turn:${p.source_turn_uuid.slice(0, 8)})`;
+    const entryLine = `- [${iso}] [${p.boundary_type}] ${p.summary} (turn:${p.source_turn_uuid})`;
 
     // 5. Determine which section to append to.
     const appendToWhatsNext =

@@ -207,10 +207,10 @@ describe('recordDecisionShift', () => {
     expect(newContent).not.toBe(originalContent);
   });
 
-  it('non-throwing: exception inside refresh returns refreshed=false', () => {
-    // Force an error by making db throw on prepare.
-    const badParams = makeParams({ db: null as unknown as Database.Database });
-    const result = recordDecisionShift(badParams);
+  it('non-throwing: project path resolution failure returns refreshed=false', () => {
+    // Force an error by returning null for project path.
+    mockResolveProjectPath.mockReturnValueOnce(null);
+    const result = recordDecisionShift(makeParams());
     expect(result.refreshed).toBe(false);
   });
 });
