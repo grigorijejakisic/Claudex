@@ -271,8 +271,9 @@ describe('applySetup — deliberation_surface step (v6 Phase 10)', () => {
     expect(chunks[0].body).toBe('past deliberation user side');
     expect(chunks[1].body).toBe('past deliberation assistant side');
 
+    // 14-07b: setup now writes to V17 `artifact` table
     const artifactCount = db
-      .prepare(`SELECT COUNT(*) AS c FROM artifacts WHERE session_id = ?`)
+      .prepare(`SELECT COUNT(*) AS c FROM artifact WHERE session_id = ?`)
       .get(ctx.sessionId) as { c: number };
     expect(artifactCount.c).toBeGreaterThanOrEqual(1);
   });
