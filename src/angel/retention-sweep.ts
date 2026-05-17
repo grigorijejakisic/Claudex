@@ -366,7 +366,7 @@ export function pruneArtifactLinks(db: Database, _config: RetentionConfig): numb
 /**
  * Prune verified_facts for sessions that ended long ago.
  *
- * verified_facts has created_at_epoch but not timestamp_epoch_ms. Session age is
+ * verified_facts has created_at_epoch_ms (renamed from created_at_epoch in V43). Session age is
  * determined by joining to sessions.ended_at_epoch_ms.
  */
 export function pruneVerifiedFacts(db: Database, config: RetentionConfig): number {
