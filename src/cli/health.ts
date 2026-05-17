@@ -238,7 +238,7 @@ const EXPECTED_TABLES: Record<string, ColumnDef[]> = {
     { name: 'domain', notNull: true },
     { name: 'total_interactions', notNull: true, hasDefault: true },
     { name: 'corrections', notNull: true, hasDefault: true },
-    { name: 'last_updated_epoch', notNull: true, hasDefault: true },
+    { name: 'last_updated_epoch_ms', notNull: true, hasDefault: true },
   ],
   file_leases: [
     { name: 'file_path', notNull: true },
