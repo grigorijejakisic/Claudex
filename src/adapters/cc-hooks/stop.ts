@@ -214,7 +214,7 @@ const main = wrapHook('Stop', async (input, ctx) => {
             session_id: input.session_id,
             project: routedProject,
             turn_number: latestTurn.turn_number,
-            timestamp_epoch: Math.floor(Date.now() / 1000),
+            timestamp_epoch_ms: Date.now(),
             user_text_preview: (lastUserText ?? '').slice(0, 200),
             assistant_text_preview: (lastAssistantText ?? '').slice(0, 200),
           });
