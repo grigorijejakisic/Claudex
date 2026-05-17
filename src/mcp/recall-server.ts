@@ -642,29 +642,133 @@ server.registerTool(
       return { content: [{ type: 'text', text: JSON.stringify({ error: 'id or artifact_ref required' }) }] };
     }
 
-    let row: ArtifactRow | undefined;
+    // 14-07b: migrated from legacy artifacts — reads V17 artifact table.
+    // External callers receive backward-compat shape: summary/content/importance
+    // mapped from V17 title/body/confidence so existing MCP consumers are unaffected.
+    type V17ArtifactRow = {
+      id: string; kind: string; title: string | null; body: string;
+      project: string | null; session_id: string | null;
+      confidence: number | null; status: string;
+      created_at_epoch_ms: number; data: string | null;
+    };
+
+    let v17Row: V17ArtifactRow | undefined;
+
     if (validId) {
-      row = cachedPrepare(getDb(), 'SELECT * FROM artifacts WHERE id = ?').get(validId) as ArtifactRow | undefined;
+      // Legacy INTEGER id received at external boundary — bridge via artifact_id_map.
+      const v17Id = lookupV17ByLegacy(getDb(), validId);
+      if (v17Id) {
+        v17Row = cachedPrepare(getDb(),
+          `SELECT id, kind, title, body, project, session_id, confidence, status, created_at_epoch_ms, data
+             FROM artifact WHERE id = ?`
+        ).get(v17Id) as V17ArtifactRow | undefined;
+      }
+      // Defensive fallback: if no V17 mapping (e.g. pre-migration DB), try legacy table.
+      if (!v17Row) {
+        const legacyRow = cachedPrepare(getDb(),
+          `SELECT id, artifact_type, summary, content, artifact_ref, project, importance FROM artifacts WHERE id = ?`
+        ).get(validId) as {
+          id: number; artifact_type: string; summary: string; content: string | null;
+          artifact_ref: string | null; project: string; importance: number;
+        } | undefined;
+        if (legacyRow) {
+          const responseText = JSON.stringify({
+            id: legacyRow.id,
+            type: legacyRow.artifact_type,
+            summary: legacyRow.summary,
+            content: legacyRow.content,
+            provenance: legacyRow.artifact_ref ?? `artifact #${legacyRow.id}`,
+            project: legacyRow.project,
+            importance: legacyRow.importance,
+          }, null, 2);
+          logLessonRecallIfApplicable(getDb(), legacyRow.artifact_ref ?? ref, `mcp:${defaultProject}`);
+          try {
+            const logSessionId = _resolveActiveSessionId(getDb(), defaultProject);
+            const queryStr = ref ?? (validId ? `id:${validId}` : null);
+            recordRetrieval(getDb(), {
+              sessionId: logSessionId,
+              surface: 'claudex_recall',
+              query: queryStr,
+              topKResults: [{ id: legacyRow.id, source: 'artifacts', score: 1.0 }],
+              responseText,
+            });
+          } catch { /* logging must never break retrieval */ }
+          return { content: [{ type: 'text', text: responseText }] };
+        }
+      }
     } else if (ref) {
-      row = cachedPrepare(getDb(), 'SELECT * FROM artifacts WHERE artifact_ref = ? LIMIT 1').get(ref) as ArtifactRow | undefined;
+      // artifact_ref lookup: V17 stores artifact_ref in data JSON sidecar.
+      // Try V17 first, fall back to legacy table for pre-migration rows.
+      v17Row = cachedPrepare(getDb(),
+        `SELECT id, kind, title, body, project, session_id, confidence, status, created_at_epoch_ms, data
+           FROM artifact
+          WHERE json_extract(data, '$.artifact_ref') = ?
+          LIMIT 1`
+      ).get(ref) as V17ArtifactRow | undefined;
+
+      // Defensive fallback: legacy table for pre-migration rows.
+      if (!v17Row) {
+        const legacyRow = cachedPrepare(getDb(),
+          `SELECT id, artifact_type, summary, content, artifact_ref, project, importance
+             FROM artifacts WHERE artifact_ref = ? LIMIT 1`
+        ).get(ref) as {
+          id: number; artifact_type: string; summary: string; content: string | null;
+          artifact_ref: string | null; project: string; importance: number;
+        } | undefined;
+        if (legacyRow) {
+          const responseText = JSON.stringify({
+            id: legacyRow.id,
+            type: legacyRow.artifact_type,
+            summary: legacyRow.summary,
+            content: legacyRow.content,
+            provenance: legacyRow.artifact_ref ?? `artifact #${legacyRow.id}`,
+            project: legacyRow.project,
+            importance: legacyRow.importance,
+          }, null, 2);
+          logLessonRecallIfApplicable(getDb(), legacyRow.artifact_ref ?? ref, `mcp:${defaultProject}`);
+          try {
+            const logSessionId = _resolveActiveSessionId(getDb(), defaultProject);
+            recordRetrieval(getDb(), {
+              sessionId: logSessionId,
+              surface: 'claudex_recall',
+              query: ref,
+              topKResults: [{ id: legacyRow.id, source: 'artifacts', score: 1.0 }],
+              responseText,
+            });
+          } catch { /* logging must never break retrieval */ }
+          return { content: [{ type: 'text', text: responseText }] };
+        }
+      }
     }
 
-    if (!row) {
+    if (!v17Row) {
       return { content: [{ type: 'text', text: JSON.stringify({ error: 'not found' }) }] };
     }
 
+    // Parse data sidecar for artifact_ref (moved to JSON in V17).
+    let v17ArtifactRef: string | null = null;
+    try {
+      const dataParsed = v17Row.data ? JSON.parse(v17Row.data) as Record<string, unknown> : {};
+      v17ArtifactRef = typeof dataParsed['artifact_ref'] === 'string' ? dataParsed['artifact_ref'] : null;
+    } catch { /* non-fatal — sidecar parse failure treated as no artifact_ref */ }
+
     // Phase 5.5 — log a pointer recall when the resolved artifact_ref points
     // to a lesson file under a project's memory directory.
-    logLessonRecallIfApplicable(getDb(), row.artifact_ref ?? ref, `mcp:${defaultProject}`);
+    logLessonRecallIfApplicable(getDb(), v17ArtifactRef ?? ref, `mcp:${defaultProject}`);
+
+    // Backward-compat shape: V17 title→summary, body→content, confidence(0-1)→importance(1-5).
+    const importanceFromConfidence = v17Row.confidence != null
+      ? Math.round(v17Row.confidence * 5)
+      : 3;
 
     const responseText = JSON.stringify({
-      id: row.id,
-      type: row.artifact_type,
-      summary: row.summary,
-      content: row.content,
-      provenance: row.artifact_ref ?? `artifact #${row.id}`,
-      project: row.project,
-      importance: row.importance,
+      id: v17Row.id,
+      type: v17Row.kind,
+      summary: v17Row.title ?? v17Row.body.slice(0, 200),
+      content: v17Row.body,
+      provenance: v17ArtifactRef ?? `artifact:${v17Row.id}`,
+      project: v17Row.project,
+      importance: importanceFromConfidence,
     }, null, 2);
 
     // Phase 8.5 OBS-01 — log the retrieval event alongside the existing
@@ -676,7 +780,7 @@ server.registerTool(
         sessionId: logSessionId,
         surface: 'claudex_recall',
         query: queryStr,
-        topKResults: [{ id: row.id, source: 'artifacts', score: 1.0 }],
+        topKResults: [{ id: v17Row.id, source: 'artifact', score: 1.0 }],
         responseText,
       });
     } catch { /* logging must never break retrieval */ }
