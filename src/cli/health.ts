@@ -640,9 +640,20 @@ export function checkStats(db: Database.Database): CheckResult {
       "SELECT COUNT(*) as cnt FROM observations WHERE deleted_at_epoch_ms IS NULL"
     ).get() as { cnt: number }).cnt;
 
+    // Legacy artifact count (table still alive during transition window)
     const artifactCount = (db.prepare(
       "SELECT COUNT(*) as cnt FROM artifacts"
     ).get() as { cnt: number }).cnt;
+
+    // V17 unified artifact count — Phase 14-07b: migrated from legacy artifacts
+    let v17ArtifactCount = 0;
+    try {
+      v17ArtifactCount = (db.prepare(
+        "SELECT COUNT(*) as cnt FROM artifact"
+      ).get() as { cnt: number }).cnt;
+    } catch {
+      // V17 table not yet present (pre-migration DB) — non-fatal
+    }
 
     const journalCount = (db.prepare(
       "SELECT COUNT(*) as cnt FROM session_journal"
@@ -655,7 +666,7 @@ export function checkStats(db: Database.Database): CheckResult {
     return {
       label: 'Stats',
       status: 'pass',
-      message: `${sessionCount.toLocaleString()} sessions | ${obsCount.toLocaleString()} observations | ${artifactCount.toLocaleString()} artifacts | ${journalCount.toLocaleString()} journal entries`,
+      message: `${sessionCount.toLocaleString()} sessions | ${obsCount.toLocaleString()} observations | ${artifactCount.toLocaleString()} artifacts (legacy) | ${v17ArtifactCount.toLocaleString()} artifacts (V17) | ${journalCount.toLocaleString()} journal entries`,
     };
   } catch (err) {
     return {
