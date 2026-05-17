@@ -88,7 +88,7 @@ export interface TopicResult {
   session_id: string;
   topic: string | null;
   summary: string | null;
-  updated_at_epoch: number;
+  updated_at_epoch_ms: number;
 }
 
 /**
