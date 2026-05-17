@@ -148,10 +148,10 @@ describe('V31→V32 migration (Phase 8 — v6 transcript ingestion substrate)', 
       }
     });
 
-    it('user_version reports 34 after fresh init', () => {
+    it('user_version reports 37 after fresh init', () => {
       initializeSchema(db);
       const uv = (db.pragma('user_version') as Array<{ user_version: number }>)[0].user_version;
-      expect(uv).toBe(36);
+      expect(uv).toBe(37);
     });
   });
 
