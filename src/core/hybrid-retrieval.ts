@@ -47,6 +47,7 @@ import {
 } from './telemetry-counters.js';
 import type { ArtifactRow } from './artifacts.js';
 import { isSubstantive, substantiveSqlClause } from './artifact-filters.js';
+import { applyLinkDistanceBoost, BOOST_WEIGHT_DEFAULT } from '../intelligence/link-distance-boost.js';
 
 // ---------------------------------------------------------------------------
 // 14-07b: V17 migration helpers
