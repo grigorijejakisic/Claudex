@@ -188,7 +188,7 @@ export const KIND_MAPPING: Record<LegacyTable, KindMapping> = {
         data: {
           source: asStringOrNull(row.source),
           fingerprint: asStringOrNull(row.fingerprint),
-          timestamp_epoch: asNumberOrNull(row.timestamp_epoch),
+          timestamp_epoch_ms: asNumberOrNull(row.timestamp_epoch_ms),
           alternatives: null,
         },
         scope: 'project',
