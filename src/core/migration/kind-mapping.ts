@@ -177,7 +177,7 @@ export const KIND_MAPPING: Record<LegacyTable, KindMapping> = {
       { name: 'content', type: 'TEXT', storage: { kind: 'kernel', col: 'body' } },
       { name: 'source', type: 'TEXT', storage: { kind: 'data', path: '$.source' } },
       { name: 'fingerprint', type: 'TEXT', storage: { kind: 'data', path: '$.fingerprint' } },
-      { name: 'timestamp_epoch', type: 'INTEGER', storage: { kind: 'data', path: '$.timestamp_epoch' } },
+      { name: 'timestamp_epoch_ms', type: 'INTEGER', storage: { kind: 'data', path: '$.timestamp_epoch_ms' } },
       { name: 'updated_at_epoch', type: 'INTEGER', storage: { kind: 'kernel', col: 'updated_at_epoch' } },
     ],
     compose: (row) => {
