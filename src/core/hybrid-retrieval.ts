@@ -72,6 +72,7 @@ import { applyLinkDistanceBoost, BOOST_WEIGHT_DEFAULT } from '../intelligence/li
  */
 const V17_TO_ARTIFACT_ROW_SELECT = `
   a.rowid AS id,
+  a.id AS artifact_id,
   a.kind AS artifact_type,
   NULL AS artifact_ref,
   a.title AS summary,
