@@ -222,7 +222,7 @@ server.registerTool(
           getDb(),
           `SELECT s.session_id FROM sessions s
              LEFT JOIN (
-               SELECT session_id, MAX(timestamp_epoch) as last_activity
+               SELECT session_id, MAX(timestamp_epoch_ms) as last_activity
                  FROM session_events GROUP BY session_id
              ) e ON e.session_id = s.session_id
             WHERE s.project = ? AND s.status = 'active'
