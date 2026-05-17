@@ -665,25 +665,25 @@ function searchRecencyChannel(
   substantiveOnly: boolean = false,
 ): ArtifactRow[] {
   try {
-    const supersededFilter = excludeSuperseded ? 'AND superseded_by IS NULL' : '';
-    const projectFilter = globalScope ? '' : 'AND project = ?';
-    // Phase 14 Plan 14-04: P2.7 substantive-only filter — DB-layer (no alias needed here)
-    // Note: recency channel doesn't use an alias, so apply clause without alias prefix.
-    // Use alias 'r' to satisfy substantiveSqlClause's alias requirement.
+    // 14-07b: migrated from legacy artifacts — V17 uses status field
+    const supersededFilter = excludeSuperseded ? `AND ${V17_NOT_SUPERSEDED}` : '';
+    const projectFilter = globalScope ? '' : 'AND a.project = ?';
+    // 14-07b: migrated from legacy artifacts — V17 substantive clause
     const substantiveFilter = substantiveOnly
-      ? `AND ${substantiveSqlClause('artifacts')}`
+      ? `AND ${v17SubstantiveSqlClause('a')}`
       : '';
     const orderPrefix = globalScope
-      ? 'CASE WHEN project = ? THEN 0 ELSE 1 END,'
+      ? 'CASE WHEN a.project = ? THEN 0 ELSE 1 END,'
       : '';
 
-    const sql = `SELECT * FROM artifacts
-       WHERE state != 'packed'
+    // 14-07b: migrated from legacy artifacts — uses V17_NOT_STALE (status != 'stale') instead of state != 'packed'
+    const sql = `SELECT ${V17_TO_ARTIFACT_ROW_SELECT} FROM artifact a
+       WHERE ${V17_NOT_STALE}
          ${projectFilter}
          ${supersededFilter}
          ${substantiveFilter}
        ORDER BY ${orderPrefix}
-         timestamp_epoch_ms DESC
+         a.created_at_epoch_ms DESC
        LIMIT ?`;
 
     const params = globalScope
