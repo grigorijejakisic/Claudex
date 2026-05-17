@@ -331,8 +331,24 @@ export async function renderSectionPreview(
   return formatPendingReviewLinksSection({ db, project, budget_tokens: budget });
 }
 
-// Run when invoked directly.
-if (process.argv[1] && process.argv[1].endsWith('simulate-hard-link-ux.ts')) {
+// Only run when invoked as a script, not when imported by tests.
+// In CJS (compiled), require.main === module. In ESM, check process.argv[1].
+const _isMainModule = (() => {
+  try {
+    // CJS path (compiled output)
+    // @ts-expect-error — CJS interop check
+    if (typeof require !== 'undefined' && typeof module !== 'undefined' && require.main === module) {
+      return true;
+    }
+  } catch { /* not CJS */ }
+  try {
+    const argv1 = process.argv[1] ?? '';
+    return argv1.endsWith('simulate-hard-link-ux.ts') || argv1.endsWith('simulate-hard-link-ux.cjs');
+  } catch { /* not ESM */ }
+  return false;
+})();
+
+if (_isMainModule) {
   simulateProposer().catch(err => {
     console.error('Simulation failed:', err);
     process.exit(1);
