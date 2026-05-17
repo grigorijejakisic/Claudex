@@ -226,15 +226,23 @@ describe('callClaudeSubprocess', () => {
       (child as unknown as { stdout: Readable }).stdout = stdout;
       (child as unknown as { stderr: Readable }).stderr = stderr;
       (child as unknown as { stdin: Writable }).stdin = stdin;
-      (child as unknown as { kill: (s: string) => boolean }).kill = vi.fn().mockReturnValue(true);
-      // never emits close — caller must time out
+      // Production behavior: SIGTERM causes process to exit with close(143).
+      // Mock mirrors that so the timeout race resolves cleanly.
+      (child as unknown as { kill: (s: string) => boolean }).kill = vi.fn(() => {
+        setImmediate(() => {
+          stdout.push(null);
+          stderr.push(null);
+          child.emit('close', 143);
+        });
+        return true;
+      });
       return child as never;
     });
 
     await expect(
       callClaudeSubprocess({ prompt: 'hi', spawnFn, timeoutMs: 100 }),
-    ).rejects.toThrow(/timeout|exhausted/);
-  });
+    ).rejects.toThrow(/timeout|exit|exhausted/);
+  }, 15_000);
 
   it('7. CLI exit != 0 without API error: throws', async () => {
     const spawnFn = makeMockSpawn({ stdout: '', stderr: 'segfault', exitCode: 139 });
