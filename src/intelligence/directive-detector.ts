@@ -1060,22 +1060,22 @@ export async function classifyDecisionBoundary(
       .replace('{user_text}', opts.user_text)
       .replace('{assistant_text}', opts.assistant_text);
 
-    // Respect the AbortSignal if provided.
-    const timeoutMs = 5_000;
-    const callOpts: import('../angel/llama-client.js').LocalLLMCallOptions = {
+    // CHR async path: when this runs in Angel's drain loop, latency tolerance
+    // is generous (10-15s for Claude Haiku); when called synchronously from a
+    // hook (legacy / opt-in), keep the tight 5s budget. The generation-backend
+    // routes to Claude subprocess (Haiku) by default with Ollama as the revert.
+    const timeoutMs = opts.timeoutMs ?? 30_000;
+
+    if (opts.signal?.aborted) return null;
+
+    const raw = await generate({
       prompt,
       model,
       temperature: 0,
       maxTokens: 256,
       timeoutMs,
-    };
-
-    // Pass AbortSignal via the fetch override if needed — callLocalLLM does not
-    // accept an AbortSignal directly; the timeoutMs internal to the call is the
-    // cancellation mechanism. If opts.signal is already aborted, bail early.
-    if (opts.signal?.aborted) return null;
-
-    const raw = await callLocalLLM(callOpts);
+      subsystem: 'chr',
+    });
 
     if (opts.signal?.aborted) return null;
 
