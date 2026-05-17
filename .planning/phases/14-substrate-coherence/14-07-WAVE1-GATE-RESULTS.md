@@ -70,3 +70,20 @@ block following the template below.)*
 - **Operator approval line:** (operator fills in before v7.0.0 ship: e.g., "approved 2026-XX-XX; ship is go")
 - **Telemetry rows emitted:** <count, per phase>
 ```
+
+### Run 2026-05-17T09:14:43.625Z
+
+- **Mode:** apply
+- **DB path:** C:\Users\Grigorije\.claudex\db\claudex.db
+- **Pre-cutover validation:**
+  - artifact_id_map completeness: PASS (total_legacy=10721, mapped=10721)
+  - verifyDeterminism on sample: PASS
+- **Re-vectorization:** Rows attempted: 12556, Succeeded: 12551, Failed: 5 (0.0%)
+- **Benchmark gate:** 
+  | Gate                       | Measured | Baseline | Threshold | Result |
+  |----------------------------|----------|----------|-----------|--------|
+  | vesna_sc1                  | 28/28    | 27/28    | >=27/28   | PASS |
+- **Read-only flag flip:** YES (rows flipped: 10722)
+- **Final disposition:** CUTOVER COMPLETE
+- **Operator approval line:** *(operator fills in before v7.0.0 ship)*
+- **Telemetry rows emitted:** per phase (see telemetry table with session_id='cutover-v7')
