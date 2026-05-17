@@ -460,3 +460,150 @@ describe('parseHandoffHeader — Phase 14 telemetry on rejection', () => {
   });
 
 });
+
+// ---------------------------------------------------------------------------
+// Group 7 — Phase 14-07d supersedes soft-link emission
+// ---------------------------------------------------------------------------
+
+/**
+ * Helper: build an in-memory DB with V17 DDL + soft_link tables (V38 migration).
+ * Includes a telemetry table without CHECK constraint (to accept new event kinds).
+ */
+function makeV38TestDb(): Database.Database {
+  const db = new Database(':memory:');
+  db.pragma('foreign_keys = ON');
+  applyV17DDL(db);
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS schema_versions (
+      version INTEGER PRIMARY KEY,
+      applied_at_epoch_ms INTEGER NOT NULL DEFAULT (unixepoch() * 1000)
+    );
+    CREATE TABLE IF NOT EXISTS telemetry (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      session_id TEXT, event_kind TEXT, detail TEXT,
+      latency_ms INTEGER, adapter TEXT,
+      timestamp_epoch_ms INTEGER DEFAULT (strftime('%s','now') * 1000)
+    );
+  `);
+  migrateV37toV38(db);
+  return db;
+}
+
+function insertHandoffArtifact(
+  db: Database.Database,
+  id: string,
+  project: string,
+  artifactRef: string,
+  createdAt: number = Date.now(),
+): void {
+  db.prepare(`
+    INSERT OR IGNORE INTO artifact(id, kind, title, body, artifact_ref, created_at_epoch_ms, updated_at_epoch_ms, project)
+    VALUES (?, 'handoff', 'test handoff', 'body', ?, ?, ?, ?)
+  `).run(id, artifactRef, createdAt, createdAt, project);
+}
+
+function countSoftLinks07d(db: Database.Database): number {
+  return (db.prepare(`SELECT COUNT(*) AS n FROM soft_link`).get() as { n: number }).n;
+}
+
+describe('Phase 14-07d supersedes emission', () => {
+  let db: Database.Database;
+  let tmpDir07d: string;
+
+  beforeEach(() => {
+    db = makeV38TestDb();
+    tmpDir07d = fs.mkdtempSync(path.join(os.tmpdir(), 'handoff-07d-'));
+  });
+
+  afterEach(() => {
+    db.close();
+    fs.rmSync(tmpDir07d, { recursive: true, force: true });
+  });
+
+  it('writeHandoff with prior handoff present: supersedes soft_link emitted', () => {
+    const targetPath = path.join(tmpDir07d, 'ACTIVE.md');
+    const project = 'proj-14-07d';
+
+    // Insert prior handoff artifact (older timestamp)
+    insertHandoffArtifact(db, 'handoff-prior-001', project, targetPath, Date.now() - 10000);
+
+    // Write the new handoff to disk (creates the file)
+    writeHandoff(targetPath, fixtureInput({ summary: 'New handoff' }));
+
+    // Insert the new handoff artifact (as file-ingester would do post-write)
+    insertHandoffArtifact(db, 'handoff-new-001', project, targetPath, Date.now());
+
+    // Now call writeHandoff with opts to trigger soft-link emission.
+    // We simulate the instrumentation by directly calling writeHandoff with opts
+    // (the file already exists on disk — write is idempotent for our purposes).
+    writeHandoff(targetPath, fixtureInput({ summary: 'New handoff v2' }), {
+      db,
+      sessionId: 'session-14-07d',
+      project,
+    });
+
+    // The soft_link table should have the supersedes link.
+    // Note: because the artifact_ref lookup uses targetPath, and both the new
+    // and prior artifacts share the same targetPath (the current ACTIVE.md),
+    // the newest one (handoff-new-001) will be the "new" artifact, and the
+    // prior lookup will exclude it to find handoff-prior-001.
+    expect(countSoftLinks07d(db)).toBe(1);
+
+    const link = db.prepare(
+      `SELECT src_artifact_id, dst_artifact_id, type FROM soft_link LIMIT 1`
+    ).get() as { src_artifact_id: string; dst_artifact_id: string; type: string } | undefined;
+
+    expect(link).toBeDefined();
+    expect(link?.type).toBe('supersedes');
+    expect(link?.src_artifact_id).toBe('handoff-new-001');
+    expect(link?.dst_artifact_id).toBe('handoff-prior-001');
+  });
+
+  it('writeHandoff first-for-project: no soft_link emitted; soft_link_skipped telemetry present', () => {
+    const targetPath = path.join(tmpDir07d, 'ACTIVE.md');
+    const project = 'proj-first-only';
+
+    // Write the handoff to disk first
+    writeHandoff(targetPath, fixtureInput());
+
+    // Insert the artifact row (no prior exists)
+    insertHandoffArtifact(db, 'handoff-first-001', project, targetPath);
+
+    // Call with opts — no prior artifact for this project
+    writeHandoff(targetPath, fixtureInput({ summary: 'first write' }), {
+      db,
+      sessionId: 'session-14-07d',
+      project,
+    });
+
+    // No soft_link row (first handoff — no prior to supersede)
+    expect(countSoftLinks07d(db)).toBe(0);
+
+    // soft_link_skipped telemetry should have been emitted
+    const rows = db.prepare(
+      `SELECT detail FROM telemetry WHERE event_kind = 'soft_link_skipped' ORDER BY id`
+    ).all() as Array<{ detail: string }>;
+    expect(rows.length).toBeGreaterThan(0);
+    const detail = JSON.parse(rows[0].detail);
+    expect(detail.reason).toBe('no_prior');
+  });
+
+  it('writeHandoff: soft-link emission failure does NOT cause writeHandoff to fail', () => {
+    const targetPath = path.join(tmpDir07d, 'ACTIVE.md');
+
+    // Close the DB to force any DB operation to throw
+    db.close();
+
+    // writeHandoff must still succeed (primary write is filesystem-only)
+    expect(() => {
+      writeHandoff(targetPath, fixtureInput(), {
+        db,
+        sessionId: 'session-14-07d',
+        project: 'proj-fail',
+      });
+    }).not.toThrow();
+
+    // File must exist on disk
+    expect(fs.existsSync(targetPath)).toBe(true);
+  });
+});
