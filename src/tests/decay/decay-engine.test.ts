@@ -504,10 +504,10 @@ describe('V11 migration backfill', () => {
     expect(colNames).toContain('confidence');
   });
 
-  it('V11 schema has valid_at_epoch and invalid_at_epoch on artifact_links', () => {
+  it('V11 schema has valid_at_epoch_ms and invalid_at_epoch_ms on artifact_links', () => {
     const cols = db.pragma('table_info(artifact_links)') as Array<{ name: string }>;
     const colNames = cols.map(c => c.name);
-    expect(colNames).toContain('valid_at_epoch');
-    expect(colNames).toContain('invalid_at_epoch');
+    expect(colNames).toContain('valid_at_epoch_ms');
+    expect(colNames).toContain('invalid_at_epoch_ms');
   });
 });
