@@ -55,8 +55,8 @@ const LINK_TYPE_MULTIPLIERS: Record<string, number> = {
   contradicts: 0, // Exclude contradicted artifacts
 };
 
-/** Temporal decay sigma — 30 days in seconds. Links older than this are heavily decayed. */
-const TEMPORAL_DECAY_SIGMA = 30 * 24 * 3600;
+/** Temporal decay sigma — 30 days in milliseconds. Links older than this are heavily decayed. */
+const TEMPORAL_DECAY_SIGMA = 30 * 24 * 3600 * 1000;
 
 const DEFAULT_OPTIONS: Required<GraphWalkOptions> = {
   maxDepth: 2,
