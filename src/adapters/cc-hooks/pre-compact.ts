@@ -11,6 +11,7 @@ import { emitErrorTelemetry } from '../../observability/error-telemetry.js';
 import { readGsdState } from '../../gsd/state-reader.js';
 import { runCompactionSequence } from '../shared/lifecycle.js';
 import { detectEnrichmentProvider } from '../../intelligence/enrichment.js';
+import { recordSessionTermination, readLastTurnTexts } from '../../core/session-termination.js';
 
 const main = wrapHook('PreCompact', async (input, ctx) => {
   const gauge = getTokenGauge({
