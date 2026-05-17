@@ -228,7 +228,7 @@ describe('V31→V32 migration (Phase 8 — v6 transcript ingestion substrate)', 
       const freshDb = new Database(':memory:');
       initializeSchema(freshDb);
       const freshUv = (freshDb.pragma('user_version') as Array<{ user_version: number }>)[0].user_version;
-      expect(freshUv).toBe(37);
+      expect(freshUv).toBe(38);
       const freshShape = freshDb.prepare(
         "SELECT sql FROM sqlite_master WHERE name='transcript_chunk_v6'"
       ).get() as { sql: string };
