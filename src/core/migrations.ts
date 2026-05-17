@@ -532,6 +532,18 @@ export function initializeSchema(db: Database): void {
     try { db.exec(`INSERT OR IGNORE INTO schema_versions(version) VALUES (39)`); } catch { /* non-critical */ }
   }
 
+  // Phase 14-08 (V40): epoch_ms DEFAULT canonicalization.
+  // Fresh DBs go through SCHEMA_V3 / migration steps that created columns
+  // named `_epoch_ms` with `DEFAULT (unixepoch())` (seconds). V40 fixes the
+  // DEFAULT to `unixepoch() * 1000` and backfills any rows already inserted
+  // with seconds values. Idempotent: backfill skips rows already in ms range;
+  // DDL replace is a no-op if already corrected.
+  if (currentUv < 40) {
+    migrateV39toV40(db);
+    db.pragma('user_version = 40');
+    try { db.exec(`INSERT OR IGNORE INTO schema_versions(version) VALUES (40)`); } catch { /* non-critical */ }
+  }
+
   // Phase 4 (V28): per-connection sidecar + TEMP TRIGGER guarding writes
   // to the legacy `experience_patterns` table. Both objects live in the
   // `temp` schema because (a) SQLite forbids a permanent-schema trigger
