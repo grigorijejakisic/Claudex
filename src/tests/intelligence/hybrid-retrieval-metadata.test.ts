@@ -76,27 +76,31 @@ describe('hybrid-retrieval-metadata (14-07i)', () => {
   });
 
   it('1. FTS hit attaches match_kind="fts" + match_query', () => {
-    // Seed an artifact with a unique term so FTS definitely matches
+    // Seed an artifact with a unique term so FTS definitely matches.
+    // Use space-separated words so tokenizeQuery emits separate tokens that
+    // match the FTS5 index (the FTS porter tokenizer splits on hyphens,
+    // but tokenizeQuery also strips punctuation — both converge on the same
+    // letter sequences only with space-separated input).
     seedArtifact(db, {
-      title: 'zymurgy-fts-metadata-test unique token alpha',
+      title: 'zymurgy fts metadata retrieval unique token',
       body: 'distinctive body for fts match test',
     });
 
-    const results = hybridSearchSync(db, 'zymurgy-fts-metadata-test', 'test-project', { limit: 5 });
+    const results = hybridSearchSync(db, 'zymurgy fts metadata retrieval', 'test-project', { limit: 5 });
 
     // At least one result should be present
     expect(results.length).toBeGreaterThan(0);
 
     // The FTS-matched result should have match_kind='fts' and match_query set
     const ftsHit = results.find(r =>
-      (r.summary ?? '').includes('zymurgy-fts-metadata-test') ||
+      (r.summary ?? '').includes('zymurgy fts metadata') ||
       (r.content ?? '').includes('distinctive body for fts match test'),
     );
     expect(ftsHit).toBeDefined();
     expect(ftsHit!.match_kind).toBe('fts');
     expect(typeof ftsHit!.match_query).toBe('string');
     expect(ftsHit!.match_query!.length).toBeGreaterThan(0);
-    expect(ftsHit!.match_query).toBe('zymurgy-fts-metadata-test');
+    expect(ftsHit!.match_query).toBe('zymurgy fts metadata retrieval');
   });
 
   it('2. Vector hit attaches match_kind="vector" + match_query (verified via ScoredArtifact type)', () => {
