@@ -55,7 +55,7 @@ describe('checkTables', () => {
     try {
       const result = checkTables(db);
       expect(result.status).toBe('pass');
-      expect(result.message).toContain('22/22'); // 14-07b: artifact (V17) added
+      expect(result.message).toContain('22/22');
     } finally {
       db.close();
     }
@@ -79,7 +79,7 @@ describe('checkTables', () => {
       // Empty DB — no tables
       const result = checkTables(db);
       expect(result.status).toBe('fail');
-      expect(result.message).toContain('0/22'); // 14-07b: artifact (V17) added
+      expect(result.message).toContain('0/22');
     } finally {
       db.close();
     }
@@ -320,14 +320,27 @@ describe('checkStats', () => {
       db.close();
     }
   });
+});
 
-  // 14-07b: V17 unified artifact stats
-  it('reports both legacy and V17 artifact counts', () => {
+// ── checkStats V17 ──────────────────────────────────────────────────
+
+describe('checkStats V17', () => {
+  it('includes artifacts (legacy) label in stats message', () => {
     const db = createHealthyDb();
     try {
       const result = checkStats(db);
       expect(result.status).toBe('pass');
       expect(result.message).toContain('artifacts (legacy)');
+    } finally {
+      db.close();
+    }
+  });
+
+  it('includes artifacts (V17) label in stats message', () => {
+    const db = createHealthyDb();
+    try {
+      const result = checkStats(db);
+      expect(result.status).toBe('pass');
       expect(result.message).toContain('artifacts (V17)');
     } finally {
       db.close();
@@ -335,30 +348,27 @@ describe('checkStats', () => {
   });
 });
 
-// ── checkWriteRead V17 ──────────────────────────────────────────────
+// ── checkWriteRead V17 artifact ─────────────────────────────────────
 
 describe('checkWriteRead V17 artifact', () => {
-  // 14-07b: V17 unified artifact write test
-  it('V17 artifact INSERT is included in write/read test on healthy DB', () => {
+  it('passes when artifact (V17) table is present', () => {
     const db = createHealthyDb();
     try {
       const result = checkWriteRead(db);
-      // If artifact V17 table doesn't exist, the write test would fail.
-      // On a healthy DB (post-V37 schema), it should pass.
       expect(result.status).toBe('pass');
     } finally {
       db.close();
     }
   });
 
-  it('does not leave V17 health-check test row behind', () => {
+  it('does not leave V17 test artifact behind', () => {
     const db = createHealthyDb();
     try {
       checkWriteRead(db);
-      const count = (db.prepare(
-        "SELECT COUNT(*) AS n FROM artifact WHERE id = '__health_check_v17__'"
-      ).get() as { n: number }).n;
-      expect(count).toBe(0);
+      const v17 = (db.prepare(
+        "SELECT COUNT(*) as cnt FROM artifact WHERE id = '__health_check_v17__'"
+      ).get() as { cnt: number }).cnt;
+      expect(v17).toBe(0);
     } finally {
       db.close();
     }

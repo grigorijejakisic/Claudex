@@ -640,20 +640,16 @@ export function checkStats(db: Database.Database): CheckResult {
       "SELECT COUNT(*) as cnt FROM observations WHERE deleted_at_epoch_ms IS NULL"
     ).get() as { cnt: number }).cnt;
 
-    // Legacy artifact count (table still alive during transition window)
     const artifactCount = (db.prepare(
       "SELECT COUNT(*) as cnt FROM artifacts"
     ).get() as { cnt: number }).cnt;
 
-    // V17 unified artifact count — Phase 14-07b: migrated from legacy artifacts
     let v17ArtifactCount = 0;
     try {
       v17ArtifactCount = (db.prepare(
         "SELECT COUNT(*) as cnt FROM artifact"
       ).get() as { cnt: number }).cnt;
-    } catch {
-      // V17 table not yet present (pre-migration DB) — non-fatal
-    }
+    } catch { /* V17 table not yet present (pre-migration DB) — non-fatal */ }
 
     const journalCount = (db.prepare(
       "SELECT COUNT(*) as cnt FROM session_journal"
