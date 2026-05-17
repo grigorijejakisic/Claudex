@@ -1590,11 +1590,11 @@ export async function linkUnlinkedArtifacts(
     let linksCreated = 0;
 
     const insertStmt = cachedPrepare(db,
-      `INSERT OR IGNORE INTO artifact_links (source_id, target_id, link_type, strength, valid_at_epoch)
+      `INSERT OR IGNORE INTO artifact_links (source_id, target_id, link_type, strength, valid_at_epoch_ms)
        VALUES (?, ?, 'related', ?, ?)`
     );
 
-    const nowEpoch = Math.floor(Date.now() / 1000);
+    const nowEpoch = Date.now();
 
     for (const artifact of unlinked) {
       try {
