@@ -307,11 +307,32 @@ export function renderHandoffMarkdown(input: HandoffInput): string {
 }
 
 /**
+ * Options bag for the Phase 14-07d soft-link instrumentation overload.
+ * All fields are optional; the overload is backwards-compatible.
+ */
+export interface WriteHandoffOpts {
+  /**
+   * When supplied, a `supersedes` soft link is emitted after the primary
+   * write succeeds. Requires sessionId and project also be supplied.
+   */
+  db?: Database;
+  /** Session that is performing the write. Required when db is supplied. */
+  sessionId?: string;
+  /** Project scope for the handoff query. Required when db is supplied. */
+  project?: string;
+}
+
+/**
  * Atomically write a handoff file at `targetPath`. Throws if input fails
  * validation. Creates the parent directory if missing. Uses tmp + renameSync
  * so a partial-write failure leaves any prior file at `targetPath` intact.
+ *
+ * Phase 14-07d overload: when `opts.db` is supplied, a `supersedes` soft
+ * link is emitted post-write (new handoff → prior handoff in the artifact
+ * table). Soft-link emission failure is logged via telemetry and NEVER
+ * propagates to the caller — the primary write contract is unchanged.
  */
-export function writeHandoff(targetPath: string, input: HandoffInput): void {
+export function writeHandoff(targetPath: string, input: HandoffInput, opts?: WriteHandoffOpts): void {
   const headerForValidation: Partial<HandoffHeader> = {
     status: input.status,
     phase: typeof input.phase === 'number' ? String(input.phase) : input.phase,
@@ -337,5 +358,43 @@ export function writeHandoff(targetPath: string, input: HandoffInput): void {
       /* ignore — best-effort cleanup */
     }
     throw err;
+  }
+
+  // 14-07d: emit supersedes soft link (post-write; non-blocking).
+  if (opts?.db && opts.sessionId && opts.project) {
+    try {
+      const db = opts.db;
+      const project = opts.project;
+      const sessionId = opts.sessionId;
+
+      // Look up the artifact_ref for the file we just wrote (the new handoff).
+      // Handoff artifacts are ingested by file-ingester with kind='handoff' and
+      // artifact_ref set to the file path. We match on artifact_ref to get the V17 ID.
+      const newRow = db.prepare(`
+        SELECT id FROM artifact
+        WHERE kind = 'handoff' AND project = ? AND artifact_ref = ?
+        ORDER BY created_at_epoch_ms DESC
+        LIMIT 1
+      `).get(project, targetPath) as { id: string } | undefined;
+
+      // Find the most recent prior handoff artifact for the project (not the new one).
+      const priorRow = newRow
+        ? db.prepare(`
+            SELECT id FROM artifact
+            WHERE kind = 'handoff' AND project = ? AND id != ?
+            ORDER BY created_at_epoch_ms DESC
+            LIMIT 1
+          `).get(project, newRow.id) as { id: string } | undefined
+        : undefined;
+
+      recordSupersedes({
+        db,
+        session_id: sessionId,
+        new_handoff_artifact_id: newRow?.id ?? '',
+        prior_handoff_artifact_id: priorRow?.id ?? null,
+      });
+    } catch {
+      // Non-fatal: soft-link emission errors must never surface to callers.
+    }
   }
 }
