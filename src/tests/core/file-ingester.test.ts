@@ -191,8 +191,9 @@ describe('ingestFileArtifacts', () => {
       const result = await ingestFileArtifacts(db, 'sess-1', 'test-project', tmpDir);
       expect(result.ingested).toBe(1);
 
+      // 14-07b: query V17 artifact table — artifact_ref is in data JSON
       const artifacts = db.prepare(
-        `SELECT artifact_ref FROM artifacts WHERE artifact_type = 'session_log'`
+        `SELECT json_extract(data, '$.artifact_ref') AS artifact_ref FROM artifact WHERE kind = 'session_log'`
       ).all() as Array<{ artifact_ref: string }>;
       expect(artifacts.length).toBe(1);
       expect(artifacts[0].artifact_ref).toContain('real-session.md');
