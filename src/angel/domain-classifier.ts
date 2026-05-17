@@ -53,9 +53,11 @@ export async function classifySessionDomains(
     const classifyPrompt = `Classify this session topic into a single technical domain (1-2 words, lowercase). Topic: "${thread.topic}". Respond with just the domain name, nothing else.`;
 
     try {
-      const raw = await callLocalLLM({
+      const raw = await generate({
         prompt: classifyPrompt,
+        model: 'haiku',
         maxTokens: 512,
+        subsystem: 'domain_classifier',
       });
       domain = raw.toLowerCase().split('\n')[0];
     } catch { /* llama-server not available — skip classification */ }
