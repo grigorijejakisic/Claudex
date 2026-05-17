@@ -131,7 +131,7 @@ export function createArtifact(
 
 /**
  * Retrieves artifacts for a project with optional filtering by state and/or type.
- * Ordered by importance DESC, timestamp_epoch DESC.
+ * Ordered by importance DESC, timestamp_epoch_ms DESC.
  * Default limit: 100.
  */
 export function getArtifactsByProject(
