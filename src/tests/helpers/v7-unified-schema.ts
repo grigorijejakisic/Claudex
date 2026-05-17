@@ -25,7 +25,7 @@
 
 import { createHash } from 'node:crypto';
 import type { Database } from 'better-sqlite3';
-import { generateV17IdFromLegacy, type LegacyIdInput } from '../../core/artifact-id-map.js';
+import { generateV17IdFromLegacy, populateAllMappings, type LegacyIdInput } from '../../core/artifact-id-map.js';
 import { migrateV36toV37 } from '../../core/migration-steps.js';
 
 // ─── Public types ─────────────────────────────────────────────────────────────
