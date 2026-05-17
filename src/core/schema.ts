@@ -634,12 +634,12 @@ CREATE TABLE IF NOT EXISTS solution_outcomes (
   outcome TEXT NOT NULL CHECK (outcome IN ('success', 'failure', 'partial', 'unknown')),
   impact TEXT,
   effectiveness_score REAL DEFAULT 0.5,
-  created_at_epoch INTEGER NOT NULL DEFAULT (unixepoch())
+  created_at_epoch_ms INTEGER NOT NULL DEFAULT (unixepoch() * 1000)
 );
 CREATE INDEX IF NOT EXISTS idx_outcomes_pattern
   ON solution_outcomes(pattern_id, outcome);
 CREATE INDEX IF NOT EXISTS idx_outcomes_project
-  ON solution_outcomes(project, created_at_epoch DESC);
+  ON solution_outcomes(project, created_at_epoch_ms DESC);
 
 -- V12: session_signals — stigmergic coordination between sessions
 CREATE TABLE IF NOT EXISTS session_signals (
