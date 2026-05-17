@@ -44,7 +44,7 @@ export function promoteLearnings(params: {
   observationArtifactId?: string;
 }): { promoted: number; inserted: number; pruned: number } {
   try {
-    const { db, project, agentId, sessionLearnings } = params;
+    const { db, project, agentId, sessionLearnings, sessionId, observationArtifactId } = params;
     const agent = agentId ?? 'default';
     let promoted = 0;
     let inserted = 0;
