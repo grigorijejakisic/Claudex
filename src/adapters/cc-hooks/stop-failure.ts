@@ -7,6 +7,7 @@
 
 import { wrapHook } from './infrastructure.js';
 import { recordEvent } from '../../core/session-events.js';
+import { recordSessionTermination, readLastTurnTexts } from '../../core/session-termination.js';
 
 const main = wrapHook('StopFailure', async (input, ctx) => {
   const error = (input.error as string) || 'unknown';
@@ -20,6 +21,21 @@ const main = wrapHook('StopFailure', async (input, ctx) => {
     error,
     errorDetails,
   );
+
+  // Phase 14-09: deterministic termination row marked 'crash'. StopFailure
+  // fires when CC's API call fails mid-turn (rate limit, auth, overload).
+  // The session may continue afterward, in which case session-end's later
+  // 'endsession' write supersedes this — that's the intended last-write-wins.
+  try {
+    const { last_user_directive, last_assistant_text } = readLastTurnTexts(ctx.db, input.session_id);
+    recordSessionTermination(ctx.db, {
+      session_id: input.session_id,
+      project: ctx.project,
+      end_reason: 'crash',
+      last_user_directive,
+      last_assistant_text,
+    });
+  } catch { /* non-blocking */ }
 
   return {};
 });
