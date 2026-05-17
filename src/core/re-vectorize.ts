@@ -187,8 +187,9 @@ export async function reVectorizeArtifact(
 
   // Upsert into vec_artifact_v17 using artifact rowid as the vec0 rowid.
   // vec0 does not support ON CONFLICT clauses, so we DELETE + INSERT.
-  // Coerce rowid to a plain integer (better-sqlite3 may return bigint for large rowids).
-  const vecRowid = Number(row.rowid);
+  // sqlite-vec's vec0 requires BigInt for primary key values (matches the
+  // pattern used by upsertArtifactEmbeddingVec in sqlite-vec-backend.ts).
+  const vecRowid = BigInt(row.rowid);
   db.prepare(`DELETE FROM vec_artifact_v17 WHERE rowid = ?`).run(vecRowid);
   db.prepare(`INSERT INTO vec_artifact_v17(rowid, embedding) VALUES (?, ?)`).run(
     vecRowid,

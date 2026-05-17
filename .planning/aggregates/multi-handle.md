@@ -10,8 +10,8 @@
 
 | Phase | Date | Labeler | n | Δp@5 (Wilson CI) | Δr@10 (Wilson CI) | latency p99 ratio | intra-project share | Verdict | Conditions |
 |-------|------|---------|---|------------------|-------------------|-------------------|---------------------|---------|------------|
-| 2.1-strict | 1970-01-01 | strict_3frame | 60 | 0.0667 [-0.0968, 0.2353] | 0.0333 [-0.0874, 0.1534] | 1.6589 | 0.0000 | KILL | see results files |
-| 2.1-relaxed | 1970-01-01 | relaxed_2frame | 60 | 0.0667 [-0.0968, 0.2353] | 0.0333 [-0.0874, 0.1534] | 0.8543 | 0.0000 | KILL | see results files |
+| 2.1-strict | 1970-01-01 | strict_3frame | 60 | 0.0667 [-0.0968, 0.2353] | 0.0333 [-0.0874, 0.1534] | 9.4002 | 0.0000 | KILL | see results files |
+| 2.1-relaxed | 1970-01-01 | relaxed_2frame | 60 | 0.0667 [-0.0968, 0.2353] | 0.0333 [-0.0874, 0.1534] | 1.0477 | 0.0000 | KILL | see results files |
 
 (rows added at the bottom by future empirical phases; never modified.)
 
@@ -29,6 +29,66 @@ Total bound experiences: 2.
 ---
 
 ## Interpretive History
+
+(Each phase that closes prepends a new dated section. Prior content is preserved byte-identical per CONTEXT.md decision 4c rule 3.)
+
+
+(Each phase that closes prepends a new dated section. Prior content is preserved byte-identical per CONTEXT.md decision 4c rule 3.)
+
+
+(Each phase that closes prepends a new dated section. Prior content is preserved byte-identical per CONTEXT.md decision 4c rule 3.)
+
+
+(Each phase that closes prepends a new dated section. Prior content is preserved byte-identical per CONTEXT.md decision 4c rule 3.)
+
+
+(Each phase that closes prepends a new dated section. Prior content is preserved byte-identical per CONTEXT.md decision 4c rule 3.)
+
+
+(Each phase that closes prepends a new dated section. Prior content is preserved byte-identical per CONTEXT.md decision 4c rule 3.)
+
+
+(Each phase that closes prepends a new dated section. Prior content is preserved byte-identical per CONTEXT.md decision 4c rule 3.)
+
+
+(Each phase that closes prepends a new dated section. Prior content is preserved byte-identical per CONTEXT.md decision 4c rule 3.)
+
+
+(Each phase that closes prepends a new dated section. Prior content is preserved byte-identical per CONTEXT.md decision 4c rule 3.)
+
+
+(Each phase that closes prepends a new dated section. Prior content is preserved byte-identical per CONTEXT.md decision 4c rule 3.)
+
+
+(Each phase that closes prepends a new dated section. Prior content is preserved byte-identical per CONTEXT.md decision 4c rule 3.)
+
+
+(Each phase that closes prepends a new dated section. Prior content is preserved byte-identical per CONTEXT.md decision 4c rule 3.)
+
+
+(Each phase that closes prepends a new dated section. Prior content is preserved byte-identical per CONTEXT.md decision 4c rule 3.)
+
+
+(Each phase that closes prepends a new dated section. Prior content is preserved byte-identical per CONTEXT.md decision 4c rule 3.)
+
+
+(Each phase that closes prepends a new dated section. Prior content is preserved byte-identical per CONTEXT.md decision 4c rule 3.)
+
+
+(Each phase that closes prepends a new dated section. Prior content is preserved byte-identical per CONTEXT.md decision 4c rule 3.)
+
+
+(Each phase that closes prepends a new dated section. Prior content is preserved byte-identical per CONTEXT.md decision 4c rule 3.)
+
+
+(Each phase that closes prepends a new dated section. Prior content is preserved byte-identical per CONTEXT.md decision 4c rule 3.)
+
+
+(Each phase that closes prepends a new dated section. Prior content is preserved byte-identical per CONTEXT.md decision 4c rule 3.)
+
+
+(Each phase that closes prepends a new dated section. Prior content is preserved byte-identical per CONTEXT.md decision 4c rule 3.)
+
 
 (Each phase that closes prepends a new dated section. Prior content is preserved byte-identical per CONTEXT.md decision 4c rule 3.)
 
