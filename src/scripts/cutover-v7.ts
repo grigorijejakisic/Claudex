@@ -322,12 +322,23 @@ export async function applyCutover(
     log(`  [A.2] Detected ${preCheck.unmapped} unmapped legacy rows — auto-backfilling...`);
     try {
       const { createHash: createHashFn } = await import('node:crypto');
+      // Detect which timestamp column name the DB uses (production: timestamp_epoch,
+      // test fixtures and early migrations: timestamp_epoch_ms).
+      const artifactCols = (db.prepare('PRAGMA table_info(artifacts)').all() as Array<{ name: string }>)
+        .map(c => c.name);
+      const tsCol = artifactCols.includes('timestamp_epoch') ? 'timestamp_epoch'
+        : artifactCols.includes('timestamp_epoch_ms') ? 'timestamp_epoch_ms'
+        : null;
+      if (tsCol === null) {
+        throw new Error('artifacts table has neither timestamp_epoch nor timestamp_epoch_ms column');
+      }
+
       const unmappedRows = db.prepare(`
-        SELECT id, session_id, project, timestamp_epoch, summary, content, artifact_type
+        SELECT id, session_id, project, ${tsCol} AS ts, summary, content, artifact_type
         FROM artifacts
         WHERE id NOT IN (SELECT legacy_id FROM artifact_id_map)
       `).all() as Array<{
-        id: number; session_id: string; project: string; timestamp_epoch: number;
+        id: number; session_id: string; project: string; ts: number;
         summary: string; content: string | null; artifact_type: string;
       }>;
 
