@@ -240,6 +240,23 @@ const EXPECTED_TABLES: Record<string, ColumnDef[]> = {
     { name: 'corrections', notNull: true, hasDefault: true },
     { name: 'last_updated_epoch_ms', notNull: true, hasDefault: true },
   ],
+  temporal_profile: [
+    { name: 'id', notNull: true },
+    { name: 'project', notNull: true },
+    { name: 'hour_bucket', notNull: true },
+    { name: 'day_of_week', notNull: true },
+    { name: 'session_count', notNull: true, hasDefault: true },
+    { name: 'avg_duration_sec' },
+    { name: 'common_first_actions', hasDefault: true },
+    { name: 'updated_at_epoch_ms', notNull: true, hasDefault: true },
+  ],
+  action_transitions: [
+    { name: 'project', notNull: true },
+    { name: 'from_action', notNull: true },
+    { name: 'to_action', notNull: true },
+    { name: 'count', notNull: true, hasDefault: true },
+    { name: 'last_epoch_ms', notNull: true, hasDefault: true },
+  ],
   file_leases: [
     { name: 'file_path', notNull: true },
     { name: 'worker_id', notNull: true },
