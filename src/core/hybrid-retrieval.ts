@@ -1075,6 +1075,29 @@ export async function hybridSearchAsync(
 
       const vRank = vectorRankMap.get(artifactId);
       const rRank = recencyRankMap.get(artifactId);
+
+      // 14-07i: retrieval metadata — determine the highest-score channel for
+      // this candidate so the assembler can render a retrieval-reason annotation.
+      // Multi-channel candidate: higher RRF score channel wins.
+      // Reranker re-orders but is not a source channel — source channel preserved.
+      // Recency-only hits (no FTS or vector) get no match_kind (undefined).
+      const truncatedQueryAsync = query.length > 200 ? query.substring(0, 200) : query;
+      const ftsRrfScore = fts5RankMap.has(artifactId)
+        ? 1 / (RRF_K + (fts5RankMap.get(artifactId) ?? RRF_K))
+        : 0;
+      const vecRrfScore = vRank != null ? 1 / (RRF_K + vRank) : 0;
+      let matchQuery: string | undefined;
+      let matchKind: 'fts' | 'vector' | undefined;
+      if (ftsRrfScore > 0 || vecRrfScore > 0) {
+        if (vecRrfScore >= ftsRrfScore && vecRrfScore > 0) {
+          matchQuery = truncatedQueryAsync;
+          matchKind = 'vector';
+        } else {
+          matchQuery = truncatedQueryAsync;
+          matchKind = 'fts';
+        }
+      }
+
       scored.push({
         ...artifact,
         hybrid_score: hybridScore,
@@ -1084,6 +1107,7 @@ export async function hybridSearchAsync(
           rrf_recency: rRank != null ? 1 / (RRF_K + rRank) : 0,
           three_factor: threeFactor,
         },
+        ...(matchKind !== undefined ? { match_query: matchQuery, match_kind: matchKind } : {}),
       });
     }
 
