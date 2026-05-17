@@ -20,11 +20,7 @@ import { estimateTokens } from '../../shared/text-utils.js';
 import {
   selectTopKLessons,
   readLessonTrigger,
-  DEFAULT_TOP_K as LESSON_RELEVANCE_DEFAULT_TOP_K,
 } from '../../intelligence/lesson-relevance.js';
-
-// Re-export for documentation purposes only (actual default handling is in lesson-relevance.ts).
-const _DEFAULT_TOP_K_DOC = LESSON_RELEVANCE_DEFAULT_TOP_K; void _DEFAULT_TOP_K_DOC;
 
 /**
  * Priority 4.1: Proven principles — proactive injection of established learnings.
