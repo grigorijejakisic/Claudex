@@ -409,6 +409,8 @@ export async function applyCutover(
         db_path: opts.db_path,
         baseline_path: BASELINES_PATH,
         runners: opts.gateRunners,
+        // Ensure benchmark runners resolve bun scripts from the project root.
+        cwd: process.cwd(),
       });
     } catch (err) {
       emitTelemetry(db, 'C', false, { reason: 'benchmark_runner_threw', error: String(err) });
