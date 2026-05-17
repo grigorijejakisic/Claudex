@@ -571,6 +571,17 @@ export function initializeSchema(db: Database): void {
     try { db.exec(`INSERT OR IGNORE INTO schema_versions(version) VALUES (42)`); } catch { /* non-critical */ }
   }
 
+  // Phase 14-09b (V43): rename 24 legacy _epoch (seconds) columns to _epoch_ms
+  // (milliseconds) and scale stored values by ×1000 across 16 tables.
+  // Idempotent: hasColumn guards skip columns already in the correct shape.
+  // Fresh-DB path: schema.ts tables that already use _epoch_ms names are
+  // unaffected (hasColumn(oldName) returns false → rename skipped).
+  if (currentUv < 43) {
+    migrateV42toV43(db);
+    db.pragma('user_version = 43');
+    try { db.exec(`INSERT OR IGNORE INTO schema_versions(version) VALUES (43)`); } catch { /* non-critical */ }
+  }
+
   // Phase 4 (V28): per-connection sidecar + TEMP TRIGGER guarding writes
   // to the legacy `experience_patterns` table. Both objects live in the
   // `temp` schema because (a) SQLite forbids a permanent-schema trigger
