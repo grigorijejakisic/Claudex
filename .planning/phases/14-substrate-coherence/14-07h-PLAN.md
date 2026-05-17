@@ -470,7 +470,7 @@ Preserve all existing tests.
 - AC-9: Migration tool preserves all other frontmatter fields + body content byte-equivalent.
 - AC-10: Experience-tier filter excludes cross-project patterns from passive injection (default mode).
 - AC-11: Filter configurable via `CLAUDEX_EXPERIENCE_SCOPE` env var.
-- AC-12: `formatProvenPrinciplesSection` function added to sections.ts; H owns it; J extends post-merge.
+- AC-12: `formatProvenPrinciplesSection` function in `sections/lessons.ts` refactored by H (Wave 0 moved it there; H modifies in-place); J extends post-merge.
 - AC-13: Lessons section uses trigger frontmatter when present; falls back to truncated-body when missing.
 - AC-14: All 35 new tests pass.
 - AC-15: Vesna SC#1 PASS 18/18 unchanged.
