@@ -2,7 +2,26 @@
  * Stateless section formatters for the assembly pipeline.
  * All are pure functions taking pre-fetched data, returning string | null.
  * All non-throwing (return null on error).
+ *
+ * Wave 0 (14-07-w0d): This file was split into modular sub-files. Functions
+ * related to lessons, codebase context, and links now live in sections/.
+ * This file re-exports them for backwards compatibility — all existing imports
+ * from 'assembly/sections.js' continue to work unchanged.
  */
+
+// Re-exports from modular sub-files (Wave 0 split).
+// formatProvenPrinciplesSection, formatLearningsSection → sections/lessons.ts
+// formatCodebaseContextSection                          → sections/codebase-context.ts
+// formatPendingReviewLinksSection (Wave 2)              → sections/links.ts
+// formatProvenanceChainSection    (Wave 2)              → sections/links.ts
+export {
+  formatProvenPrinciplesSection,
+  formatLearningsSection,
+} from './sections/lessons.js';
+export {
+  formatCodebaseContextSection,
+} from './sections/codebase-context.js';
+export type { CodebaseContextFile } from './sections/codebase-context.js';
 
 import * as fs from 'fs';
 import * as path from 'path';
