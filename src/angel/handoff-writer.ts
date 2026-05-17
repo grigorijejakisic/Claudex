@@ -43,6 +43,7 @@ import type { Database } from 'better-sqlite3';
 import { recordSupersedes } from '../intelligence/soft-link-writers.js';
 import { resolveProjectPath } from '../shared/scope-detector.js';
 import { getHandoffsDir } from '../shared/paths.js';
+import type { BoundaryType } from '../intelligence/directive-detector.js';
 
 export type HandoffStatus = 'active' | 'archived' | 'paused';
 
