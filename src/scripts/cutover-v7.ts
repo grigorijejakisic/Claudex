@@ -139,12 +139,11 @@ function emitTelemetry(
  * Exported for test access.
  */
 export function isAlreadyCutover(db: Database.Database): boolean {
-  // Use the prototype-bound prepare to bypass any application-layer enforcement
-  // guard that may have been installed by enforceLegacyReadOnly. The guard only
-  // blocks INSERT/UPDATE/DELETE, but using the prototype binding avoids any
-  // instance-level patching issues that could cause spurious failures.
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const safePrepare: typeof db.prepare = (sql: string) => (db as any).__proto__.prepare.call(db, sql);
+  // Use exec-based queries to bypass any application-layer enforcement guard
+  // that may have been installed by enforceLegacyReadOnly. We use db.prepare
+  // directly since the guard only blocks INSERT/UPDATE/DELETE, not SELECT.
+  // The try/catch per-check handles any spurious failures gracefully.
+  const safePrepare: typeof db.prepare = (sql: string) => db.prepare(sql);
 
   try {
     // Primary: schema_versions marker 3701.
