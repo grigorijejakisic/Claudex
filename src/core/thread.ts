@@ -39,8 +39,8 @@ export function upsertThreadState(
   }
 ): void {
   cachedPrepare(db,
-    `INSERT INTO thread_state (session_id, topic, summary, key_exchanges, updated_at_epoch)
-     VALUES (?, ?, ?, ?, unixepoch())
+    `INSERT INTO thread_state (session_id, topic, summary, key_exchanges, updated_at_epoch_ms)
+     VALUES (?, ?, ?, ?, unixepoch() * 1000)
      ON CONFLICT(session_id) DO UPDATE SET
        topic = COALESCE(excluded.topic, thread_state.topic),
        summary = COALESCE(excluded.summary, thread_state.summary),
@@ -48,7 +48,7 @@ export function upsertThreadState(
          WHEN excluded.key_exchanges = '[]' THEN thread_state.key_exchanges
          ELSE excluded.key_exchanges
        END,
-       updated_at_epoch = unixepoch()`
+       updated_at_epoch_ms = unixepoch() * 1000`
   ).run(
     state.session_id,
     state.topic ?? null,
