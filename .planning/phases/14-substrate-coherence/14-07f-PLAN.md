@@ -116,7 +116,8 @@ After this plan lands AND the operator reviews + enables the flag:
 @~/.claude/projects/C--Users-Grigorije-Desktop-Projects-CLAUDEXv3/memory/feedback_good_child_parable.md
 @src/core/link-writer.ts
 @src/angel/boundary/boundary-detector.ts
-@src/assembly/sections.ts
+@src/assembly/sections/links.ts
+@src/assembly/sections/index.ts
 @src/assembly/assembler.ts
 @src/angel/highlights-extractor.ts
 </context>
