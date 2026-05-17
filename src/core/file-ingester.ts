@@ -322,16 +322,20 @@ async function processFile(
 // ---------------------------------------------------------------------------
 
 /**
- * Ensures the unique index for file artifact dedup exists.
+ * Ensures the unique index for file artifact dedup exists on V17 artifact table.
  * Idempotent. Non-throwing.
+ *
+ * 14-07b: migrated from legacy artifacts → V17 artifact table.
+ * artifact_ref lives in data JSON; index on expression.
  */
 function ensureFileArtifactIndex(db: Database): void {
   try {
+    // 14-07b: migrated from legacy artifacts — index on V17 artifact
     db.exec(
-      `CREATE UNIQUE INDEX IF NOT EXISTS idx_artifacts_file_ref
-       ON artifacts(project, artifact_type, artifact_ref)
-       WHERE artifact_ref IS NOT NULL
-         AND artifact_type IN ('memory_file', 'session_log', 'handoff')`
+      `CREATE UNIQUE INDEX IF NOT EXISTS idx_artifact_file_ref_v17
+       ON artifact(project, kind, json_extract(data, '$.artifact_ref'))
+       WHERE json_extract(data, '$.artifact_ref') IS NOT NULL
+         AND kind IN ('memory_file', 'session_log', 'handoff')`
     );
   } catch { /* non-throwing — index may already exist or partial index not supported */ }
 }
