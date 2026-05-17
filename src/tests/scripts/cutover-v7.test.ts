@@ -33,6 +33,7 @@ import {
   applyCutover,
   runDryRun,
   rollbackCutover,
+  isAlreadyCutover,
   _setOllamaEmbedCallableForTest,
   _setGateRunnersForTest,
   type CutoverOpts,
