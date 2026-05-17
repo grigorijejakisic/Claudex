@@ -183,7 +183,7 @@ function ensureTickEpochColumn(db: Database.Database): void {
  * has elapsed since the last tick (cross-process safe via DB).
  * Falls back to allowing the tick if the DB query fails.
  */
-function shouldTickArtifactTTL(db: Database.Database, sessionId: string, nowEpoch: number, project?: string): boolean {
+function shouldTickArtifactTTL(db: Database.Database, sessionId: string, nowMs: number, project?: string): boolean {
   try {
     ensureTickEpochColumn(db);
 
@@ -192,7 +192,7 @@ function shouldTickArtifactTTL(db: Database.Database, sessionId: string, nowEpoc
     // be project-scoped — not session-scoped — to prevent N sessions draining
     // TTL N times faster than intended.
     const guardKey = project ? `__ttl_guard__${project}` : sessionId;
-    const threshold = nowEpoch - 120;
+    const threshold = nowMs - 120_000; // 120 seconds in ms
 
     // Single atomic UPSERT with WHERE guard on the ON CONFLICT path.
     // - New row (no conflict): INSERT succeeds → changes = 1 → tick allowed.
@@ -200,13 +200,13 @@ function shouldTickArtifactTTL(db: Database.Database, sessionId: string, nowEpoc
     // - Existing row, elapsed < 120s: ON CONFLICT UPDATE fires, WHERE fails → changes = 0 → tick skipped.
     // No SELECT+UPDATE race window — SQLite guarantees atomicity of a single statement.
     const result = cachedPrepare(db,
-      `INSERT INTO checkpoint_tracking (session_id, last_tick_epoch, updated_at_epoch)
-       VALUES (?, ?, unixepoch())
+      `INSERT INTO checkpoint_tracking (session_id, last_tick_epoch_ms, updated_at_epoch_ms)
+       VALUES (?, ?, unixepoch() * 1000)
        ON CONFLICT(session_id) DO UPDATE SET
-         last_tick_epoch = excluded.last_tick_epoch,
-         updated_at_epoch = unixepoch()
-       WHERE checkpoint_tracking.last_tick_epoch IS NULL OR checkpoint_tracking.last_tick_epoch <= ?`
-    ).run(guardKey, nowEpoch, threshold);
+         last_tick_epoch_ms = excluded.last_tick_epoch_ms,
+         updated_at_epoch_ms = unixepoch() * 1000
+       WHERE checkpoint_tracking.last_tick_epoch_ms IS NULL OR checkpoint_tracking.last_tick_epoch_ms <= ?`
+    ).run(guardKey, nowMs, threshold);
 
     return result.changes > 0;
   } catch {
