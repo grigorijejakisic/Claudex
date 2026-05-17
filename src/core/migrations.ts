@@ -114,6 +114,7 @@ export { migrateV14toV15 };
  *   38 — Phase 14-07-LINKS-SCHEMA: soft_link + hard_link + hard_link_history (knowledge-graph substrate)
  *   39 — Phase 14-07l: handoff_refresh_state table (CHR throttle state)
  *   40 — Phase 14-08 substrate hygiene: backfill seconds-as-ms rows + rewrite DEFAULT (unixepoch()) → DEFAULT (unixepoch() * 1000) on 7 tables (V35 scar fix)
+ *   41 — Phase 14-08 CHR async: chr_pending_classifications queue table (stop hook enqueues, Angel drains)
  *
  * Dual version tracking:
  * Both `PRAGMA user_version` and `schema_versions` table are needed:
