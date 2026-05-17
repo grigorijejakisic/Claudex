@@ -412,14 +412,14 @@ CREATE TABLE IF NOT EXISTS session_events (
   entity TEXT NOT NULL,
   action TEXT NOT NULL,
   detail TEXT,
-  timestamp_epoch INTEGER NOT NULL DEFAULT (unixepoch())
+  timestamp_epoch_ms INTEGER NOT NULL DEFAULT (unixepoch() * 1000)
 );
 CREATE INDEX IF NOT EXISTS idx_session_events_session
   ON session_events(session_id);
 CREATE INDEX IF NOT EXISTS idx_session_events_session_ts
-  ON session_events(session_id, timestamp_epoch);
+  ON session_events(session_id, timestamp_epoch_ms);
 CREATE INDEX IF NOT EXISTS idx_session_events_project
-  ON session_events(project, timestamp_epoch);
+  ON session_events(project, timestamp_epoch_ms);
 
 -- verified_facts: session-scoped facts for checkpoint inclusion
 CREATE TABLE IF NOT EXISTS verified_facts (
