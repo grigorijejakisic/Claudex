@@ -532,7 +532,7 @@ export function updateTemporalProfile(
          SET session_count = session_count + 1,
              common_first_actions = ?,
              avg_duration_sec = ?,
-             updated_at_epoch = unixepoch()
+             updated_at_epoch_ms = unixepoch() * 1000
          WHERE project = ? AND hour_bucket = ? AND day_of_week = ?`
       ).run(JSON.stringify(topActions), avgDurationSec, project, hourBucket, dayOfWeek);
     } else {
