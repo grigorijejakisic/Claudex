@@ -55,7 +55,7 @@ describe('checkTables', () => {
     try {
       const result = checkTables(db);
       expect(result.status).toBe('pass');
-      expect(result.message).toContain('21/21');
+      expect(result.message).toContain('22/22');
     } finally {
       db.close();
     }
@@ -79,7 +79,7 @@ describe('checkTables', () => {
       // Empty DB — no tables
       const result = checkTables(db);
       expect(result.status).toBe('fail');
-      expect(result.message).toContain('0/21');
+      expect(result.message).toContain('0/22');
     } finally {
       db.close();
     }
@@ -316,6 +316,59 @@ describe('checkStats', () => {
       expect(result.status).toBe('pass');
       expect(result.message).toContain('observations');
       expect(result.message).toContain('artifacts');
+    } finally {
+      db.close();
+    }
+  });
+});
+
+// ── checkStats V17 ──────────────────────────────────────────────────
+
+describe('checkStats V17', () => {
+  it('includes artifacts (legacy) label in stats message', () => {
+    const db = createHealthyDb();
+    try {
+      const result = checkStats(db);
+      expect(result.status).toBe('pass');
+      expect(result.message).toContain('artifacts (legacy)');
+    } finally {
+      db.close();
+    }
+  });
+
+  it('includes artifacts (V17) label in stats message', () => {
+    const db = createHealthyDb();
+    try {
+      const result = checkStats(db);
+      expect(result.status).toBe('pass');
+      expect(result.message).toContain('artifacts (V17)');
+    } finally {
+      db.close();
+    }
+  });
+});
+
+// ── checkWriteRead V17 artifact ─────────────────────────────────────
+
+describe('checkWriteRead V17 artifact', () => {
+  it('passes when artifact (V17) table is present', () => {
+    const db = createHealthyDb();
+    try {
+      const result = checkWriteRead(db);
+      expect(result.status).toBe('pass');
+    } finally {
+      db.close();
+    }
+  });
+
+  it('does not leave V17 test artifact behind', () => {
+    const db = createHealthyDb();
+    try {
+      checkWriteRead(db);
+      const v17 = (db.prepare(
+        "SELECT COUNT(*) as cnt FROM artifact WHERE id = '__health_check_v17__'"
+      ).get() as { cnt: number }).cnt;
+      expect(v17).toBe(0);
     } finally {
       db.close();
     }

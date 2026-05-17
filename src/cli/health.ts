@@ -206,6 +206,23 @@ const EXPECTED_TABLES: Record<string, ColumnDef[]> = {
     { name: 'strength', notNull: true, hasDefault: true },
     { name: 'created_at_epoch', notNull: true, hasDefault: true },
   ],
+  // V17 unified artifact kernel — Phase 14-07b: migrated from legacy artifacts
+  artifact: [
+    { name: 'id', notNull: true },
+    { name: 'kind', notNull: true },
+    { name: 'title' },
+    { name: 'body', notNull: true },
+    { name: 'scope' },
+    { name: 'status', notNull: true, hasDefault: true },
+    { name: 'confidence' },
+    { name: 'created_at_epoch_ms', notNull: true },
+    { name: 'updated_at_epoch_ms', notNull: true },
+    { name: 'session_id' },
+    { name: 'project' },
+    { name: 'embedding_ref' },
+    { name: 'supersedes_id' },
+    { name: 'data', notNull: true, hasDefault: true },
+  ],
   retrieval_events: [
     { name: 'id', notNull: true },
     { name: 'artifact_id', notNull: true },
@@ -400,6 +417,9 @@ export function checkWriteRead(db: Database.Database): CheckResult {
       VALUES ('__health_check__', '__health__', 'flow', 'test')`,
     artifacts: `INSERT INTO artifacts (session_id, project, artifact_type, summary, state, ttl, importance)
       VALUES ('__health_check__', '__health__', 'observation', 'test', 'fresh', 3, 3)`,
+    // V17 unified artifact — Phase 14-07b: migrated from legacy artifacts
+    artifact: `INSERT OR IGNORE INTO artifact (id, kind, title, body, status, confidence, created_at_epoch_ms, updated_at_epoch_ms, session_id, project, data)
+      VALUES ('__health_check_v17__', 'observation', 'health check', '', 'active', 0.6, 0, 0, '__health_check__', '__health__', '{}')`,
     verified_facts: `INSERT INTO verified_facts (session_id, fact)
       VALUES ('__health_check__', 'test')`,
     telemetry: `INSERT INTO telemetry (session_id, event_kind, detail)
@@ -624,6 +644,13 @@ export function checkStats(db: Database.Database): CheckResult {
       "SELECT COUNT(*) as cnt FROM artifacts"
     ).get() as { cnt: number }).cnt;
 
+    let v17ArtifactCount = 0;
+    try {
+      v17ArtifactCount = (db.prepare(
+        "SELECT COUNT(*) as cnt FROM artifact"
+      ).get() as { cnt: number }).cnt;
+    } catch { /* V17 table not yet present (pre-migration DB) — non-fatal */ }
+
     const journalCount = (db.prepare(
       "SELECT COUNT(*) as cnt FROM session_journal"
     ).get() as { cnt: number }).cnt;
@@ -635,7 +662,7 @@ export function checkStats(db: Database.Database): CheckResult {
     return {
       label: 'Stats',
       status: 'pass',
-      message: `${sessionCount.toLocaleString()} sessions | ${obsCount.toLocaleString()} observations | ${artifactCount.toLocaleString()} artifacts | ${journalCount.toLocaleString()} journal entries`,
+      message: `${sessionCount.toLocaleString()} sessions | ${obsCount.toLocaleString()} observations | ${artifactCount.toLocaleString()} artifacts (legacy) | ${v17ArtifactCount.toLocaleString()} artifacts (V17) | ${journalCount.toLocaleString()} journal entries`,
     };
   } catch (err) {
     return {
