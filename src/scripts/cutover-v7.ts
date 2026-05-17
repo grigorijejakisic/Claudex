@@ -632,10 +632,26 @@ export async function rollbackCutover(
   // Check there is something to roll back.
   const wasApplied = isAlreadyCutover(db);
   if (!wasApplied) {
+    // Diagnostic info to help debug unexpected false negatives.
+    let diagnosticInfo = '';
+    try {
+      const triggerExists = db.prepare(
+        `SELECT COUNT(*) AS n FROM sqlite_master WHERE type='trigger' AND name='prevent_legacy_insert_post_cutover'`
+      ).get() as { n: number };
+      const svRow = db.prepare(
+        `SELECT COUNT(*) AS n FROM schema_versions WHERE version = ${CUTOVER_MARKER_VERSION}`
+      ).get() as { n: number };
+      const readOnlyCount = db.prepare(
+        `SELECT COUNT(*) AS n FROM artifacts WHERE read_only = 1`
+      ).get() as { n: number };
+      diagnosticInfo = ` [diagnostic: trigger=${triggerExists.n}, sv3701=${svRow.n}, read_only_rows=${readOnlyCount.n}]`;
+    } catch (diagErr) {
+      diagnosticInfo = ` [diagnostic query failed: ${diagErr instanceof Error ? diagErr.message : String(diagErr)}]`;
+    }
     return {
       status: 'error',
       exit_code: 3,
-      message: 'Rollback requested, but no cutover has been applied to this DB. Nothing to roll back.',
+      message: `Rollback requested, but no cutover has been applied to this DB. Nothing to roll back.${diagnosticInfo}`,
       phases_completed: [],
     };
   }
