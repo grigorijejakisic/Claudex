@@ -320,6 +320,49 @@ describe('checkStats', () => {
       db.close();
     }
   });
+
+  // 14-07b: V17 unified artifact stats
+  it('reports both legacy and V17 artifact counts', () => {
+    const db = createHealthyDb();
+    try {
+      const result = checkStats(db);
+      expect(result.status).toBe('pass');
+      expect(result.message).toContain('artifacts (legacy)');
+      expect(result.message).toContain('artifacts (V17)');
+    } finally {
+      db.close();
+    }
+  });
+});
+
+// ── checkWriteRead V17 ──────────────────────────────────────────────
+
+describe('checkWriteRead V17 artifact', () => {
+  // 14-07b: V17 unified artifact write test
+  it('V17 artifact INSERT is included in write/read test on healthy DB', () => {
+    const db = createHealthyDb();
+    try {
+      const result = checkWriteRead(db);
+      // If artifact V17 table doesn't exist, the write test would fail.
+      // On a healthy DB (post-V37 schema), it should pass.
+      expect(result.status).toBe('pass');
+    } finally {
+      db.close();
+    }
+  });
+
+  it('does not leave V17 health-check test row behind', () => {
+    const db = createHealthyDb();
+    try {
+      checkWriteRead(db);
+      const count = (db.prepare(
+        "SELECT COUNT(*) AS n FROM artifact WHERE id = '__health_check_v17__'"
+      ).get() as { n: number }).n;
+      expect(count).toBe(0);
+    } finally {
+      db.close();
+    }
+  });
 });
 
 // ── runHealthCheck (integration) ────────────────────────────────────
