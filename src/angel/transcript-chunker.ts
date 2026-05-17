@@ -31,6 +31,7 @@
 import type { Database } from 'better-sqlite3';
 import { randomUUID } from 'node:crypto';
 import { callLocalLLM } from './llama-client.js';
+import { generate } from './generation-backend.js';
 import { cachedPrepare } from '../core/stmt-cache.js';
 
 // ---------------------------------------------------------------------------
