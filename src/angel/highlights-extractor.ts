@@ -372,7 +372,15 @@ async function callOpusApiKey(prompt: string, apiKey: string): Promise<ExtractRe
  * handles persistent failure.
  */
 async function callLocalFallback(prompt: string, model: string): Promise<ExtractResult> {
-  const response = await callLocalLLM({ prompt, model: model || undefined, maxTokens: 2048 });
+  // Phase 14-08: route via generation-backend. Default backend is Claude
+  // subprocess with Sonnet — quality jump over llama3.1 for synthesis. The
+  // `model` arg threads through but Sonnet wins when backend=claude regardless.
+  const response = await generate({
+    prompt,
+    model: model || 'sonnet',
+    maxTokens: 2048,
+    subsystem: 'highlights',
+  });
   return parseExtractResult(response, 'opus_parse_failed');
 }
 
