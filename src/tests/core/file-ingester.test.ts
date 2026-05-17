@@ -49,11 +49,13 @@ describe('ingestFileArtifacts', () => {
       expect(result.ingested).toBe(1);
       expect(result.errors).toBe(0);
 
+      // 14-07b: query V17 artifact table (not legacy artifacts)
       const artifacts = db.prepare(
-        `SELECT * FROM artifacts WHERE artifact_type = 'session_log'`
-      ).all() as Array<{ summary: string; artifact_ref: string; state: string }>;
+        `SELECT kind, title, status, json_extract(data, '$.artifact_ref') AS artifact_ref
+         FROM artifact WHERE kind = 'session_log'`
+      ).all() as Array<{ kind: string; title: string; status: string; artifact_ref: string }>;
       expect(artifacts.length).toBe(1);
-      expect(artifacts[0].state).toBe('packed');
+      expect(artifacts[0].status).toBe('active'); // V17 status (not legacy state='packed')
       expect(artifacts[0].artifact_ref).toContain('session-1.md');
     } finally {
       db.close();
