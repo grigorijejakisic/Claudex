@@ -367,12 +367,12 @@ export function writeHandoff(targetPath: string, input: HandoffInput, opts?: Wri
       const project = opts.project;
       const sessionId = opts.sessionId;
 
-      // Look up the artifact_ref for the file we just wrote (the new handoff).
+      // Look up the V17 artifact for the file we just wrote (the new handoff).
       // Handoff artifacts are ingested by file-ingester with kind='handoff' and
-      // artifact_ref set to the file path. We match on artifact_ref to get the V17 ID.
+      // the file path stored as json_extract(data, '$.artifact_ref') in the data column.
       const newRow = db.prepare(`
         SELECT id FROM artifact
-        WHERE kind = 'handoff' AND project = ? AND artifact_ref = ?
+        WHERE kind = 'handoff' AND project = ? AND json_extract(data, '$.artifact_ref') = ?
         ORDER BY created_at_epoch_ms DESC
         LIMIT 1
       `).get(project, targetPath) as { id: string } | undefined;
