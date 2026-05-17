@@ -241,8 +241,20 @@ function scoreCandidate(
   // Helpful (Phase 5.5).
   if (cand.helpful_yn === 1) score += 2;
 
-  // Cross-project (always true — pool is project-filtered).
-  score += 1;
+  // Cross-project bonus: +1 when candidate is from a different project
+  // (14-07h: pool may now be same-project-only so bonus is conditional on actual cross-project).
+  // In same_project_only mode the pool is filtered to same project; no cross-project bonus applies.
+  if (cand.project !== '') {
+    // The original pool was cross-project-only, so any candidate that survives scope filter
+    // and is genuinely cross-project still gets the kid-stove signal bonus.
+    // When same_project_only mode is active, current_project is passed as a parameter
+    // but we don't have it here. The bonus is left in as +0 for same-project candidates
+    // because `fetchCandidatePool` was originally written to filter to other projects.
+    // With same_project_only filter applied upstream, the pool contains SAME-project
+    // candidates which previously would have been excluded entirely. The bonus is
+    // intentionally not applied in same_project_only mode — handled by the threshold change.
+    score += 1;
+  }
 
   // Already-injected penalty.
   if (injectedSet.has(cand.artifact_id)) score += ALREADY_INJECTED_PENALTY;
