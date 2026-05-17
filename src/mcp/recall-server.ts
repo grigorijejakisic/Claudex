@@ -1235,6 +1235,45 @@ server.registerTool(
 );
 
 // ---------------------------------------------------------------------------
+// claudex_trace — walk the link graph from a given artifact (Phase 14-07e)
+// ---------------------------------------------------------------------------
+
+server.registerTool(
+  'claudex_trace',
+  {
+    description: 'Walk the link graph from a given artifact. Returns the N-hop neighborhood with hop distance + path. Reads soft + confirmed hard links (pending hard links are not exposed). Use to answer "what is connected to this decision?" or "trace back from this lesson to source observations."',
+    inputSchema: {
+      artifact_id: z.string().describe('V17 TEXT id of the starting artifact'),
+      max_hops: z.number().optional().describe('Maximum hops to traverse (default 3, capped at 5)'),
+      types: z.array(z.string()).optional().describe('Optional filter on link types (e.g. ["supersedes", "triggered_by"])'),
+      direction: z.enum(['outgoing', 'incoming', 'both']).optional().describe('Traversal direction (default "both")'),
+    },
+  },
+  async ({ artifact_id, max_hops, types, direction }) => {
+    if (!artifact_id) {
+      return { content: [{ type: 'text', text: JSON.stringify({ error: 'artifact_id is required' }) }] };
+    }
+
+    try {
+      const result = handleClaudexTrace(getDb(), {
+        artifact_id,
+        max_hops,
+        types,
+        direction,
+      });
+      return { content: [{ type: 'text', text: JSON.stringify(result, null, 2) }] };
+    } catch (err) {
+      return {
+        content: [{
+          type: 'text',
+          text: JSON.stringify({ error: err instanceof Error ? err.message : String(err) }),
+        }],
+      };
+    }
+  },
+);
+
+// ---------------------------------------------------------------------------
 // Start
 // ---------------------------------------------------------------------------
 
