@@ -21,7 +21,7 @@ export interface SessionEvent {
   entity: string;
   action: string;
   detail: string | null;
-  timestamp_epoch: number;
+  timestamp_epoch_ms: number;
 }
 
 /**
