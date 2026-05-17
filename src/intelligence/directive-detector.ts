@@ -538,12 +538,13 @@ async function classifyRelation(
       .map((row, i) => `#${i + 1} (cosine≈${l2DistanceToCosine(row.distance).toFixed(3)}): ${row.title ?? ''} — ${row.body}`)
       .join('\n');
     const userPrompt = `CANDIDATE:\n${candidateBody}\n\nCANDIDATES_EXISTING (ordered by cosine desc):\n${listed}\n\nClassify the relation between CANDIDATE and item #1. JSON only.`;
-    const raw = await callLocalLLM({
+    const raw = await generate({
       system: assets.dedupRelationSystem,
       prompt: userPrompt,
       model: cfg.model,
       temperature: 0,
       maxTokens: 256,
+      subsystem: 'directive_dedup',
     });
     return parseDedupRelation(raw);
   } catch {
