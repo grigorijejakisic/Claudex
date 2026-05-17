@@ -666,7 +666,16 @@ server.registerTool(
 
     let v17Row: V17ArtifactRow | undefined;
 
-    if (validId) {
+    // Phase 14-09: preferred path — direct V17 TEXT id lookup. Round-trips
+    // from claudex_search's `artifact_id` field. Stable across rebuilds.
+    if (validArtifactId) {
+      v17Row = cachedPrepare(getDb(),
+        `SELECT id, kind, title, body, project, session_id, confidence, status, created_at_epoch_ms, data
+           FROM artifact WHERE id = ?`,
+      ).get(validArtifactId) as V17ArtifactRow | undefined;
+    }
+
+    if (!v17Row && validId) {
       // Legacy INTEGER id received at external boundary — bridge via artifact_id_map.
       const v17Id = lookupV17ByLegacy(getDb(), validId);
       if (v17Id) {
