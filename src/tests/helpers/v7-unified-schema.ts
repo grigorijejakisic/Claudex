@@ -315,16 +315,29 @@ export interface V17ArtifactRow {
 // ─── Migration helper ─────────────────────────────────────────────────────────
 
 /**
- * Run migrateV36toV37 on a test DB in-place.
+ * Run the V36→V37 migration on a test DB and synchronize all existing legacy
+ * `artifacts` rows into the V17 `artifact` table.
  *
  * Used by tests that start from a legacy-shaped fixture DB (V36 schema) and
  * need to exercise the V37 migration path. After this call, `artifact_id_map`,
  * `vec_artifact_v17`, and V17 `artifact` rows are all present.
  *
- * Idempotent — safe to call multiple times.
+ * Unlike the raw `migrateV36toV37` call (which is idempotency-guarded and
+ * skips population if `artifact_id_map` already exists), this helper always
+ * re-runs `populateAllMappings` to sync any legacy rows that were inserted
+ * AFTER the initial migration ran. This makes it useful for test setup that
+ * seeds legacy rows and then calls this function to materialize them into V17.
+ *
+ * Idempotent — safe to call multiple times. Existing V17 rows are skipped
+ * via INSERT OR IGNORE.
  *
  * 14-07b: test-side migration runner for fixture DBs
  */
 export function runMigrateFixtureToV37(db: Database): void {
+  // Ensure the schema (tables, indexes, artifact_id_map) exists.
   migrateV36toV37(db);
+  // Sync any legacy artifacts rows → V17 artifact + artifact_id_map entries.
+  // This is idempotent (INSERT OR IGNORE) and handles rows added after the
+  // initial migration ran.
+  populateAllMappings(db);
 }
