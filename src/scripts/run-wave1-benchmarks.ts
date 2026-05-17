@@ -31,8 +31,27 @@ export interface BenchmarkResult {
   threshold: number;
   threshold_comparison: '>=' | '<=';
   passed: boolean;
+  /**
+   * True if this gate is binding for cutover (gate failure halts cutover).
+   * False if this gate is informational (printed alongside but does not block).
+   *
+   * Per the redesign 2026-05-17 (operator confirmed): the cutover gate validates
+   * "did the schema migration preserve correctness," NOT "is the system SOTA-quality."
+   * - Binding: Vesna SC#1 (canonical behavioral non-regression probe)
+   * - Informational: LongMemEval, LoCoMo, cross-project hit-rate (system-quality
+   *   sanity checks per `feedback_benchmarks_are_sanity_not_gates.md`)
+   */
+  binding: boolean;
   details: Record<string, unknown>;
 }
+
+/** Gates that BIND the cutover. Failure of any binding gate halts cutover. */
+export const BINDING_GATES: ReadonlySet<BenchmarkResult['gate']> = new Set([
+  'vesna_sc1',
+]);
+
+/** Gate-run mode for `runWave1Benchmarks`. */
+export type GateMode = 'binding-only' | 'full';
 
 export interface BenchmarkRunOutput {
   run_timestamp_epoch_ms: number;
