@@ -12,6 +12,8 @@
  *   - created_at_epoch_ms must be ms-precision (>= 1e12).
  *
  * Idempotent on byte-identical content (skips rewrite if existing matches).
+ *
+ * Phase 14-07h: added `trigger:` frontmatter field + readLessonTrigger helper.
  */
 
 import * as fs from 'fs';
