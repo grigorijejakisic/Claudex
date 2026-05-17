@@ -188,6 +188,7 @@ export function runMigrations(db: Database): void {
     [38, () => { migrateV38toV39(db); }],
     [39, () => { migrateV39toV40(db); }],
     [40, () => { migrateV40toV41(db); }],
+    [41, () => { migrateV41toV42(db); }],
   ];
 
   // Handle special cases for version 0 and 1
