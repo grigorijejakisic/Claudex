@@ -3938,3 +3938,133 @@ export function migrateV39toV38(db: Database): void {
 
   tx();
 }
+
+/**
+ * Migration V39 → V40 — epoch_ms DEFAULT canonicalization.
+ *
+ * V35 renamed `*_epoch` columns to `*_epoch_ms` and scaled stored values by
+ * 1000, but the DEFAULT expressions on seven tables were left as
+ * `DEFAULT (unixepoch())` — which returns seconds, not milliseconds. Any row
+ * inserted relying on that DEFAULT since V35 stored a seconds value into a
+ * column the rest of the system reads as ms. Surfaces such as session-signal
+ * age renders as "493684h ago" because (nowMs - createdSec) is treated as ms.
+ *
+ * Fixes (idempotent):
+ *   1. Backfill: scale rows where `_ms` value < 1e11 (predates 1973 in ms,
+ *      so unambiguously a seconds-value-stored-as-ms) by 1000.
+ *   2. DDL: rewrite `DEFAULT (unixepoch())` → `DEFAULT (unixepoch() * 1000)`
+ *      via `PRAGMA writable_schema=1` on the seven affected tables.
+ *
+ * Affected tables / columns:
+ *   - checkpoint_meta.created_at_epoch_ms, .updated_at_epoch_ms
+ *   - sessions.created_at_epoch_ms
+ *   - observations.timestamp_epoch_ms
+ *   - retrieval_events.timestamp_epoch_ms
+ *   - session_signals.created_at_epoch_ms
+ *   - session_messages.created_at_epoch_ms
+ *   - episodic_events.ts_epoch_ms
+ *
+ * Reverse: `migrateV40toV39` reverts the DDL only. Data backfill is NOT
+ * reversed — un-scaling would be lossy and the V40 values are objectively
+ * correct (the prior values were corrupt).
+ */
+export function migrateV39toV40(db: Database): void {
+  const backfillTargets: Array<[string, string]> = [
+    ['checkpoint_meta', 'created_at_epoch_ms'],
+    ['checkpoint_meta', 'updated_at_epoch_ms'],
+    ['sessions', 'created_at_epoch_ms'],
+    ['observations', 'timestamp_epoch_ms'],
+    ['retrieval_events', 'timestamp_epoch_ms'],
+    ['session_signals', 'created_at_epoch_ms'],
+    ['session_messages', 'created_at_epoch_ms'],
+    ['episodic_events', 'ts_epoch_ms'],
+  ];
+  const ddlTables = [
+    'checkpoint_meta',
+    'sessions',
+    'observations',
+    'retrieval_events',
+    'session_signals',
+    'session_messages',
+    'episodic_events',
+  ];
+
+  const tx = db.transaction(() => {
+    // Step 1: backfill bad rows. Threshold 1e11 ms = 1973-03-05 — any _ms
+    // value smaller than that is unambiguously a seconds-value stored as ms.
+    for (const [table, col] of backfillTargets) {
+      if (!hasTable(db, table) || !hasColumn(db, table, col)) continue;
+      db.exec(
+        `UPDATE ${table} SET ${col} = ${col} * 1000 WHERE ${col} > 0 AND ${col} < 100000000000`,
+      );
+    }
+
+    // Step 2: rewrite DDL DEFAULT (unixepoch()) → DEFAULT (unixepoch() * 1000).
+    // Uses writable_schema PRAGMA — documented SQLite mechanism for altering
+    // DEFAULT expressions in place without copying rows.
+    db.pragma('writable_schema = 1');
+    try {
+      const stmt = db.prepare(
+        `UPDATE sqlite_master
+         SET sql = replace(sql, 'DEFAULT (unixepoch())', 'DEFAULT (unixepoch() * 1000)')
+         WHERE type = 'table' AND name = ?`,
+      );
+      for (const t of ddlTables) {
+        if (hasTable(db, t)) stmt.run(t);
+      }
+    } finally {
+      db.pragma('writable_schema = 0');
+    }
+
+    // Stamp version.
+    db.pragma('user_version = 40');
+    try {
+      db.exec(`INSERT OR IGNORE INTO schema_versions(version) VALUES (40)`);
+    } catch { /* non-critical: schema_versions may not exist on test DBs */ }
+  });
+
+  tx();
+}
+
+/**
+ * Reverse migration: V40 → V39.
+ *
+ * Reverts the DDL DEFAULT change (ms → sec). Does NOT un-scale data — the V40
+ * scaling brought rows into the correct unit; reversing would lose precision
+ * and reintroduce the bug. Use only for emergency rollback where the new
+ * DEFAULT itself is suspected.
+ */
+export function migrateV40toV39(db: Database): void {
+  const ddlTables = [
+    'checkpoint_meta',
+    'sessions',
+    'observations',
+    'retrieval_events',
+    'session_signals',
+    'session_messages',
+    'episodic_events',
+  ];
+
+  const tx = db.transaction(() => {
+    db.pragma('writable_schema = 1');
+    try {
+      const stmt = db.prepare(
+        `UPDATE sqlite_master
+         SET sql = replace(sql, 'DEFAULT (unixepoch() * 1000)', 'DEFAULT (unixepoch())')
+         WHERE type = 'table' AND name = ?`,
+      );
+      for (const t of ddlTables) {
+        if (hasTable(db, t)) stmt.run(t);
+      }
+    } finally {
+      db.pragma('writable_schema = 0');
+    }
+
+    db.pragma('user_version = 39');
+    try {
+      db.exec(`INSERT OR IGNORE INTO schema_versions(version) VALUES (39)`);
+    } catch { /* non-critical */ }
+  });
+
+  tx();
+}
