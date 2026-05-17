@@ -210,7 +210,7 @@ export function getPackedArtifacts(
 
 /**
  * Returns materialized artifacts (full content visible).
- * Ordered by importance DESC, timestamp_epoch DESC.
+ * Ordered by importance DESC, timestamp_epoch_ms DESC.
  */
 /**
  * Get materialized/fresh artifacts. Global scope searches all projects with
