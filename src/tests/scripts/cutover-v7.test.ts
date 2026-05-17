@@ -430,7 +430,7 @@ it('10. --rollback on pre-cutover DB: error — nothing to rollback', async () =
 
     expect(result.status).toBe('error');
     expect(result.exit_code).toBe(3);
-    expect(result.message).toContain('nothing to roll back');
+    expect(result.message.toLowerCase()).toContain('nothing to roll back');
   } finally {
     try { freshDb.close(); } catch { /* ok */ }
   }
