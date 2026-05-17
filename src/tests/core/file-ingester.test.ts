@@ -133,12 +133,13 @@ describe('ingestFileArtifacts', () => {
       const result = await ingestFileArtifacts(db, 'sess-1', 'test-project', tmpDir);
       expect(result.ingested).toBe(1);
 
+      // 14-07b: query V17 artifact table (title = summary, kind = artifact_type)
       const artifacts = db.prepare(
-        `SELECT * FROM artifacts WHERE artifact_type = 'handoff'`
-      ).all() as Array<{ summary: string }>;
+        `SELECT title FROM artifact WHERE kind = 'handoff'`
+      ).all() as Array<{ title: string }>;
       expect(artifacts.length).toBe(1);
-      expect(artifacts[0].summary).toContain('Handoff');
-      expect(artifacts[0].summary).not.toContain('status: active');
+      expect(artifacts[0].title).toContain('Handoff');
+      expect(artifacts[0].title).not.toContain('status: active');
     } finally {
       db.close();
       cleanup(tmpDir);
