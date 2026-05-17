@@ -3106,14 +3106,32 @@ function _populateArtifactIdMapInTransaction(db: Database): void {
     }
   };
 
-  const legacyRows = db.prepare(`
-    SELECT id, session_id, project, artifact_type, artifact_ref,
-           summary, content, state, ttl, importance,
-           retrieval_score, timestamp_epoch_ms, last_materialized_epoch_ms,
-           activation_score, superseded_by, valid_until, confidence,
-           novelty_score
+  // Build adaptive SELECT based on which columns actually exist.
+  // Older migration fixtures may have a partial artifacts schema.
+  const artCols = new Set((db.pragma('table_info(artifacts)') as Array<{ name: string }>).map(c => c.name));
+  const colOrNull = (col: string) => artCols.has(col) ? col : `NULL AS ${col}`;
+
+  const selectSql = `
+    SELECT id, session_id, project,
+           ${artCols.has('artifact_type') ? 'artifact_type' : "'observation' AS artifact_type"},
+           ${colOrNull('artifact_ref')},
+           ${artCols.has('summary') ? 'summary' : "'' AS summary"},
+           ${colOrNull('content')},
+           ${artCols.has('state') ? 'state' : "'fresh' AS state"},
+           ${artCols.has('ttl') ? 'ttl' : '3 AS ttl'},
+           ${artCols.has('importance') ? 'importance' : '3 AS importance'},
+           ${artCols.has('retrieval_score') ? 'retrieval_score' : '1.0 AS retrieval_score'},
+           ${artCols.has('timestamp_epoch_ms') ? 'timestamp_epoch_ms' : '(unixepoch() * 1000) AS timestamp_epoch_ms'},
+           ${colOrNull('last_materialized_epoch_ms')},
+           ${artCols.has('activation_score') ? 'activation_score' : '1.0 AS activation_score'},
+           ${colOrNull('superseded_by')},
+           ${colOrNull('valid_until')},
+           ${artCols.has('confidence') ? 'confidence' : '1.0 AS confidence'},
+           ${artCols.has('novelty_score') ? 'novelty_score' : '0.5 AS novelty_score'}
     FROM artifacts
-  `).all() as Array<{
+  `;
+
+  const legacyRows = db.prepare(selectSql).all() as Array<{
     id: number;
     session_id: string;
     project: string;
