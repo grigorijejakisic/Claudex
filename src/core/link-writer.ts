@@ -594,30 +594,3 @@ function _insertHistory(
     details != null ? JSON.stringify(details) : null
   );
 }
-
-/**
- * Write a telemetry row if the telemetry table exists.
- * Non-throwing — telemetry is best-effort.
- */
-function _writeTelemetryIfTable(
-  db: Database,
-  session_id: string,
-  detail: Record<string, unknown>
-): void {
-  try {
-    const hasTelemetry = (
-      db.prepare(
-        `SELECT COUNT(*) AS cnt FROM sqlite_master WHERE type='table' AND name='telemetry'`
-      ).get() as { cnt: number }
-    ).cnt > 0;
-
-    if (!hasTelemetry) return;
-
-    db.prepare(`
-      INSERT INTO telemetry(session_id, event_kind, detail, timestamp_epoch_ms)
-      VALUES (?, 'proposer_skipped_decayed', ?, ?)
-    `).run(session_id, JSON.stringify(detail), Date.now());
-  } catch {
-    // Telemetry write failure is non-fatal — do not propagate.
-  }
-}
