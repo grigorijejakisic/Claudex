@@ -157,7 +157,14 @@ export function formatSignalsForInjection(signals: SessionSignal[]): string {
 
   const nowMs = Date.now();
   const lines = signals.map(s => {
-    const ageSec = Math.floor((nowMs - s.created_at_epoch_ms) / 1000);
+    // Belt-and-suspenders: if a legacy row stored seconds in the _ms column
+    // (V35 DEFAULT-slip survivor pre-V40 migration), scale up before
+    // computing age. 1e11 ms = 1973-03-05; anything below predates the
+    // installation by decades and is unambiguously seconds.
+    const createdMs = s.created_at_epoch_ms > 0 && s.created_at_epoch_ms < 100000000000
+      ? s.created_at_epoch_ms * 1000
+      : s.created_at_epoch_ms;
+    const ageSec = Math.max(0, Math.floor((nowMs - createdMs) / 1000));
     const ageStr = ageSec < 60 ? `${ageSec}s ago`
       : ageSec < 3600 ? `${Math.round(ageSec / 60)}m ago`
       : `${Math.round(ageSec / 3600)}h ago`;
