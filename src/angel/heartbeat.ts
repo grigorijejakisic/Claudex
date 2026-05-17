@@ -425,6 +425,7 @@ export async function heartbeatTick(ctx: HeartbeatContext): Promise<TickResult> 
           'classifyDomains',
         );
         console.log(`[hb-trace] phase2 session=${sid} classifyDomains OK domains=${domains}`);
+        domainsOk = true;
         result.domains_classified += domains;
       } catch (e) {
         const msg = (e as Error).message;
@@ -439,6 +440,36 @@ export async function heartbeatTick(ctx: HeartbeatContext): Promise<TickResult> 
           });
         } catch { /* telemetry must never escalate */ }
         // Individual session processing failure — continue with others
+      }
+
+      // Phase 14-08: outcome marker. Either we succeeded (mark processed) or we
+      // failed and have exhausted retries (mark permanently_failed). Otherwise
+      // leave the session unmarked so the next tick retries it — for transient
+      // Ollama hiccups, the retry usually succeeds.
+      if (directivesOk && domainsOk) {
+        recordEvent(ctx.db, session.session_id, session.project, 'angel_processed', 'session', 'processed');
+      } else {
+        const failCount = countPhase2FailuresForSession(sid);
+        if (failCount >= MAX_PHASE2_RETRIES) {
+          recordEvent(
+            ctx.db,
+            session.session_id,
+            session.project,
+            'angel_processed',
+            'session',
+            'permanently_failed',
+            JSON.stringify({ attempts: failCount, directives_ok: directivesOk, domains_ok: domainsOk }),
+          );
+          try {
+            emitTelemetry(ctx.db, 'angel-heartbeat', 'error', {
+              subsystem: 'heartbeat/phase2_permanently_failed',
+              session_id_short: sid,
+              attempts: failCount,
+              directives_ok: directivesOk,
+              domains_ok: domainsOk,
+            });
+          } catch { /* telemetry must never escalate */ }
+        }
       }
     }
     console.log(`[hb-trace] pre-curated-extract ${Date.now() - start}ms`);
