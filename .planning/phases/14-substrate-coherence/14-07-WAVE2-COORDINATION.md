@@ -144,9 +144,13 @@ PM (me) is the only authority for resolving boundary disputes.
   into the post-session-end action sequence (Phase 14-05 already
   established the boundary detector as the single owner of
   session-end side effects). Additive.
-- `src/assembly/sections.ts` — **adds** `formatPendingReviewLinksSection`
+- `src/assembly/sections/links.ts` — **adds** `formatPendingReviewLinksSection`
   function. Returns the "## Inferred Links Pending Review" section
-  for the assembler cascade. F owns ONLY this function.
+  for the assembler cascade. F owns ONLY this function. (Wave 0 w0d split
+  created this file as a placeholder; F populates it.)
+- `src/assembly/sections/index.ts` — **adds** re-export of
+  `formatPendingReviewLinksSection` (so callers of `assembly/sections.js`
+  still work without import changes).
 - `src/assembly/assembler.ts` — wires the new section into the
   cascade order (TBD: between P2.7 Project Knowledge and the
   Provenance Chain section that G adds; F + G coordinate on cascade
