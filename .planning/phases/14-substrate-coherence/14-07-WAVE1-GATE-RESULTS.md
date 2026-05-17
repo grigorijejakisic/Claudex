@@ -16,21 +16,21 @@ historical record).
 
 ## Baseline (v6.6.0 ship at `a3b3a42`)
 
-- Vesna SC#1: **18/18 PASS** (100%)
+- Vesna SC#1: **27/28 PASS** (97% aggregate; entity-001 known-fail at v6.6.0 with missing patterns `"BGE|bge-reranker|7439"` — pre-existing, not a v7 regression; tracked as post-ship engineering item per vesna-baseline-diagnostic 2026-05-17)
 - LongMemEval Oracle (deepseek-coder-v2:16b): **90.6%** (426/470)
 - LoCoMo (claude-sonnet-4-6): **55.5%** (855/1540) — known WIP item from v4 ship
 - Cross-project candidate hit rate noise: **18%** (post-14-03 isSubstantive)
 
-See `14-07-WAVE1-BASELINES.json` for the machine-readable form.
+See `14-07-WAVE1-BASELINES.json` for the machine-readable form (consumed by `run-wave1-benchmarks.ts`).
 
 ## Gate criteria
 
-Every run must satisfy:
+Every run must satisfy (thresholds read from `14-07-WAVE1-BASELINES.json`, not narrative):
 
-- Vesna SC#1 measured >= baseline (18/18)
-- LongMemEval Oracle measured >= baseline (90.6%)
-- LoCoMo measured >= baseline (55.5%)
-- Cross-project hit rate noise measured <= baseline (20% tolerance from 18% floor)
+- Vesna SC#1 measured >= baseline (0.97 ≈ 27/28 at v6.6.0; entity-001 pre-existing fail is the floor, not the ceiling)
+- LongMemEval Oracle measured >= baseline (0.906)
+- LoCoMo measured >= baseline (0.555)
+- Cross-project hit rate noise measured <= 0.20 (20% threshold, 18% floor)
 
 If ANY gate fails, the cutover script exits 1 and refuses the cutover.
 PM does NOT auto-rollback; PM escalates to PO per WAVE1-COORDINATION's
