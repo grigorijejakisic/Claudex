@@ -35,6 +35,7 @@ import * as path from 'node:path';
 import { upsertHighlights } from '../intelligence/session-highlights.js';
 import { recordFrameExtractionFallback } from '../core/telemetry-signals.js';
 import { callLocalLLM } from './llama-client.js';
+import { generate } from './generation-backend.js';
 import type { AngelConfig } from './types.js';
 import { recordExtractedFrom } from '../intelligence/soft-link-writers.js';
 
