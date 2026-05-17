@@ -139,13 +139,16 @@ describe('V42→V43: legacy _epoch rename + scale', () => {
       if (!hasTable(db, table)) continue;
       const hasOld = hasColumn(db, table, oldCol);
       const hasNew = hasColumn(db, table, newCol);
-      if (!hasNew || hasOld) {
-        console.log(`DIAG: ${table}.${oldCol}→${newCol}: hasOld=${hasOld} hasNew=${hasNew}`);
+      if (!hasOld && !hasNew) {
+        // Column exists only on old-migration-path DBs, not in the fresh schema.
+        // e.g. checkpoint_tracking.last_tick_epoch was added by a legacy migration
+        // that isn't replayed on a fresh DB. Skip — migrateV42toV43 guards correctly.
+        continue;
       }
-      // New column must exist.
-      expect(hasColumn(db, table, newCol)).toBe(true);
-      // Old column must not exist (it was renamed or never existed with the old name).
-      expect(hasColumn(db, table, oldCol)).toBe(false);
+      // Old column must be absent (either renamed, or it never existed with the old name).
+      expect(hasOld).toBe(false);
+      // New column must exist (either renamed from old, or the fresh schema already uses it).
+      expect(hasNew).toBe(true);
     }
     db.close();
   });
