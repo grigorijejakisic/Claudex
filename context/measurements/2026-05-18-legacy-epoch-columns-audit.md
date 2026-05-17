@@ -1,6 +1,8 @@
 # Legacy `_epoch` Columns Audit — 2026-05-18
 
-**Purpose:** Map of every `*_epoch` column (legacy V14-pre-V35 shape) still present in the live substrate, with row counts and intended unit. Sets the scope for the rename phase that closes the V35 epoch-canonicalization scar.
+> **STATUS: RESOLVED 2026-05-18.** V43 migration (`migrateV42toV43`) shipped the rename + scale, and the `/team` epoch-rename phase updated all callers across Waves 1-4 + W1.5. This document is preserved as the historical record of the scope and pre-fix state. All `*_epoch` columns listed below have been renamed to `*_epoch_ms` and their values scaled by 1000.
+
+**Purpose (at time of writing):** Map of every `*_epoch` column (legacy V14-pre-V35 shape) still present in the live substrate, with row counts and intended unit. Set the scope for the rename phase that closed the V35 epoch-canonicalization scar.
 
 **Trigger:** A fresh agent in a new session (`2a696bb7`, 2026-05-17 21:46) ran the recall test (*"why did the last 2 productions stop?"*) and was tripped by `session_journal.timestamp_epoch` — dividing it by 1000 thinking it was milliseconds, getting "1970-01-21" results. The data wasn't corrupt; the agent misread the column's unit. The substrate has two coexisting conventions (`_epoch` = sec, `_epoch_ms` = ms) and the inconsistency is a real cognitive load on every new caller.
 
