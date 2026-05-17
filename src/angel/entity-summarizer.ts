@@ -170,23 +170,38 @@ export async function generateEntitySummaries(
         const fullContent = `## ${entity.entity_name}\n${summary}\n\n**Trend:** ${trend} | **Mentions:** ${entity.mention_count} across ${entity.session_count} sessions | **Projects:** ${entity.projects}`;
 
         if (existing) {
-          // Update existing summary
+          // 14-07b: migrated from legacy artifacts — UPDATE V17 artifact directly
           cachedPrepare(db,
-            `UPDATE artifacts SET content = ?, metadata = ?, timestamp_epoch = ? WHERE id = ?`
-          ).run(fullContent, JSON.stringify({ evidence_hash: evidenceHash, trend }), Math.floor(Date.now() / 1000), existing.id);
+            `UPDATE artifact
+             SET body = ?, data = ?, updated_at_epoch_ms = ?
+             WHERE id = ?`
+          ).run(
+            fullContent,
+            JSON.stringify({ evidence_hash: evidenceHash, trend, entity_ref: `entity:${entity.entity_name.toLowerCase()}` }),
+            Date.now(),
+            existing.id,
+          );
           result.entities_updated++;
         } else {
-          // Create new entity summary artifact
-          const now = Math.floor(Date.now() / 1000);
+          // 14-07b: migrated from legacy artifacts — INSERT directly into V17 artifact table
+          const nowMs = Date.now();
+          const entityRef = `entity:${entity.entity_name.toLowerCase()}`;
+          const v17Id = createHash('sha256')
+            .update(`entity_summary:${entity.entity_name.toLowerCase()}:${entity.projects}:${evidenceHash}`)
+            .digest('hex')
+            .slice(0, 32);
           cachedPrepare(db,
-            `INSERT INTO artifacts (ref, content, artifact_type, importance, project, timestamp_epoch, state, metadata)
-             VALUES (?, ?, 'entity_summary', 3, ?, ?, 'active', ?)`
+            `INSERT OR IGNORE INTO artifact(id, kind, title, body, scope, status, confidence,
+                created_at_epoch_ms, updated_at_epoch_ms, project, data)
+             VALUES (?, 'entity_summary', ?, ?, 'project', 'active', 0.6, ?, ?, ?, ?)`
           ).run(
-            `entity:${entity.entity_name.toLowerCase()}`,
+            v17Id,
+            entity.entity_name,
             fullContent,
+            nowMs,
+            nowMs,
             entity.projects.split(',')[0] ?? '__global__',
-            now,
-            JSON.stringify({ evidence_hash: evidenceHash, trend }),
+            JSON.stringify({ evidence_hash: evidenceHash, trend, entity_ref: entityRef }),
           );
           result.entities_summarized++;
         }
