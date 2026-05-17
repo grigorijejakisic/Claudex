@@ -835,7 +835,7 @@ function formatDuration(seconds: number): string {
 export interface GaugeTimingContext {
   /** Session created_at_epoch_ms from sessions table (ms-precision, V35+) */
   sessionStartEpoch?: number;
-  /** last_checkpoint_epoch from checkpoint_tracking table */
+  /** last_checkpoint_epoch_ms from checkpoint_tracking table (stored as ms, converted to seconds for display) */
   lastCompactionEpoch?: number;
 }
 
