@@ -299,10 +299,10 @@ export async function runHardLinkProposer(p: ProposerParams): Promise<ProposerRe
         try {
           rawResponse = await callOpusApiKey(prompt, apiKey);
         } catch {
-          rawResponse = await callLocalLLM({ prompt, maxTokens: 2048 });
+          rawResponse = await generate({ prompt, model: 'haiku', maxTokens: 2048, subsystem: 'hard_link_proposer' });
         }
       } else {
-        rawResponse = await callLocalLLM({ prompt, maxTokens: 2048 });
+        rawResponse = await generate({ prompt, model: 'haiku', maxTokens: 2048, subsystem: 'hard_link_proposer' });
       }
     }
   } catch {
