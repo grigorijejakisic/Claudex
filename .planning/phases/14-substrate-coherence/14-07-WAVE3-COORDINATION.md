@@ -139,6 +139,54 @@ PM (me) is the only authority for resolving boundary disputes.
 - `src/tests/intelligence/lesson-relevance.test.ts` (NEW).
 - `src/tests/assembly/lesson-inline-expansion.test.ts` (NEW).
 
+### Plan 14-07k (Worker K — last-session synthesis) owns
+
+- `src/angel/last-session-synthesis.ts` (NEW) — LLM-driven structured
+  extraction from JSONL transcript via `canonical-session-ir.fromClaudeCode` +
+  `llama-client.callLocalLLM`; persists V17 artifact (`kind='session_synthesis'`).
+- `src/angel/prompts/last-session-synthesis-v1.md` (NEW) — version-pinned
+  prompt template with few-shot examples (clean-resolution, mid-pivot crash,
+  first-session).
+- `src/assembly/sections/last-session-synthesis.ts` (NEW) — session-start
+  render at P0 priority. K owns this NEW file exclusively; no overlap
+  with H's `lessons.ts` or I's `codebase-context.ts`.
+- `src/assembly/assembler.ts` — ADDITIVE: insert one call to the new P0
+  section in the cascade. Does not modify existing cascade ordering
+  beyond the new P0 insertion above existing surfaces.
+- `src/adapters/cc-hooks/session-end.ts` — ADDITIVE: trigger
+  `synthesizeLastSession` non-blockingly after the existing pattern summary.
+- `src/scripts/backfill-session-synthesis.ts` (NEW) — operator CLI for
+  historical backfill (dry-run default, `--force` for prompt-version replay).
+- `src/tests/angel/last-session-synthesis.test.ts` (NEW).
+- `src/tests/assembly/last-session-synthesis-section.test.ts` (NEW).
+- `src/tests/scripts/backfill-session-synthesis.test.ts` (NEW).
+
+### Plan 14-07l (Worker L — continuous handoff refresh) owns
+
+- `src/angel/handoff-decision-watcher.ts` (NEW) — per-turn boundary
+  detection orchestration with throttle (60s default) and refresh trigger.
+- `src/angel/handoff-writer.ts` — ADDITIVE: `recordDecisionShift` +
+  optional `last_refresh_epoch_ms` header field. Existing `writeHandoff`
+  contract unchanged. Coordinates with 14-07d's instrumentation point —
+  14-07d added `recordSupersedes` after `writeHandoff`; L's
+  `recordDecisionShift` calls `recordSupersedes` itself per refresh. No
+  overlap.
+- `src/intelligence/directive-detector.ts` — ADDITIVE: adds
+  `classifyDecisionBoundary` helper. Existing directive-detector
+  exports untouched.
+- `src/angel/prompts/decision-boundary-classifier-v1.md` (NEW) —
+  version-pinned classifier prompt with 4 boundary types
+  (operator_pivot, operator_confirm, agent_position, spec_change).
+- `src/adapters/cc-hooks/stop.ts` — ADDITIVE: call
+  `classifyTurnAsDecisionBoundary` non-blockingly per turn. 5s LLM timeout.
+- `src/core/migration-steps.ts` — adds `handoff_refresh_state` table DDL.
+  Coordinates with 14-07a (Wave 1) on migration-version ownership: prefer
+  14-07a includes this table; else L adds via V38 follow-on migration.
+  PM resolves at wave entry.
+- `src/tests/angel/handoff-decision-watcher.test.ts` (NEW).
+- `src/tests/angel/handoff-writer-decision-shift.test.ts` (NEW).
+- `src/tests/integration/continuous-handoff.test.ts` (NEW).
+
 ---
 
 ## File-level ownership (post-Wave-0 w0d split)
