@@ -84,7 +84,7 @@ After this plan lands:
 @.planning/phases/14-substrate-coherence/14-07h-PLAN.md
 @.planning/phases/14-substrate-coherence/14-07-LINKS-SCHEMA-PLAN.md
 @.planning/phases/14-substrate-coherence/14-07e-PLAN.md
-@src/assembly/sections.ts
+@src/assembly/sections/lessons.ts
 @src/core/hybrid-retrieval.ts
 @src/mcp/tools/claudex-trace.ts
 @src/core/link-writer.ts
