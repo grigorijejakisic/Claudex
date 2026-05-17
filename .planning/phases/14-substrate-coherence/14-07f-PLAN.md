@@ -126,7 +126,7 @@ After this plan lands AND the operator reviews + enables the flag:
 - Do NOT autonomously commit hard links. Every commit goes through operator confirmation per Good Child policy.
 - Do NOT modify the soft-link tier — 14-07d territory.
 - Do NOT touch claudex_trace MCP or link-distance boost — 14-07e territory.
-- Do NOT modify any function in `src/assembly/sections.ts` other than the new `formatPendingReviewLinksSection`. F owns ONLY this function per WAVE2-COORDINATION.
+- Do NOT modify any function in `src/assembly/sections/links.ts` other than the new `formatPendingReviewLinksSection`. F owns ONLY this function per WAVE2-COORDINATION. Do NOT touch `src/assembly/sections.ts` (the residual file) at all.
 - Do NOT touch session-start lesson surface (Wave 3 / 14-07j territory).
 - Do NOT change boundary-detector's existing post-session-end action sequence beyond hooking the proposer at the documented position.
 - Do NOT call CC's CLIProxyAPI from Angel context (deadlock). Local llama via callLocalLLM is the primary path.
