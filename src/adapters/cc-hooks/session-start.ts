@@ -5,6 +5,7 @@
 
 import { wrapHook } from './infrastructure.js';
 import { ensureAngelRunning } from './angel-launcher.js';
+import { inferCrashedSessions } from '../../core/session-termination.js';
 import { createSession } from '../../core/sessions.js';
 import { recoverFromDb } from '../../checkpoint/loader.js';
 import { pruneTelemetry, emitTelemetry } from '../../observability/telemetry.js';
