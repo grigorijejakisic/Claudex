@@ -431,8 +431,6 @@ export function writeHandoff(targetPath: string, input: HandoffInput, opts?: Wri
 // Phase 14-07l — recordDecisionShift (additive; CHR boundary-driven refresh)
 // ---------------------------------------------------------------------------
 
-import type { BoundaryType } from '../intelligence/directive-detector.js';
-
 export interface RecordDecisionShiftParams {
   db: Database;
   project: string;
