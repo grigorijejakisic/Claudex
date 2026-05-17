@@ -50,8 +50,8 @@ function findRecurringEntities(db: Database, limit: number = 10): EntityCandidat
               COUNT(*) AS mention_count,
               COUNT(DISTINCT session_id) AS session_count,
               GROUP_CONCAT(DISTINCT project) AS projects,
-              MAX(timestamp_epoch) AS latest_epoch,
-              MIN(timestamp_epoch) AS earliest_epoch
+              MAX(timestamp_epoch_ms) AS latest_epoch,
+              MIN(timestamp_epoch_ms) AS earliest_epoch
        FROM session_events
        WHERE entity != '' AND entity IS NOT NULL
        GROUP BY LOWER(entity)
