@@ -15,9 +15,9 @@ function insertLink(
   strength: number = 0.8,
   invalidAtEpoch: number | null = null,
 ): void {
-  const now = Math.floor(Date.now() / 1000);
+  const now = Date.now();
   db.prepare(
-    `INSERT OR IGNORE INTO artifact_links (source_id, target_id, link_type, strength, valid_at_epoch, invalid_at_epoch)
+    `INSERT OR IGNORE INTO artifact_links (source_id, target_id, link_type, strength, valid_at_epoch_ms, invalid_at_epoch_ms)
      VALUES (?, ?, ?, ?, ?, ?)`
   ).run(sourceId, targetId, linkType, strength, now, invalidAtEpoch);
 }
