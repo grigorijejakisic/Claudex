@@ -247,21 +247,18 @@ describe('runHardLinkProposer', () => {
   });
 
   it('decayed tuple → skipped_decayed++', async () => {
-    // Propose and reject A1→A2 triggered_by DECAY_THRESHOLD times.
+    // Propose A1→A2, then force decay_count to threshold via direct DB.
     const { proposeHardLink } = await import('../../core/link-writer.js');
-    for (let i = 0; i < DECAY_THRESHOLD; i++) {
-      const id = proposeHardLink(db, {
-        src_artifact_id: A1,
-        dst_artifact_id: A2,
-        type: 'triggered_by',
-        proposed_confidence: 0.9,
-        proposed_by_session: SESSION,
-        proposer_rationale: 'decayed test',
-      });
-      if (id !== null) {
-        rejectHardLink(db, id, `reject-sess-${i}`);
-      }
-    }
+    const id = proposeHardLink(db, {
+      src_artifact_id: A1,
+      dst_artifact_id: A2,
+      type: 'triggered_by',
+      proposed_confidence: 0.9,
+      proposed_by_session: SESSION,
+      proposer_rationale: 'decayed test',
+    });
+    expect(id).not.toBeNull();
+    db.prepare(`UPDATE hard_link SET decay_count = ? WHERE id = ?`).run(DECAY_THRESHOLD, id);
 
     _setLLMCallableForTest(async () => JSON.stringify({
       proposals: [
