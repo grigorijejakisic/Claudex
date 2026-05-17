@@ -197,9 +197,9 @@ function ingestConversation(
       const turnEpoch = sessionNum * 86400 + parseInt(turn.dia_id.split(':')[1] || '0');
 
       cachedPrepare(db,
-        `INSERT INTO observations (session_id, project, tool_name, category, title, content, importance, timestamp_epoch)
+        `INSERT INTO observations (session_id, project, tool_name, category, title, content, importance, timestamp_epoch_ms)
          VALUES (?, ?, 'dialog', 'other', ?, ?, 3, ?)`
-      ).run(sessionId, sampleId, `${turn.speaker} [${turn.dia_id}]`, turnContent, turnEpoch);
+      ).run(sessionId, sampleId, `${turn.speaker} [${turn.dia_id}]`, turnContent, turnEpoch * 1000);
 
       // Also store as artifact so hybrid retrieval FTS5 can find it
       cachedPrepare(db,
