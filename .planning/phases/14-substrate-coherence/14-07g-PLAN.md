@@ -50,7 +50,7 @@ must_haves:
       to: "src/core/link-writer.ts (listSoftLinks, listConfirmedHardLinks)"
       via: "Walker consumes link reads from link-writer; never writes"
       pattern: "listSoftLinks|listConfirmedHardLinks"
-    - from: "src/assembly/sections.ts (formatProvenanceChainSection)"
+    - from: "src/assembly/sections/links.ts (formatProvenanceChainSection)"
       to: "src/intelligence/provenance-walker.ts (walkProvenance)"
       via: "Section formatter invokes the walker; formats result for assembler cascade"
       pattern: "walkProvenance"
