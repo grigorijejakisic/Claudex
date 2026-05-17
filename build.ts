@@ -74,6 +74,7 @@ const optionalEntryPoints = [
   'scripts/phase-11-curate-memory-md.ts',
   'src/scripts/cutover-v7.ts',
   'src/scripts/run-wave1-benchmarks.ts',
+  'src/scripts/cross-project-hit-rate.ts',
 ];
 
 /** Hook entry points to smoke test after build.
