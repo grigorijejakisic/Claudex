@@ -862,6 +862,12 @@ export function hybridSearchSync(
       };
       const threeFactor = computeThreeFactorScore(artifact, Math.min(1, relevance), weights, innerFlags);
 
+      // 14-07i: retrieval metadata — attach match_query + match_kind for the
+      // channel that contributed to this candidate's score. FTS5 wins over
+      // recency (recency has no query affinity). Truncate to 200 chars.
+      const hasFts5 = fts5RankMap.has(artifactId);
+      const truncatedQuery = query.length > 200 ? query.substring(0, 200) : query;
+
       scored.push({
         ...artifact,
         hybrid_score: hybridScore,
@@ -871,6 +877,7 @@ export function hybridSearchSync(
           rrf_recency: recencyRankMap.has(artifactId) ? 1 / (RRF_K + (recencyRankMap.get(artifactId) ?? RRF_K)) : 0,
           three_factor: threeFactor,
         },
+        ...(hasFts5 ? { match_query: truncatedQuery, match_kind: 'fts' as const } : {}),
       });
     }
 
