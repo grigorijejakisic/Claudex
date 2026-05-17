@@ -307,15 +307,17 @@ Telemetry: emit `experience_tier_filtered` per filter pass with `{ total_candida
 </task>
 
 <task type="auto">
-  <name>Task 5: Lessons section formatter in sections.ts</name>
-  <files>src/assembly/sections.ts</files>
+  <name>Task 5: Lessons section formatter in sections/lessons.ts</name>
+  <files>src/assembly/sections/lessons.ts</files>
   <action>
-Add (or refactor) the lessons section formatter. Per WAVE3-COORDINATION, H owns this function; J will EXTEND it later for inline-expansion.
+Refactor `formatProvenPrinciplesSection` in `src/assembly/sections/lessons.ts`.
+Wave 0 (w0d) moved this function from the monolithic sections.ts into this file.
+H modifies it in-place. Per WAVE3-COORDINATION, H owns this function; J will EXTEND it later for inline-expansion.
 
-Function name: `formatProvenPrinciplesSection` (lock the name; J extends this same function).
+Function name: `formatProvenPrinciplesSection` (lock the name; J extends this same function in sections/lessons.ts).
 
 ```typescript
-import { readLessonTrigger } from '../angel/lesson-writer.js';
+import { readLessonTrigger } from '../../angel/lesson-writer.js';
 
 export interface LessonsSectionParams {
   db: Database;
