@@ -269,6 +269,29 @@ export function assembleExperienceTier(
     const pool = fetchCandidatePool(db, currentProject);
     if (pool.length === 0) return null;
 
+    // 14-07h: project-scope filter for passive injection.
+    const scope = getExperienceScope();
+    const afterProjectScope = filterToProjectScope(pool, currentProject, scope);
+
+    // Emit telemetry for the filter pass.
+    try {
+      recordEvent(
+        db,
+        sessionId,
+        currentProject,
+        'experience_tier_filtered',
+        currentProject,
+        'filter',
+        JSON.stringify({
+          total_candidates: pool.length,
+          after_project_scope: afterProjectScope.length,
+          scope,
+        }),
+      );
+    } catch { /* telemetry non-fatal */ }
+
+    if (afterProjectScope.length === 0) return null;
+
     const injectedSet = fetchInjectedSet(db, sessionId);
     const inferredPattern = inferIncomingPattern(db, incomingHandles);
 
