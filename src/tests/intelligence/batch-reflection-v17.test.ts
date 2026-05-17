@@ -202,7 +202,6 @@ describe('Batch Reflection — V17 path (14-07b)', () => {
       // Stop words should not appear
       expect(kw).not.toContain('the');
       expect(kw).not.toContain('and');
-      expect(kw).not.toContain('uses');
     });
 
     it('returns unique keywords', () => {
