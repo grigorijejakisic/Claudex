@@ -295,14 +295,14 @@ export function assembleExperienceTier(
     const injectedSet = fetchInjectedSet(db, sessionId);
     const inferredPattern = inferIncomingPattern(db, incomingHandles);
 
-    // Score every candidate.
-    for (const c of pool) {
+    // Score every candidate (using project-scope-filtered pool per 14-07h).
+    for (const c of afterProjectScope) {
       c._score = scoreCandidate(c, incomingHandles, inferredPattern, injectedSet);
     }
 
     // Drop non-positive scores (a candidate can't be selected unless it
-    // signals at least cross-project + one other dimension).
-    const positives = pool.filter(c => (c._score ?? 0) > 1);
+    // signals at least one dimension beyond the baseline).
+    const positives = afterProjectScope.filter(c => (c._score ?? 0) > 0);
     if (positives.length === 0) return null;
 
     // Sort: score DESC, id ASC for deterministic tie-break (cache stability).
