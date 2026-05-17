@@ -212,7 +212,6 @@ export function detectStuckSession(
   sessionId: string,
 ): StuckResult | null {
   try {
-    const now = Math.floor(Date.now() / 1000);
     const nowMs = Date.now();
 
     // Debounce: check for recent stuck advisory (10 min)
