@@ -124,8 +124,10 @@ describe('V39→V40: epoch_ms DEFAULT canonicalization', () => {
     const afterMs = Date.now();
 
     const row = db.prepare(`SELECT created_at_epoch_ms FROM session_signals WHERE session_id='default-test'`).get() as { created_at_epoch_ms: number };
-    // The DEFAULT-produced value should be in the ms range (>= ~1.7e12 in 2026).
-    expect(row.created_at_epoch_ms).toBeGreaterThanOrEqual(beforeMs);
+    // The DEFAULT computes `unixepoch() * 1000` — whole-second precision in ms.
+    // Use floor(beforeMs/1000)*1000 as the lower bound (Date.now is sub-second).
+    const lowerBoundMs = Math.floor(beforeMs / 1000) * 1000;
+    expect(row.created_at_epoch_ms).toBeGreaterThanOrEqual(lowerBoundMs);
     expect(row.created_at_epoch_ms).toBeLessThanOrEqual(afterMs + 2000);
     expect(row.created_at_epoch_ms).toBeGreaterThan(100000000000); // > 1e11
     db.close();
