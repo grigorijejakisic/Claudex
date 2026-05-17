@@ -210,7 +210,7 @@ export function runBatchReflection(
         `SELECT t.summary FROM thread_state t
          JOIN sessions s ON s.session_id = t.session_id
          WHERE s.project = ? AND t.summary IS NOT NULL
-         ORDER BY t.updated_at_epoch DESC
+         ORDER BY t.updated_at_epoch_ms DESC
          LIMIT 10`
       ).all(project) as Array<{ summary: string }>;
       threadSummaries = threads.map(t => t.summary);
