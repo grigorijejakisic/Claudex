@@ -93,6 +93,17 @@ function getLssCompleteEvents(db: Database.Database, sessionId: string): number 
 }
 
 // ---------------------------------------------------------------------------
+// LSS tests pin the backend to ollama so vi.mock on callLocalLLM intercepts.
+// Phase 14-08 routes synthesizeLastSession via the generation-backend
+// selector (default 'claude'); pinning to ollama keeps the test contract
+// unchanged while the production path uses Claude subprocess.
+beforeEach(() => {
+  process.env['CLAUDEX_GENERATION_BACKEND'] = 'ollama';
+});
+afterEach(() => {
+  delete process.env['CLAUDEX_GENERATION_BACKEND'];
+});
+
 // Mock callLocalLLM via vi.mock
 // ---------------------------------------------------------------------------
 
