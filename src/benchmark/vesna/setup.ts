@@ -74,19 +74,22 @@ export async function applySetup(
     switch (step.kind) {
       case 'artifact': {
         const { kind, summary, content, project, tags } = step.payload;
-        // ArtifactType conformance: 'decision' | 'learning' | 'observation' all valid.
-        // Tags are encoded in artifact_ref as a JSON snippet so they survive read-back.
-        const ref = tags && tags.length > 0 ? `vesna:${JSON.stringify(tags)}` : `vesna:${ctx.sessionId}`;
-        createArtifact(
-          db,
-          ctx.sessionId,
-          project,
+        // 14-07b: migrated from legacy artifacts — write directly to V17 `artifact` table
+        // so hybridSearchSync (which reads from V17) finds probe fixture rows.
+        // Tags are preserved in the data JSON sidecar (artifact_ref was legacy-only).
+        const dataSidecar: Record<string, unknown> = {
+          artifact_ref: tags && tags.length > 0 ? `vesna:${JSON.stringify(tags)}` : `vesna:${ctx.sessionId}`,
+        };
+        createV17Artifact(db, {
           kind,
-          ref,
-          summary.slice(0, 150),
-          content ?? summary,
-          5, // High importance so probe artifacts surface above ambient test-DB noise.
-        );
+          project,
+          title: summary.slice(0, 150),
+          body: content ?? summary,
+          status: 'active',
+          confidence: 1.0, // High importance (was 5/5) so probe artifacts surface above ambient noise.
+          session_id: ctx.sessionId,
+          data: dataSidecar,
+        });
         break;
       }
 
