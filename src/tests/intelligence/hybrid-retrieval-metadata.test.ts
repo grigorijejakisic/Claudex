@@ -207,21 +207,21 @@ describe('hybrid-retrieval-metadata (14-07i)', () => {
   it('6. Post-rerank: ranks change but match_query unchanged per candidate', () => {
     // Seed multiple artifacts to allow ranking changes
     seedArtifact(db, {
-      title: 'alpha-rank-test unique keyword zymurgy4',
-      body: 'first artifact for rank test',
+      title: 'alpha rank test unique keyword zymurgy4',
+      body: 'first artifact for rank test content',
     });
     seedArtifact(db, {
-      title: 'beta-rank-test unique keyword zymurgy4',
-      body: 'second artifact for rank test',
+      title: 'beta rank test unique keyword zymurgy4',
+      body: 'second artifact for rank test content',
     });
 
-    const results = hybridSearchSync(db, 'rank-test unique keyword zymurgy4', 'test-project', { limit: 5 });
+    const results = hybridSearchSync(db, 'rank test unique keyword zymurgy4', 'test-project', { limit: 5 });
 
     // All FTS-matched results should have the same match_query (the search query)
     const ftsHits = results.filter(r => r.match_kind === 'fts');
     for (const r of ftsHits) {
       // match_query is the query string, unchanged regardless of rank order
-      expect(r.match_query).toBe('rank-test unique keyword zymurgy4');
+      expect(r.match_query).toBe('rank test unique keyword zymurgy4');
     }
   });
 
