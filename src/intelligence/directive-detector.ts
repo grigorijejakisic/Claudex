@@ -890,6 +890,191 @@ export async function extractDirectivesFromSession(
 }
 
 // ---------------------------------------------------------------------------
+// Phase 14-07l — Additive decision-boundary classifier
+// ---------------------------------------------------------------------------
+//
+// Extends directive-detector with a boundary-type taxonomy for the
+// Continuous Handoff Refresh (CHR) system. Existing directive-detector
+// exports are UNCHANGED. This is purely additive.
+
+export type BoundaryType = 'operator_pivot' | 'operator_confirm' | 'agent_position' | 'spec_change';
+
+export interface BoundaryClassification {
+  is_decision_boundary: boolean;
+  boundary_type: BoundaryType | null;
+  summary: string | null;       // one-sentence; null if not a boundary
+  confidence: number;            // 0-1
+  prompt_version: string;
+  llm_model: string;
+}
+
+export interface ClassifyBoundaryOpts {
+  user_text: string | null;     // null = agent-only turn (skip)
+  assistant_text: string;
+  prompt_version?: string;      // default 'v1'
+  llm_model?: string;           // default env or 'llama3.1:8b'
+  signal?: AbortSignal;         // for timeout
+}
+
+/** Classifier prompt version tag — version-pinned. */
+const BOUNDARY_CLASSIFIER_PROMPT_VERSION = 'v1';
+
+/** Default model for boundary classification (cheap, local). */
+const BOUNDARY_CLASSIFIER_DEFAULT_MODEL = process.env['CLAUDEX_CHR_MODEL'] ?? 'llama3.1:8b';
+
+/** Cached classifier prompt template. */
+let _cachedBoundaryPrompt: string | null = null;
+
+/**
+ * Load the versioned classifier prompt template from disk.
+ * Cached after first read. Returns a fallback inline string on failure.
+ */
+export function loadBoundaryClassifierPrompt(version = 'v1', reload = false): string {
+  if (_cachedBoundaryPrompt && !reload) return _cachedBoundaryPrompt;
+  try {
+    // Resolve relative to this module's location; same walk pattern as resolvePromptsDir.
+    let base: string;
+    try {
+      base = path.dirname(fileURLToPath(import.meta.url));
+    } catch {
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      base = typeof __dirname !== 'undefined' ? __dirname : process.cwd();
+    }
+
+    // Walk upward to find src/angel/prompts/ directory.
+    let cur = base;
+    for (let i = 0; i < 8; i++) {
+      const candidate = path.join(cur, 'src', 'angel', 'prompts', `decision-boundary-classifier-${version}.md`);
+      if (fs.existsSync(candidate)) {
+        _cachedBoundaryPrompt = fs.readFileSync(candidate, 'utf8');
+        return _cachedBoundaryPrompt;
+      }
+      // Also try adjacent angel/prompts from intelligence dir
+      const candidate2 = path.join(cur, 'angel', 'prompts', `decision-boundary-classifier-${version}.md`);
+      if (fs.existsSync(candidate2)) {
+        _cachedBoundaryPrompt = fs.readFileSync(candidate2, 'utf8');
+        return _cachedBoundaryPrompt;
+      }
+      const parent = path.dirname(cur);
+      if (parent === cur) break;
+      cur = parent;
+    }
+  } catch { /* fall through */ }
+
+  // Inline fallback — minimal but valid.
+  _cachedBoundaryPrompt = `You classify user-assistant exchanges as decision boundaries.
+Output STRICT JSON: {"is_decision_boundary":bool,"boundary_type":"operator_pivot"|"operator_confirm"|"agent_position"|"spec_change"|null,"summary":string|null,"confidence":number}
+USER: {user_text}
+A: {assistant_text}`;
+  return _cachedBoundaryPrompt;
+}
+
+/** Test hook — drop the boundary prompt cache. */
+export function __resetBoundaryPromptCache(): void {
+  _cachedBoundaryPrompt = null;
+}
+
+/**
+ * Parse a BoundaryClassification from an LLM JSON response.
+ * Returns null on malformed or schema-invalid output.
+ */
+export function parseBoundaryClassification(
+  raw: string,
+  promptVersion: string,
+  llmModel: string,
+): BoundaryClassification | null {
+  const obj = extractFirstJsonObject(raw) as Record<string, unknown> | null;
+  if (!obj) return null;
+
+  if (typeof obj.is_decision_boundary !== 'boolean') return null;
+  if (typeof obj.confidence !== 'number' || !Number.isFinite(obj.confidence)) return null;
+
+  const bt = obj.boundary_type;
+  const boundary_type: BoundaryType | null =
+    bt === 'operator_pivot' || bt === 'operator_confirm' || bt === 'agent_position' || bt === 'spec_change'
+      ? bt
+      : null;
+
+  // If is_decision_boundary but no valid type, treat as parse failure — schema requires type when is_decision_boundary is true.
+  if (obj.is_decision_boundary && !boundary_type) return null;
+
+  const summary =
+    typeof obj.summary === 'string' && obj.summary.length > 0
+      ? obj.summary
+      : null;
+
+  return {
+    is_decision_boundary: obj.is_decision_boundary,
+    boundary_type,
+    summary,
+    confidence: Math.max(0, Math.min(1, obj.confidence)),
+    prompt_version: promptVersion,
+    llm_model: llmModel,
+  };
+}
+
+/**
+ * Phase 14-07l: Classify a single user-assistant turn as a decision boundary.
+ *
+ * If `user_text` is null (agent-only turn), immediately returns a
+ * non-boundary result with confidence 1.0 — no LLM call made.
+ *
+ * Returns null on LLM unreachability or malformed output; caller emits
+ * telemetry. Non-throwing.
+ *
+ * This function is ADDITIVE to directive-detector; it does not modify any
+ * existing directive-detection exports.
+ */
+export async function classifyDecisionBoundary(
+  opts: ClassifyBoundaryOpts,
+): Promise<BoundaryClassification | null> {
+  const promptVersion = opts.prompt_version ?? BOUNDARY_CLASSIFIER_PROMPT_VERSION;
+  const model = opts.llm_model ?? BOUNDARY_CLASSIFIER_DEFAULT_MODEL;
+
+  // Agent-only turn — cheap skip.
+  if (opts.user_text === null) {
+    return {
+      is_decision_boundary: false,
+      boundary_type: null,
+      summary: null,
+      confidence: 1.0,
+      prompt_version: promptVersion,
+      llm_model: model,
+    };
+  }
+
+  try {
+    const promptTemplate = loadBoundaryClassifierPrompt(promptVersion);
+    const prompt = promptTemplate
+      .replace('{user_text}', opts.user_text)
+      .replace('{assistant_text}', opts.assistant_text);
+
+    // Respect the AbortSignal if provided.
+    const timeoutMs = 5_000;
+    const callOpts: import('../angel/llama-client.js').LocalLLMCallOptions = {
+      prompt,
+      model,
+      temperature: 0,
+      maxTokens: 256,
+      timeoutMs,
+    };
+
+    // Pass AbortSignal via the fetch override if needed — callLocalLLM does not
+    // accept an AbortSignal directly; the timeoutMs internal to the call is the
+    // cancellation mechanism. If opts.signal is already aborted, bail early.
+    if (opts.signal?.aborted) return null;
+
+    const raw = await callLocalLLM(callOpts);
+
+    if (opts.signal?.aborted) return null;
+
+    return parseBoundaryClassification(raw, promptVersion, model);
+  } catch {
+    return null;
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Exports for unit tests (kept at the bottom to keep the public API at top)
 // ---------------------------------------------------------------------------
 
