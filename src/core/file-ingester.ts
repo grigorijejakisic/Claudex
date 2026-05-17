@@ -460,30 +460,37 @@ export async function ingestFileArtifacts(
     // Embed newly ingested artifacts (awaited — must complete before session-start returns).
     // Batch-embeds up to 10 artifacts in parallel via Promise.allSettled.
     // Adds ~2-5s on first run, subsequent starts find most artifacts already embedded.
+    //
+    // 14-07b: migrated from legacy artifacts — embedding query now targets V17 artifact table.
+    // Artifacts without a vec_artifact_v17 row need embedding; we detect via LEFT JOIN absence.
     try {
       const unembedded = cachedPrepare(db,
-        `SELECT id, summary, content, artifact_type, importance, session_id, project
-         FROM artifacts
-         WHERE project IN (?, '__global__') AND embedding IS NULL
-           AND artifact_type IN ('session_log', 'decision', 'learning', 'handoff', 'memory_file')
-         ORDER BY importance DESC
+        `SELECT a.id, a.title, a.body, a.kind, a.confidence, a.session_id, a.project,
+                a.rowid AS artifact_rowid
+         FROM artifact a
+         LEFT JOIN vec_artifact_v17 v ON v.rowid = a.rowid
+         WHERE a.project IN (?, '__global__')
+           AND v.rowid IS NULL
+           AND a.kind IN ('session_log', 'decision', 'learning', 'handoff', 'memory_file')
+         ORDER BY a.confidence DESC
          LIMIT 20`
       ).all(project) as Array<{
-        id: number; summary: string; content: string;
-        artifact_type: string; importance: number; session_id: string;
+        id: string; title: string | null; body: string;
+        kind: string; confidence: number | null; session_id: string | null;
+        project: string; artifact_rowid: number;
       }>;
 
       if (unembedded.length > 0) {
-        const { embedArtifact } = await import('../embeddings/embed-pipeline.js');
+        const { embedArtifactV17 } = await import('../embeddings/embed-pipeline.js');
         // Process in parallel with a concurrency cap
         const batch = unembedded.slice(0, 10);
         await Promise.allSettled(batch.map(a =>
-          embedArtifact(db, a.id, [a.summary, a.content].filter(Boolean).join(' '), {
-            project,
-            artifact_type: a.artifact_type,
-            importance: a.importance,
-            session_id: a.session_id,
-            summary: a.summary,
+          embedArtifactV17(db, a.id, a.artifact_rowid, [a.title ?? '', a.body].filter(Boolean).join(' '), {
+            project: a.project,
+            kind: a.kind,
+            confidence: a.confidence ?? 0.6,
+            session_id: a.session_id ?? '',
+            title: a.title ?? '',
           })
         ));
       }
