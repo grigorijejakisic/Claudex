@@ -3217,31 +3217,28 @@ function _populateArtifactIdMapInTransaction(db: Database): void {
   // Legacy semantics: artifacts.superseded_by = S means "I (this row L) was replaced by row S".
   // V17 semantics: artifact.supersedes_id = L means "I (row S) replaced row L".
   //
-  // So: for each legacy row L with superseded_by = S (non-null),
-  //   find the V17 row for S (the superseding row),
-  //   and set that V17 row's supersedes_id = V17_id(L) (the superseded row's V17 ID).
-  //
-  // SQL: For each artifact in V17 whose legacy_id = S,
-  //   find any legacy row L where L.superseded_by = S,
-  //   and set supersedes_id = artifact_id_map[L.id].v17_id.
-  db.exec(`
-    UPDATE artifact
-    SET supersedes_id = (
-      SELECT m_superseded.v17_id
-      FROM artifact_id_map m_superseding
-      INNER JOIN artifacts leg_superseded ON leg_superseded.superseded_by = m_superseding.legacy_id
-      INNER JOIN artifact_id_map m_superseded ON m_superseded.legacy_id = leg_superseded.id
-      WHERE m_superseding.v17_id = artifact.id
-      LIMIT 1
-    )
-    WHERE artifact.supersedes_id IS NULL
-      AND EXISTS (
-        SELECT 1
+  // Only run if the legacy artifacts table has a superseded_by column.
+  // Older test fixtures may not have this column (it was added in a later migration).
+  if (artCols.has('superseded_by')) {
+    db.exec(`
+      UPDATE artifact
+      SET supersedes_id = (
+        SELECT m_superseded.v17_id
         FROM artifact_id_map m_superseding
         INNER JOIN artifacts leg_superseded ON leg_superseded.superseded_by = m_superseding.legacy_id
+        INNER JOIN artifact_id_map m_superseded ON m_superseded.legacy_id = leg_superseded.id
         WHERE m_superseding.v17_id = artifact.id
+        LIMIT 1
       )
-  `);
+      WHERE artifact.supersedes_id IS NULL
+        AND EXISTS (
+          SELECT 1
+          FROM artifact_id_map m_superseding
+          INNER JOIN artifacts leg_superseded ON leg_superseded.superseded_by = m_superseding.legacy_id
+          WHERE m_superseding.v17_id = artifact.id
+        )
+    `);
+  }
 }
 
 // ── V37 telemetry DDL ─────────────────────────────────────────────────────
