@@ -36,7 +36,7 @@ import {
   renderExperienceWarnings as formatExperienceWarningsSection,
   formatCodebaseContextSection,
 } from './sections.js';
-import { formatProvenanceChainSection } from './sections/links.js';
+import { formatProvenanceChainSection, formatPendingReviewLinksSection } from './sections/links.js';
 import { getLatestHighlights } from '../intelligence/session-highlights.js';
 import {
   findMatchingPatterns,
