@@ -136,13 +136,13 @@ export async function generateEntitySummaries(
 
         // Gather evidence for this entity
         const evidence = cachedPrepare(db,
-          `SELECT action, detail, project, timestamp_epoch
+          `SELECT action, detail, project, timestamp_epoch_ms
            FROM session_events
            WHERE LOWER(entity) = LOWER(?)
-           ORDER BY timestamp_epoch DESC
+           ORDER BY timestamp_epoch_ms DESC
            LIMIT 20`
         ).all(entity.entity_name) as Array<{
-          action: string; detail: string | null; project: string; timestamp_epoch: number;
+          action: string; detail: string | null; project: string; timestamp_epoch_ms: number;
         }>;
 
         const trend = computeTrend(entity.earliest_epoch, entity.latest_epoch, entity.mention_count);
