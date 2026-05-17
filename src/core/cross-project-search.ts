@@ -81,6 +81,22 @@ export function isCrossProjectSearchEnabled(projectRoot: string): boolean {
  * Pull a bounded pool of cross-project candidates with a task_pattern
  * fingerprint. Same source as Experience Tier candidate query, but
  * project-filtered to NOT match the current project.
+ *
+ * 14-07b: migrated from legacy artifacts — reads V17 artifact table.
+ * artifact_task_pattern still uses INTEGER artifact_id (legacy PK) so we
+ * JOIN through artifact_id_map to reach the V17 artifact row. The returned
+ * ArtifactRow shape is preserved for computeArtifactScore + MCP consumers:
+ *   V17 title  → ArtifactRow.summary
+ *   V17 body   → ArtifactRow.content
+ *   V17 kind   → ArtifactRow.artifact_type
+ *   V17 confidence (0-1) → ArtifactRow.importance (1-5, rounded)
+ *   V17 data.activation_score → ArtifactRow.activation_score
+ *   V17 data.retrieval_score  → ArtifactRow.retrieval_score
+ *   V17 data.novelty_score    → ArtifactRow.novelty_score
+ *   V17 data.artifact_ref     → ArtifactRow.artifact_ref
+ *   V17 data.ttl              → ArtifactRow.ttl
+ * Legacy integer id is preserved via reverse-lookup for ArtifactRow.id
+ * (legacy INTEGER) so computeArtifactScore can still dereference it.
  */
 function fetchCrossProjectCandidatePool(
   db: Database,
@@ -88,7 +104,96 @@ function fetchCrossProjectCandidatePool(
   poolSize: number = CANDIDATE_POOL_SIZE,
 ): Array<EquivalenceCandidate & { artifactRow: ArtifactRow }> {
   try {
-    const rows = cachedPrepare(db,
+    // Primary path: V17 artifact JOINed through artifact_id_map → artifact_task_pattern.
+    const v17Rows = cachedPrepare(db,
+      `SELECT a.id AS v17_id,
+              a.kind AS kind,
+              a.title AS title,
+              a.body AS body,
+              a.project AS project,
+              a.session_id AS session_id,
+              a.confidence AS confidence,
+              a.status AS status,
+              a.created_at_epoch_ms AS timestamp_epoch_ms,
+              a.data AS data,
+              m.legacy_id AS legacy_id,
+              atp.task_pattern AS task_pattern
+         FROM artifact a
+         INNER JOIN artifact_id_map m ON m.v17_id = a.id
+         INNER JOIN artifact_task_pattern atp ON atp.artifact_id = m.legacy_id
+        WHERE atp.task_pattern != '__abstain__'
+          AND a.project != ?
+          AND a.kind IN ('learning', 'observation', 'memory_file', 'flow', 'milestone')
+          AND a.status != 'superseded'
+        ORDER BY a.created_at_epoch_ms DESC
+        LIMIT ?`
+    ).all(currentProject, poolSize) as Array<{
+      v17_id: string; kind: string; title: string | null; body: string;
+      project: string; session_id: string | null; confidence: number | null;
+      status: string; timestamp_epoch_ms: number; data: string | null;
+      legacy_id: number; task_pattern: string;
+    }>;
+
+    if (v17Rows.length > 0) {
+      return v17Rows.map(r => {
+        // Parse data sidecar for fields that moved to JSON in V17.
+        let dataParsed: Record<string, unknown> = {};
+        try { dataParsed = r.data ? JSON.parse(r.data) as Record<string, unknown> : {}; } catch { /* non-fatal */ }
+
+        const artifactRef = typeof dataParsed['artifact_ref'] === 'string' ? dataParsed['artifact_ref'] : null;
+        const activationScore = typeof dataParsed['activation_score'] === 'number' ? dataParsed['activation_score'] : 0;
+        const retrievalScore = typeof dataParsed['retrieval_score'] === 'number' ? dataParsed['retrieval_score'] : 0;
+        const noveltyScore = typeof dataParsed['novelty_score'] === 'number' ? dataParsed['novelty_score'] : 0;
+        const ttl = typeof dataParsed['ttl'] === 'number' ? dataParsed['ttl'] : 3600;
+
+        // V17 confidence (0.0–1.0) → legacy importance (1–5) for ArtifactRow compat.
+        const importance = r.confidence != null ? Math.max(1, Math.min(5, Math.round(r.confidence * 5))) : 3;
+
+        // V17 status → legacy state for ArtifactRow compat.
+        const stateMap: Record<string, ArtifactRow['state']> = {
+          active: 'fresh', stale: 'packed', superseded: 'materialized',
+        };
+        const legacyState = stateMap[r.status] ?? 'fresh';
+
+        const summary = r.title ?? r.body.slice(0, 200);
+        const text = `${summary}\n${r.body}`;
+        const tokens = text.toLowerCase().split(/[^a-z0-9_-]+/).filter(t => t.length > 1);
+        const handles: HandleSet = {
+          tools_used: [],
+          files_touched: [],
+          user_framing_tokens: tokens,
+          errors_encountered: tokens,
+        };
+        const candidate: EquivalenceCandidate = {
+          id: r.legacy_id,
+          project: r.project,
+          salience: `${summary}\n${r.body}`,
+          ...handles,
+        };
+        const artifactRow: ArtifactRow = {
+          id: r.legacy_id,
+          session_id: r.session_id ?? '',
+          project: r.project,
+          artifact_type: r.kind as ArtifactRow['artifact_type'],
+          artifact_ref: artifactRef,
+          summary,
+          content: r.body,
+          state: legacyState,
+          ttl,
+          importance,
+          retrieval_score: retrievalScore,
+          timestamp_epoch_ms: r.timestamp_epoch_ms,
+          activation_score: activationScore,
+          confidence: r.confidence ?? 0.5,
+          novelty_score: noveltyScore,
+        } as ArtifactRow;
+        return { ...candidate, artifactRow };
+      });
+    }
+
+    // Defensive fallback: if V17 path returned nothing (e.g. pre-migration DB
+    // where artifact_id_map is absent), fall back to legacy artifacts table.
+    const legacyRows = cachedPrepare(db,
       `SELECT a.id AS artifact_id,
               a.session_id AS session_id,
               a.project AS project,
@@ -120,9 +225,7 @@ function fetchCrossProjectCandidatePool(
       novelty_score: number; task_pattern: string;
     }>;
 
-    return rows.map(r => {
-      // Synthesize HandleSet from artifact summary + content (same approach
-      // as Experience Tier's regex-only synthesis).
+    return legacyRows.map(r => {
       const text = `${r.summary || ''}\n${r.content || ''}`;
       const tokens = text.toLowerCase().split(/[^a-z0-9_-]+/).filter(t => t.length > 1);
       const handles: HandleSet = {
