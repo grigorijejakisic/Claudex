@@ -210,8 +210,8 @@ describe('checkpoint tracking CRUD', () => {
 
   it('getCheckpointTracking returns tracking state', () => {
     db.prepare(
-      `INSERT INTO checkpoint_tracking (session_id, observation_count, last_checkpoint_epoch, updated_at_epoch)
-       VALUES (?, ?, unixepoch(), unixepoch())`
+      `INSERT INTO checkpoint_tracking (session_id, observation_count, last_checkpoint_epoch_ms, updated_at_epoch_ms)
+       VALUES (?, ?, unixepoch() * 1000, unixepoch() * 1000)`
     ).run('s1', 25);
 
     const tracking = getCheckpointTracking(db, 's1');
@@ -238,8 +238,8 @@ describe('checkpoint tracking CRUD', () => {
 
   it('recordThresholdHit appends to thresholds_hit array', () => {
     db.prepare(
-      `INSERT INTO checkpoint_tracking (session_id, observation_count, last_checkpoint_epoch, updated_at_epoch)
-       VALUES (?, ?, unixepoch(), unixepoch())`
+      `INSERT INTO checkpoint_tracking (session_id, observation_count, last_checkpoint_epoch_ms, updated_at_epoch_ms)
+       VALUES (?, ?, unixepoch() * 1000, unixepoch() * 1000)`
     ).run('s1', 0);
     recordThresholdHit(db, 's1', 25);
     recordThresholdHit(db, 's1', 50);
