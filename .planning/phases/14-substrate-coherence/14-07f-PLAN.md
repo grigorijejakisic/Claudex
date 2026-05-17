@@ -85,7 +85,7 @@ Four deliverables in one plan:
 
 2. **Link-decay helpers** (`src/intelligence/link-decay.ts`) — wraps getDecayCount + rejection tracking. Proposer consults `isDecayed` before proposing to skip anti-link tuples.
 
-3. **Pending Review assembly section** — `formatPendingReviewLinksSection` in `src/assembly/sections.ts` + cascade wiring in `assembler.ts` at P2.8. Renders pending hard links for operator review.
+3. **Pending Review assembly section** — `formatPendingReviewLinksSection` in `src/assembly/sections/links.ts` (Wave 0 w0d placeholder file) + re-export in `sections/index.ts` + cascade wiring in `assembler.ts` at P2.8. Renders pending hard links for operator review.
 
 4. **Operator-runnable UX simulation** (`src/scripts/simulate-hard-link-ux.ts`) — lets operator preview the propose-confirm-defer flow against synthetic fixtures BEFORE enabling the production proposer flag.
 
