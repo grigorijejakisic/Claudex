@@ -559,6 +559,15 @@ export function initializeSchema(db: Database): void {
     try { db.exec(`INSERT OR IGNORE INTO schema_versions(version) VALUES (41)`); } catch { /* non-critical */ }
   }
 
+  // Phase 14-09 (V42): session_termination deterministic record.
+  // Replaces post-hoc LLM-extracted termination inference with structured
+  // per-session row. Hooks write at session-end / stop-failure / pre-compact.
+  if (currentUv < 42) {
+    migrateV41toV42(db);
+    db.pragma('user_version = 42');
+    try { db.exec(`INSERT OR IGNORE INTO schema_versions(version) VALUES (42)`); } catch { /* non-critical */ }
+  }
+
   // Phase 4 (V28): per-connection sidecar + TEMP TRIGGER guarding writes
   // to the legacy `experience_patterns` table. Both objects live in the
   // `temp` schema because (a) SQLite forbids a permanent-schema trigger
