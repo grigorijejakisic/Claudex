@@ -74,10 +74,12 @@ Wave 2 — Knowledge graph (mostly parallel; depends on Wave 1 cutover):
   14-07f  Hard-link LLM proposer + Good Child propose-confirm UX
   14-07g  Provenance Chain assembly surface
 
-Wave 3 — Session-start coherence (mostly parallel; 14-07j depends on Wave 2):
+Wave 3 — Session-start coherence (mostly parallel; 14-07j and 14-07l depend on Wave 2):
   14-07h  Regenerator fix + lesson trigger-style + experience scoping  [parallel; can start any time after Wave 1c]
   14-07i  Codebase-context annotation                                  [parallel; independent of Wave 1 and Wave 2]
   14-07j  Link-aware lesson inline-expansion                           [depends on Wave 2 linking]
+  14-07k  Last-session synthesis (LLM-driven structured extraction)    [parallel; concrete mechanism for qualitative ship gate; added 2026-05-17]
+  14-07l  Continuous handoff refresh (per-turn boundary detection)     [depends on 14-07d soft-link substrate; added 2026-05-17]
 ```
 
 **Within-wave pattern: schema-first → parallel workers → gate.** /auto-orchestrate worker fanout happens AFTER the schema/contract for the wave lands. Workers cannot collide because file ownership is locked in the wave coordination doc.
