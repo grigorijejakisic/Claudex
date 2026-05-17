@@ -613,12 +613,11 @@ async function main() {
 }
 
 // Run CLI if invoked directly.
-const _benchScriptFile: string =
-  typeof __filename !== 'undefined'
-    ? __filename
-    : fileURLToPath(import.meta.url);
+// NOTE: When bundled as a dependency inside cutover-v7.cjs, __filename
+// resolves to the cutover bundle path, not this file's path. Guard against
+// that by checking that argv[1] contains "run-wave1-benchmarks" specifically.
 const isMain = process.argv[1]
-  ? path.resolve(process.argv[1]) === path.resolve(_benchScriptFile)
+  ? path.basename(process.argv[1]).startsWith('run-wave1-benchmarks')
   : false;
 if (isMain) {
   void main();
