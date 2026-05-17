@@ -45,6 +45,11 @@ export interface HandoffHeader {
   summary?: string;
   topic?: string;
   created_at_epoch_ms?: number;
+  /**
+   * Phase 14-07l: epoch_ms of the most-recent CHR refresh.
+   * Optional / backward-compatible — old handoffs without this field parse unchanged.
+   */
+  last_refresh_epoch_ms?: number;
 }
 
 export interface HandoffInput {
