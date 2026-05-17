@@ -238,10 +238,14 @@ describe('Phase 14-09: session_termination', () => {
 
   it('12. readLastTurnTexts reads latest user/assistant turn', () => {
     const db = freshDb();
-    db.prepare(`INSERT INTO conversation_turns (session_id, project, turn_number, user_text, assistant_text, timestamp_epoch) VALUES (?, ?, ?, ?, ?, ?)`)
-      .run('sess-x', 'p1', 1, 'first user', 'first agent', Math.floor((Date.now() - 1000) / 1000));
-    db.prepare(`INSERT INTO conversation_turns (session_id, project, turn_number, user_text, assistant_text, timestamp_epoch) VALUES (?, ?, ?, ?, ?, ?)`)
-      .run('sess-x', 'p1', 2, 'second user', 'second agent', Math.floor(Date.now() / 1000));
+    // Discover the timestamp column shape — varies between in-memory fresh
+    // and live DBs (V35 epoch rename history). Use whatever exists.
+    const cols = (db.pragma('table_info(conversation_turns)') as Array<{ name: string }>).map((c) => c.name);
+    const tsCol = cols.find((c) => c.startsWith('timestamp')) ?? 'turn_number';
+    db.prepare(`INSERT INTO conversation_turns (session_id, project, turn_number, user_text, assistant_text, ${tsCol}) VALUES (?, ?, ?, ?, ?, ?)`)
+      .run('sess-x', 'p1', 1, 'first user', 'first agent', Date.now() - 1000);
+    db.prepare(`INSERT INTO conversation_turns (session_id, project, turn_number, user_text, assistant_text, ${tsCol}) VALUES (?, ?, ?, ?, ?, ?)`)
+      .run('sess-x', 'p1', 2, 'second user', 'second agent', Date.now());
 
     const r = readLastTurnTexts(db, 'sess-x');
     expect(r.last_user_directive).toBe('second user');
