@@ -181,6 +181,11 @@ function parseHandoffHeaderInner(raw: string): ParseResult {
         if (Number.isFinite(n)) partial.created_at_epoch_ms = n;
         break;
       }
+      case 'last_refresh_epoch_ms': {
+        const n = Number(value);
+        if (Number.isFinite(n)) partial.last_refresh_epoch_ms = n;
+        break;
+      }
     }
   }
 
