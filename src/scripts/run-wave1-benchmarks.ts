@@ -317,6 +317,7 @@ export async function runCrossProjectHitRate(opts: RunnerOpts): Promise<GateRawR
     cwd,
     encoding: 'utf8',
     timeout: 120_000,
+    shell: process.platform === 'win32',
   });
 
   if (result.error) {
