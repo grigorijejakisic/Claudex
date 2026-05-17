@@ -513,12 +513,13 @@ async function confirmCandidate(
   try {
     const assets = loadPromptAssets();
     const userPrompt = `CONTEXT (±2 surrounding turns):\n\n${contextBlock}\n\nThe CANDIDATE turn is marked [CANDIDATE]. Analyze it for a standing directive. Reply with JSON only.`;
-    const raw = await callLocalLLM({
+    const raw = await generate({
       system: assets.confirmationSystem,
       prompt: userPrompt,
       model: cfg.model,
       temperature: 0,
       maxTokens: 512,
+      subsystem: 'directive_confirm',
     });
     return parseConfirmation(raw);
   } catch {
