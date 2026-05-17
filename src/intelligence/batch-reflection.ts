@@ -295,11 +295,11 @@ export function runBatchReflection(
     try {
       const guardKey = `${REFLECTION_GUARD_KEY}${project}`;
       cachedPrepare(db,
-        `INSERT INTO checkpoint_tracking (session_id, last_checkpoint_epoch, updated_at_epoch)
-         VALUES (?, unixepoch(), unixepoch())
+        `INSERT INTO checkpoint_tracking (session_id, last_checkpoint_epoch_ms, updated_at_epoch_ms)
+         VALUES (?, unixepoch() * 1000, unixepoch() * 1000)
          ON CONFLICT(session_id) DO UPDATE SET
-           last_checkpoint_epoch = unixepoch(),
-           updated_at_epoch = unixepoch()`
+           last_checkpoint_epoch_ms = unixepoch() * 1000,
+           updated_at_epoch_ms = unixepoch() * 1000`
       ).run(guardKey);
     } catch {
       // Non-fatal — reflection still created artifacts
