@@ -195,6 +195,30 @@ export async function upsertArtifactEmbeddingVec(
 }
 
 /**
+ * Upsert a V17 artifact embedding into vec_artifact_v17.
+ *
+ * 14-07b: migrated from legacy vec_artifacts — writes to V17 vec0 table.
+ * The rowid in vec_artifact_v17 matches the INTEGER rowid of artifact table row
+ * (not the TEXT id column). Callers must supply artifact.rowid, not artifact.id.
+ *
+ * Uses DELETE + INSERT (vec0 doesn't support UPDATE on embedding column).
+ */
+export async function upsertArtifactEmbeddingVecV17(
+  artifactRowid: number,
+  embedding: number[],
+  _config?: Partial<QdrantConfig>,
+): Promise<boolean> {
+  return withDb(db => {
+    const vec = encodeVector(embedding);
+    const rowid = BigInt(artifactRowid);
+    // 14-07b: migrated from legacy vec_artifacts — upsert into vec_artifact_v17
+    db.prepare('DELETE FROM vec_artifact_v17 WHERE rowid = ?').run(rowid);
+    db.prepare('INSERT INTO vec_artifact_v17 (rowid, embedding) VALUES (?, ?)').run(rowid, vec);
+    return true;
+  }, false);
+}
+
+/**
  * Upsert a pattern embedding into vec_patterns.
  * Pattern IDs are ULIDs (strings); we hash them to 32-bit integers
  * using the same hashStringToInt as qdrant-client.ts so both backends
