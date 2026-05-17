@@ -492,6 +492,15 @@ export function initializeSchema(db: Database): void {
     try { db.exec(`INSERT OR IGNORE INTO schema_versions(version) VALUES (36)`); } catch { /* non-critical */ }
   }
 
+  // Phase 14-07a (V37): unified artifact schema + artifact_id_map + vec_artifact_v17.
+  // Fresh DBs already have V17 DDL (artifact table exists), so migrateV36toV37
+  // only creates artifact_id_map and populates mappings from legacy artifacts rows.
+  if (currentUv < 37) {
+    migrateV36toV37(db); // idempotent: no-op if artifact_id_map already exists
+    db.pragma('user_version = 37');
+    try { db.exec(`INSERT OR IGNORE INTO schema_versions(version) VALUES (37)`); } catch { /* non-critical */ }
+  }
+
   // Phase 4 (V28): per-connection sidecar + TEMP TRIGGER guarding writes
   // to the legacy `experience_patterns` table. Both objects live in the
   // `temp` schema because (a) SQLite forbids a permanent-schema trigger
