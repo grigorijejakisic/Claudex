@@ -49,6 +49,92 @@ import type { ArtifactRow } from './artifacts.js';
 import { isSubstantive, substantiveSqlClause } from './artifact-filters.js';
 
 // ---------------------------------------------------------------------------
+// 14-07b: V17 migration helpers
+// ---------------------------------------------------------------------------
+
+/**
+ * SQL SELECT expression that projects V17 `artifact` columns into the legacy
+ * `ArtifactRow` shape so callers see an unchanged interface post-migration.
+ *
+ * Key mappings (per RCA-3 loss-map in 14-07-VERIFICATION-PASS.md Section A3):
+ *   id                TEXT  → rowid INTEGER  (stable within query lifetime)
+ *   title             TEXT  → summary TEXT
+ *   body              TEXT  → content TEXT
+ *   confidence        REAL  → importance REAL (×5 reverse-scales to legacy 0-5 range)
+ *   status            TEXT  → state TEXT      (active→fresh, stale→packed, superseded→materialized)
+ *   data.activation_score   → activation_score REAL
+ *   data.retrieval_score    → retrieval_score REAL
+ *   data.novelty_score      → novelty_score REAL
+ *   supersedes_id     TEXT  → superseded_by NULL (direction-flip; integer not reconstructable)
+ *   created_at_epoch_ms INTEGER → timestamp_epoch_ms (same unit)
+ *   embedding_ref     → embedding NULL (sidecar; not inlined in row)
+ */
+const V17_TO_ARTIFACT_ROW_SELECT = `
+  a.rowid AS id,
+  a.kind AS artifact_type,
+  NULL AS artifact_ref,
+  a.title AS summary,
+  a.body AS content,
+  CASE a.status
+    WHEN 'active' THEN 'fresh'
+    WHEN 'stale' THEN 'packed'
+    WHEN 'superseded' THEN 'materialized'
+    ELSE 'fresh'
+  END AS state,
+  a.project,
+  a.session_id,
+  a.created_at_epoch_ms AS timestamp_epoch_ms,
+  COALESCE(json_extract(a.data, '$.last_materialized_epoch'), a.created_at_epoch_ms) AS last_materialized_epoch_ms,
+  COALESCE(a.confidence * 5.0, 3.0) AS importance,
+  COALESCE(json_extract(a.data, '$.retrieval_score'), 1.0) AS retrieval_score,
+  COALESCE(json_extract(a.data, '$.activation_score'), 1.0) AS activation_score,
+  COALESCE(json_extract(a.data, '$.novelty_score'), 0.5) AS novelty_score,
+  COALESCE(json_extract(a.data, '$.ttl'), 3) AS ttl,
+  a.confidence AS confidence,
+  NULL AS superseded_by,
+  NULL AS valid_until,
+  NULL AS embedding
+`.trim();
+
+/**
+ * V17-aware substantive filter clause for the `artifact` table (kind column).
+ * Mirrors substantiveSqlClause() but targets V17's `kind` + `title`/`body`.
+ * Note: uses `title` as the summary column and `confidence*5` for the importance gate.
+ */
+function v17SubstantiveSqlClause(tableAlias: string): string {
+  const a = tableAlias;
+  const v17Kinds = [
+    "'learning'", "'decision'", "'memory_file'", "'flow'", "'milestone'",
+    "'entity_summary'", "'handoff'", "'mental_model'", "'directive_rule'",
+    "'critical_rule'", "'angel_opinion'", "'experience_pattern'",
+  ].join(', ');
+  const noiseGlob = [
+    `${a}.title GLOB 'Read: *'`, `${a}.title GLOB 'Edit: *'`,
+    `${a}.title GLOB 'Write: *'`, `${a}.title GLOB 'Bash: *'`,
+    `${a}.title GLOB 'MultiEdit: *'`, `${a}.title GLOB 'Glob: *'`,
+    `${a}.title GLOB 'Grep: *'`, `${a}.title GLOB 'NotebookEdit: *'`,
+    `${a}.title GLOB 'TodoWrite: *'`,
+  ].join(' OR ');
+  return (
+    `NOT (${noiseGlob})` +
+    ` AND (` +
+      `${a}.kind IN (${v17Kinds})` +
+      ` OR (` +
+        `${a}.kind = 'observation'` +
+        ` AND COALESCE(${a}.confidence * 5.0, 0) >= 4` +
+        ` AND LENGTH(COALESCE(${a}.title, '')) >= 60` +
+      `)` +
+    `)`
+  );
+}
+
+/** V17 status field equivalent of legacy `state != 'packed'`. */
+const V17_NOT_STALE = `a.status != 'stale'`;
+
+/** V17 equivalent of legacy `superseded_by IS NULL`. */
+const V17_NOT_SUPERSEDED = `a.status != 'superseded'`;
+
+// ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
 
