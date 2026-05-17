@@ -29,14 +29,12 @@ function seedSession(db: Database.Database, sessionId: string, project: string):
   ).run(sessionId, project, Date.now());
 }
 
-function seedThreadState(db: Database.Database, sessionId: string, project: string, topic: string): void {
-  try {
-    db.prepare(
-      `INSERT OR REPLACE INTO thread_state (session_id, project, topic) VALUES (?, ?, ?)`,
-    ).run(sessionId, project, topic);
-  } catch {
-    /* thread_state may not exist on very old schemas — non-fatal */
-  }
+function seedThreadState(db: Database.Database, sessionId: string, _project: string, topic: string): void {
+  // thread_state schema: session_id PK, topic, summary, key_exchanges, updated_at_epoch.
+  // No project column — project belongs on sessions, not thread_state.
+  db.prepare(
+    `INSERT OR REPLACE INTO thread_state (session_id, topic) VALUES (?, ?)`,
+  ).run(sessionId, topic);
 }
 
 // Simulate the MCP tool's enrichment logic (lifted from recall-server.ts).
