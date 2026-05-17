@@ -204,6 +204,7 @@ function parseFrontmatter(raw: string): LessonFrontmatter | null {
     shape: state.shape,
     tier: state.tier,
     last_fired_at_epoch: state.last_fired_at_epoch,
+    trigger: state.trigger,
   };
 }
 
