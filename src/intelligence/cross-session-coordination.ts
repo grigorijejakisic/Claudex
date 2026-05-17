@@ -120,7 +120,7 @@ export function detectFileConflicts(
   currentSessionId: string,
 ): Array<{ file_path: string; sessions: string[] }> {
   try {
-    const fiveMinAgo = Math.floor(Date.now() / 1000) - 300;
+    const fiveMinAgoMs = Date.now() - 300000;
 
     // Single query: find files edited by BOTH the current session AND other active sessions.
     // Replaces per-file N+1 queries with one JOIN-based query.
@@ -131,7 +131,7 @@ export function detectFileConflicts(
          FROM observations o, json_each(o.files_modified) jf
          WHERE o.session_id = ?
            AND o.tool_name IN ('Edit', 'Write')
-           AND o.timestamp_epoch > ?
+           AND o.timestamp_epoch_ms > ?
            AND jf.value != ''
        ) my
        JOIN observations o2 ON 1=1
@@ -141,8 +141,8 @@ export function detectFileConflicts(
          AND s.status = 'active'
          AND s.project = ?
          AND o2.tool_name IN ('Edit', 'Write')
-         AND o2.timestamp_epoch > ?`
-    ).all(currentSessionId, fiveMinAgo, currentSessionId, project, fiveMinAgo) as Array<{
+         AND o2.timestamp_epoch_ms > ?`
+    ).all(currentSessionId, fiveMinAgoMs, currentSessionId, project, fiveMinAgoMs) as Array<{
       file_path: string; session_id: string;
     }>;
 
