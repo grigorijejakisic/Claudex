@@ -504,6 +504,19 @@ export function initializeSchema(db: Database): void {
     try { db.exec(`INSERT OR IGNORE INTO schema_versions(version) VALUES (37)`); } catch { /* non-critical */ }
   }
 
+  // Phase 14-07-LINKS-SCHEMA (V38): knowledge-graph substrate.
+  // Creates soft_link + hard_link + hard_link_history tables with FK constraints,
+  // indexes, and CHECK constraints. Requires artifact table (from V17 DDL / V37).
+  // Idempotent: CREATE TABLE IF NOT EXISTS throughout. Callers use link-writer.ts
+  // helpers to write rows; this migration only installs the schema.
+  if (currentUv < 38) {
+    if (hasTable(db, 'artifact')) {
+      migrateV37toV38(db); // idempotent: no-op if link tables already exist
+    }
+    db.pragma('user_version = 38');
+    try { db.exec(`INSERT OR IGNORE INTO schema_versions(version) VALUES (38)`); } catch { /* non-critical */ }
+  }
+
   // Phase 4 (V28): per-connection sidecar + TEMP TRIGGER guarding writes
   // to the legacy `experience_patterns` table. Both objects live in the
   // `temp` schema because (a) SQLite forbids a permanent-schema trigger
