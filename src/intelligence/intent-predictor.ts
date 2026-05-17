@@ -476,7 +476,7 @@ export function updateTemporalProfile(
     const firstEvent = cachedPrepare(db,
       `SELECT event_type FROM session_events
        WHERE session_id = ? AND event_type NOT IN ('intent_prediction', 'intent_prediction_accuracy', 'intent_classification', 'session_success_bonus', 'compaction')
-       ORDER BY timestamp_epoch ASC LIMIT 1`
+       ORDER BY timestamp_epoch_ms ASC LIMIT 1`
     ).get(sessionId) as { event_type: string } | undefined;
 
     // Upsert temporal profile
