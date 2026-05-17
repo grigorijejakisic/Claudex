@@ -218,7 +218,6 @@ describe('lesson-writer', () => {
   });
 
   it('14-07h: readLessonTrigger returns field value when present', () => {
-    const { readLessonTrigger } = await import('../../angel/lesson-writer.js');
     const filePath = writeLesson({
       project,
       type: 'feedback',
@@ -236,7 +235,6 @@ describe('lesson-writer', () => {
   });
 
   it('14-07h: readLessonTrigger returns null when trigger absent', () => {
-    const { readLessonTrigger } = await import('../../angel/lesson-writer.js');
     const filePath = writeLesson({
       project,
       type: 'project',
