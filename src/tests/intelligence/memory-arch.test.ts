@@ -623,10 +623,10 @@ describe('batch reflection (4.4)', () => {
 
       // Check guard was set
       const guard = cachedPrepare(db,
-        'SELECT last_checkpoint_epoch FROM checkpoint_tracking WHERE session_id = ?'
-      ).get(`__reflection_guard__${project}`) as { last_checkpoint_epoch: number } | undefined;
+        'SELECT last_checkpoint_epoch_ms FROM checkpoint_tracking WHERE session_id = ?'
+      ).get(`__reflection_guard__${project}`) as { last_checkpoint_epoch_ms: number } | undefined;
       expect(guard).toBeDefined();
-      expect(guard!.last_checkpoint_epoch).toBeGreaterThan(0);
+      expect(guard!.last_checkpoint_epoch_ms).toBeGreaterThan(0);
     });
   });
 });
