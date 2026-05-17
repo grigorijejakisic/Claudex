@@ -214,7 +214,7 @@ export function getDomainBoundary(
 ): CapabilityBoundary | null {
   try {
     const row = cachedPrepare(db,
-      `SELECT id, project, domain, total_interactions, corrections, last_updated_epoch,
+      `SELECT id, project, domain, total_interactions, corrections, last_updated_epoch_ms,
               CASE WHEN total_interactions > 0
                 THEN CAST(corrections AS REAL) / total_interactions
                 ELSE 0.0
