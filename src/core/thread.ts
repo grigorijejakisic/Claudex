@@ -12,7 +12,7 @@ export interface ThreadStateRow {
   topic: string | null;
   summary: string | null;
   key_exchanges: Array<{ role: string; gist: string }>;
-  updated_at_epoch: number;
+  updated_at_epoch_ms: number;
 }
 
 interface RawThreadStateRow {
@@ -20,7 +20,7 @@ interface RawThreadStateRow {
   topic: string | null;
   summary: string | null;
   key_exchanges: string;
-  updated_at_epoch: number;
+  updated_at_epoch_ms: number;
 }
 
 /**
