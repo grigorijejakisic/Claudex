@@ -95,7 +95,7 @@ After this plan lands:
 
 <anti_scope>
 - Do NOT include PENDING hard links in provenance. Only soft + confirmed hard.
-- Do NOT modify any function in `src/assembly/sections.ts` other than the new `formatProvenanceChainSection`. G owns ONLY this function per WAVE2-COORDINATION.
+- Do NOT modify any function in `src/assembly/sections/links.ts` other than the new `formatProvenanceChainSection`. G owns ONLY this function per WAVE2-COORDINATION. Do NOT touch `src/assembly/sections.ts` (the residual file) at all.
 - Do NOT touch the existing assembler cascade order beyond inserting P2.9 after 14-07f's P2.8.
 - Do NOT modify the link tables, link-writer.ts, or hybrid-retrieval.ts.
 - Do NOT touch session-start lesson surface (Wave 3 territory).
