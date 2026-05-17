@@ -313,13 +313,77 @@ export async function applyCutover(
   }
 
   // A.2 — Verify artifact_id_map completeness.
+  // On a live DB, hooks continuously insert new legacy artifacts. Auto-backfill
+  // any unmapped rows using the correct formula (summary+body hash, not content-only)
+  // before running the completeness check. This prevents spurious mapping_incomplete
+  // failures caused by hooks running between the last migration and this cutover.
+  const preCheck = verifyMappingComplete(db);
+  if (preCheck.unmapped > 0) {
+    log(`  [A.2] Detected ${preCheck.unmapped} unmapped legacy rows — auto-backfilling...`);
+    try {
+      const { createHash: createHashFn } = await import('node:crypto');
+      const unmappedRows = db.prepare(`
+        SELECT id, session_id, project, timestamp_epoch, summary, content, artifact_type
+        FROM artifacts
+        WHERE id NOT IN (SELECT legacy_id FROM artifact_id_map)
+      `).all() as Array<{
+        id: number; session_id: string; project: string; timestamp_epoch: number;
+        summary: string; content: string | null; artifact_type: string;
+      }>;
+
+      const insertArtifact = db.prepare(`
+        INSERT OR IGNORE INTO artifact(id, kind, title, body, scope, status, confidence,
+          created_at_epoch_ms, updated_at_epoch_ms, session_id, project, data)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '{}')
+      `);
+      const insertMap = db.prepare(`
+        INSERT OR IGNORE INTO artifact_id_map(legacy_id, v17_id, mapped_at_epoch_ms, project)
+        VALUES (?, ?, ?, ?)
+      `);
+      const now = Date.now();
+      let backfilled = 0;
+
+      db.transaction(() => {
+        for (const row of unmappedRows) {
+          // Use the canonical formula: sha256(summary + (content ?? '')) for contentHash.
+          const body = row.content ?? '';
+          const contentHash = createHashFn('sha256')
+            .update(row.summary + body)
+            .digest('hex');
+          const v17Id = createHashFn('sha256')
+            .update(`${row.id}:${row.project}:${row.timestamp_epoch}:${contentHash}`)
+            .digest('hex')
+            .slice(0, 32);
+
+          insertArtifact.run(
+            v17Id, row.artifact_type || 'observation', row.summary || '', body,
+            'session', 'active', 0.7, row.timestamp_epoch, now,
+            row.session_id || 'unknown', row.project
+          );
+          const r = insertMap.run(row.id, v17Id, now, row.project);
+          if (r.changes > 0) backfilled++;
+        }
+      })();
+
+      log(`  [A.2] Auto-backfill complete: ${backfilled} rows mapped`);
+    } catch (err) {
+      emitTelemetry(db, 'A', false, { reason: 'backfill_error', error: String(err) });
+      return {
+        status: 'error',
+        exit_code: 3,
+        message: `Failed to backfill unmapped artifacts: ${err instanceof Error ? err.message : String(err)}`,
+        phases_completed: phasesCompleted,
+      };
+    }
+  }
+
   const mappingCheck = verifyMappingComplete(db);
   if (mappingCheck.unmapped > 0) {
     emitTelemetry(db, 'A', false, { reason: 'mapping_incomplete', ...mappingCheck });
     return {
       status: 'mapping_incomplete',
       exit_code: 1,
-      message: `artifact_id_map is incomplete: ${mappingCheck.unmapped} legacy rows unmapped (total=${mappingCheck.total_legacy}, mapped=${mappingCheck.mapped}). Run migrateV36toV37 first.`,
+      message: `artifact_id_map is incomplete after backfill: ${mappingCheck.unmapped} legacy rows unmapped (total=${mappingCheck.total_legacy}, mapped=${mappingCheck.mapped}). This should not happen — check DB constraints.`,
       phases_completed: phasesCompleted,
     };
   }
