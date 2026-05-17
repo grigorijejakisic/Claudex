@@ -23,6 +23,114 @@ import { walkProvenance } from '../../intelligence/provenance-walker.js';
 import { listPendingHardLinks, getDecayCount, DECAY_THRESHOLD } from '../../core/link-writer.js';
 import { estimateTokens } from '../../shared/text-utils.js';
 
+// ─── 14-07f: P2.8 Pending Review Links ───────────────────────────────────────
+
+export interface PendingReviewSectionParams {
+  db: Database;
+  project: string;
+  /** Token budget for this section. Rows truncated if over budget. Default: 600. */
+  budget_tokens: number;
+}
+
+/**
+ * Phase 14-07f — "Inferred Links Pending Review" assembly section (P2.8).
+ *
+ * Renders the list of PENDING hard links for the current project so the
+ * operator can review and confirm/reject LLM proposals.
+ *
+ * Design:
+ * - Decayed tuples (decay_count >= DECAY_THRESHOLD) excluded — operator
+ *   already rejected them enough times; proposer should stop suggesting them.
+ * - Token budget cap (default 600): renders rows until budget is consumed,
+ *   then appends a truncation summary line.
+ * - Returns null when no pending rows remain after filtering.
+ *
+ * Per Good Child policy: READ-ONLY. Never confirms or rejects links.
+ * Non-throwing: any error returns null (section absent, no crash).
+ */
+export function formatPendingReviewLinksSection(
+  p: PendingReviewSectionParams,
+): string | null {
+  try {
+    const { db, project, budget_tokens } = p;
+
+    // Fetch all pending hard links for this project (newest-first via listPendingHardLinks).
+    const pending = listPendingHardLinks(db, project);
+
+    // Filter out decayed tuples (operator rejected >= DECAY_THRESHOLD times).
+    const filtered = pending.filter(row => {
+      const decayCount = getDecayCount(db, row.src, row.dst, row.type);
+      return decayCount < DECAY_THRESHOLD;
+    });
+
+    if (filtered.length === 0) return null;
+
+    // Artifact title lookup for src/dst summaries.
+    const getArtifactSummary = (id: string): string => {
+      try {
+        const row = db.prepare(
+          `SELECT title, kind, SUBSTR(body, 1, 80) AS body_preview FROM artifact WHERE id = ? LIMIT 1`
+        ).get(id) as { title: string | null; kind: string; body_preview: string } | undefined;
+        if (!row) return `(artifact ${id.slice(0, 8)})`;
+        return row.title
+          ? `${row.kind}: ${row.title}`
+          : `${row.kind}: ${row.body_preview.replace(/\n/g, ' ')}`;
+      } catch {
+        return `(artifact ${id.slice(0, 8)})`;
+      }
+    };
+
+    const header =
+      `## Inferred Links Pending Review\n` +
+      `LLM-proposed hard links awaiting operator confirm/reject. ` +
+      `(${filtered.length} pending)\n`;
+
+    const lines: string[] = [header];
+    let remainingBudget = budget_tokens - estimateTokens(header);
+    let renderedCount = 0;
+    const totalCount = filtered.length;
+
+    for (const row of filtered) {
+      const srcSummary = getArtifactSummary(row.src);
+      const dstSummary = getArtifactSummary(row.dst);
+      const confidencePct = Math.round(row.proposed_confidence * 100);
+      const proposedDate = new Date(row.proposed_at_epoch_ms).toISOString().slice(0, 10);
+
+      const entry =
+        `- [${row.type}] ${srcSummary} → ${dstSummary}\n` +
+        `  Confidence: ${confidencePct}%. Rationale: ${row.proposer_rationale}\n` +
+        `  ID: ${row.id} · Proposed: ${proposedDate}\n`;
+
+      const entryCost = estimateTokens(entry);
+      if (entryCost > remainingBudget) break;
+
+      lines.push(entry);
+      remainingBudget -= entryCost;
+      renderedCount += 1;
+    }
+
+    // Truncation notice when not all rows fit.
+    if (renderedCount < totalCount) {
+      const overflow = totalCount - renderedCount;
+      lines.push(
+        `... and ${overflow} more pending. ` +
+        `Review via claudex_trace or direct DB query on hard_link.\n`,
+      );
+    }
+
+    // Operator guidance.
+    lines.push(
+      `To confirm or reject: call confirmHardLink(id) or rejectHardLink(id) ` +
+      `via the future MCP tool, or update via direct DB.\n`,
+    );
+
+    return lines.join('\n');
+  } catch {
+    // Non-throwing: section is advisory; never blocks assembly.
+    return null;
+  }
+}
+
 // ─── 14-07g: P2.9 Provenance Chain ───────────────────────────────────────────
 
 /**
