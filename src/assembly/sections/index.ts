@@ -26,5 +26,5 @@ export {
 } from './codebase-context.js';
 
 // links.ts exports added by Wave 2 (14-07f, 14-07g):
-// export { formatPendingReviewLinksSection } from './links.js';
-// export { formatProvenanceChainSection }    from './links.js';
+// export { formatPendingReviewLinksSection } from './links.js';  // 14-07f adds this
+export { formatProvenanceChainSection } from './links.js';
