@@ -201,6 +201,7 @@ describe('reVectorizeAll', () => {
     const progressCalls: Array<[number, number]> = [];
     await reVectorizeAll(db, {
       batch_size: 3,
+      retry_base_delay_ms: 0,
       on_progress: (done, total) => progressCalls.push([done, total]),
     });
 
