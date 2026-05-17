@@ -289,16 +289,20 @@ export async function synthesizeLastSession(
       project: opts.project,
     });
 
-    // 6. LLM call (Ollama — hook-safe)
-    const llmModel = opts.llm_model ?? process.env['ANGEL_LLM_MODEL'] ?? 'llama3.1:8b';
+    // 6. LLM call — routes through generation-backend selector.
+    // Default backend is Claude subprocess (Sonnet for synthesis quality);
+    // legacy Ollama path stays available via CLAUDEX_GENERATION_BACKEND=ollama.
+    const llmModel = opts.llm_model ?? process.env['ANGEL_LLM_MODEL'] ?? 'sonnet';
     let llmText: string;
     try {
-      llmText = await callLocalLLM({
+      llmText = await generate({
         prompt,
         model: llmModel,
         maxTokens: 1024,
-        timeoutMs: 30_000,
+        timeoutMs: 90_000,
         temperature: 0,
+        db,
+        subsystem: 'lss',
       });
     } catch (err) {
       const errStr = String(err);
