@@ -567,7 +567,7 @@ export function updateActionTransitions(
     const events = cachedPrepare(db,
       `SELECT event_type FROM session_events
        WHERE session_id = ? AND event_type NOT IN ('intent_prediction', 'intent_prediction_accuracy', 'intent_classification', 'session_success_bonus', 'compaction')
-       ORDER BY timestamp_epoch ASC`
+       ORDER BY timestamp_epoch_ms ASC`
     ).all(sessionId) as Array<{ event_type: string }>;
 
     if (events.length < 2) return;
