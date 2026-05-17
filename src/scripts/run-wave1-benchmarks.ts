@@ -432,9 +432,15 @@ export function compareToBaseline(
   const comp = entry.threshold_comparison as '>=' | '<=';
   const threshold = baseline; // Non-regression: threshold IS the baseline.
 
+  // Use a tiny epsilon (1e-9) to handle floating-point representation errors
+  // that arise from converting percentage strings (e.g., parseFloat('90.6') / 100
+  // yields 0.9059999... rather than exactly 0.906). The epsilon is 100× smaller
+  // than the smallest meaningful benchmark change (0.001 = 0.1%), so it cannot
+  // produce a false-PASS on a genuine regression.
+  const EPSILON = 1e-9;
   const passed = comp === '>='
-    ? measured >= threshold
-    : measured <= threshold;
+    ? measured >= threshold - EPSILON
+    : measured <= threshold + EPSILON;
 
   return { baseline, threshold, threshold_comparison: comp, passed };
 }
