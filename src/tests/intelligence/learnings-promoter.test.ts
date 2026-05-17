@@ -1,6 +1,9 @@
 import { createTestDb, type TestDatabase } from '../helpers/test-db.js';
 import { getLearningsByProject } from '../../core/learnings.js';
 import { promoteLearnings } from '../../intelligence/learnings-promoter.js';
+import Database from 'better-sqlite3';
+import { applyV17DDL } from '../../core/migration/v17-ddl.js';
+import { migrateV37toV38 } from '../../core/migration-steps.js';
 
 describe('learnings promoter', () => {
   let db: TestDatabase;
