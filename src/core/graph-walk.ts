@@ -106,7 +106,7 @@ export function graphWalkFromSeeds(
 
     const opts = { ...DEFAULT_OPTIONS, ...options };
     const seedSet = new Set(seedIds);
-    const now = Math.floor(Date.now() / 1000);
+    const now = Date.now();
 
     // Run each meta-path pattern independently, collect results per pattern
     const patternResults: Array<Map<number, number>> = [];
