@@ -246,20 +246,20 @@ export function queryTopics(db: Database.Database, project?: string): TopicResul
     if (project) {
       return db
         .prepare(
-          `SELECT ts.session_id, ts.topic, ts.summary, ts.updated_at_epoch
+          `SELECT ts.session_id, ts.topic, ts.summary, ts.updated_at_epoch_ms
            FROM thread_state ts
            JOIN sessions s ON ts.session_id = s.session_id
            WHERE s.project = ?
-           ORDER BY ts.updated_at_epoch DESC
+           ORDER BY ts.updated_at_epoch_ms DESC
            LIMIT 50`
         )
         .all(project) as TopicResult[];
     }
     return db
       .prepare(
-        `SELECT session_id, topic, summary, updated_at_epoch
+        `SELECT session_id, topic, summary, updated_at_epoch_ms
          FROM thread_state
-         ORDER BY updated_at_epoch DESC
+         ORDER BY updated_at_epoch_ms DESC
          LIMIT 50`
       )
       .all() as TopicResult[];
