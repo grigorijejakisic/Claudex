@@ -260,13 +260,13 @@ const EXPECTED_TABLES: Record<string, ColumnDef[]> = {
   file_leases: [
     { name: 'file_path', notNull: true },
     { name: 'worker_id', notNull: true },
-    { name: 'granted_at_epoch', notNull: true },
+    { name: 'granted_at_epoch_ms', notNull: true },
     { name: 'ttl_seconds', notNull: true, hasDefault: true },
   ],
   artifact_claims: [
     { name: 'artifact_id' },
     { name: 'worker_id', notNull: true },
-    { name: 'claimed_at_epoch', notNull: true },
+    { name: 'claimed_at_epoch_ms', notNull: true },
     { name: 'ttl_seconds', notNull: true, hasDefault: true },
   ],
 };
