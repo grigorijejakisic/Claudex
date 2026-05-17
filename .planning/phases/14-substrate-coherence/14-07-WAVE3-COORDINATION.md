@@ -133,34 +133,37 @@ PM (me) is the only authority for resolving boundary disputes.
 
 ---
 
-## sections.ts function-level ownership
+## File-level ownership (post-Wave-0 w0d split)
 
-`src/assembly/sections.ts` is touched by H, I, AND J. The most
-contended file in the entire v7.0.0 ship.
+**Wave 0 (w0d) split the monolithic `sections.ts` into:**
+- `src/assembly/sections/lessons.ts` — lessons formatters (H + J)
+- `src/assembly/sections/codebase-context.ts` — codebase context formatter (I)
+- `src/assembly/sections/links.ts` — link formatters (Wave 2 F + G)
+- `src/assembly/sections.ts` — residual (unchanged by Wave 3)
 
-| Function | Owner | Notes |
-|---|---|---|
-| Lessons section formatter (TBD name) | H ships first; J extends | J rebases onto H; ADDS inline-expansion as additional behavior; H does NOT re-touch after merge |
-| Codebase-context section formatter (TBD name) | I | Isolated function; no overlap with H or J |
-| Every other existing function | UNTOUCHED by Wave 3 | |
+H, I, and J now touch **different files** — collision risk is lower
+than the original spec claimed. The table below reflects actual file ownership.
+
+| Function | File | Owner | Notes |
+|---|---|---|---|
+| `formatProvenPrinciplesSection` | `sections/lessons.ts` | H surveys; H or J may extend | H ships first; J adds inline-expansion behavior |
+| `formatLearningsSection` | `sections/lessons.ts` | H surveys; H or J may extend | Same as above |
+| `formatCodebaseContextSection` | `sections/codebase-context.ts` | I | Fully isolated; no overlap with H or J |
+| All other functions in sections.ts | `sections.ts` | UNTOUCHED by Wave 3 | |
 
 Critical constraints:
 
 1. **H ships first.** Merge order: H → I → J. H establishes the
    lessons-section function shape that J extends.
-2. **I is independent.** I can merge in parallel with H; the
-   codebase-context formatter is isolated.
+2. **I is independent.** I touches only `sections/codebase-context.ts`.
+   No overlap with H or J; I can merge in parallel with H.
 3. **J rebases onto H's branch.** After H lands, J rebases onto
-   integration branch and adds inline-expansion to the lessons-
-   section function.
-4. **No worker modifies imports the other workers added.** Each
-   worker organizes their imports separately; merge conflicts on
-   import block are resolved by re-rebase per merge order.
-5. **No worker modifies type definitions another worker added.**
-6. **Existing functions UNTOUCHED.** P2.5 (Session Continuity),
-   P2.6 (Recent Frames), P2.7 (Project Knowledge), P2.8 (Pending
-   Review Links, from F), P2.9 (Provenance Chain, from G) — all
-   pre-Wave-3 functions are off-limits to Wave 3 workers.
+   integration branch and adds inline-expansion to the lessons
+   functions in `sections/lessons.ts`.
+4. **No worker modifies `sections.ts` (the residual file).** All
+   Wave 3 changes land in the modular sub-files.
+5. **Each worker adds their re-export to `sections/index.ts`** if
+   they add a new function, so it surfaces at `assembly/sections.js`.
 
 ---
 
@@ -168,12 +171,13 @@ Critical constraints:
 
 1. **H first.** Touches memory-md-writer + lesson-writer + new
    migrate-lesson-trigger script + experience-tier filter + lessons
-   section in sections.ts.
-2. **I second.** Touches codebase-context formatter + hybrid-retrieval
-   metadata surface. No overlap with H.
+   functions in `sections/lessons.ts`.
+2. **I second.** Touches `formatCodebaseContextSection` in
+   `sections/codebase-context.ts` + hybrid-retrieval metadata surface.
+   No overlap with H.
 3. **J third.** Rebases onto integration branch (post-H). Adds
-   inline-expansion to H's lessons section function + new
-   lesson-relevance.ts.
+   inline-expansion to H's lessons functions in `sections/lessons.ts`
+   + new lesson-relevance.ts.
 
 If H fails review, I and J still land (I is fully independent; J
 can be held until H is fixed, OR J can land without the link-aware
