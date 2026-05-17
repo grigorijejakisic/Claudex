@@ -17,13 +17,13 @@ const main = wrapHook('SubagentStop', async (input, ctx) => {
   let durationMs: number | null = null;
   try {
     const startRow = cachedPrepare(ctx.db,
-      `SELECT timestamp_epoch FROM session_events
+      `SELECT timestamp_epoch_ms FROM session_events
        WHERE session_id = ? AND event_type = 'subagent_start' AND entity = ?
-       ORDER BY timestamp_epoch DESC LIMIT 1`
-    ).get(input.session_id, agentId) as { timestamp_epoch: number } | undefined;
+       ORDER BY timestamp_epoch_ms DESC LIMIT 1`
+    ).get(input.session_id, agentId) as { timestamp_epoch_ms: number } | undefined;
 
     if (startRow) {
-      durationMs = Math.floor(Date.now() / 1000) - startRow.timestamp_epoch;
+      durationMs = Math.floor((Date.now() - startRow.timestamp_epoch_ms) / 1000);
     }
   } catch { /* graceful fallback: null duration */ }
 
