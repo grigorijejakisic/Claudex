@@ -312,7 +312,20 @@ describe('callClaudeSubprocess', () => {
 });
 
 describe('generation backend selector', () => {
-  it('11. Defaults to claude when env unset', () => {
+  // The resolver routes to 'ollama' under vitest by default so existing
+  // mock-callLocalLLM test patterns keep working. To test the *production*
+  // default of 'claude', we temporarily suppress the VITEST env marker.
+  let savedVitest: string | undefined;
+  beforeEach(() => {
+    savedVitest = process.env['VITEST'];
+    delete process.env['VITEST'];
+  });
+  afterEach(() => {
+    if (savedVitest !== undefined) process.env['VITEST'] = savedVitest;
+    else delete process.env['VITEST'];
+  });
+
+  it('11. Defaults to claude when env unset (production)', () => {
     delete process.env['CLAUDEX_GENERATION_BACKEND'];
     expect(resolveBackend()).toBe('claude');
   });
@@ -322,9 +335,15 @@ describe('generation backend selector', () => {
     expect(resolveBackend()).toBe('ollama');
   });
 
-  it('rejects unknown backend values by defaulting to claude', () => {
+  it('rejects unknown backend values by defaulting to claude (production)', () => {
     process.env['CLAUDEX_GENERATION_BACKEND'] = 'gibberish';
     expect(resolveBackend()).toBe('claude');
+  });
+
+  it('routes to ollama under vitest when no explicit override', () => {
+    process.env['VITEST'] = 'true';
+    delete process.env['CLAUDEX_GENERATION_BACKEND'];
+    expect(resolveBackend()).toBe('ollama');
   });
 
   it('generate() routes to claude subprocess', async () => {
