@@ -193,7 +193,7 @@ export function renderPreamble(slug: string): string {
 
 /**
  * Render the `## Entities` section — top-N entity summaries for the project,
- * ranked by `importance DESC, timestamp_epoch DESC, id ASC`.
+ * ranked by `importance DESC, timestamp_epoch_ms DESC, id ASC`.
  *
  * Reads the legacy `artifacts` table (`artifact_type='entity_summary'`).
  * Per RESEARCH §2: `entity_summary` rows have NOT migrated to V17, so the
