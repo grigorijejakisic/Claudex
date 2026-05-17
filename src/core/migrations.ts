@@ -108,6 +108,7 @@ export { migrateV14toV15 };
  *   35 — Phase 14 Plan 14-06: *_epoch → *_epoch_ms rename + sec→ms scaling across all project tables
  *   36 — Phase 14 Plan 14-05: telemetry event_kind CHECK + 'session_end_action'
  *   37 — Phase 14-07a: V17 unified artifact schema + artifact_id_map + vec_artifact_v17 + re_vectorize_failed telemetry
+ *   38 — Phase 14-07-LINKS-SCHEMA: soft_link + hard_link + hard_link_history (knowledge-graph substrate)
  *
  * Dual version tracking:
  * Both `PRAGMA user_version` and `schema_versions` table are needed:
