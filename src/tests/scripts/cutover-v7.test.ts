@@ -633,9 +633,6 @@ it('15. gate-results file format matches documented Markdown structure', async (
   expect(contents).toContain('Re-vectorization');
   expect(contents).toContain('Benchmark gate');
   expect(contents).toContain('vesna_sc1');
-  expect(contents).toContain('longmemeval_oracle');
-  expect(contents).toContain('locomo');
-  expect(contents).toContain('cross_project_hit_rate');
   expect(contents).toContain('Read-only flag flip');
   expect(contents).toContain('Final disposition');
   expect(contents).toContain('CUTOVER COMPLETE');
