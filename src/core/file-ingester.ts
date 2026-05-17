@@ -17,7 +17,7 @@ import * as fs from 'fs';
 import * as fsp from 'fs/promises';
 import * as path from 'path';
 import * as os from 'os';
-// crypto removed — contentHash was computed but never stored/used
+import { createHash } from 'node:crypto';
 import type { Database } from 'better-sqlite3';
 import { cachedPrepare } from './stmt-cache.js';
 import type { ArtifactType } from './artifacts.js';
