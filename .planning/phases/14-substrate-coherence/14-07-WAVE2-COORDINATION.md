@@ -179,28 +179,24 @@ PM (me) is the only authority for resolving boundary disputes.
 
 ---
 
-## sections.ts function-level ownership
+## sections/links.ts function-level ownership
 
-`src/assembly/sections.ts` is touched by F and G. PM enforces:
+**Wave 0 (w0d) created `src/assembly/sections/links.ts` as a placeholder.**
+F and G both add functions to this file. PM enforces:
 
-| Function | Owner |
-|---|---|
-| `formatPendingReviewLinksSection` | F (new) |
-| `formatProvenanceChainSection` | G (new) |
-| Every existing function | UNTOUCHED by Wave 2 |
+| Function | File | Owner |
+|---|---|---|
+| `formatPendingReviewLinksSection` | `src/assembly/sections/links.ts` | F (new) |
+| `formatProvenanceChainSection` | `src/assembly/sections/links.ts` | G (new) |
+| Every existing function in `sections.ts` | `src/assembly/sections.ts` | UNTOUCHED by Wave 2 |
 
 Constraints:
-- F does NOT modify any function other than its own new
-  `formatPendingReviewLinksSection`.
-- G does NOT modify any function other than its own new
-  `formatProvenanceChainSection`.
-- Both workers add imports at the top of the file. Imports are
-  organized alphabetically; merge conflicts on import block are
-  resolved by re-rebasing G onto F (or vice versa, decided by merge
-  order below).
-- Neither worker modifies type definitions in `sections.ts` unless
-  the new type is exclusively used by their own function. Shared
-  types stay UNTOUCHED.
+- F adds ONLY `formatPendingReviewLinksSection` to `sections/links.ts`.
+- G adds ONLY `formatProvenanceChainSection` to `sections/links.ts`.
+- Both workers must also add the re-export to `sections/index.ts` so the
+  function is available at `from 'assembly/sections.js'`.
+- Neither worker modifies any existing function in `sections.ts`. The old
+  monolithic file is UNTOUCHED by Wave 2 (Wave 0 already split it).
 
 `src/assembly/assembler.ts` is also touched by F and G — for cascade
 wiring only. Constraints:
