@@ -420,7 +420,7 @@ const main = wrapHook('Stop', async (input, ctx) => {
       const activeArtifacts = cachedPrepare(ctx.db,
         `SELECT id FROM artifacts
          WHERE project = ? AND state IN ('fresh', 'materialized')
-         ORDER BY timestamp_epoch DESC LIMIT 20`
+         ORDER BY timestamp_epoch_ms DESC LIMIT 20`
       ).all(routedProject) as Array<{ id: number }>;
       if (activeArtifacts.length > 0) {
         applySessionSuccessBonus(ctx.db, activeArtifacts.map(a => a.id));
