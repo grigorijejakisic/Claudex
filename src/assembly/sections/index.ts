@@ -38,3 +38,7 @@ export {
 // links.ts exports — Wave 2 (14-07f: formatPendingReviewLinksSection; 14-07g: formatProvenanceChainSection):
 export { formatPendingReviewLinksSection } from './links.js';
 export { formatProvenanceChainSection } from './links.js';
+
+// last-session-synthesis.ts exports — Wave 3 (14-07k):
+export { formatLastSessionSynthesisSection } from './last-session-synthesis.js';
+export type { FormatLSSParams } from './last-session-synthesis.js';
