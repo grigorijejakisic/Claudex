@@ -474,6 +474,7 @@ export async function runWave1Benchmarks(opts?: {
   db_path?: string;
   baseline_path?: string;
   runners?: GateRunners | null;
+  cwd?: string;
 }): Promise<BenchmarkRunOutput> {
   const baselines = loadBaselines(opts?.baseline_path);
   const runners = opts?.runners ?? _injectedRunners ?? {
