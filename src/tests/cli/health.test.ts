@@ -55,7 +55,7 @@ describe('checkTables', () => {
     try {
       const result = checkTables(db);
       expect(result.status).toBe('pass');
-      expect(result.message).toContain('22/22');
+      expect(result.message).toContain('24/24');
     } finally {
       db.close();
     }
