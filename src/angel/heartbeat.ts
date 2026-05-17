@@ -48,7 +48,7 @@ import { getPidFilePath } from './pid-file.js';
 import * as path from 'path';
 import * as fs from 'fs';
 import * as os from 'os';
-import { getSessionEvents, synthesizeSessionSummary, saveSessionSummary } from '../core/session-events.js';
+import { getSessionEvents, synthesizeSessionSummary, saveSessionSummary, recordEvent } from '../core/session-events.js';
 import { captureRecallFlowEntry } from '../adapters/shared/lifecycle.js';
 import { writeEnvironmentalEvent } from '../core/episodic-events.js';
 import { GLOBAL_PROJECT_SCOPE } from '../shared/constants.js';
