@@ -79,7 +79,7 @@ describe('checkTables', () => {
       // Empty DB — no tables
       const result = checkTables(db);
       expect(result.status).toBe('fail');
-      expect(result.message).toContain('0/22');
+      expect(result.message).toContain('0/24');
     } finally {
       db.close();
     }
