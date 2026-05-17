@@ -181,9 +181,11 @@ export async function reVectorizeArtifact(
 
   // Upsert into vec_artifact_v17 using artifact rowid as the vec0 rowid.
   // vec0 does not support ON CONFLICT clauses, so we DELETE + INSERT.
-  db.prepare(`DELETE FROM vec_artifact_v17 WHERE rowid = ?`).run(row.rowid);
+  // Coerce rowid to a plain integer (better-sqlite3 may return bigint for large rowids).
+  const vecRowid = Number(row.rowid);
+  db.prepare(`DELETE FROM vec_artifact_v17 WHERE rowid = ?`).run(vecRowid);
   db.prepare(`INSERT INTO vec_artifact_v17(rowid, embedding) VALUES (?, ?)`).run(
-    row.rowid,
+    vecRowid,
     vecBlob
   );
 
