@@ -174,7 +174,7 @@ Add `// 14-07i: codebase-context annotation` comment marker.
 - Score formatted to 2 decimals.
 - Highest-score selection for multi-match.
 - Budget cap respected.
-- No other sections.ts function modified.
+- No other function in sections/codebase-context.ts modified; sections.ts (residual) untouched.
   </verification>
 </task>
 
