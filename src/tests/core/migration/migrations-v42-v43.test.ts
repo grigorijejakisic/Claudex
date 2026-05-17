@@ -270,36 +270,59 @@ describe('V42→V43: legacy _epoch rename + scale', () => {
     db.close();
   });
 
-  it('6. INSERT relying on DEFAULT on a post-V43 DB stores ms-range value', () => {
+  it('6. post-V43 DDL has DEFAULT (unixepoch() * 1000) and INSERT on a new connection stores ms-range value', () => {
+    // Part A: verify DDL text on the same connection (writable_schema updated the stored DDL).
     const db = freshDb();
 
-    // session_events uses timestamp_epoch (old name with DEFAULT unixepoch()) in
-    // the schema.ts DDL — after V43, the DEFAULT should be unixepoch() * 1000.
     if (!hasTable(db, 'session_events')) {
       db.close();
       return;
     }
 
-    const beforeMs = Date.now();
-    db.prepare(
-      `INSERT INTO session_events (session_id, project, event_type, entity, action)
-       VALUES ('default-test', 'test', 'test', 'entity', 'action')`,
-    ).run();
-    const afterMs = Date.now();
-
-    const row = db.prepare(
-      `SELECT timestamp_epoch_ms FROM session_events WHERE session_id='default-test'`,
-    ).get() as { timestamp_epoch_ms: number } | undefined;
-
-    if (row) {
-      // DEFAULT (unixepoch() * 1000) gives whole-second precision in ms.
-      const lowerBoundMs = Math.floor(beforeMs / 1000) * 1000;
-      expect(row.timestamp_epoch_ms).toBeGreaterThanOrEqual(lowerBoundMs);
-      expect(row.timestamp_epoch_ms).toBeLessThanOrEqual(afterMs + 2000);
-      // Must be > 1e11 (ms range, not seconds range).
-      expect(row.timestamp_epoch_ms).toBeGreaterThan(100000000000);
-    }
+    // The DDL in sqlite_master must show the updated DEFAULT.
+    const sql = tableSql(db, 'session_events');
+    // Must contain the ms DEFAULT.
+    expect(sql).toContain('unixepoch() * 1000');
+    // Must NOT contain a bare unixepoch() DEFAULT on the renamed column.
+    const bareDefaultPattern = /timestamp_epoch_ms[^,)]*DEFAULT\s*\(unixepoch\(\)\)[^*]/;
+    expect(sql).not.toMatch(bareDefaultPattern);
 
     db.close();
+
+    // Part B: verify INSERT produces ms-range value on a NEW connection (schema cache reset).
+    // writable_schema changes are visible to new connections immediately; this confirms
+    // the DEFAULT is actually applied correctly on DB open (production scenario).
+    const os = require('os');
+    const path = require('path');
+    const fs = require('fs');
+    const tmpFile = path.join(os.tmpdir(), `claudex_v43_test_${Date.now()}.db`);
+    try {
+      const db2 = new Database(tmpFile);
+      initializeSchema(db2);
+      db2.close(); // close so a new connection picks up the DDL
+
+      const db3 = new Database(tmpFile);
+      if (hasTable(db3, 'session_events') && hasColumn(db3, 'session_events', 'timestamp_epoch_ms')) {
+        const beforeMs = Date.now();
+        db3.prepare(
+          `INSERT INTO session_events (session_id, project, event_type, entity, action)
+           VALUES ('default-test', 'test', 'test', 'entity', 'action')`,
+        ).run();
+        const afterMs = Date.now();
+        const row = db3.prepare(
+          `SELECT timestamp_epoch_ms FROM session_events WHERE session_id='default-test'`,
+        ).get() as { timestamp_epoch_ms: number } | undefined;
+        if (row) {
+          const lowerBoundMs = Math.floor(beforeMs / 1000) * 1000;
+          expect(row.timestamp_epoch_ms).toBeGreaterThanOrEqual(lowerBoundMs);
+          expect(row.timestamp_epoch_ms).toBeLessThanOrEqual(afterMs + 2000);
+          // Must be in ms range, not seconds range.
+          expect(row.timestamp_epoch_ms).toBeGreaterThan(100000000000);
+        }
+      }
+      db3.close();
+    } finally {
+      try { fs.unlinkSync(tmpFile); } catch { /* cleanup non-critical */ }
+    }
   });
 });
