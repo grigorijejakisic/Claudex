@@ -158,14 +158,23 @@ describe('reVectorizeAll', () => {
   it('6. 2-of-10 with injected errors → succeeded=8, failed=2, telemetry rows written', async () => {
     db = buildTestDb(10);
 
-    let callCount = 0;
-    _setOllamaEmbedCallableForTest(() => {
-      callCount++;
-      // Make calls 1 and 2 fail (artifacts 0 and 1), rest succeed.
-      if (callCount <= 2) {
-        return Promise.reject(new Error('Simulated Ollama error'));
+    // Track which artifact IDs have been attempted.
+    const attemptedIds = new Set<string>();
+    let failedArtifactCount = 0;
+    _setOllamaEmbedCallableForTest(async (_text: string) => {
+      // We don't have artifact_id in the callable, so use a counter-based approach.
+      // The first 2 unique artifact attempts permanently fail (all retries throw).
+      // We track via the artifact table order — first 2 artifacts fail, rest succeed.
+      // Use a module-level call counter (reset between tests via afterEach).
+      void attemptedIds; // suppress unused warning
+
+      // Simple approach: fail the first N calls, where N = 2 × 3 (retries) = 6.
+      // After 6 calls, all remaining calls succeed.
+      failedArtifactCount++;
+      if (failedArtifactCount <= 6) {
+        throw new Error('Simulated Ollama error');
       }
-      return Promise.resolve(mockVector(0.5));
+      return mockVector(0.5);
     });
 
     const result = await reVectorizeAll(db, {
@@ -174,9 +183,8 @@ describe('reVectorizeAll', () => {
     });
 
     expect(result.total).toBe(10);
-    // With retries (3 attempts each), artifacts 0 and 1 consume 2+2=4 calls before failing.
-    // The remaining 8 artifacts succeed on first attempt.
-    // callCount ends at 4 + 8 = 12.
+    // Artifacts 0 and 1 each exhaust 3 retries (6 calls total fail).
+    // Remaining 8 artifacts succeed.
     expect(result.failed).toBe(2);
     expect(result.succeeded).toBe(8);
 
