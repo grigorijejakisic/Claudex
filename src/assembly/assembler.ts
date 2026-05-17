@@ -37,6 +37,7 @@ import {
   formatCodebaseContextSection,
 } from './sections.js';
 import { formatProvenanceChainSection, formatPendingReviewLinksSection } from './sections/links.js';
+import { formatLastSessionSynthesisSection } from './sections/last-session-synthesis.js';
 import { getLatestHighlights } from '../intelligence/session-highlights.js';
 import {
   findMatchingPatterns,
