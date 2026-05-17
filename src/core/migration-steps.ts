@@ -3999,14 +3999,29 @@ export function migrateV39toV40(db: Database): void {
       );
     }
 
-    // Step 1.5: drop legacy `_epoch` columns on kind_registry. V14→V15 created
-    // them as NOT NULL (no DEFAULT); V35 added `_epoch_ms` siblings but never
-    // dropped the legacy. Any INSERT that omits the old columns now fails with
-    // "NOT NULL constraint failed: kind_registry.first_seen_epoch". SQLite
-    // 3.35+ supports ALTER TABLE DROP COLUMN (better-sqlite3 bundles 3.45+).
+    // Step 1.5: kind_registry legacy column cleanup. V14→V15 created
+    // first_seen_epoch + last_seen_epoch as NOT NULL with no DEFAULT; V35
+    // added _epoch_ms siblings but never dropped the legacy. Worse, the
+    // `artifact_register_kind` trigger mixed columns (first_seen_epoch_ms
+    // + last_seen_epoch), referencing the legacy column on UPDATE. We
+    // drop the trigger, recreate it consistently against the _ms columns,
+    // then drop the legacy columns. SQLite 3.35+ supports DROP COLUMN
+    // (better-sqlite3 bundles 3.45+).
     if (hasTable(db, 'kind_registry')) {
+      // Always recreate the trigger so the column reference is consistent.
+      db.exec(`DROP TRIGGER IF EXISTS artifact_register_kind`);
+      // Trigger creation depends on the artifact table existing.
+      if (hasTable(db, 'artifact')) {
+        db.exec(`CREATE TRIGGER IF NOT EXISTS artifact_register_kind
+                 AFTER INSERT ON artifact
+                 BEGIN
+                   INSERT INTO kind_registry(kind, first_seen_epoch_ms, last_seen_epoch_ms)
+                     VALUES (NEW.kind, NEW.created_at_epoch_ms, NEW.created_at_epoch_ms)
+                   ON CONFLICT(kind) DO UPDATE SET last_seen_epoch_ms = excluded.last_seen_epoch_ms;
+                 END`);
+      }
       if (hasColumn(db, 'kind_registry', 'first_seen_epoch')) {
-        try { db.exec('ALTER TABLE kind_registry DROP COLUMN first_seen_epoch'); } catch { /* indices/triggers might block — non-fatal */ }
+        try { db.exec('ALTER TABLE kind_registry DROP COLUMN first_seen_epoch'); } catch { /* non-fatal */ }
       }
       if (hasColumn(db, 'kind_registry', 'last_seen_epoch')) {
         try { db.exec('ALTER TABLE kind_registry DROP COLUMN last_seen_epoch'); } catch { /* non-fatal */ }
