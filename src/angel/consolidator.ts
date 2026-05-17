@@ -408,17 +408,27 @@ async function mergePair(
     } catch { /* non-fatal */ }
   }
 
-  // Create artifact for the merged observation
+  // 14-07b: migrated from legacy artifacts — create V17 artifact directly
   try {
-    createArtifact(
-      db,
-      newer.session_id,
-      project,
-      'observation',
-      String(newId),
+    const v17Confidence = newImportance / 5.0;
+    const v17Id = createHash('sha256')
+      .update(`observation:merge:${project}:${newer.session_id}:${newId}:${Date.now()}`)
+      .digest('hex')
+      .slice(0, 32);
+    cachedPrepare(db,
+      `INSERT OR IGNORE INTO artifact(id, kind, title, body, scope, status, confidence,
+          created_at_epoch_ms, updated_at_epoch_ms, session_id, project, data)
+       VALUES (?, 'observation', ?, ?, 'project', 'active', ?, ?, ?, ?, ?, ?)`
+    ).run(
+      v17Id,
       `Merged: ${newer.title}`,
       mergedContent,
-      newImportance,
+      v17Confidence,
+      Date.now(),
+      Date.now(),
+      newer.session_id,
+      project,
+      JSON.stringify({ artifact_ref: String(newId), obs_type: 'consolidated', tool_name: 'angel:consolidator' }),
     );
   } catch { /* non-fatal */ }
 
