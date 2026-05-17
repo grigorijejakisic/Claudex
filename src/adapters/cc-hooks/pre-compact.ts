@@ -51,6 +51,20 @@ const main = wrapHook('PreCompact', async (input, ctx) => {
     emitErrorTelemetry(ctx.db, input.session_id, 'pre_compact/sequence', e);
   }
 
+  // Phase 14-09: termination row marked 'compact'. The "session" is logically
+  // resetting via compaction, even though the same CC process continues. Future
+  // session-start queries treat the pre-compact state as a closed chapter.
+  try {
+    const { last_user_directive, last_assistant_text } = readLastTurnTexts(ctx.db, input.session_id);
+    recordSessionTermination(ctx.db, {
+      session_id: input.session_id,
+      project: ctx.project,
+      end_reason: 'compact',
+      last_user_directive,
+      last_assistant_text,
+    });
+  } catch { /* non-blocking */ }
+
   // Return custom compaction instructions if configured
   const instructions = ctx.config.checkpoint.compaction_instructions;
   if (instructions) {
