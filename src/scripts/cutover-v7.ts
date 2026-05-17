@@ -333,7 +333,8 @@ export async function applyCutover(
   try {
     rvResult = await reVectorizeAll(db, {
       batch_size: 100,
-      retry_base_delay_ms: opts.gateRunners !== undefined ? 0 : 500, // No sleep in test mode.
+      // Use 0 retry delay when a DI callable is injected (test mode) to avoid slow tests.
+      retry_base_delay_ms: opts.ollamaCallable !== undefined ? 0 : 500,
       on_progress: (done, total) => {
         if (done % 100 === 0 || done === total) {
           log(`  [B] Re-vectorized ${done}/${total} rows...`);
