@@ -104,7 +104,7 @@ After this plan lands:
 @src/angel/memory-md-writer.ts
 @src/angel/lesson-writer.ts
 @src/intelligence/experience-tier.ts
-@src/assembly/sections.ts
+@src/assembly/sections/lessons.ts
 </context>
 
 <anti_scope>
