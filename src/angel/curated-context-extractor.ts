@@ -446,9 +446,11 @@ export async function extractCuratedContextFromSession(
 
   let raw: string;
   try {
-    raw = await callLocalLLM({
+    raw = await generate({
       system: EXTRACTION_SYSTEM_PROMPT,
       prompt: transcript,
+      model: 'sonnet',
+      subsystem: 'curated_context',
     });
   } catch {
     // Transient — do NOT mark extracted. Retry next tick.
