@@ -5,6 +5,7 @@
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import Database from 'better-sqlite3';
+import { createHash } from 'node:crypto';
 import { initializeSchema } from '../../core/migrations.js';
 import { DEFAULT_RETENTION_CONFIG, type RetentionConfig } from '../../angel/types.js';
 
