@@ -401,12 +401,12 @@ export function renderHandoff(project: string): string {
  * foreground for newly-written files without the field).
  *
  * Pointer line format (CUR-10):
- *   - [<salience>](filename) — task-pattern: <task_shape>
+ *   - [<display>](filename) — task-pattern: <task_shape>
  *
  * Where:
- *   - <salience> = first non-blank body line, trimmed, with markdown
- *     heading/list markers stripped. Truncated to fit ≤ POINTER_LINE_MAX_CHARS
- *     total line length.
+ *   - <display> = frontmatter.trigger if present (truncated to 120 chars), else
+ *     first non-blank body line, trimmed, with markdown heading/list markers stripped.
+ *     Phase 14-07h: use trigger-style display when trigger field is populated.
  *   - <filename> = lesson basename (e.g., feedback_check_deps.md).
  *   - <task_shape> = frontmatter.shape.task_shape, or 'unclassified' if
  *     shape was abstained (per CONTEXT.md abstain-allowed rule).
@@ -445,14 +445,17 @@ export function renderLessons(project: string): string {
 
   for (const lesson of top) {
     const taskShape = lesson.frontmatter.shape?.task_shape ?? 'unclassified';
-    const salience = extractLessonSalience(lesson.body);
+    // Phase 14-07h: use trigger frontmatter when available; fall back to truncated body.
+    const rawDisplay = lesson.frontmatter.trigger?.trim()
+      ? lesson.frontmatter.trigger.trim().slice(0, 120)
+      : extractLessonSalience(lesson.body);
     const tail = `](${lesson.filename}) — task-pattern: ${taskShape}`;
     const head = '- [';
     const availableSalienceChars = Math.max(10, POINTER_LINE_MAX_CHARS - head.length - tail.length);
-    const truncatedSalience = salience.length > availableSalienceChars
-      ? salience.slice(0, availableSalienceChars - 1) + '…'
-      : salience;
-    lines.push(`${head}${truncatedSalience}${tail}`);
+    const truncatedDisplay = rawDisplay.length > availableSalienceChars
+      ? rawDisplay.slice(0, availableSalienceChars - 1) + '…'
+      : rawDisplay;
+    lines.push(`${head}${truncatedDisplay}${tail}`);
   }
 
   return lines.join('\n') + '\n';
