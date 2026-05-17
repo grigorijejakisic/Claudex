@@ -134,6 +134,10 @@ export function measureHitRate(
 ): HitRateResult {
   // Substantive types per post-Plan-14-03 candidate pool definition.
   // Excludes target project (same-project candidates are routed elsewhere).
+  // CONFIDENCE FLOOR: matches v6.6.0 methodology's `importance >= 4` filter
+  // (importance/5 = confidence; importance=4 → confidence=0.8). Without this
+  // floor, raw single-tool-call observations flood the pool and drive noise
+  // rate above the 0.20 baseline.
   const rows = db
     .prepare(
       `
@@ -142,6 +146,7 @@ export function measureHitRate(
         WHERE project != ?
           AND kind IN ('learning', 'memory_file', 'flow', 'milestone', 'observation', 'decision', 'experience_pattern')
           AND status = 'active'
+          AND confidence >= 0.8
         ORDER BY created_at_epoch_ms DESC
         LIMIT ?
       `,
