@@ -20,6 +20,8 @@ import {
   validateHandoffHeader,
   writeHandoff,
 } from '../../angel/handoff-writer.js';
+import { applyV17DDL } from '../../core/migration/v17-ddl.js';
+import { migrateV37toV38 } from '../../core/migration-steps.js';
 
 let tmpDir: string;
 
