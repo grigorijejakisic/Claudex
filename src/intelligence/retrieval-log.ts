@@ -59,11 +59,17 @@ export interface AggregateSessionCost {
 /**
  * Insert a single retrieval event. Non-throwing — returns the inserted row id
  * or 0 on failure. Logging must never break the retrieval response.
+ *
+ * Phase 14-07d: after the primary write, emits `references` soft links from
+ * the retrieval log's V17 artifact ID (if present in artifact table) to each
+ * referenced artifact's V17 ID. Emission is post-write, non-blocking, and
+ * silently skipped when the retrieval log entry has no V17 artifact row.
  */
 export function recordRetrieval(
   db: Database,
   input: RetrievalLogInput,
 ): number {
+  let logId = 0;
   try {
     const tokenCost = countTokensCl100k(input.responseText);
     const ts = input.invokedAtEpochMs ?? Date.now();
@@ -73,10 +79,46 @@ export function recordRetrieval(
          (session_id, invoked_at_epoch_ms, surface, query, top_k_results, used_in_output, token_cost)
        VALUES (?, ?, ?, ?, ?, 0, ?)`
     ).run(input.sessionId, ts, input.surface, input.query, json, tokenCost);
-    return Number(result.lastInsertRowid) || 0;
+    logId = Number(result.lastInsertRowid) || 0;
   } catch {
     return 0;
   }
+
+  // 14-07d: emit references soft links (post-write; non-blocking).
+  if (logId > 0 && input.topKResults && input.topKResults.length > 0) {
+    try {
+      // Look up the retrieval log's V17 artifact ID. Retrieval log entries
+      // may be represented in the artifact table post-Wave-1 migration as
+      // kind='retrieval_log'. If not found, skip silently.
+      const logArtifact = db.prepare(
+        `SELECT id FROM artifact WHERE kind = 'retrieval_log' AND session_id = ? AND project = (
+           SELECT project FROM sessions WHERE session_id = ? LIMIT 1
+         ) ORDER BY created_at_epoch_ms DESC LIMIT 1`
+      ).get(input.sessionId, input.sessionId) as { id: string } | undefined;
+
+      if (logArtifact) {
+        // Collect V17 artifact IDs from the topKResults. Only string IDs are
+        // valid V17 IDs; integer IDs are legacy and cannot be used directly
+        // as soft_link dst (they're not in the artifact table by that integer key).
+        const referencedIds: string[] = input.topKResults
+          .map(r => r.id)
+          .filter((id): id is string => typeof id === 'string' && id.length > 0);
+
+        if (referencedIds.length > 0) {
+          recordReferences({
+            db,
+            session_id: input.sessionId,
+            src_artifact_id: logArtifact.id,
+            referenced_artifact_ids: referencedIds,
+          });
+        }
+      }
+    } catch {
+      // Non-fatal: soft-link emission errors must never surface to callers.
+    }
+  }
+
+  return logId;
 }
 
 /**
