@@ -26,7 +26,7 @@ interface RecallResult {
 }
 
 function formatResults(artifacts: ArtifactRow[]): RecallResult[] {
-  const now = Math.floor(Date.now() / 1000);
+  const nowMs = Date.now();
   return artifacts.map(a => {
     const isFile = a.artifact_type === 'memory_file' || a.artifact_type === 'session_log' || a.artifact_type === 'handoff';
     return {
@@ -34,7 +34,7 @@ function formatResults(artifacts: ArtifactRow[]): RecallResult[] {
       summary: a.summary,
       provenance: isFile && a.artifact_ref ? path.basename(a.artifact_ref) : `artifact #${a.id}`,
       importance: a.importance,
-      age_seconds: a.timestamp_epoch ? now - a.timestamp_epoch : -1,
+      age_seconds: a.timestamp_epoch_ms ? Math.floor((nowMs - a.timestamp_epoch_ms) / 1000) : -1,
     };
   });
 }
