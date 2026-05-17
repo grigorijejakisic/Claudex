@@ -117,13 +117,13 @@ PM (me) is the only authority for resolving boundary disputes.
 
 ### Plan 14-07j (Worker J — link-aware lesson inline-expansion) owns
 
-- `src/assembly/sections.ts` — touches the **lessons section
-  formatter** that H also touches. **CRITICAL coordination point:**
+- `src/assembly/sections/lessons.ts` — touches the **lessons section
+  formatters** that H also touches. **CRITICAL coordination point:**
   J extends H's lessons section to inline-expand top-K lessons by
   trigger match + link distance. PM enforces: H ships first; J
-  rebases onto H's landed lessons-section function and ADDS the
-  inline-expansion behavior as additional functionality, not a
-  rewrite.
+  rebases onto H's landed lessons-section function in
+  `sections/lessons.ts` and ADDS the inline-expansion behavior as
+  additional functionality, not a rewrite.
 - `src/intelligence/lesson-relevance.ts` (NEW) — computes
   "relevance score" per lesson = function of trigger match strength
   + link distance to current pivot. Reads link graph via Wave 2
