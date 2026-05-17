@@ -152,13 +152,13 @@ describe('graphWalkFromSeeds', () => {
     expect(results[0].walkScore).toBeGreaterThan(0);
   });
 
-  it('excludes invalidated links (invalid_at_epoch set)', () => {
+  it('excludes invalidated links (invalid_at_epoch_ms set)', () => {
     const a1 = makeArtifact(db, 'Seed');
     const a2 = makeArtifact(db, 'Valid neighbor');
     const a3 = makeArtifact(db, 'Invalid neighbor');
 
     insertLink(db, a1, a2, 'related', 0.8, null);
-    insertLink(db, a1, a3, 'related', 0.8, Math.floor(Date.now() / 1000));
+    insertLink(db, a1, a3, 'related', 0.8, Date.now());
 
     const results = graphWalkFromSeeds(db, [a1]);
     const ids = results.map(r => r.artifactId);
