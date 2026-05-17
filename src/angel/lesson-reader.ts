@@ -107,6 +107,8 @@ interface ParserState {
   shape?: ShapeHandles;
   tier?: 'foreground' | 'background';
   last_fired_at_epoch?: number;
+  // Phase 14-07h: trigger field
+  trigger?: string;
 }
 
 function parseFrontmatter(raw: string): LessonFrontmatter | null {
