@@ -239,10 +239,10 @@ describe('classifyTurnAsDecisionBoundary', () => {
 
     // Check for the session message.
     const msg = db.prepare(
-      `SELECT message FROM session_messages WHERE message LIKE 'Handoff refreshed:%' LIMIT 1`,
-    ).get() as { message: string } | undefined;
+      `SELECT content FROM session_messages WHERE content LIKE 'Handoff refreshed:%' LIMIT 1`,
+    ).get() as { content: string } | undefined;
     expect(msg).toBeDefined();
-    expect(msg!.message).toContain('Operator confirmed deploy plan');
+    expect(msg!.content).toContain('Operator confirmed deploy plan');
   });
 
   it('throttle: second call within 60s skipped, telemetry chr_throttled', async () => {
