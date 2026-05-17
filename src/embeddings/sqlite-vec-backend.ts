@@ -30,6 +30,10 @@
  *     rowid. This way the two backends agree on ID→rowid mapping during
  *     the dual-backend period, which simplifies cross-validation.
  *
+ * 14-07b: Added searchArtifactsVecV17() which JOINs vec_artifact_v17 with
+ * the V17 unified artifact table instead of the legacy vec_artifacts + artifacts.
+ * The legacy searchArtifactsVec() is retained for pre-migration callers.
+ *
  * All functions are non-throwing (safe defaults: false for writes, []
  * for searches).
  */

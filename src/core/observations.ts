@@ -7,6 +7,7 @@ import type { Database } from 'better-sqlite3';
 import { cachedPrepare } from './stmt-cache.js';
 import { CONTENT_MAX_CHARS } from '../shared/constants.js';
 import { truncateText } from '../shared/text-utils.js';
+import { lookupV17ByLegacy } from './artifact-id-map.js';
 
 /** Result of dedup check, returned by insertObservationWithDedup. */
 export interface DedupResult {
