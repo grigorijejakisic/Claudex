@@ -3793,26 +3793,36 @@ export function migrateV38toV37(db: Database): void {
 /**
  * Forward migration: V38 → V39.
  *
- * Creates the `handoff_refresh_state` table used by the Continuous Handoff
- * Refresh (CHR) system (Phase 14-07l) to track per-session throttle state.
+ * Two changes:
  *
- * Schema:
- *   - session_id TEXT PRIMARY KEY — one row per active session
- *   - project TEXT NOT NULL — project this session belongs to
- *   - last_refresh_epoch_ms INTEGER NOT NULL — epoch_ms of last CHR refresh
- *   - refresh_count INTEGER NOT NULL DEFAULT 0 — total refreshes for session
- *   - updated_at_epoch_ms INTEGER NOT NULL — last upsert timestamp
+ * 1. Creates the `handoff_refresh_state` table used by the Continuous Handoff
+ *    Refresh (CHR) system (Phase 14-07l) to track per-session throttle state.
  *
- * Index: idx_handoff_refresh_session ON handoff_refresh_state(session_id)
- * (PK already covers this; the explicit index is kept for plan contract compliance.)
+ *    Schema:
+ *      - session_id TEXT PRIMARY KEY — one row per active session
+ *      - project TEXT NOT NULL — project this session belongs to
+ *      - last_refresh_epoch_ms INTEGER NOT NULL — epoch_ms of last CHR refresh
+ *      - refresh_count INTEGER NOT NULL DEFAULT 0 — total refreshes for session
+ *      - updated_at_epoch_ms INTEGER NOT NULL — last upsert timestamp
  *
- * Migration is idempotent: CREATE TABLE IF NOT EXISTS guards prevent double-apply.
+ * 2. Extends the `telemetry` table's event_kind CHECK constraint to include
+ *    the new CHR event kinds and previously-unlisted soft-link event kinds.
+ *    New kinds added:
+ *      - soft_link_skipped, soft_link_write_failed (14-07d, previously silently failed)
+ *      - chr_boundary_detected, chr_no_boundary, chr_classify_failed, chr_throttled (14-07l)
+ *
+ *    Method: recreate the telemetry table (same pattern as V35→V36 for session_end_action).
+ *    Existing rows are copied; rows with unknown event_kind would be dropped (none expected
+ *    at this schema level — the prior schema already covers all known kinds before V39).
+ *
+ * Migration is idempotent: `IF NOT EXISTS` guards throughout.
  * Wrapped in a single transaction for atomicity.
  *
- * Reverse: `migrateV39toV38` — drops the table (rollback only).
+ * Reverse: `migrateV39toV38` — drops handoff_refresh_state; reverts telemetry schema.
  */
 export function migrateV38toV39(db: Database): void {
   const tx = db.transaction(() => {
+    // 1. handoff_refresh_state table.
     db.exec(`
       CREATE TABLE IF NOT EXISTS handoff_refresh_state (
         session_id            TEXT PRIMARY KEY,
@@ -3824,6 +3834,79 @@ export function migrateV38toV39(db: Database): void {
       CREATE INDEX IF NOT EXISTS idx_handoff_refresh_session
         ON handoff_refresh_state(session_id);
     `);
+
+    // 2. Extend telemetry CHECK constraint (same pattern as V35→V36 for session_end_action).
+    // Only proceed if telemetry table exists.
+    const hasTelemetry = db.prepare(
+      "SELECT COUNT(*) AS cnt FROM sqlite_master WHERE type='table' AND name='telemetry'"
+    ).get() as { cnt: number };
+
+    if (hasTelemetry.cnt > 0) {
+      // Check whether the table already accepts chr_boundary_detected.
+      // If it does, the constraint was already extended — skip.
+      let alreadyExtended = false;
+      try {
+        db.prepare(`INSERT INTO telemetry(session_id, event_kind, detail, adapter) VALUES('_probe','chr_boundary_detected','{}','probe')`).run();
+        db.prepare(`DELETE FROM telemetry WHERE session_id='_probe' AND event_kind='chr_boundary_detected'`).run();
+        alreadyExtended = true;
+      } catch { /* constraint rejected — needs migration */ }
+
+      if (!alreadyExtended) {
+        db.exec(`ALTER TABLE telemetry RENAME TO telemetry_v38;`);
+        db.exec(`DROP INDEX IF EXISTS idx_telemetry_session;`);
+        db.exec(`DROP INDEX IF EXISTS idx_telemetry_kind;`);
+
+        db.exec(`
+          CREATE TABLE IF NOT EXISTS telemetry (
+            id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+            session_id          TEXT NOT NULL,
+            event_kind          TEXT NOT NULL CHECK (event_kind IN (
+              'hook_invocation', 'injection', 'observation_capture', 'decision_capture',
+              'checkpoint_write', 'enrichment', 'topic_shift', 'dedup', 'decay_prune', 'error',
+              'reranker_fallback',
+              'cross_project_ambiguous', 'cross_project_query_expansion',
+              'episodic_write_failure',
+              'signal_reread_after_surface', 'signal_retrieval_fallback',
+              'signal_transcript_injection_acceptance', 'signal_retrieved_but_unapplied',
+              'handoff_parse_failed',
+              'session_end_action',
+              're_vectorize_failed',
+              'soft_link_skipped', 'soft_link_write_failed',
+              'chr_boundary_detected', 'chr_no_boundary', 'chr_classify_failed', 'chr_throttled'
+            )),
+            detail              TEXT NOT NULL DEFAULT '{}' CHECK (json_valid(detail)),
+            latency_ms          REAL,
+            timestamp_epoch_ms  INTEGER NOT NULL DEFAULT (unixepoch() * 1000),
+            adapter             TEXT DEFAULT 'unknown'
+          );
+          CREATE INDEX IF NOT EXISTS idx_telemetry_session ON telemetry(session_id, timestamp_epoch_ms DESC);
+          CREATE INDEX IF NOT EXISTS idx_telemetry_kind ON telemetry(event_kind, timestamp_epoch_ms DESC);
+        `);
+
+        // Copy existing rows; filter out any rows with unknown event_kind (none expected).
+        db.exec(`
+          INSERT INTO telemetry (id, session_id, event_kind, detail, latency_ms, timestamp_epoch_ms, adapter)
+          SELECT id, session_id, event_kind, detail, latency_ms, timestamp_epoch_ms, adapter
+          FROM telemetry_v38
+          WHERE event_kind IN (
+            'hook_invocation', 'injection', 'observation_capture', 'decision_capture',
+            'checkpoint_write', 'enrichment', 'topic_shift', 'dedup', 'decay_prune', 'error',
+            'reranker_fallback',
+            'cross_project_ambiguous', 'cross_project_query_expansion',
+            'episodic_write_failure',
+            'signal_reread_after_surface', 'signal_retrieval_fallback',
+            'signal_transcript_injection_acceptance', 'signal_retrieved_but_unapplied',
+            'handoff_parse_failed',
+            'session_end_action',
+            're_vectorize_failed',
+            'soft_link_skipped', 'soft_link_write_failed',
+            'chr_boundary_detected', 'chr_no_boundary', 'chr_classify_failed', 'chr_throttled'
+          );
+        `);
+
+        db.exec(`DROP TABLE telemetry_v38;`);
+      }
+    }
 
     // Stamp version.
     db.pragma('user_version = 39');
