@@ -393,19 +393,61 @@ export async function backfillEmbeddings(
     let remaining = batchSize;
     let charBudget = BACKFILL_CHAR_BUDGET;
 
-    // 1. Artifacts without embeddings (highest priority)
+    // 1. V17 artifacts without embeddings (highest priority).
+    //    14-07b: migrated from legacy artifacts — backfill now targets V17 artifact table.
+    //    Detect unembedded V17 artifacts via LEFT JOIN absence on vec_artifact_v17.
     if (remaining > 0 && charBudget > 0) {
-      const unembedded = db.prepare(
-        `SELECT id, content, summary, project, artifact_type, importance, session_id, timestamp_epoch_ms
-         FROM artifacts
-         WHERE embedding IS NULL AND state != 'packed' AND content IS NOT NULL
-         LIMIT ?`
-      ).all(remaining) as Array<{
+      let v17Unembedded: Array<{
+        id: string; title: string | null; body: string; project: string;
+        kind: string; confidence: number | null; session_id: string | null; artifact_rowid: number;
+      }> = [];
+      try {
+        v17Unembedded = db.prepare(
+          `SELECT a.id, a.title, a.body, a.project, a.kind, a.confidence,
+                  a.session_id, a.rowid AS artifact_rowid
+           FROM artifact a
+           LEFT JOIN vec_artifact_v17 v ON v.rowid = a.rowid
+           WHERE v.rowid IS NULL
+             AND a.body IS NOT NULL
+           ORDER BY a.confidence DESC
+           LIMIT ?`
+        ).all(remaining) as typeof v17Unembedded;
+      } catch { /* vec_artifact_v17 may not exist yet — skip V17 backfill */ }
+
+      for (const art of v17Unembedded) {
+        if (charBudget <= 0) break;
+        try {
+          const text = `${art.title ?? ''}\n${art.body}`.trim();
+          if (!text || text.length < 10) continue;
+          charBudget -= text.length;
+          const ok = await embedArtifactV17(db, art.id, art.artifact_rowid, text, {
+            project: art.project,
+            kind: art.kind,
+            confidence: art.confidence ?? 0.6,
+            session_id: art.session_id ?? '',
+            title: art.title ?? '',
+          });
+          if (ok) { result.artifacts++; remaining--; }
+        } catch { result.errors++; }
+      }
+    }
+
+    // 1b. Legacy artifacts without embeddings (backward compat — pre-14-07b rows).
+    if (remaining > 0 && charBudget > 0) {
+      let legacyUnembedded: Array<{
         id: number; content: string; summary: string; project: string;
         artifact_type: string; importance: number; session_id: string; timestamp_epoch_ms: number;
-      }>;
+      }> = [];
+      try {
+        legacyUnembedded = db.prepare(
+          `SELECT id, content, summary, project, artifact_type, importance, session_id, timestamp_epoch_ms
+           FROM artifacts
+           WHERE embedding IS NULL AND state != 'packed' AND content IS NOT NULL
+           LIMIT ?`
+        ).all(remaining) as typeof legacyUnembedded;
+      } catch { /* artifacts table may not exist in some test DBs — skip */ }
 
-      for (const art of unembedded) {
+      for (const art of legacyUnembedded) {
         if (charBudget <= 0) break;
         try {
           const text = art.summary || art.content;
