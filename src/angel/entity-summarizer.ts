@@ -83,18 +83,23 @@ function computeTrend(earliest: number, latest: number, mentionCount: number): s
 
 /**
  * Check if an entity summary exists and is current (evidence count matches).
+ *
+ * 14-07b: migrated from legacy artifacts — reads from V17 artifact table.
+ * V17 field mapping: content → body, metadata → data JSON sidecar,
+ * artifact_type='entity_summary' → kind='entity_summary',
+ * ref → data.entity_ref.
  */
 function getExistingSummary(
   db: Database,
   entityName: string,
-): { id: number; content: string; metadata: string } | null {
+): { id: string; body: string; data: string } | null {
   try {
     return cachedPrepare(db,
-      `SELECT id, content, metadata FROM artifacts
-       WHERE artifact_type = 'entity_summary'
-         AND ref = ?
+      `SELECT id, body, data FROM artifact
+       WHERE kind = 'entity_summary'
+         AND json_extract(data, '$.entity_ref') = ?
        LIMIT 1`
-    ).get(`entity:${entityName.toLowerCase()}`) as { id: number; content: string; metadata: string } | null;
+    ).get(`entity:${entityName.toLowerCase()}`) as { id: string; body: string; data: string } | null;
   } catch {
     return null;
   }
