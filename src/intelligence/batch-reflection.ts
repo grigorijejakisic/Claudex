@@ -166,10 +166,10 @@ export function shouldRunReflection(db: Database, project: string): boolean {
     // Get last reflection epoch from checkpoint_tracking
     const guardKey = `${REFLECTION_GUARD_KEY}${project}`;
     const guard = cachedPrepare(db,
-      'SELECT last_checkpoint_epoch FROM checkpoint_tracking WHERE session_id = ?'
-    ).get(guardKey) as { last_checkpoint_epoch: number | null } | undefined;
+      'SELECT last_checkpoint_epoch_ms FROM checkpoint_tracking WHERE session_id = ?'
+    ).get(guardKey) as { last_checkpoint_epoch_ms: number | null } | undefined;
 
-    const lastReflectionEpochMs = (guard?.last_checkpoint_epoch ?? 0) * 1000; // guard uses seconds
+    const lastReflectionEpochMs = guard?.last_checkpoint_epoch_ms ?? 0;
 
     // Count sessions for this project since last reflection (ms precision).
     const MAX_SANE_EPOCH_MS = 4_102_444_800_000; // 2100-01-01 in ms
