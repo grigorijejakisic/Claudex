@@ -246,6 +246,20 @@ export interface ScoredArtifact extends ArtifactRow {
     rrf_recency: number;
     three_factor: number;
   };
+  // 14-07i: retrieval metadata — additive fields; existing callers unaffected
+  /**
+   * The query string that retrieved this candidate, truncated to 200 chars.
+   * Populated by hybridSearchSync and hybridSearchAsync; undefined when the
+   * source query was empty or metadata was not available.
+   */
+  match_query?: string;
+  /**
+   * Which retrieval channel was responsible for this candidate's highest score.
+   * 'fts' = FTS5 keyword match, 'vector' = Qdrant KNN, 'reranker' is NOT used
+   * here — reranker re-orders candidates but is not a source channel.
+   * Undefined when the candidate appears only in the recency/graph channel.
+   */
+  match_kind?: 'fts' | 'vector';
 }
 
 /** Result from a single retrieval channel, pre-merge. */
