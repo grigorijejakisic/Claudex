@@ -93,9 +93,10 @@ function viewProjectionForCol(legacyTable: LegacyTable, col: LegacyColSpec): str
   // Kernel column
   if (col.storage.kind === 'kernel') {
     const kernelCol = col.storage.col;
-    // experience_patterns.created_at_epoch + decisions.timestamp_epoch + learnings.updated_at_epoch
-    // live in v3 as seconds; kernel stores ms. Divide to restore v3 shape where we know the
-    // legacy column name matches 'created_at_epoch' and kernel stored ms.
+    // experience_patterns.created_at_epoch + decisions.timestamp_epoch_ms + learnings.updated_at_epoch
+    // live in v3 as seconds (except decisions.timestamp_epoch_ms which is already ms);
+    // kernel stores ms. Divide to restore v3 shape where we know the legacy column name matches
+    // 'created_at_epoch' and kernel stored ms.
     // kind-mapping.col values are still 'created_at_epoch'/'updated_at_epoch' (legacy names);
     // map to the canonical _ms column names in the artifact kernel.
     if (kernelCol === 'created_at_epoch' || kernelCol === 'updated_at_epoch') {
