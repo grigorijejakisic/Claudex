@@ -1,65 +1,65 @@
 {
-  "captured_at": "2026-05-17T01:04:41.817Z",
+  "captured_at": "2026-05-17T01:32:19.413Z",
   "probe_count": 11,
   "baseline": {
-    "passRate": 1,
-    "passCount": 11,
+    "passRate": 0,
+    "passCount": 0,
     "total": 11,
     "perCategoryPassRate": {
       "lesson": {
-        "passed": 4,
+        "passed": 0,
         "total": 4,
-        "rate": 1
+        "rate": 0
       },
       "entity": {
-        "passed": 3,
+        "passed": 0,
         "total": 3,
-        "rate": 1
+        "rate": 0
       },
       "constraint": {
-        "passed": 2,
+        "passed": 0,
         "total": 2,
-        "rate": 1
+        "rate": 0
       },
       "handoff": {
-        "passed": 2,
+        "passed": 0,
         "total": 2,
-        "rate": 1
+        "rate": 0
       }
     }
   },
   "all_disabled": {
-    "passRate": 1,
-    "passCount": 11,
+    "passRate": 0,
+    "passCount": 0,
     "total": 11,
     "perCategoryPassRate": {
       "lesson": {
-        "passed": 4,
+        "passed": 0,
         "total": 4,
-        "rate": 1
+        "rate": 0
       },
       "entity": {
-        "passed": 3,
+        "passed": 0,
         "total": 3,
-        "rate": 1
+        "rate": 0
       },
       "constraint": {
-        "passed": 2,
+        "passed": 0,
         "total": 2,
-        "rate": 1
+        "rate": 0
       },
       "handoff": {
-        "passed": 2,
+        "passed": 0,
         "total": 2,
-        "rate": 1
+        "rate": 0
       }
     }
   },
   "sweep": [
     {
       "disabled": "recency",
-      "enabledRate": 1,
-      "disabledRate": 1,
+      "enabledRate": 0,
+      "disabledRate": 0,
       "deltaPp": 0,
       "perCategoryDeltaPp": {
         "lesson": 0,
@@ -72,8 +72,8 @@
     },
     {
       "disabled": "importance",
-      "enabledRate": 1,
-      "disabledRate": 1,
+      "enabledRate": 0,
+      "disabledRate": 0,
       "deltaPp": 0,
       "perCategoryDeltaPp": {
         "lesson": 0,
@@ -86,8 +86,8 @@
     },
     {
       "disabled": "relevance",
-      "enabledRate": 1,
-      "disabledRate": 1,
+      "enabledRate": 0,
+      "disabledRate": 0,
       "deltaPp": 0,
       "perCategoryDeltaPp": {
         "lesson": 0,
@@ -100,8 +100,8 @@
     },
     {
       "disabled": "retrieval",
-      "enabledRate": 1,
-      "disabledRate": 1,
+      "enabledRate": 0,
+      "disabledRate": 0,
       "deltaPp": 0,
       "perCategoryDeltaPp": {
         "lesson": 0,
@@ -114,8 +114,8 @@
     },
     {
       "disabled": "novelty",
-      "enabledRate": 1,
-      "disabledRate": 1,
+      "enabledRate": 0,
+      "disabledRate": 0,
       "deltaPp": 0,
       "perCategoryDeltaPp": {
         "lesson": 0,
@@ -128,8 +128,8 @@
     },
     {
       "disabled": "activation",
-      "enabledRate": 1,
-      "disabledRate": 1,
+      "enabledRate": 0,
+      "disabledRate": 0,
       "deltaPp": 0,
       "perCategoryDeltaPp": {
         "lesson": 0,

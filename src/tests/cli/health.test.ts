@@ -55,7 +55,7 @@ describe('checkTables', () => {
     try {
       const result = checkTables(db);
       expect(result.status).toBe('pass');
-      expect(result.message).toContain('21/21');
+      expect(result.message).toContain('22/22'); // 14-07b: artifact (V17) added
     } finally {
       db.close();
     }
