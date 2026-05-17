@@ -472,6 +472,20 @@ export async function heartbeatTick(ctx: HeartbeatContext): Promise<TickResult> 
         }
       }
     }
+    // Phase 14-08: drain CHR async queue. Stop hook enqueues per-turn
+    // classification rows; we drain up to DRAIN_BATCH_SIZE per tick using the
+    // Claude subprocess backend. The 60s handoff_refresh_state throttle
+    // applies inside classifyTurnAsDecisionBoundary — within-throttle rows
+    // are marked processed without firing a refresh.
+    try {
+      const { drainChrQueue } = await import('./chr-async.js');
+      const chrResult = await drainChrQueue(ctx.db);
+      if (chrResult.drained > 0) {
+        console.log(`[hb-trace] chr-drain drained=${chrResult.drained} refreshed=${chrResult.refreshed} no_boundary=${chrResult.no_boundary} errors=${chrResult.errors} ${Date.now() - start}ms`);
+      }
+    } catch {
+      // Non-fatal — CHR drain failure must not break the heartbeat.
+    }
     console.log(`[hb-trace] pre-curated-extract ${Date.now() - start}ms`);
     // Phase 12: Curated Context Extraction — scan completed sessions for
     // reframes, directives, and other high-signal statements that belong in
