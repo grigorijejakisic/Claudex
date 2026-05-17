@@ -326,7 +326,7 @@ New test file. Tests:
 - AC-4: Walker detects cycles; emits telemetry; no infinite loop.
 - AC-5: Walker excludes 'contradicts' links.
 - AC-6: Walker excludes PENDING hard links.
-- AC-7: `formatProvenanceChainSection` added to sections.ts as the ONLY new function from this plan.
+- AC-7: `formatProvenanceChainSection` added to `sections/links.ts` as the ONLY new function from this plan; re-exported from `sections/index.ts`.
 - AC-8: Heuristic gate: renders only when pivot mentions decision/checkpoint OR explicit ID supplied.
 - AC-9: Chain length <= 1 returns null (no section).
 - AC-10: Cascade position P2.9 (after 14-07f's P2.8).
