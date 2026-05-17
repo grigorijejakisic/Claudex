@@ -82,7 +82,7 @@ async function main() {
     if (sessionObs) {
       for (const [speaker, facts] of Object.entries(sessionObs)) {
         for (const [fact] of facts) {
-          cachedPrepare(db, `INSERT INTO artifacts (project, session_id, artifact_type, content, summary, importance, timestamp_epoch) VALUES (?, ?, 'observation', ?, ?, 4, ?)`).run(conv.sample_id, sid, fact, `[${speaker}] ${fact}`, sn * 86400);
+          cachedPrepare(db, `INSERT INTO artifacts (project, session_id, artifact_type, content, summary, importance, timestamp_epoch_ms) VALUES (?, ?, 'observation', ?, ?, 4, ?)`).run(conv.sample_id, sid, fact, `[${speaker}] ${fact}`, sn * 86400 * 1000);
         }
       }
     }
