@@ -250,12 +250,12 @@ function buildKernelInsertMap(m: KindMapping): KernelFills {
       fills.updated_at_epoch = `COALESCE(NEW.updated_at_epoch * 1000, unixepoch() * 1000)`;
       break;
     case 'decision':
-      // v3 decisions: timestamp_epoch (seconds) + updated_at_epoch (seconds). No created_at_epoch column.
+      // decisions: timestamp_epoch_ms (ms) + updated_at_epoch (seconds). No created_at_epoch column.
       fills.title = `substr(NEW.content, 1, 80)`;
       fills.body = `NEW.content`;
       fills.session_id = `NEW.session_id`;
       fills.project_id = `NEW.project`;
-      fills.created_at_epoch = `COALESCE(NEW.timestamp_epoch * 1000, unixepoch() * 1000)`;
+      fills.created_at_epoch = `COALESCE(NEW.timestamp_epoch_ms, unixepoch() * 1000)`;
       fills.updated_at_epoch = `COALESCE(NEW.updated_at_epoch * 1000, unixepoch() * 1000)`;
       break;
     case 'experience_pattern':
