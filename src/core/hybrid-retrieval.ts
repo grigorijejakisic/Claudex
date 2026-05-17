@@ -934,12 +934,13 @@ export async function hybridSearchAsync(
     try {
       const timeRange = parseTemporalExpression(query);
       if (timeRange) {
-        const temporalSuperseded = excludeSuperseded ? 'AND superseded_by IS NULL' : '';
-        const temporalProject = globalScope ? '' : 'AND project = ?';
-        const temporalSql = `SELECT * FROM artifacts
+        // 14-07b: migrated from legacy artifacts — V17 uses status/created_at_epoch_ms
+        const temporalSuperseded = excludeSuperseded ? `AND ${V17_NOT_SUPERSEDED}` : '';
+        const temporalProject = globalScope ? '' : 'AND a.project = ?';
+        const temporalSql = `SELECT ${V17_TO_ARTIFACT_ROW_SELECT} FROM artifact a
            WHERE 1=1 ${temporalProject} ${temporalSuperseded}
-             AND timestamp_epoch_ms >= ? AND timestamp_epoch_ms <= ?
-           ORDER BY importance DESC, timestamp_epoch_ms DESC
+             AND a.created_at_epoch_ms >= ? AND a.created_at_epoch_ms <= ?
+           ORDER BY a.confidence DESC, a.created_at_epoch_ms DESC
            LIMIT ?`;
         const temporalParams = globalScope
           ? [timeRange.start, timeRange.end, limit]
