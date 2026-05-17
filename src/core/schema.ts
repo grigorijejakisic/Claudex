@@ -502,14 +502,15 @@ CREATE TRIGGER IF NOT EXISTS experience_patterns_au AFTER UPDATE ON experience_p
 END;
 
 -- V9: artifact_links — Zettelkasten-style linking between artifacts
+-- V43: created_at_epoch → created_at_epoch_ms, valid_at_epoch → valid_at_epoch_ms, invalid_at_epoch → invalid_at_epoch_ms
 CREATE TABLE IF NOT EXISTS artifact_links (
   source_id INTEGER NOT NULL,
   target_id INTEGER NOT NULL,
   link_type TEXT NOT NULL CHECK (link_type IN ('related', 'supports', 'contradicts', 'supersedes', 'caused_by')),
   strength REAL NOT NULL DEFAULT 0.5,
-  created_at_epoch INTEGER NOT NULL DEFAULT (unixepoch()),
-  valid_at_epoch INTEGER,
-  invalid_at_epoch INTEGER,
+  created_at_epoch_ms INTEGER NOT NULL DEFAULT (unixepoch() * 1000),
+  valid_at_epoch_ms INTEGER,
+  invalid_at_epoch_ms INTEGER,
   PRIMARY KEY (source_id, target_id)
 );
 
