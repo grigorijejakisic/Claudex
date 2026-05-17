@@ -405,7 +405,7 @@ function findSimilarThreadsSQLite(
      WHERE s.project = ?
        AND t.summary_embedding IS NOT NULL
        ${excludeSessionId ? 'AND t.session_id != ?' : ''}
-     ORDER BY t.updated_at_epoch DESC
+     ORDER BY t.updated_at_epoch_ms DESC
      LIMIT 20`
   ).all(...(excludeSessionId ? [project, excludeSessionId] : [project])) as Array<{
     session_id: string;
