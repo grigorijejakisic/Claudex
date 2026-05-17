@@ -122,6 +122,14 @@ const main = wrapHook('SessionStart', async (input, ctx) => {
     await ensureAngelRunning(ctx.db, input.session_id, ctx.project);
   } catch { /* Angel is optional */ }
 
+  // Phase 14-09: infer crashed sessions. Any session_id still flagged
+  // status='active' with stale heartbeat / JSONL-write timestamps (>30min)
+  // is a host crash — neither session-end nor stop-failure fired. Back-fill
+  // a 'crash' row so the deterministic recall surface shows the truth.
+  try {
+    inferCrashedSessions(ctx.db, { excludeSessionId: input.session_id });
+  } catch { /* non-blocking */ }
+
   // Phase 13.1 defensive indexer: scan Sessions/ folders for new/modified
   // markdown and re-index via the same upsertChunk pipeline Angel uses.
   // Wrapped with a 3s budget so a slow scan doesn't block session-start.
