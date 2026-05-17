@@ -618,7 +618,7 @@ CREATE INDEX IF NOT EXISTS idx_opinions_project
 CREATE TABLE IF NOT EXISTS entity_aliases (
   alias TEXT NOT NULL,
   canonical TEXT NOT NULL,
-  created_at_epoch INTEGER NOT NULL DEFAULT (unixepoch()),
+  created_at_epoch_ms INTEGER NOT NULL DEFAULT (unixepoch() * 1000),
   PRIMARY KEY (alias)
 );
 CREATE INDEX IF NOT EXISTS idx_entity_canonical ON entity_aliases(canonical);
