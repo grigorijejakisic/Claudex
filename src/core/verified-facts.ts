@@ -13,8 +13,8 @@ import type { Database } from 'better-sqlite3';
 export function addVerifiedFact(db: Database, sessionId: string, fact: string): void {
   try {
     db.prepare(
-      `INSERT INTO verified_facts (session_id, fact, created_at_epoch)
-       VALUES (?, ?, unixepoch())`
+      `INSERT INTO verified_facts (session_id, fact, created_at_epoch_ms)
+       VALUES (?, ?, unixepoch() * 1000)`
     ).run(sessionId, fact.slice(0, 500));
   } catch {
     // Table may not exist yet or other DB error — non-fatal
