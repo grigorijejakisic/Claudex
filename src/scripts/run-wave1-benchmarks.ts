@@ -483,7 +483,9 @@ export async function runWave1Benchmarks(opts?: {
     runCrossProjectHitRate,
   };
 
-  const runnerOpts: RunnerOpts = { db_path: opts?.db_path };
+  // Ensure runners have the project cwd so bun scripts resolve correctly.
+  // Falls back to process.cwd() if not specified (assumes invoked from project root).
+  const runnerOpts: RunnerOpts = { db_path: opts?.db_path, cwd: opts?.cwd ?? process.cwd() };
 
   const gates: Array<{
     key: BenchmarkResult['gate'];
