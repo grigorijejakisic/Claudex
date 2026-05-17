@@ -451,7 +451,7 @@ server.registerTool(
              FROM decisions
              WHERE (project = ? OR project = '__global__')
                AND (${conditions})
-             ORDER BY timestamp_epoch DESC
+             ORDER BY timestamp_epoch_ms DESC
              LIMIT ?`
           ).all(proj, ...likeParams, offset + limit) as Array<{
             id: number; content: string; project: string; session_id: string;
