@@ -141,23 +141,25 @@ function emitChrTelemetry(
  * Emit a session message to the operator when confidence ≥ 0.85.
  * Uses the session_messages table (Angel's message bus).
  * Non-throwing.
+ *
+ * The session_messages schema uses:
+ *   target_session TEXT — the recipient session
+ *   sender TEXT — who sent it
+ *   content TEXT — message body
+ *   message_type TEXT — 'advisory' for CHR notifications
  */
 function emitOperatorMessage(db: Database, sessionId: string, summary: string): void {
   try {
-    const now = Date.now();
     db.prepare(
       `INSERT INTO session_messages (
-         from_session_id, to_session_id, message, message_type,
-         created_at_epoch_ms, is_read
-       ) VALUES (?, ?, ?, 'notification', ?, 0)`,
+         target_session, sender, content, message_type, priority
+       ) VALUES (?, 'chr-system', ?, 'advisory', 'normal')`,
     ).run(
-      'chr-system',
       sessionId,
       `Handoff refreshed: ${summary}`,
-      now,
     );
   } catch {
-    // Non-fatal: if session_messages table doesn't exist or fails, skip.
+    // Non-fatal: if session_messages table doesn't exist or schema differs, skip.
   }
 }
 
