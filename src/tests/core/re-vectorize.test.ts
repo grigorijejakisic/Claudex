@@ -148,7 +148,7 @@ describe('reVectorizeAll', () => {
     db = buildTestDb(10);
     _setOllamaEmbedCallableForTest(() => Promise.resolve(mockVector(0.5)));
 
-    const result = await reVectorizeAll(db, { batch_size: 5 });
+    const result = await reVectorizeAll(db, { batch_size: 5, retry_base_delay_ms: 0 });
     expect(result.total).toBe(10);
     expect(result.succeeded).toBe(10);
     expect(result.failed).toBe(0);
