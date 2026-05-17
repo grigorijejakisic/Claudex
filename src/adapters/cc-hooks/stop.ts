@@ -155,8 +155,8 @@ const main = wrapHook('Stop', async (input, ctx) => {
   runHookStep('decision_events', () => {
     const newDecisions = cachedPrepare(ctx.db,
       `SELECT content, source FROM decisions
-       WHERE session_id = ? AND timestamp_epoch >= ?
-       ORDER BY timestamp_epoch DESC LIMIT 10`
+       WHERE session_id = ? AND timestamp_epoch_ms >= ?
+       ORDER BY timestamp_epoch_ms DESC LIMIT 10`
     ).all(input.session_id, turnStartEpoch) as Array<{ content: string; source: string }>;
     for (const d of newDecisions) {
       recordEvent(ctx.db, input.session_id, routedProject, 'decision', d.source, 'decided', d.content.slice(0, 200));
