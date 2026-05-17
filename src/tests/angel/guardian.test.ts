@@ -345,63 +345,61 @@ describe('Retention Sweep', () => {
   });
 
   // ---- pruneArtifacts ----
+  // 14-07b: migrated from legacy artifacts — tests now use V17 artifact table fixtures
 
   describe('pruneArtifacts', () => {
-    it('deletes superseded artifacts older than artifactSupersededDeleteDays', () => {
-      // First artifact (the "superseder")
-      const newArtId = insertArtifact(db, { importance: 3 });
-      // Old superseded artifact
-      const oldArtId = insertArtifact(db, {
-        importance: 3,
-        timestamp_epoch_ms: daysAgoMs(35),
-        superseded_by: newArtId,
+    it('deletes superseded V17 artifacts older than artifactSupersededDeleteDays', () => {
+      // Old superseded artifact: status='superseded', confidence < 1.0, old enough
+      const oldArtId = insertV17Artifact(db, {
+        status: 'superseded',
+        confidence: 0.6, // importance ~3 equivalent
+        created_at_epoch_ms: daysAgoMs(35),
       });
 
       const deleted = pruneArtifacts(db, config);
 
       expect(deleted).toBeGreaterThanOrEqual(1);
-      const row = db.prepare(`SELECT id FROM artifacts WHERE id = ?`).get(oldArtId);
+      const row = db.prepare(`SELECT id FROM artifact WHERE id = ?`).get(oldArtId);
       expect(row).toBeUndefined();
     });
 
-    it('never deletes superseded artifacts with importance >= 5', () => {
-      const newArtId = insertArtifact(db, { importance: 5 });
-      const importantId = insertArtifact(db, {
-        importance: 5,
-        timestamp_epoch_ms: daysAgoMs(35),
-        superseded_by: newArtId,
+    it('never deletes superseded V17 artifacts with confidence >= 1.0 (importance=5 equivalent)', () => {
+      const importantId = insertV17Artifact(db, {
+        status: 'superseded',
+        confidence: 1.0, // importance=5 equivalent — immune
+        created_at_epoch_ms: daysAgoMs(35),
       });
 
       pruneArtifacts(db, config);
 
-      const row = db.prepare(`SELECT id FROM artifacts WHERE id = ?`).get(importantId);
+      const row = db.prepare(`SELECT id FROM artifact WHERE id = ?`).get(importantId);
       expect(row).toBeDefined();
     });
 
-    it('deletes cold packed artifacts older than artifactColdDeleteDays with importance < 3', () => {
-      const artId = insertArtifact(db, {
-        state: 'packed',
-        importance: 2,
-        timestamp_epoch_ms: daysAgoMs(65), // older than coldDeleteDays=60
+    it('deletes cold stale V17 artifacts older than artifactColdDeleteDays with confidence < 0.6', () => {
+      const artId = insertV17Artifact(db, {
+        status: 'stale', // was 'packed' in legacy
+        confidence: 0.4, // importance ~2 equivalent (< 0.6 threshold)
+        created_at_epoch_ms: daysAgoMs(65), // older than coldDeleteDays=60
       });
       // No retrieval events — truly cold
 
       pruneArtifacts(db, config);
 
-      const row = db.prepare(`SELECT id FROM artifacts WHERE id = ?`).get(artId);
+      const row = db.prepare(`SELECT id FROM artifact WHERE id = ?`).get(artId);
       expect(row).toBeUndefined();
     });
 
-    it('never deletes cold artifacts with importance >= 5 (immune)', () => {
-      const artId = insertArtifact(db, {
-        state: 'packed',
-        importance: 5,
-        timestamp_epoch_ms: daysAgoMs(65),
+    it('never deletes cold V17 artifacts with confidence >= 1.0 (immune)', () => {
+      const artId = insertV17Artifact(db, {
+        status: 'stale',
+        confidence: 1.0, // importance=5 equivalent — immune
+        created_at_epoch_ms: daysAgoMs(65),
       });
 
       pruneArtifacts(db, config);
 
-      const row = db.prepare(`SELECT id FROM artifacts WHERE id = ?`).get(artId);
+      const row = db.prepare(`SELECT id FROM artifact WHERE id = ?`).get(artId);
       expect(row).toBeDefined();
     });
   });
