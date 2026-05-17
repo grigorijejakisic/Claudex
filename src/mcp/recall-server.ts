@@ -237,9 +237,10 @@ server.registerTool(
       });
       artifactResults = hybridResults.map((a, i) => ({
         id: a.id,
+        artifact_id: a.artifact_id,
         type: a.artifact_type,
         summary: a.summary,
-        provenance: a.artifact_ref ?? `artifact #${a.id}`,
+        provenance: a.artifact_ref ?? (a.artifact_id ? `artifact:${a.artifact_id}` : `artifact #${a.id}`),
         importance: a.importance,
         project: a.project,
         source: 'artifacts',
@@ -249,9 +250,10 @@ server.registerTool(
       const ftsResults = searchArtifactsGlobal(getDb(), proj, query, offset + limit);
       artifactResults = ftsResults.map((a, i) => ({
         id: a.id,
+        artifact_id: a.artifact_id,
         type: a.artifact_type,
         summary: a.summary,
-        provenance: a.artifact_ref ?? `artifact #${a.id}`,
+        provenance: a.artifact_ref ?? (a.artifact_id ? `artifact:${a.artifact_id}` : `artifact #${a.id}`),
         importance: a.importance,
         project: a.project,
         source: 'artifacts',
