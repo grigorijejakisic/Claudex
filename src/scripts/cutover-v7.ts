@@ -845,8 +845,12 @@ async function main() {
   process.exit(result.exit_code);
 }
 
+const _cutoverScriptFile: string =
+  typeof __filename !== 'undefined'
+    ? __filename
+    : fileURLToPath(import.meta.url);
 const isMain = process.argv[1]
-  ? path.resolve(process.argv[1]) === path.resolve(fileURLToPath(import.meta.url))
+  ? path.resolve(process.argv[1]) === path.resolve(_cutoverScriptFile)
   : false;
 if (isMain) {
   void main();
