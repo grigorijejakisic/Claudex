@@ -481,6 +481,12 @@ export async function applyCutover(
   } else {
     try {
       gateOutput = await runWave1Benchmarks({
+        // Schema-migration cutover binds on behavioral non-regression (Vesna) only.
+        // LongMemEval/LoCoMo/cross-project are system-quality sanity checks
+        // (operator-runnable via `bun run wave1:benchmarks --full`), not cutover
+        // gates. Per redesign 2026-05-17 (operator-confirmed) and the durable
+        // `feedback_benchmarks_are_sanity_not_gates.md` preference.
+        mode: 'binding-only',
         db_path: opts.db_path,
         baseline_path: BASELINES_PATH,
         runners: opts.gateRunners,
