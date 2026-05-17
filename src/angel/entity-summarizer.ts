@@ -22,6 +22,7 @@
 import type { Database } from 'better-sqlite3';
 import { cachedPrepare } from '../core/stmt-cache.js';
 import { callLocalLLM } from './llama-client.js';
+import { generate } from './generation-backend.js';
 import { createHash } from 'node:crypto';
 
 export interface EntitySummaryResult {
