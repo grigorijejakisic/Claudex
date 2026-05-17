@@ -224,6 +224,7 @@ export async function reVectorizeAll(
   const p = params ?? {};
   const batchSize = p.batch_size ?? 100;
   const onProgress = p.on_progress;
+  const retryBaseDelay = p.retry_base_delay_ms ?? 500;
 
   // Fetch all artifact IDs from V17 kernel.
   const allIds = (
