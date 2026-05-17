@@ -305,7 +305,7 @@ export function formatDecisions(decisions: DecisionResult[]): string {
 
   const lines: string[] = ['=== Decisions ===', ''];
   for (const d of decisions) {
-    lines.push(`[${d.source}] ${formatEpoch(d.timestamp_epoch)} (session: ${d.session_id})`);
+    lines.push(`[${d.source}] ${formatEpochMs(d.timestamp_epoch_ms)} (session: ${d.session_id})`);
     lines.push(`  ${d.content}`);
     lines.push('');
   }
