@@ -297,14 +297,10 @@ export function proposeHardLink(
 
   if (existingRow) {
     if (existingRow.decay_count >= DECAY_THRESHOLD) {
-      // Tuple is decayed — skip re-proposal. Write telemetry row.
-      _writeTelemetryIfTable(db, proposed_by_session, {
-        event: 'proposer_skipped_decayed',
-        src: src_artifact_id,
-        dst: dst_artifact_id,
-        type,
-        decay_count: existingRow.decay_count,
-      });
+      // Tuple is decayed — skip re-proposal.
+      // Telemetry write is intentionally omitted: the 'proposer_skipped_decayed'
+      // event kind is not yet in the telemetry CHECK constraint. Future migration
+      // can add it. The functional contract (return null) is sufficient here.
       return null;
     }
   }
