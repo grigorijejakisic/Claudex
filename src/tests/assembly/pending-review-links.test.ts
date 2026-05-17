@@ -141,18 +141,17 @@ describe('formatPendingReviewLinksSection', () => {
   });
 
   it('excludes decayed tuples', () => {
-    // Decay A1→A2 triggered_by.
-    for (let i = 0; i < DECAY_THRESHOLD; i++) {
-      const id = proposeHardLink(db, {
-        src_artifact_id: A1,
-        dst_artifact_id: A2,
-        type: 'triggered_by',
-        proposed_confidence: 0.9,
-        proposed_by_session: 'sess',
-        proposer_rationale: 'decayed',
-      });
-      if (id !== null) rejectHardLink(db, id, `r-sess-${i}`);
-    }
+    // Decay A1→A2 triggered_by via direct DB (avoids UNIQUE constraint cycle).
+    const decayedId = proposeHardLink(db, {
+      src_artifact_id: A1,
+      dst_artifact_id: A2,
+      type: 'triggered_by',
+      proposed_confidence: 0.9,
+      proposed_by_session: 'sess',
+      proposer_rationale: 'decayed',
+    });
+    expect(decayedId).not.toBeNull();
+    db.prepare(`UPDATE hard_link SET decay_count = ? WHERE id = ?`).run(DECAY_THRESHOLD, decayedId);
 
     // A3→A4 is not decayed.
     proposePending(db, A3, A4, 'evidence_for', 0.8, 'Non-decayed rationale');
@@ -160,7 +159,6 @@ describe('formatPendingReviewLinksSection', () => {
     const result = formatPendingReviewLinksSection({ db, project: PROJECT, budget_tokens: 600 });
     // Should render the non-decayed proposal.
     expect(result).toContain('[evidence_for]');
-    // Should not render the decayed one (triggered_by from A1→A2 should be excluded).
     // The section should exist (A3→A4 is there).
     expect(result).not.toBeNull();
     // Verify decayed one's rationale is absent.
@@ -168,17 +166,16 @@ describe('formatPendingReviewLinksSection', () => {
   });
 
   it('returns null when ALL pending links are decayed', () => {
-    for (let i = 0; i < DECAY_THRESHOLD; i++) {
-      const id = proposeHardLink(db, {
-        src_artifact_id: A1,
-        dst_artifact_id: A2,
-        type: 'triggered_by',
-        proposed_confidence: 0.9,
-        proposed_by_session: 'sess',
-        proposer_rationale: 'test decay',
-      });
-      if (id !== null) rejectHardLink(db, id, `r-sess-${i}`);
-    }
+    const id = proposeHardLink(db, {
+      src_artifact_id: A1,
+      dst_artifact_id: A2,
+      type: 'triggered_by',
+      proposed_confidence: 0.9,
+      proposed_by_session: 'sess',
+      proposer_rationale: 'test decay',
+    });
+    expect(id).not.toBeNull();
+    db.prepare(`UPDATE hard_link SET decay_count = ? WHERE id = ?`).run(DECAY_THRESHOLD, id);
 
     const result = formatPendingReviewLinksSection({ db, project: PROJECT, budget_tokens: 600 });
     expect(result).toBeNull();
