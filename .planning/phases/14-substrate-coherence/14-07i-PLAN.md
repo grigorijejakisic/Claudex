@@ -165,7 +165,7 @@ Implementation:
 
 Add `// 14-07i: codebase-context annotation` comment marker.
 
-**Critical:** do NOT modify any other function in sections.ts. I owns ONLY this function.
+**Critical:** do NOT modify any other function in `sections/codebase-context.ts`. I owns ONLY `formatCodebaseContextSection`. Do NOT touch `src/assembly/sections.ts` (the residual file) at all.
   </action>
   <verification>
 - Annotation rendered when metadata present.
