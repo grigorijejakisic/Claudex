@@ -60,6 +60,7 @@ import {
   migrateV37toV38,
   migrateV38toV39,
   migrateV39toV40,
+  migrateV40toV41,
   migrateSchemaFixes,
   cleanupOrphanTables,
   upgradeV2SchemaInPlace,
