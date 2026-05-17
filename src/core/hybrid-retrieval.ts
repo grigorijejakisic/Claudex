@@ -1307,9 +1307,13 @@ export function recordArtifactAccess(
   artifactId: number,
 ): void {
   try {
-    // Re-compute activation with fresh access data
+    // 14-07b: migrated from legacy artifacts — read from V17 artifact table via rowid
     const art = cachedPrepare(db,
-      'SELECT importance, timestamp_epoch_ms, last_materialized_epoch_ms FROM artifacts WHERE id = ?'
+      `SELECT
+         COALESCE(confidence * 5.0, 3.0) AS importance,
+         created_at_epoch_ms AS timestamp_epoch_ms,
+         COALESCE(json_extract(data, '$.last_materialized_epoch'), created_at_epoch_ms) AS last_materialized_epoch_ms
+       FROM artifact WHERE rowid = ?`
     ).get(artifactId) as {
       importance: number;
       timestamp_epoch_ms: number;
@@ -1324,10 +1328,13 @@ export function recordArtifactAccess(
     // We don't know exact access_count, but refreshing to a high value is appropriate
     const activation = Math.log(3) + importanceBoost; // ~1.1 + boost
 
+    // 14-07b: migrated from legacy artifacts — activation in data JSON, last_materialized in data sidecar
     cachedPrepare(db,
-      `UPDATE artifacts
-       SET activation_score = ?, last_materialized_epoch_ms = ?
-       WHERE id = ?`
+      `UPDATE artifact
+       SET data = json_set(data,
+         '$.activation_score', ?,
+         '$.last_materialized_epoch', ?)
+       WHERE rowid = ?`
     ).run(activation, Date.now(), artifactId);
   } catch {
     // Non-throwing
