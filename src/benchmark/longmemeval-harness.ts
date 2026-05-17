@@ -225,13 +225,13 @@ function retrieveContext(
     if (words.length > 0) {
       const ftsQuery = words.join(' OR ');
       const ftsResults = db.prepare(
-        `SELECT a.id, a.content, a.timestamp_epoch, bm25(artifacts_fts) as rank
+        `SELECT a.id, a.content, a.timestamp_epoch_ms, bm25(artifacts_fts) as rank
          FROM artifacts a
          JOIN artifacts_fts fts ON fts.rowid = a.id
          WHERE artifacts_fts MATCH ? AND a.project = ?
          ORDER BY rank LIMIT ?`
       ).all(ftsQuery, project, topK * 2) as Array<{
-        id: number; content: string; timestamp_epoch: number; rank: number;
+        id: number; content: string; timestamp_epoch_ms: number; rank: number;
       }>;
 
       for (let i = 0; i < ftsResults.length; i++) {
@@ -239,7 +239,7 @@ function retrieveContext(
         results.set(r.id, {
           content: r.content,
           score: (results.get(r.id)?.score ?? 0) + 1.0 / (60 + i),
-          timestamp: r.timestamp_epoch,
+          timestamp: r.timestamp_epoch_ms,
         });
       }
     }
