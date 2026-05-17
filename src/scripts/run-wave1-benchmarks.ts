@@ -613,8 +613,12 @@ async function main() {
 }
 
 // Run CLI if invoked directly.
+const _benchScriptFile: string =
+  typeof __filename !== 'undefined'
+    ? __filename
+    : fileURLToPath(import.meta.url);
 const isMain = process.argv[1]
-  ? path.resolve(process.argv[1]) === path.resolve(fileURLToPath(import.meta.url))
+  ? path.resolve(process.argv[1]) === path.resolve(_benchScriptFile)
   : false;
 if (isMain) {
   void main();
