@@ -34,6 +34,7 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { callLocalLLM } from '../angel/llama-client.js';
+import { EMBEDDED_PROMPTS } from '../angel/embedded-prompts.js';
 import { embedText } from '../embeddings/embed-pipeline.js';
 import { encodeVector, loadSqliteVec } from '../core/sqlite-vec-loader.js';
 import { cachedPrepare } from '../core/stmt-cache.js';
