@@ -292,7 +292,7 @@ const DEFAULT_WEIGHTS: Required<ScoringWeights> = {
  * Compute recency score using exponential decay.
  * recency = exp(-0.995 * hours_since_last_access)
  *
- * Uses last_materialized_epoch if available, otherwise timestamp_epoch.
+ * Uses last_materialized_epoch_ms if available, otherwise timestamp_epoch_ms.
  * Returns value in [0, 1] range.
  */
 export function computeRecencyScore(artifact: ArtifactRow): number {
