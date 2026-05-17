@@ -137,7 +137,7 @@ const main = wrapHook('Stop', async (input, ctx) => {
   // Each operation isolated — if A fails, B and C still run
 
   // Decision capture with optional embedding classifier
-  const turnStartEpoch = Math.floor(Date.now() / 1000) - 2;
+  const turnStartEpoch = Date.now() - 2000;
   try {
     await captureDecisionsWithClassifier({
       db: ctx.db,
