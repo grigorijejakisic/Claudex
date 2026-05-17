@@ -31,6 +31,7 @@ import { getProjectsDir } from '../shared/projects-dir.js';
 import { buildNarrationDirective, setNarrationSilent } from '../intelligence/narration-directive.js';
 import { recordRetrieval } from '../intelligence/retrieval-log.js';
 import { lookupV17ByLegacy } from '../core/artifact-id-map.js';
+import { handleClaudexTrace } from './tools/claudex-trace.js';
 
 // ---------------------------------------------------------------------------
 // DB connection
