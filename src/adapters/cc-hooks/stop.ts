@@ -15,6 +15,7 @@
  */
 
 import { wrapHook, getTranscriptPath } from './infrastructure.js';
+import { classifyTurnAsDecisionBoundary } from '../../angel/handoff-decision-watcher.js';
 import { detectsWaitForDirection, buildWaitForDirectionCue } from '../../core/context-pull-cues.js';
 import { getTokenGauge } from '../../gauge/token-gauge.js';
 import { CC_CAPABILITIES } from '../../shared/constants.js';
