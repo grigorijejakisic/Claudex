@@ -258,11 +258,23 @@ it('3. re-run on post-cutover DB exits 0 with already_cutover status', async () 
 // ---------------------------------------------------------------------------
 
 it('4. re-vectorization failure rate > 5%: exit 2, no read_only flip', async () => {
-  // Inject an Ollama callable that always fails.
-  const failingCallable = () => Promise.reject(new Error('Simulated Ollama failure'));
+  // Inject a callable that returns a deterministic vector for the Phase A
+  // verifyDeterminism check (first 2 calls), then fails for all re-vectorization
+  // calls in Phase B. verifyDeterminism calls the embed callable twice with the
+  // same text to check byte-identity — both must succeed and return identical vectors.
+  let callCount = 0;
+  const callablePassesDeterminismFailsRevectorize = async (_text: string): Promise<number[]> => {
+    callCount++;
+    if (callCount <= 2) {
+      // First two calls are the verifyDeterminism probe — return valid deterministic vector.
+      return new Array(1024).fill(0.42);
+    }
+    // All subsequent calls (re-vectorization of artifacts) fail.
+    throw new Error('Simulated Ollama failure during re-vectorization');
+  };
 
   const opts = makeOpts(':memory:', {
-    ollamaCallable: failingCallable,
+    ollamaCallable: callablePassesDeterminismFailsRevectorize,
     gateResultsPath: tmpGateResultsPath,
   });
 
