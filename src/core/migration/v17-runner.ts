@@ -418,7 +418,7 @@ export function applyLinkTablesDDL(db: Database): void {
       FOREIGN KEY (dst_artifact_id) REFERENCES artifact(id) ON DELETE RESTRICT,
       UNIQUE (src_artifact_id, dst_artifact_id, type)
     );
-    CREATE INDEX IF NOT EXISTS idx_soft_link_src_2  ON hard_link(src_artifact_id, type);
+    CREATE INDEX IF NOT EXISTS idx_hard_link_src     ON hard_link(src_artifact_id, type);
     CREATE INDEX IF NOT EXISTS idx_hard_link_dst     ON hard_link(dst_artifact_id, type);
     CREATE INDEX IF NOT EXISTS idx_hard_link_project ON hard_link(project);
 
