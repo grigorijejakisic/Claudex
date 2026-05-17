@@ -693,6 +693,21 @@ const main = wrapHook('Stop', async (input, ctx) => {
     }
   } catch { /* non-throwing */ }
 
+  // 14-07l: CHR — classify the just-completed turn for decision-boundary.
+  // Non-blocking: classifyTurnAsDecisionBoundary is itself non-throwing;
+  // this outer try is a defensive guard only.
+  try {
+    const turnUuid = `${input.session_id}-${Date.now()}`;
+    await classifyTurnAsDecisionBoundary({
+      db: ctx.db,
+      project: routedProject,
+      session_id: input.session_id as string,
+      user_text: lastUserText ?? null,
+      assistant_text: lastAssistantText ?? '',
+      source_turn_uuid: turnUuid,
+    });
+  } catch { /* non-blocking */ }
+
   let waitForDirectionCue = '';
   try {
     const assistantResponse = (input.last_assistant_message as string) ?? '';
