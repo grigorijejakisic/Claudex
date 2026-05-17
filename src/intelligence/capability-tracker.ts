@@ -174,24 +174,24 @@ export function recordDomainInteraction(
   correctionDetected: boolean,
 ): void {
   try {
-    const now = Math.floor(Date.now() / 1000);
+    const now = Date.now();
 
     if (correctionDetected) {
       cachedPrepare(db,
-        `INSERT INTO capability_boundaries (project, domain, total_interactions, corrections, last_updated_epoch)
+        `INSERT INTO capability_boundaries (project, domain, total_interactions, corrections, last_updated_epoch_ms)
          VALUES (?, ?, 1, 1, ?)
          ON CONFLICT(project, domain) DO UPDATE SET
            total_interactions = total_interactions + 1,
            corrections = corrections + 1,
-           last_updated_epoch = ?`
+           last_updated_epoch_ms = ?`
       ).run(project, domain, now, now);
     } else {
       cachedPrepare(db,
-        `INSERT INTO capability_boundaries (project, domain, total_interactions, corrections, last_updated_epoch)
+        `INSERT INTO capability_boundaries (project, domain, total_interactions, corrections, last_updated_epoch_ms)
          VALUES (?, ?, 1, 0, ?)
          ON CONFLICT(project, domain) DO UPDATE SET
            total_interactions = total_interactions + 1,
-           last_updated_epoch = ?`
+           last_updated_epoch_ms = ?`
       ).run(project, domain, now, now);
     }
   } catch {

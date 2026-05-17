@@ -142,7 +142,7 @@ const EXPECTED_TABLES: Record<string, ColumnDef[]> = {
     { name: 'id', notNull: true },
     { name: 'session_id', notNull: true },
     { name: 'fact', notNull: true },
-    { name: 'created_at_epoch', notNull: true, hasDefault: true },
+    { name: 'created_at_epoch_ms', notNull: true, hasDefault: true },
   ],
   telemetry: [
     { name: 'id', notNull: true },
