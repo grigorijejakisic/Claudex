@@ -47,7 +47,7 @@ Two deliverables in one plan, both targeting the Codebase Context section of ses
 
 1. **Retrieval metadata surface** — `src/core/hybrid-retrieval.ts` extends its return shape to include `match_query` (the query string that matched the candidate), `score` (numeric ranking score), and `match_kind` ('fts' | 'vector' | 'reranker'). Additive change; existing callers unaffected.
 
-2. **Codebase Context section annotation** — `src/assembly/sections.ts`'s codebase-context formatter (exact function name surveyed during execution) renders a one-line reason per file. Format: `- <path> — matched "<truncated_query>" (score <N.NN>)`.
+2. **Codebase Context section annotation** — `src/assembly/sections/codebase-context.ts`'s `formatCodebaseContextSection` function (Wave 0 w0d extracted it from assembler.ts:857 inline code) is extended to render a one-line reason per file. Format: `- <path> — matched "<truncated_query>" (score <N.NN>)`.
 
 After this plan lands:
 - Session-start's Codebase Context section shows WHY each file was surfaced.
