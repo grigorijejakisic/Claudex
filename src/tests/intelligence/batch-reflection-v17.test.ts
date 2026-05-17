@@ -171,21 +171,20 @@ describe('Batch Reflection — V17 path (14-07b)', () => {
 
       // Simulate setting the reflection guard AFTER sessions were created.
       // Sessions use created_at_epoch_ms = Date.now() (milliseconds).
-      // Guard uses unixepoch() (seconds). shouldRunReflection converts guard to ms:
-      //   lastReflectionEpochMs = guard.last_checkpoint_epoch * 1000
-      // We need the guard epoch (in seconds) to be > all session epochs (in ms / 1000).
-      // So set it to now + 2 seconds to ensure it's strictly after the sessions.
-      const futureEpochSec = Math.floor(Date.now() / 1000) + 2;
+      // Guard uses last_checkpoint_epoch_ms (ms). shouldRunReflection reads ms directly:
+      //   lastReflectionEpochMs = guard.last_checkpoint_epoch_ms
+      // Set guard to now + 2 seconds (in ms) to ensure it's strictly after the sessions.
+      const futureEpochMs = Date.now() + 2_000;
       const guardKey = `__reflection_guard__${project}`;
       db.prepare(
-        `INSERT INTO checkpoint_tracking (session_id, last_checkpoint_epoch, updated_at_epoch)
+        `INSERT INTO checkpoint_tracking (session_id, last_checkpoint_epoch_ms, updated_at_epoch_ms)
          VALUES (?, ?, ?)
          ON CONFLICT(session_id) DO UPDATE SET
-           last_checkpoint_epoch = excluded.last_checkpoint_epoch,
-           updated_at_epoch = excluded.updated_at_epoch`
-      ).run(guardKey, futureEpochSec, futureEpochSec);
+           last_checkpoint_epoch_ms = excluded.last_checkpoint_epoch_ms,
+           updated_at_epoch_ms = excluded.updated_at_epoch_ms`
+      ).run(guardKey, futureEpochMs, futureEpochMs);
 
-      // Guard epoch (sec) * 1000 > all session created_at_epoch_ms → count = 0 < 10
+      // Guard ms > all session created_at_epoch_ms → count = 0 < 10
       const result = shouldRunReflection(db, project);
       expect(result).toBe(false);
     });
