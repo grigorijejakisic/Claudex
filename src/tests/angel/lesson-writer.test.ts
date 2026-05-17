@@ -181,4 +181,74 @@ describe('lesson-writer', () => {
     });
     expect(yaml).not.toContain('shape:');
   });
+
+  // Phase 14-07h: trigger field tests
+  it('14-07h: writeLesson with trigger — frontmatter contains trigger field', () => {
+    const filePath = writeLesson({
+      project,
+      type: 'feedback',
+      slug: 'with-trigger',
+      frontmatter: {
+        created_at_epoch_ms: Date.now(),
+        telemetry: baseTelemetry(),
+        trigger: 'When facing a design choice, take a position first.',
+      },
+      body: '# Take a position\n\nBody content.',
+    });
+
+    const raw = fs.readFileSync(filePath, 'utf8');
+    expect(raw).toContain('trigger: When facing a design choice, take a position first.');
+  });
+
+  it('14-07h: writeLesson without trigger — frontmatter omits trigger field', () => {
+    const filePath = writeLesson({
+      project,
+      type: 'feedback',
+      slug: 'no-trigger-field',
+      frontmatter: {
+        created_at_epoch_ms: Date.now(),
+        telemetry: baseTelemetry(),
+        // trigger intentionally omitted
+      },
+      body: '# No trigger\n\nBody.',
+    });
+
+    const raw = fs.readFileSync(filePath, 'utf8');
+    expect(raw).not.toContain('trigger:');
+  });
+
+  it('14-07h: readLessonTrigger returns field value when present', () => {
+    const { readLessonTrigger } = await import('../../angel/lesson-writer.js');
+    const filePath = writeLesson({
+      project,
+      type: 'feedback',
+      slug: 'trigger-read',
+      frontmatter: {
+        created_at_epoch_ms: Date.now(),
+        telemetry: baseTelemetry(),
+        trigger: 'When code review is requested, check security first.',
+      },
+      body: '# Security first\n\nAlways.',
+    });
+
+    const trigger = readLessonTrigger(filePath);
+    expect(trigger).toBe('When code review is requested, check security first.');
+  });
+
+  it('14-07h: readLessonTrigger returns null when trigger absent', () => {
+    const { readLessonTrigger } = await import('../../angel/lesson-writer.js');
+    const filePath = writeLesson({
+      project,
+      type: 'project',
+      slug: 'no-trigger-read',
+      frontmatter: {
+        created_at_epoch_ms: Date.now(),
+        telemetry: baseTelemetry(),
+      },
+      body: '# No trigger\n\nBody.',
+    });
+
+    const trigger = readLessonTrigger(filePath);
+    expect(trigger).toBeNull();
+  });
 });
