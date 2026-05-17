@@ -253,7 +253,7 @@ New test file. Tests:
 - AC-8: match_query truncated to ~50 chars for display; score to 2 decimals.
 - AC-9: Highest-score selection for multi-match candidate.
 - AC-10: Budget overflow drops trailing file rather than annotations.
-- AC-11: No other function in sections.ts modified (I scope respected).
+- AC-11: No other function in sections/codebase-context.ts modified; sections.ts (residual) untouched (I scope respected).
 - AC-12: All 18 new tests pass.
 - AC-13: Vesna SC#1 PASS 18/18 unchanged.
 - AC-14: Manual smoke confirms session-start renders annotations.
