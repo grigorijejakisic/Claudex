@@ -10,7 +10,7 @@ files_modified:
   - src/angel/lesson-writer.ts
   - src/scripts/migrate-lesson-trigger.ts (NEW)
   - src/intelligence/experience-tier.ts
-  - src/assembly/sections.ts
+  - src/assembly/sections/lessons.ts (Wave 0 w0d split; H modifies formatProvenPrinciplesSection)
   - src/tests/angel/memory-md-writer.test.ts
   - src/tests/angel/lesson-writer.test.ts
   - src/tests/scripts/migrate-lesson-trigger.test.ts (NEW)
