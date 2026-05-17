@@ -48,6 +48,37 @@ export function computeLessonFilePath(project: string, type: LessonType, slug: s
 }
 
 /**
+ * Read the `trigger:` field from a lesson file's frontmatter.
+ *
+ * Phase 14-07h: used by the regenerator and sections formatter to render
+ * trigger-style lesson pointers. Returns null when the field is absent,
+ * the file doesn't exist, or the frontmatter can't be parsed.
+ *
+ * Non-throwing — parse failure returns null so the caller can fall back
+ * to truncated-body display.
+ */
+export function readLessonTrigger(filePath: string): string | null {
+  try {
+    const raw = fs.readFileSync(filePath, 'utf8');
+    const normalized = raw.replace(/\r\n/g, '\n');
+    if (!normalized.startsWith('---\n')) return null;
+    const endIdx = normalized.indexOf('\n---\n', 4);
+    if (endIdx < 0) return null;
+    const frontmatterRaw = normalized.slice(4, endIdx);
+    for (const line of frontmatterRaw.split('\n')) {
+      const m = /^trigger:\s*(.*?)\s*$/.exec(line);
+      if (m) {
+        const value = m[1].trim().replace(/^["']|["']$/g, '');
+        return value.length > 0 ? value : null;
+      }
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Render lesson frontmatter as YAML. Bounded vocabulary shape fields are
  * emitted only when populated (abstain-allowed per CONTEXT.md).
  *
@@ -58,6 +89,8 @@ export function computeLessonFilePath(project: string, type: LessonType, slug: s
  *
  * Confidence comments are NOT auto-rendered; they're metadata that the
  * proposer/curator may add manually.
+ *
+ * Phase 14-07h: optional `trigger:` field emitted when provided.
  */
 export function renderLessonFrontmatter(
   type: LessonType,
