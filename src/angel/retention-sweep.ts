@@ -162,38 +162,42 @@ export function pruneConversationTurns(
 // ---------------------------------------------------------------------------
 
 /**
- * Three cleanup targets for artifacts. Never deletes importance >= 5.
+ * Three cleanup targets for V17 artifacts. Never deletes confidence >= 1.0 (importance=5).
  *
- * - Superseded: superseded_by IS NOT NULL AND old enough → DELETE
- * - Cold unaccessed: packed + low importance + old + no recent retrievals → DELETE
- * - Ancient packed: packed + very old + moderate importance → DELETE
+ * V17 field mapping (RCA-3 loss-map):
+ *   state → status: 'packed' → 'stale', 'fresh'/'materialized' → 'active'/'superseded'
+ *   superseded_by IS NOT NULL (forward) → supersedes_id IS NOT NULL (backward) on V17
+ *   importance (1-5) → confidence (0-1): importance=5 → confidence=1.0, threshold confidence < 0.6 ≈ importance < 3
+ *
+ * 14-07b: migrated from legacy artifacts
  */
 export function pruneArtifacts(db: Database, config: RetentionConfig): number {
   let total = 0;
 
   try {
-    // Target 1: superseded artifacts past their grace period
+    // Target 1: superseded V17 artifacts past their grace period
+    // V17 direction: supersedes_id IS NOT NULL means THIS row replaced something else (new row).
+    // status = 'superseded' means THIS row was replaced.
     const supersededCutoffMs = cutoffMs(config.artifactSupersededDeleteDays);
     const superseded = cachedPrepare(db, `
-      DELETE FROM artifacts
-      WHERE superseded_by IS NOT NULL
-        AND timestamp_epoch_ms < ?
-        AND importance < 5
+      DELETE FROM artifact
+      WHERE status = 'superseded'
+        AND created_at_epoch_ms < ?
+        AND confidence < 1.0
       LIMIT ?
     `).run(supersededCutoffMs, BATCH_LIMIT);
     total += superseded.changes;
   } catch { /* non-fatal */ }
 
   try {
-    // Target 2: cold unaccessed packed artifacts
-    // packed + importance < 3 + old enough + no retrieval events in last coldDeleteDays days
+    // Target 2: cold unaccessed stale V17 artifacts
+    // stale (was 'packed') + low confidence (< 0.6, ≈ importance < 3) + old + no recent retrievals
     const coldCutoffMs = cutoffMs(config.artifactColdDeleteDays);
     const cold = cachedPrepare(db, `
-      DELETE FROM artifacts
-      WHERE state = 'packed'
-        AND importance < 3
-        AND timestamp_epoch_ms < ?
-        AND importance < 5
+      DELETE FROM artifact
+      WHERE status = 'stale'
+        AND confidence < 0.6
+        AND created_at_epoch_ms < ?
         AND id NOT IN (
           SELECT DISTINCT artifact_id
           FROM retrieval_events
@@ -205,13 +209,14 @@ export function pruneArtifacts(db: Database, config: RetentionConfig): number {
   } catch { /* non-fatal */ }
 
   try {
-    // Target 3: ancient packed artifacts with low-moderate importance
+    // Target 3: ancient stale V17 artifacts with low-moderate confidence
+    // confidence < 0.8 ≈ importance < 4
     const ancientCutoffMs = cutoffMs(90);
     const ancient = cachedPrepare(db, `
-      DELETE FROM artifacts
-      WHERE state = 'packed'
-        AND timestamp_epoch_ms < ?
-        AND importance < 4
+      DELETE FROM artifact
+      WHERE status = 'stale'
+        AND created_at_epoch_ms < ?
+        AND confidence < 0.8
       LIMIT ?
     `).run(ancientCutoffMs, BATCH_LIMIT);
     total += ancient.changes;
