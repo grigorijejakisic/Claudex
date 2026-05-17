@@ -333,11 +333,21 @@ describe('Phase 14-07d promoted_to emission', () => {
     db.close();
   });
 
-  it('multi-source aggregate promotion: no link emitted when observationArtifactId absent', () => {
-    // Use createTestDb() for the full schema (learnings table + all dependencies),
-    // then apply V38 migration for the soft_link table.
+  it('multi-source aggregate promotion: no link, soft_link_skipped telemetry emitted', () => {
+    // Use createTestDb() for the full learnings/schema, then apply V38 for soft_link.
     const db = createTestDb();
     migrateV37toV38(db);
+    // Recreate telemetry without CHECK constraint so new event kinds can be inserted.
+    // This mirrors the test pattern from handoff-writer.test.ts Group 6.
+    db.exec(`
+      DROP TABLE IF EXISTS telemetry;
+      CREATE TABLE telemetry (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        session_id TEXT, event_kind TEXT, detail TEXT,
+        latency_ms INTEGER, adapter TEXT,
+        timestamp_epoch_ms INTEGER DEFAULT (strftime('%s','now') * 1000)
+      );
+    `);
 
     // Call without observationArtifactId — multi-source aggregate path
     const result = promoteLearnings({
@@ -355,11 +365,13 @@ describe('Phase 14-07d promoted_to emission', () => {
     const softLinkCount = (db.prepare(`SELECT COUNT(*) AS n FROM soft_link`).get() as { n: number }).n;
     expect(softLinkCount).toBe(0);
 
-    // Note: soft_link_skipped telemetry is attempted but the production schema's
-    // telemetry CHECK constraint rejects the new event kind (same as
-    // 'handoff_parse_failed' on pre-V14-01 DBs). The write failure is silently
-    // swallowed per the established pattern. Behavior is verified by observing
-    // no soft_link rows and no throw.
+    // soft_link_skipped telemetry should be emitted (multi_source_aggregate)
+    const rows = db.prepare(
+      `SELECT detail FROM telemetry WHERE event_kind = 'soft_link_skipped' ORDER BY id`
+    ).all() as Array<{ detail: string }>;
+    expect(rows.length).toBeGreaterThan(0);
+    const detail = JSON.parse(rows[0].detail);
+    expect(detail.reason).toBe('multi_source_aggregate');
 
     db.close();
   });
