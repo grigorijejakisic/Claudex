@@ -110,6 +110,8 @@ export async function runVesna(opts: RunnerOpts): Promise<GateRawResult> {
     cwd,
     encoding: 'utf8',
     timeout: 120_000,
+    // On Windows, 'bun' is a .cmd shim that requires shell resolution.
+    shell: process.platform === 'win32',
   });
 
   if (result.error) {
