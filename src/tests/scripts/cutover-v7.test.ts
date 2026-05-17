@@ -429,6 +429,8 @@ it('9. --rollback on post-cutover DB: clears read_only flag, exit 5', async () =
   };
   const rollbackResult = await rollbackCutover(db, rollbackOpts);
 
+  // eslint-disable-next-line no-console
+  console.log('[TEST9 rollbackResult]', JSON.stringify({ status: rollbackResult.status, message: rollbackResult.message }));
   expect(rollbackResult.status).toBe('rollback_complete');
   expect(rollbackResult.exit_code).toBe(5);
 
