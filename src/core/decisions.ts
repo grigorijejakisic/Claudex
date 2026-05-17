@@ -108,14 +108,14 @@ export function getDecisionsBySession(
   if (limit !== undefined) {
     return cachedPrepare(db,
         `SELECT * FROM decisions WHERE session_id = ?
-         ORDER BY timestamp_epoch DESC
+         ORDER BY timestamp_epoch_ms DESC
          LIMIT ?`
       )
       .all(sessionId, limit) as DecisionRow[];
   }
   return cachedPrepare(db,
       `SELECT * FROM decisions WHERE session_id = ?
-       ORDER BY timestamp_epoch DESC`
+       ORDER BY timestamp_epoch_ms DESC`
     )
     .all(sessionId) as DecisionRow[];
 }
