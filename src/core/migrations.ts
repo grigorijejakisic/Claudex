@@ -118,6 +118,7 @@ export { migrateV14toV15 };
  *   40 — Phase 14-08 substrate hygiene: backfill seconds-as-ms rows + rewrite DEFAULT (unixepoch()) → DEFAULT (unixepoch() * 1000) on 7 tables (V35 scar fix)
  *   41 — Phase 14-08 CHR async: chr_pending_classifications queue table (stop hook enqueues, Angel drains)
  *   42 — Phase 14-09 session_termination: deterministic end-state record (end_reason + last_user_directive + last_assistant_text) written by hooks at session close
+ *   43 — Phase 14-09b legacy _epoch rename + scale across 24 columns × 16 tables
  *
  * Dual version tracking:
  * Both `PRAGMA user_version` and `schema_versions` table are needed:
