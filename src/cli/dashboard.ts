@@ -346,7 +346,7 @@ export function formatTopics(topics: TopicResult[]): string {
   const lines: string[] = ['=== Topic History ===', ''];
   for (const t of topics) {
     const topic = t.topic ?? '(no topic)';
-    lines.push(`${formatEpoch(Math.floor(t.updated_at_epoch_ms / 1000))} | session: ${t.session_id}`);
+    lines.push(`${formatEpochMs(t.updated_at_epoch_ms)} | session: ${t.session_id}`);
     lines.push(`  Topic: ${topic}`);
     if (t.summary) {
       lines.push(`  Summary: ${t.summary}`);
