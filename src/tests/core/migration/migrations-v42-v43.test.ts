@@ -83,11 +83,12 @@ function buildV42LikeDb(): Database.Database {
   // Force back to version 42 so migrateV42toV43 will run.
   db.pragma('user_version = 42');
 
-  // For the tables that schema.ts creates with the OLD column name, the column
-  // is already there with the old name (fresh-DB schema has old names for those).
-  // But for tables where schema.ts already uses _epoch_ms (e.g. session_journal,
-  // conversation_turns), the old column doesn't exist — we add it for testing.
-  // In production, these tables would have old columns from pre-V35 migrations.
+  // For tables where schema.ts still uses the OLD column name (e.g. session_events,
+  // artifact_links), the column is already there with the old name after initializeSchema.
+  // For tables where schema.ts already uses _epoch_ms (e.g. session_journal,
+  // conversation_turns, verified_facts, solution_outcomes, entity_aliases), the old column
+  // doesn't exist — we add it below to simulate a pre-V43 production DB.
+  // In production, these tables would have old columns from pre-V43 migrations.
 
   // session_events: schema.ts has `timestamp_epoch` (old name) — already present.
   // thread_state: schema.ts has `updated_at_epoch` (old name) — already present.
