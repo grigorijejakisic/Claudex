@@ -666,7 +666,7 @@ export async function heartbeatTick(ctx: HeartbeatContext): Promise<TickResult> 
     // wider try/catch around the whole iteration.
     try {
       const pending = cachedPrepare(ctx.db,
-        `SELECT se.id, se.session_id, se.project, se.timestamp_epoch
+        `SELECT se.id, se.session_id, se.project, se.timestamp_epoch_ms
          FROM session_events se
          WHERE se.event_type = 'memory_curation_pending'
            AND NOT EXISTS (
@@ -674,9 +674,9 @@ export async function heartbeatTick(ctx: HeartbeatContext): Promise<TickResult> 
              WHERE done.event_type = 'memory_curation_done'
                AND done.session_id = se.session_id
            )
-         ORDER BY se.timestamp_epoch ASC
+         ORDER BY se.timestamp_epoch_ms ASC
          LIMIT 20`
-      ).all() as Array<{ id: number; session_id: string; project: string; timestamp_epoch: number }>;
+      ).all() as Array<{ id: number; session_id: string; project: string; timestamp_epoch_ms: number }>;
 
       const curatedProjects = new Set<string>();
 
