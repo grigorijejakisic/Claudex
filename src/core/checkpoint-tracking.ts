@@ -64,11 +64,11 @@ export function markPostCompactPending(
   sessionId: string
 ): void {
   cachedPrepare(db,
-    `INSERT INTO checkpoint_tracking (session_id, post_compact_pending, updated_at_epoch)
-     VALUES (?, 1, unixepoch())
+    `INSERT INTO checkpoint_tracking (session_id, post_compact_pending, updated_at_epoch_ms)
+     VALUES (?, 1, unixepoch() * 1000)
      ON CONFLICT(session_id) DO UPDATE SET
        post_compact_pending = 1,
-       updated_at_epoch = unixepoch()`
+       updated_at_epoch_ms = unixepoch() * 1000`
   ).run(sessionId);
 }
 
