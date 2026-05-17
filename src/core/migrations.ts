@@ -547,6 +547,15 @@ export function initializeSchema(db: Database): void {
     try { db.exec(`INSERT OR IGNORE INTO schema_versions(version) VALUES (40)`); } catch { /* non-critical */ }
   }
 
+  // Phase 14-08 (V41): CHR async queue table.
+  // Creates chr_pending_classifications for Stop-hook enqueue → Angel-drain.
+  // Idempotent: CREATE TABLE IF NOT EXISTS.
+  if (currentUv < 41) {
+    migrateV40toV41(db);
+    db.pragma('user_version = 41');
+    try { db.exec(`INSERT OR IGNORE INTO schema_versions(version) VALUES (41)`); } catch { /* non-critical */ }
+  }
+
   // Phase 4 (V28): per-connection sidecar + TEMP TRIGGER guarding writes
   // to the legacy `experience_patterns` table. Both objects live in the
   // `temp` schema because (a) SQLite forbids a permanent-schema trigger
