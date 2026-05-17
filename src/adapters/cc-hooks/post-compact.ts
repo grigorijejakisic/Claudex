@@ -48,7 +48,7 @@ const main = wrapHook('PostCompact', async (input, ctx) => {
     const trackedEdits = cachedPrepare(ctx.db,
       `SELECT entity, detail FROM session_events
        WHERE session_id = ? AND event_type = 'claudex_file_edit'
-       ORDER BY timestamp_epoch DESC LIMIT 20`
+       ORDER BY timestamp_epoch_ms DESC LIMIT 20`
     ).all(input.session_id) as Array<{ entity: string; detail: string | null }>;
 
     for (const edit of trackedEdits) {
