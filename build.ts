@@ -75,6 +75,7 @@ const optionalEntryPoints = [
   'src/scripts/cutover-v7.ts',
   'src/scripts/run-wave1-benchmarks.ts',
   'src/scripts/cross-project-hit-rate.ts',
+  'src/scripts/simulate-hard-link-ux.ts',
 ];
 
 /** Hook entry points to smoke test after build.
