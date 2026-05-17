@@ -112,7 +112,7 @@ describe('shouldTriggerCheckpoint', () => {
         },
         tracking: {
           session_id: 's1',
-          last_checkpoint_epoch: null,
+          last_checkpoint_epoch_ms: null,
           thresholds_hit: [0.75],
           observation_count: 10,
           post_compact_pending: 0,
@@ -123,7 +123,7 @@ describe('shouldTriggerCheckpoint', () => {
   });
 
   it('returns false when within debounce period', () => {
-    const nowEpoch = Math.floor(Date.now() / 1000);
+    const nowMs = Date.now();
     expect(
       shouldTriggerCheckpoint({
         trigger: 'threshold',
@@ -135,7 +135,7 @@ describe('shouldTriggerCheckpoint', () => {
         },
         tracking: {
           session_id: 's1',
-          last_checkpoint_epoch: nowEpoch - 30,
+          last_checkpoint_epoch_ms: nowMs - 30_000,
           thresholds_hit: [],
           observation_count: 10,
           post_compact_pending: 0,
@@ -147,7 +147,7 @@ describe('shouldTriggerCheckpoint', () => {
   });
 
   it('returns true when debounce period expired', () => {
-    const nowEpoch = Math.floor(Date.now() / 1000);
+    const nowMs = Date.now();
     expect(
       shouldTriggerCheckpoint({
         trigger: 'threshold',
@@ -159,7 +159,7 @@ describe('shouldTriggerCheckpoint', () => {
         },
         tracking: {
           session_id: 's1',
-          last_checkpoint_epoch: nowEpoch - 61,
+          last_checkpoint_epoch_ms: nowMs - 61_000,
           thresholds_hit: [],
           observation_count: 10,
           post_compact_pending: 0,
