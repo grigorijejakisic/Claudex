@@ -352,7 +352,7 @@ Implementation:
    - If `trigger:` present: use it verbatim (truncate to ~120 chars).
    - Else: use truncated body's first 60 chars + `…`.
 4. Budget cap: cut the list when budget reached; append "... and N more lessons available" message.
-5. Section header: `## Lessons` (note: this differs from MEMORY.md's `## Lessons` header — sections.ts is for assembler, not MEMORY.md; both happen to use the same header text).
+5. Section header: `## Lessons` (note: this differs from MEMORY.md's `## Lessons` header — sections/lessons.ts is for assembler, not MEMORY.md; both happen to use the same header text).
 
 Add `// 14-07h: lessons section formatter (J extends post-merge for inline-expansion)` comment marker.
   </action>
