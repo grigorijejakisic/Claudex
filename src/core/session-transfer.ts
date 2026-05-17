@@ -86,7 +86,7 @@ export function packageSessionContext(
     // Background: recent decisions
     const decisions = cachedPrepare(db,
       `SELECT content FROM decisions
-       WHERE session_id = ? ORDER BY timestamp_epoch DESC LIMIT 5`
+       WHERE session_id = ? ORDER BY timestamp_epoch_ms DESC LIMIT 5`
     ).all(sourceSessionId) as Array<{ content: string }>;
 
     // Background: recent conversation turns
