@@ -87,6 +87,7 @@ describe('measureHitRate', () => {
         title TEXT,
         body TEXT,
         status TEXT,
+        confidence REAL NOT NULL DEFAULT 1.0,
         created_at_epoch_ms INTEGER NOT NULL
       );
     `);
@@ -102,10 +103,11 @@ describe('measureHitRate', () => {
     body: string,
     status: string,
     ts: number,
+    confidence: number = 1.0,
   ): void {
     db.prepare(
-      `INSERT INTO artifact(id, kind, project, title, body, status, created_at_epoch_ms) VALUES (?,?,?,?,?,?,?)`,
-    ).run(id, kind, project, title, body, status, ts);
+      `INSERT INTO artifact(id, kind, project, title, body, status, confidence, created_at_epoch_ms) VALUES (?,?,?,?,?,?,?,?)`,
+    ).run(id, kind, project, title, body, status, confidence, ts);
   }
 
   it('returns 0 noise_rate when no candidates exist', () => {
