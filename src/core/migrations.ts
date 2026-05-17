@@ -520,6 +520,15 @@ export function initializeSchema(db: Database): void {
     try { db.exec(`INSERT OR IGNORE INTO schema_versions(version) VALUES (38)`); } catch { /* non-critical */ }
   }
 
+  // Phase 14-07l (V39): CHR throttle state table.
+  // Creates handoff_refresh_state table for per-session throttle tracking.
+  // Idempotent: CREATE TABLE IF NOT EXISTS.
+  if (currentUv < 39) {
+    migrateV38toV39(db); // idempotent
+    db.pragma('user_version = 39');
+    try { db.exec(`INSERT OR IGNORE INTO schema_versions(version) VALUES (39)`); } catch { /* non-critical */ }
+  }
+
   // Phase 4 (V28): per-connection sidecar + TEMP TRIGGER guarding writes
   // to the legacy `experience_patterns` table. Both objects live in the
   // `temp` schema because (a) SQLite forbids a permanent-schema trigger
