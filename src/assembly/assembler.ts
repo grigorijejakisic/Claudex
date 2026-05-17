@@ -483,6 +483,25 @@ export function assembleFullContext(params: FullAssemblyParams): InjectPayload {
       } catch { /* non-fatal — section is advisory, never blocks assembly */ }
     }
 
+    // 14-07f: P2.8 Pending Review Links — hard-link proposals awaiting operator confirm/reject.
+    // Token budget: 600. Returns null when no pending rows (section absent on happy path).
+    // Placed between P2.7 Project Knowledge and P2.9 Provenance Chain (14-07g).
+    try {
+      const pendingReviewSection = formatPendingReviewLinksSection({
+        db: params.db,
+        project: params.project,
+        budget_tokens: Math.min(600, budget),
+      });
+      if (pendingReviewSection) {
+        const cost = estimateTokens(pendingReviewSection);
+        if (cost <= budget) {
+          sections.push(pendingReviewSection);
+          budget -= cost;
+          sources.push('pending_review_links');
+        }
+      }
+    } catch { /* non-fatal — section is advisory, never blocks assembly */ }
+
     // Priority 3: Checkpoint — skipLearnings because Priority 4 injects them separately.
     // Phase 13.1 Fix #6 (2026-05-15): apply the ACTIVE.md freshness floor
     // (`activeFloorEpochMs`, read once at the top of this assembler call)
