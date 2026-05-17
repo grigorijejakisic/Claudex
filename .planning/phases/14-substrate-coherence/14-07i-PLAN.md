@@ -130,9 +130,10 @@ Add `// 14-07i: retrieval metadata` comment marker per attachment site.
 
 <task type="auto">
   <name>Task 2: Codebase Context section formatter annotation</name>
-  <files>src/assembly/sections.ts</files>
+  <files>src/assembly/sections/codebase-context.ts</files>
   <action>
-Locate the existing codebase-context section formatter (survey + identify; exact function name during execution).
+Modify `formatCodebaseContextSection` in `src/assembly/sections/codebase-context.ts`.
+Wave 0 (w0d) extracted this function from assembler.ts:857 into this file. I modifies it in-place.
 
 Extend the formatter to render the annotation line per file.
 
