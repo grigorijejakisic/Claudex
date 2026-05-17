@@ -269,7 +269,7 @@ export async function writeCheckpoint(
       decisions: decisions.map((d) => ({
         content: d.content,
         source: d.source,
-        timestamp: d.timestamp_epoch,
+        timestamp: d.timestamp_epoch_ms,
       })),
       files: {
         hot: hotFiles.map((f) => ({
