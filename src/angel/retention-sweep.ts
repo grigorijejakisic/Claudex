@@ -346,11 +346,11 @@ export function pruneArtifactLinks(db: Database, _config: RetentionConfig): numb
 
   try {
     // Weak stale links: low strength and not validated recently
-    const weakCutoff = cutoff(365);
+    const weakCutoff = cutoffMs(365);
     const weak = cachedPrepare(db, `
       DELETE FROM artifact_links
       WHERE strength < 0.3
-        AND valid_at_epoch < ?
+        AND valid_at_epoch_ms < ?
       LIMIT ?
     `).run(weakCutoff, BATCH_LIMIT);
     total += weak.changes;

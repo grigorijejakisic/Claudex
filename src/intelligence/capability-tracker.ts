@@ -27,7 +27,7 @@ export interface CapabilityBoundary {
   total_interactions: number;
   corrections: number;
   correction_rate: number;
-  last_updated_epoch: number;
+  last_updated_epoch_ms: number;
 }
 
 // ---------------------------------------------------------------------------
