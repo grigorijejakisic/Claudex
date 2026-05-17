@@ -18,6 +18,7 @@
 import type { Database } from 'better-sqlite3';
 import { proposeHardLink, getDecayCount, DECAY_THRESHOLD } from '../core/link-writer.js';
 import { callLocalLLM } from '../angel/llama-client.js';
+import { generate } from '../angel/generation-backend.js';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
