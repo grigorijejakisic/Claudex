@@ -651,7 +651,7 @@ export interface ArtifactLinkRow {
   target_id: number;
   link_type: ArtifactLinkType;
   strength: number;
-  created_at_epoch: number;
+  created_at_epoch_ms: number;
 }
 
 /**
