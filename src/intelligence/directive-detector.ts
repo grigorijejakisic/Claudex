@@ -813,12 +813,7 @@ export async function extractDirectivesFromSession(
       decision: 'rejected_regex',
     };
     try {
-      // 2a. Fetch context window (±2 un-stripped)
-      const window = fetchContextWindow(db, sessionId, turn.turn_number, 2);
-      const contextBlock = formatContextForLLM(window, turn.turn_number);
-
-      // 2b. LLM confirmation
-      const confirmation = await confirmCandidate(cfg, turn.user_text ?? '', contextBlock);
+      // 3a. Confirmation already done in parallel phase 2 — reuse the result.
       if (!confirmation) {
         record.decision = 'rejected_confirm';
         result.skipped++;
