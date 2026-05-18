@@ -1182,7 +1182,19 @@ async function extractDirectivesFromSession(db, sessionId, projectId, opts) {
     if (fams.length > 0) candidates.push({ turn: t, families: fams });
   }
   result.candidates = candidates.length;
-  for (const { turn, families } of candidates) {
+  const confirmations = await Promise.all(
+    candidates.map(async ({ turn, families }) => {
+      const window = fetchContextWindow(db, sessionId, turn.turn_number, 2);
+      const contextBlock = formatContextForLLM(window, turn.turn_number);
+      let confirmation = null;
+      try {
+        confirmation = await confirmCandidate(cfg, turn.user_text ?? "", contextBlock);
+      } catch {
+      }
+      return { turn, families, contextBlock, confirmation };
+    })
+  );
+  for (const { turn, families, confirmation } of confirmations) {
     const record = {
       session_id: sessionId,
       turn_idx: turn.turn_number,
@@ -1191,9 +1203,6 @@ async function extractDirectivesFromSession(db, sessionId, projectId, opts) {
       decision: "rejected_regex"
     };
     try {
-      const window = fetchContextWindow(db, sessionId, turn.turn_number, 2);
-      const contextBlock = formatContextForLLM(window, turn.turn_number);
-      const confirmation = await confirmCandidate(cfg, turn.user_text ?? "", contextBlock);
       if (!confirmation) {
         record.decision = "rejected_confirm";
         result.skipped++;
