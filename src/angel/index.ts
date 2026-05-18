@@ -259,27 +259,30 @@ async function main(): Promise<void> {
   });
   await rerankerSupervisor.start();
 
-  // Supervise the local llama.cpp generation server (Gemma 4 31B IT Q6_K).
-  // Non-blocking: if the server can't come up, Angel continues and every
-  // LLM-dependent subsystem (pattern extraction, curated-context extraction,
-  // entity summarization, consolidation, health reports) skips its work
-  // and retries next tick. Supervision gives us logs (context/logs/
-  // llama-server.log), bounded restart (2 attempts), and clean shutdown.
-  const llamaServerSupervisor = new LlamaServerSupervisor({
-    projectRoot,
-    logger: (level, message) => log(level, `llama-server: ${message}`),
-  });
-  await llamaServerSupervisor.start();
-  const llamaHealthy = await checkLlamaServerHealth();
-
-  // Log startup. Report the ACTUAL generation backend in play. Pre-2026-05-18
-  // the startup log only described the llama-server health check, which is
-  // about the Ollama-revert path. Post Phase-14-08 the production default is
-  // 'claude' (subprocess via MAX OAuth) — surface that honestly so the line
-  // matches what generate() actually does. Llama-server health is kept as a
-  // secondary line for the rollback path.
-  const intervalMin = Math.round(config.heartbeatIntervalMs / 60000);
+  // Backend resolver decides the actual generation path. Pre-2026-05-18 boot
+  // unconditionally spawned the llama-server supervisor AND checked Ollama
+  // health every startup, even when CLAUDEX_GENERATION_BACKEND=claude (the
+  // production default) — the spawn was dead weight that produced misleading
+  // "generation backend unavailable" errors. Gate spawn + health check behind
+  // backend === 'ollama' so the Ollama supervisor is only present when the
+  // operator has explicitly opted into the rollback path.
   const backend = resolveBackend();
+  let llamaServerSupervisor: LlamaServerSupervisor | undefined;
+  let llamaHealthy = false;
+  if (backend === 'ollama') {
+    // Supervise the local llama.cpp generation server (Gemma 4 31B IT Q6_K).
+    // Non-blocking: if the server can't come up, Angel continues and every
+    // LLM-dependent subsystem skips its work and retries next tick.
+    llamaServerSupervisor = new LlamaServerSupervisor({
+      projectRoot,
+      logger: (level, message) => log(level, `llama-server: ${message}`),
+    });
+    await llamaServerSupervisor.start();
+    llamaHealthy = await checkLlamaServerHealth();
+  }
+
+  // Log startup. Report the ACTUAL generation backend in play.
+  const intervalMin = Math.round(config.heartbeatIntervalMs / 60000);
   const generationLine = backend === 'claude'
     ? 'Claude subprocess via MAX OAuth (sonnet/haiku per subsystem)'
     : llamaHealthy
@@ -291,7 +294,7 @@ async function main(): Promise<void> {
     pid: process.pid,
     backend,
     generation: generationLine,
-    llama_server_healthy: llamaHealthy,
+    ...(backend === 'ollama' ? { llama_server_healthy: llamaHealthy } : {}),
     interval_minutes: intervalMin,
     idle_threshold_minutes: Math.round(config.idleThresholdSeconds / 60),
   });
