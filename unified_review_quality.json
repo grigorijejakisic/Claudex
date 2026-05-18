@@ -1,205 +1,332 @@
 {
-  "assessments": {
-    "naming_quality": 83,
-    "error_consistency": 63,
-    "abstraction_fitness": 69,
-    "logic_clarity": 62,
-    "ai_generated_debt": 58,
-    "type_safety": 64,
-    "contract_coherence": 53
+  "meta": {
+    "generated": "2026-05-18",
+    "scope": "Phase 14-09 substrate work — V40+V42+V43 migrations, session_termination, claudex_recall ID contract, generation-backend wrapper, CHR async, CLAUDE.md rules",
+    "chunks": ["chunk-angel-quality", "chunk-core-quality", "chunk-surfaces-quality", "chunk-docs-quality"],
+    "note": "Averaged across 4 quality chunks. Higher = better except ai_generated_debt where higher = less AI-like debt."
+  },
+  "per_chunk": {
+    "chunk-angel-quality": {
+      "naming_quality": 76,
+      "error_consistency": 58,
+      "abstraction_fitness": 62,
+      "logic_clarity": 60,
+      "ai_generated_debt": 42,
+      "type_safety": 64,
+      "contract_coherence": 52,
+      "wiring_completeness": 66
+    },
+    "chunk-core-quality": {
+      "naming_quality": 78,
+      "error_consistency": 50,
+      "abstraction_fitness": 55,
+      "logic_clarity": 52,
+      "ai_generated_debt": 42,
+      "type_safety": 58,
+      "contract_coherence": 48,
+      "wiring_completeness": 55
+    },
+    "chunk-surfaces-quality": {
+      "naming_quality": 76,
+      "error_consistency": 63,
+      "abstraction_fitness": 72,
+      "logic_clarity": 58,
+      "ai_generated_debt": 52,
+      "type_safety": 67,
+      "contract_coherence": 55,
+      "wiring_completeness": 62
+    },
+    "chunk-docs-quality": {
+      "naming_quality": 86,
+      "error_consistency": 78,
+      "abstraction_fitness": 84,
+      "logic_clarity": 62,
+      "ai_generated_debt": 58,
+      "type_safety": 96,
+      "contract_coherence": 52,
+      "wiring_completeness": 90
+    }
+  },
+  "averaged": {
+    "naming_quality": 79.0,
+    "error_consistency": 62.25,
+    "abstraction_fitness": 68.25,
+    "logic_clarity": 58.0,
+    "ai_generated_debt": 48.5,
+    "type_safety": 71.25,
+    "contract_coherence": 51.75,
+    "wiring_completeness": 68.25
   },
   "findings": [
     {
-      "id": "quality-001",
+      "chunk": "chunk-angel-quality",
+      "id": "angel-quality-001",
       "dimension": "contract_coherence",
+      "file": "src/angel/highlights-extractor.ts",
+      "line": 378,
+      "severity": "high",
+      "description": "The Claude-default generation backend receives `model: model || 'sonnet'`, where callers pass `config.localModel` and the default config is an Ollama tag such as `glm-5.1:cloud`. Can make the Claude CLI receive an invalid model name."
+    },
+    {
+      "chunk": "chunk-angel-quality",
+      "id": "angel-quality-002",
+      "dimension": "contract_coherence",
+      "file": "src/angel/generation-backend.ts",
+      "line": 82,
+      "severity": "medium",
+      "description": "`generate()` exposes `maxTokens` and `temperature`, but the Claude path drops them when calling `callClaudeSubprocessText`. Unified API does not honor its own contract consistently across backends."
+    },
+    {
+      "chunk": "chunk-angel-quality",
+      "id": "angel-quality-003",
+      "dimension": "error_consistency",
+      "file": "src/angel/claude-subprocess.ts",
+      "line": 412,
+      "severity": "medium",
+      "description": "Timeouts are not classified as transient because `isTransientError` checks 'etimedout' but `invokeClaudeOnce` returns stderr 'timeout'. Timeout failures throw after one attempt despite retry documentation."
+    },
+    {
+      "chunk": "chunk-angel-quality",
+      "id": "angel-quality-004",
+      "dimension": "wiring_completeness",
+      "file": "src/angel/chr-async.ts",
+      "line": 182,
+      "severity": "medium",
+      "description": "`sweepChrQueue` is exported and tested, and the file header says retention GC calls it, but no production code imports it. Processed CHR rows accumulate."
+    },
+    {
+      "chunk": "chunk-angel-quality",
+      "id": "angel-quality-005",
+      "dimension": "logic_clarity",
+      "file": "src/adapters/cc-hooks/stop.ts",
+      "line": 700,
+      "severity": "low",
+      "description": "Comment promises a `CLAUDEX_CHR_SYNC=1` synchronous classification path, but the code always enqueues."
+    },
+    {
+      "chunk": "chunk-angel-quality",
+      "id": "angel-quality-006",
+      "dimension": "type_safety",
+      "file": "src/angel/generation-backend.ts",
+      "line": 133,
+      "severity": "medium",
+      "description": "`generateRich` returns `content: string | Record<string, unknown>` even when a schema is supplied. Ollama fallback schema parse failure silently returns raw text."
+    },
+    {
+      "chunk": "chunk-angel-quality",
+      "id": "angel-quality-007",
+      "dimension": "error_consistency",
+      "file": "src/angel/chr-async.ts",
+      "line": 78,
+      "severity": "low",
+      "description": "`enqueueChrClassification` catches all insert failures with no telemetry or error reason."
+    },
+    {
+      "chunk": "chunk-angel-quality",
+      "id": "angel-quality-008",
+      "dimension": "logic_clarity",
       "file": "src/angel/heartbeat.ts",
-      "line": 83,
-      "severity": "high",
-      "description": "Transient extraction failures permanently mark sessions as processed, preventing future retry. Returns patternsCreated=0 on failure which triggers markSessionProcessed."
+      "line": 344,
+      "severity": "medium",
+      "description": "Phase-2 retry accounting keys on the first eight characters of the session id with a broad LIKE telemetry query. Can miscount on prefix collisions."
     },
     {
-      "id": "quality-002",
+      "chunk": "chunk-angel-quality",
+      "id": "angel-quality-009",
+      "dimension": "ai_generated_debt",
+      "file": "src/angel/embedded-prompts.ts",
+      "line": 24,
+      "severity": "medium",
+      "description": "Prompt assets are manually duplicated into TypeScript strings with an instruction to paste updates in two places. High-maintenance drift risk."
+    },
+    {
+      "chunk": "chunk-angel-quality",
+      "id": "angel-quality-010",
+      "dimension": "naming_quality",
+      "file": "src/angel/heartbeat.ts",
+      "line": 1597,
+      "severity": "low",
+      "description": "`nowEpoch` stores `Date.now()` milliseconds for `valid_at_epoch_ms`. Name is misleading after the ms migration."
+    },
+    {
+      "chunk": "chunk-core-quality",
+      "id": "core-quality-001",
       "dimension": "contract_coherence",
-      "file": "src/adapters/cc-hooks/user-prompt-submit.ts",
-      "line": 280,
+      "file": "src/core/migration/kind-mapping.ts",
+      "line": 180,
       "severity": "high",
-      "description": "Angel messages marked delivered before token budget gating. If extraContent is dropped for budget, messages are permanently lost."
+      "description": "Decisions V17 view reads `$.timestamp_epoch_ms` but existing artifact JSON has `$.timestamp_epoch`. V43 renames relational columns only; existing V17-backed decisions return null timestamps and sort incorrectly."
     },
     {
-      "id": "quality-003",
+      "chunk": "chunk-core-quality",
+      "id": "core-quality-002",
       "dimension": "logic_clarity",
-      "file": "src/intelligence/cross-session-coordination.ts",
-      "line": 52,
+      "file": "src/core/session-termination.ts",
+      "line": 145,
       "severity": "high",
-      "description": "ORDER BY MAX(o.timestamp_epoch) without GROUP BY is invalid SQL. Silently returns empty array, disabling cross-session awareness."
+      "description": "Crash inference uses COALESCE over heartbeat, JSONL write, and creation time. Stale heartbeat + newer JSONL write incorrectly marks session as crashed."
     },
     {
-      "id": "quality-004",
-      "dimension": "logic_clarity",
-      "file": "src/intelligence/retrieval-feedback.ts",
-      "line": 294,
-      "severity": "high",
-      "description": "Idempotence guard compares against -0.05 but scores are clamped to >= 0.1, so guard is always true and penalties keep applying."
-    },
-    {
-      "id": "quality-005",
+      "chunk": "chunk-core-quality",
+      "id": "core-quality-003",
       "dimension": "contract_coherence",
-      "file": "src/adapters/cc-hooks/post-tool-use.ts",
-      "line": 160,
-      "severity": "high",
-      "description": "Trigger-engine matches merged into injected_pattern_ids, but those patterns were never actually injected into context. Feedback scoring rewards/penalizes unshown patterns."
-    },
-    {
-      "id": "quality-006",
-      "dimension": "logic_clarity",
-      "file": "src/core/artifacts.ts",
-      "line": 510,
-      "severity": "high",
-      "description": "Supersede older-than guard compares to wall clock instead of new artifact timestamp, not enforcing intended relative ordering."
-    },
-    {
-      "id": "quality-007",
-      "dimension": "logic_clarity",
-      "file": "src/core/artifacts.ts",
-      "line": 688,
-      "severity": "high",
-      "description": "Contradiction detection regex: should matches inside should not, marking two negative statements as contradictory."
-    },
-    {
-      "id": "quality-008",
-      "dimension": "contract_coherence",
-      "file": "src/shared/constants.ts",
-      "line": 44,
-      "severity": "high",
-      "description": "DEFAULT_CONFIG missing required ClaudexConfig fields. deepMerge strips keys not present in defaults, making parts of config unconfigurable."
-    },
-    {
-      "id": "quality-009",
-      "dimension": "error_consistency",
-      "file": "src/core/migrations.ts",
-      "line": 103,
-      "severity": "high",
-      "description": "Migration success inferred from no thrown exceptions, but steps are non-throwing. Can advance user_version after partial failure."
-    },
-    {
-      "id": "quality-010",
-      "dimension": "contract_coherence",
-      "file": "src/angel/pattern-extractor.ts",
-      "line": 177,
+      "file": "src/core/migration-steps.ts",
+      "line": 4363,
       "severity": "medium",
-      "description": "Double-embedding: createPattern already fire-and-forget embeds, then Angel also await embeds the same pattern."
+      "description": "V43 reverse migration guard checks `_ms` exists and legacy name is absent. Cannot distinguish freshly-created vs renamed columns; can rename canonical `_ms` columns on rollback."
     },
     {
-      "id": "quality-011",
-      "dimension": "contract_coherence",
-      "file": "src/embeddings/embed-pipeline.ts",
-      "line": 177,
-      "severity": "medium",
-      "description": "embedArtifact/embedPattern return true without checking Qdrant upsert or SQLite UPDATE success. False success reporting."
-    },
-    {
-      "id": "quality-012",
-      "dimension": "type_safety",
-      "file": "src/extraction/quality-gate.ts",
-      "line": 66,
-      "severity": "medium",
-      "description": "exitCode compared numerically without normalization. String '0' treated as non-zero failure."
-    },
-    {
-      "id": "quality-013",
-      "dimension": "contract_coherence",
-      "file": "src/extraction/extractor.ts",
-      "line": 237,
-      "severity": "medium",
-      "description": "External discoveries stored as external:discovery but promotion queries filter obs_type = discovery, excluding them."
-    },
-    {
-      "id": "quality-014",
-      "dimension": "contract_coherence",
-      "file": "src/intelligence/trigger-engine.ts",
-      "line": 41,
-      "severity": "medium",
-      "description": "Trigger-data cache keyed by DB handle only, not project. Cross-project cache pollution."
-    },
-    {
-      "id": "quality-015",
+      "chunk": "chunk-core-quality",
+      "id": "core-quality-004",
       "dimension": "abstraction_fitness",
-      "file": "src/embeddings/embed-pipeline.ts",
-      "line": 36,
+      "file": "src/core/migration-steps.ts",
+      "line": 4002,
       "severity": "medium",
-      "description": "Singleton embedding provider ignores config after first initialization."
+      "description": "V39-to-V40 is documented as epoch_ms canonicalization but also drops kind_registry legacy columns and rewrites `artifact_register_kind`. Unrelated cleanup increases blast radius."
     },
     {
-      "id": "quality-016",
+      "chunk": "chunk-core-quality",
+      "id": "core-quality-005",
       "dimension": "type_safety",
-      "file": "src/shared/config.ts",
-      "line": 90,
+      "file": "src/core/artifacts.ts",
+      "line": 648,
       "severity": "medium",
-      "description": "Heavy as unknown as casting in config merge/validation bypasses strict typing and hides schema drift."
+      "description": "`ArtifactLinkRow` still exposes `created_at_epoch`; schema and graph-walk now use `created_at_epoch_ms`, `valid_at_epoch_ms`, `invalid_at_epoch_ms`."
     },
     {
-      "id": "quality-017",
-      "dimension": "contract_coherence",
-      "file": "src/core/hybrid-retrieval.ts",
-      "line": 636,
+      "chunk": "chunk-core-quality",
+      "id": "core-quality-006",
+      "dimension": "wiring_completeness",
+      "file": "src/cli/health.ts",
+      "line": 202,
       "severity": "medium",
-      "description": "Spread activation comments claim reverse-link traversal but only queries source_id direction."
+      "description": "Health schema expectations require `artifact_links.created_at_epoch`; V43 renamed it to `created_at_epoch_ms`. V43 database falsely reported unhealthy."
     },
     {
-      "id": "quality-018",
-      "dimension": "contract_coherence",
-      "file": "src/core/hybrid-retrieval.ts",
-      "line": 258,
-      "severity": "medium",
-      "description": "searchVectorChannel exported but never called. Dead code at birth."
-    },
-    {
-      "id": "quality-019",
-      "dimension": "contract_coherence",
-      "file": "src/core/file-ingester.ts",
-      "line": 264,
-      "severity": "medium",
-      "description": "IngestResult.skipped documented but never incremented."
-    },
-    {
-      "id": "quality-020",
-      "dimension": "contract_coherence",
-      "file": "src/intelligence/retrieval-feedback.ts",
-      "line": 36,
-      "severity": "medium",
-      "description": "Docs say EMA update but implementation is additive clamp. Contract/behavior mismatch."
-    },
-    {
-      "id": "quality-021",
-      "dimension": "contract_coherence",
-      "file": "src/intelligence/learnings-promoter.ts",
-      "line": 45,
-      "severity": "medium",
-      "description": "Duplicate learnings upsert uses current agent_id instead of matched row agent_id, can create parallel duplicates."
-    },
-    {
-      "id": "quality-022",
-      "dimension": "logic_clarity",
-      "file": "src/adapters/cc-hooks/user-prompt-submit.ts",
-      "line": 84,
-      "severity": "low",
-      "description": "Topic shift event recorded with ctx.project instead of routedProject, inconsistent with surrounding routing."
-    },
-    {
-      "id": "quality-023",
+      "chunk": "chunk-core-quality",
+      "id": "core-quality-007",
       "dimension": "error_consistency",
-      "file": "src/shared/config.ts",
-      "line": 72,
+      "file": "src/core/session-termination.ts",
+      "line": 105,
       "severity": "low",
-      "description": "Config clone fallback retries same failing deepClone call."
+      "description": "Session termination writes return false on any failure without logging or telemetry."
     },
     {
-      "id": "quality-024",
+      "chunk": "chunk-surfaces-quality",
+      "id": "surfaces-quality-001",
       "dimension": "logic_clarity",
-      "file": "src/shared/content-router.ts",
-      "line": 186,
+      "file": "src/core/session-termination.ts",
+      "line": 145,
+      "severity": "high",
+      "description": "Crash inference compares millisecond cutoff to last_heartbeat_ts/last_jsonl_write_ts, while existing hooks still write last_heartbeat_ts in seconds. Can back-fill active sessions as crash-terminated."
+    },
+    {
+      "chunk": "chunk-surfaces-quality",
+      "id": "surfaces-quality-002",
+      "dimension": "logic_clarity",
+      "file": "src/core/session-termination.ts",
+      "line": 145,
+      "severity": "medium",
+      "description": "COALESCE checks last_heartbeat_ts before last_jsonl_write_ts; stale heartbeat can classify session as crashed even when JSONL activity is fresher."
+    },
+    {
+      "chunk": "chunk-surfaces-quality",
+      "id": "surfaces-quality-003",
+      "dimension": "wiring_completeness",
+      "file": "src/adapters/cc-hooks/stop.ts",
+      "line": 700,
+      "severity": "medium",
+      "description": "Comment says CLAUDEX_CHR_SYNC=1 preserves synchronous classification; code never checks env var, always enqueues."
+    },
+    {
+      "chunk": "chunk-surfaces-quality",
+      "id": "surfaces-quality-004",
+      "dimension": "contract_coherence",
+      "file": "src/angel/generation-backend.ts",
+      "line": 97,
+      "severity": "medium",
+      "description": "Ollama fallback passes opts.model literally. New callers pass Claude aliases like 'haiku'; CLAUDEX_GENERATION_BACKEND=ollama routes invalid Ollama model."
+    },
+    {
+      "chunk": "chunk-surfaces-quality",
+      "id": "surfaces-quality-005",
+      "dimension": "naming_quality",
+      "file": "src/adapters/cc-hooks/subagent-stop.ts",
+      "line": 16,
       "severity": "low",
-      "description": "isPathBoundaryMatch only checks first indexOf hit, can miss later valid boundary matches."
+      "description": "durationMs stores seconds after timestamp migration and is serialized as duration_s."
+    },
+    {
+      "chunk": "chunk-surfaces-quality",
+      "id": "surfaces-quality-006",
+      "dimension": "error_consistency",
+      "file": "src/adapters/cc-hooks/session-end.ts",
+      "line": 107,
+      "severity": "low",
+      "description": "recordSessionTermination return value ignored in empty catch; failed termination writes are completely invisible."
+    },
+    {
+      "chunk": "chunk-surfaces-quality",
+      "id": "surfaces-quality-007",
+      "dimension": "type_safety",
+      "file": "src/mcp/recall-server.ts",
+      "line": 649,
+      "severity": "low",
+      "description": "artifact_id documented as 32-char hex V17 ID but validation accepts any non-empty string."
+    },
+    {
+      "chunk": "chunk-surfaces-quality",
+      "id": "surfaces-quality-008",
+      "dimension": "type_safety",
+      "file": "src/mcp/recall-server.ts",
+      "line": 1317,
+      "severity": "low",
+      "description": "claudex_recent_sessions limit unclamped; negative or very large values produce unbounded SQL queries."
+    },
+    {
+      "chunk": "chunk-docs-quality",
+      "id": "docs-quality-001",
+      "dimension": "contract_coherence",
+      "file": "CLAUDE.md",
+      "line": 14,
+      "severity": "high",
+      "description": "CLAUDE.md says V41 schema; src/core/migrations.ts exports TARGET_USER_VERSION = 43. Operationally risky for future schema/debug work."
+    },
+    {
+      "chunk": "chunk-docs-quality",
+      "id": "docs-quality-002",
+      "dimension": "contract_coherence",
+      "file": "CLAUDE.md",
+      "line": 49,
+      "severity": "high",
+      "description": "Epoch rule says legacy `_epoch` columns still coexist until a future rename; migration layer already contains V43 rename-and-scale logic."
+    },
+    {
+      "chunk": "chunk-docs-quality",
+      "id": "docs-quality-003",
+      "dimension": "logic_clarity",
+      "file": "context/measurements/2026-05-18-legacy-epoch-columns-audit.md",
+      "line": 7,
+      "severity": "medium",
+      "description": "Audit presents '24 more legacy _epoch columns remain' as current state; V43 is already implemented. Needs timestamped/historical framing."
+    },
+    {
+      "chunk": "chunk-docs-quality",
+      "id": "docs-quality-004",
+      "dimension": "error_consistency",
+      "file": "context/measurements/2026-05-18-angel-await-audit.md",
+      "line": 7,
+      "severity": "medium",
+      "description": "Audit headline says no unbounded external-IO awaits remain; same document later identifies filesystem awaits in user-profile-sync.ts without per-operation timeouts."
+    },
+    {
+      "chunk": "chunk-docs-quality",
+      "id": "docs-quality-005",
+      "dimension": "ai_generated_debt",
+      "file": "CLAUDE.md",
+      "line": 47,
+      "severity": "low",
+      "description": "New rule is useful but prose is unusually long and emotionally phrased for an operational contract."
     }
   ]
 }
