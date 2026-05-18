@@ -596,6 +596,15 @@ export function initializeSchema(db: Database): void {
     try { db.exec(`INSERT OR IGNORE INTO schema_versions(version) VALUES (44)`); } catch { /* non-critical */ }
   }
 
+  // V45: add `last_reconciliation_attempt_ms` cursor column to
+  // session_termination so the continuous reclassification mechanism can
+  // skip rows it already examined (unless new evidence emerges).
+  if (currentUv < 45) {
+    migrateV44toV45(db);
+    db.pragma('user_version = 45');
+    try { db.exec(`INSERT OR IGNORE INTO schema_versions(version) VALUES (45)`); } catch { /* non-critical */ }
+  }
+
   // Phase 4 (V28): per-connection sidecar + TEMP TRIGGER guarding writes
   // to the legacy `experience_patterns` table. Both objects live in the
   // `temp` schema because (a) SQLite forbids a permanent-schema trigger
