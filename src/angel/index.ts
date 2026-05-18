@@ -41,6 +41,7 @@ import {
   LLAMA_MODEL_ALIAS,
   LLAMA_SERVER_URL,
 } from './llama-client.js';
+import { resolveBackend } from './generation-backend.js';
 
 // ---------------------------------------------------------------------------
 // CLI argument parsing
