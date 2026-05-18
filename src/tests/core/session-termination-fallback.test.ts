@@ -105,7 +105,12 @@ describe('getRecentTerminations — empty session_termination fallback', () => {
     const r = rows[0];
     expect(r.session_id).toBe('sess-a');
     expect(r.project).toBe(project);
-    expect(r.end_reason).toBe('endsession'); // status='completed' → endsession
+    // 2026-05-18: derived rows now return 'unknown' (truthful) instead of
+    // fabricating 'endsession'. sessions.status='completed' does NOT mean
+    // operator ran /endsession — it means "no longer active." The derived
+    // flag carries the provenance.
+    expect(r.end_reason).toBe('unknown');
+    expect(r.derived).toBe(true);
     expect(r.observation_count).toBe(42);
     expect(r.last_user_directive).toBe('why did production stop?');
     expect(r.last_assistant_text).toBeNull();
