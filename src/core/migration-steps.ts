@@ -4274,22 +4274,53 @@ export function migrateV42toV43(db: Database): void {
     ['code_index', 'last_indexed_epoch', 'last_indexed_epoch_ms'],
   ];
 
-  // Step 1: rename + scale inside a transaction.
-  // Idempotent: each entry is skipped if old column is gone OR new column already exists.
-  const tx = db.transaction(() => {
-    for (const [table, oldCol, newCol] of renames) {
-      if (!hasTable(db, table)) continue;
-      if (hasColumn(db, table, oldCol) && !hasColumn(db, table, newCol)) {
-        db.exec(`ALTER TABLE "${table}" RENAME COLUMN "${oldCol}" TO "${newCol}"`);
-        // Scale: stored values are in seconds; multiply by 1000 to get ms.
-        // Threshold 1e11: values > 1e11 are already in ms range (3001-09-09).
-        db.exec(
-          `UPDATE "${table}" SET "${newCol}" = "${newCol}" * 1000 WHERE "${newCol}" > 0 AND "${newCol}" < 100000000000`,
-        );
+  // The legacy `artifacts` table is read-only post-cutover (Phase 14-07c installs
+  // BEFORE INSERT/UPDATE/DELETE triggers that RAISE(ABORT, ...) when read_only=1).
+  // V43's `UPDATE artifacts SET timestamp_epoch_ms = ... * 1000` scaling step
+  // would hit those triggers and abort the migration. Detect, drop, scale,
+  // re-install. Without this, V43 retry-loops forever on cutover-flipped DBs
+  // and every MCP tool call surfaces "legacy artifacts table is read-only
+  // post-cutover" as the error of record. Found 2026-05-18 fresh-session test.
+  let restoreReadOnlyTriggers = false;
+  try {
+    if (hasTable(db, 'artifacts') && hasColumn(db, 'artifacts', 'read_only')) {
+      const flipped = (
+        db.prepare(`SELECT COUNT(*) AS n FROM artifacts WHERE read_only = 1`).get() as { n: number }
+      ).n;
+      if (flipped > 0) {
+        db.exec(`DROP TRIGGER IF EXISTS prevent_legacy_insert_post_cutover`);
+        db.exec(`DROP TRIGGER IF EXISTS prevent_legacy_update_post_cutover`);
+        db.exec(`DROP TRIGGER IF EXISTS prevent_legacy_delete_post_cutover`);
+        restoreReadOnlyTriggers = true;
       }
     }
-  });
-  tx();
+  } catch { /* read_only column missing on very old DBs — proceed without trigger handling */ }
+
+  try {
+    // Step 1: rename + scale inside a transaction.
+    // Idempotent: each entry is skipped if old column is gone OR new column already exists.
+    const tx = db.transaction(() => {
+      for (const [table, oldCol, newCol] of renames) {
+        if (!hasTable(db, table)) continue;
+        if (hasColumn(db, table, oldCol) && !hasColumn(db, table, newCol)) {
+          db.exec(`ALTER TABLE "${table}" RENAME COLUMN "${oldCol}" TO "${newCol}"`);
+          // Scale: stored values are in seconds; multiply by 1000 to get ms.
+          // Threshold 1e11: values > 1e11 are already in ms range (3001-09-09).
+          db.exec(
+            `UPDATE "${table}" SET "${newCol}" = "${newCol}" * 1000 WHERE "${newCol}" > 0 AND "${newCol}" < 100000000000`,
+          );
+        }
+      }
+    });
+    tx();
+  } finally {
+    // Re-install read-only triggers if we dropped them. Even on migration
+    // failure: leaving the legacy table writable would let arbitrary code
+    // mutate frozen post-cutover rows.
+    if (restoreReadOnlyTriggers) {
+      try { _installReadOnlyTriggers(db); } catch { /* non-fatal */ }
+    }
+  }
 
   // Step 2: rewrite DDL DEFAULT (unixepoch()) → DEFAULT (unixepoch() * 1000)
   // on every table touched. Must run OUTSIDE any transaction.
