@@ -245,6 +245,7 @@ export interface ScoredArtifact extends ArtifactRow {
     rrf_fts5: number;
     rrf_vector: number;
     rrf_recency: number;
+    rrf_episodic?: number;
     three_factor: number;
   };
   // 14-07i: retrieval metadata — additive fields; existing callers unaffected
@@ -256,11 +257,12 @@ export interface ScoredArtifact extends ArtifactRow {
   match_query?: string;
   /**
    * Which retrieval channel was responsible for this candidate's highest score.
-   * 'fts' = FTS5 keyword match, 'vector' = Qdrant KNN, 'reranker' is NOT used
-   * here — reranker re-orders candidates but is not a source channel.
-   * Undefined when the candidate appears only in the recency/graph channel.
+   * 'fts' = FTS5 keyword match, 'vector' = Qdrant KNN, 'episodic' = session_events
+   * user_framing or sessions.session_summary. 'reranker' is NOT used here —
+   * reranker re-orders candidates but is not a source channel. Undefined when
+   * the candidate appears only in the recency/graph channel.
    */
-  match_kind?: 'fts' | 'vector';
+  match_kind?: 'fts' | 'vector' | 'episodic';
 }
 
 /** Result from a single retrieval channel, pre-merge. */
