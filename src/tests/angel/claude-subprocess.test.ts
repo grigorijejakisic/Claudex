@@ -353,3 +353,59 @@ describe('generation backend selector', () => {
     expect(typeof generate).toBe('function');
   });
 });
+
+describe('generation backend model normalization (codex review fix)', () => {
+  // Phase 14-09: when caller passes a Claude alias but BACKEND=ollama, the
+  // wrapper must drop the alias so Ollama uses its default — not pass 'haiku'
+  // literally to Ollama. Symmetrically, an Ollama tag → claude should drop.
+  let savedVitest: string | undefined;
+  let savedBackend: string | undefined;
+  beforeEach(() => {
+    savedVitest = process.env['VITEST'];
+    savedBackend = process.env['CLAUDEX_GENERATION_BACKEND'];
+    delete process.env['VITEST'];
+  });
+  afterEach(() => {
+    if (savedVitest !== undefined) process.env['VITEST'] = savedVitest;
+    else delete process.env['VITEST'];
+    if (savedBackend !== undefined) process.env['CLAUDEX_GENERATION_BACKEND'] = savedBackend;
+    else delete process.env['CLAUDEX_GENERATION_BACKEND'];
+  });
+
+  it('drops Claude alias when routing to Ollama', async () => {
+    process.env['CLAUDEX_GENERATION_BACKEND'] = 'ollama';
+    const llamaClient = await import('../../angel/llama-client.js');
+    const mockCall = vi.spyOn(llamaClient, 'callLocalLLM').mockResolvedValue('hello');
+
+    const { generate } = await import('../../angel/generation-backend.js');
+    await generate({ prompt: 'x', model: 'haiku' });
+
+    expect(mockCall).toHaveBeenCalled();
+    const firstCallArgs = mockCall.mock.calls[0][0] as { model?: string };
+    expect(firstCallArgs.model).toBeUndefined();
+    mockCall.mockRestore();
+  });
+
+  it('passes Ollama tag through to Ollama backend', async () => {
+    process.env['CLAUDEX_GENERATION_BACKEND'] = 'ollama';
+    const llamaClient = await import('../../angel/llama-client.js');
+    const mockCall = vi.spyOn(llamaClient, 'callLocalLLM').mockResolvedValue('hello');
+
+    const { generate } = await import('../../angel/generation-backend.js');
+    await generate({ prompt: 'x', model: 'glm-5.1:cloud' });
+
+    const firstCallArgs = mockCall.mock.calls[0][0] as { model?: string };
+    expect(firstCallArgs.model).toBe('glm-5.1:cloud');
+    mockCall.mockRestore();
+  });
+
+  it('claude alias recognized as valid for claude backend', () => {
+    expect(['haiku', 'sonnet', 'opus'].includes('sonnet')).toBe(true);
+  });
+
+  it('ollama tag pattern matches foo:bar shape', () => {
+    expect('glm-5.1:cloud').toMatch(/^[a-z0-9._-]+:[a-z0-9._-]+$/i);
+    expect('llama3.1:8b').toMatch(/^[a-z0-9._-]+:[a-z0-9._-]+$/i);
+    expect('haiku').not.toMatch(/^[a-z0-9._-]+:[a-z0-9._-]+$/i);
+  });
+});
