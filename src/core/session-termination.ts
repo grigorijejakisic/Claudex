@@ -58,6 +58,18 @@ export interface SessionTerminationRow {
    * signals existed at write time.
    */
   open_blockers: string | null;
+  /**
+   * Provenance flag — `true` when the row was synthesized at read time from
+   * `sessions.ended_at_epoch_ms` + `sessions.status` because no real
+   * `session_termination` row existed. Undefined/false on real rows.
+   *
+   * 2026-05-18 fresh-agent gate test exposed the value: the deterministic
+   * tool was lying by omission, returning fabricated `end_reason='endsession'`
+   * for derived rows. With this flag, the MCP consumer can mark output with
+   * "inferred from session state" provenance so the agent doesn't get false
+   * confidence from synthesized data.
+   */
+  derived?: boolean;
 }
 
 export interface RecordTerminationOpts {
