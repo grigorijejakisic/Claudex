@@ -1302,12 +1302,14 @@ export async function hybridSearchAsync(
       // sync and async paths. Closes the prior sync↔async qMultiplier
       // mismatch — async now applies all 7 multipliers via the same helper
       // the sync path uses. See computeArtifactScore + 06-03-CONSOLIDATION-NOTE.md.
+      const isEpisodicHitAsync = epRrfScore > 0 && isEpisodicQuery(query);
       const hybridScore = computeArtifactScore(artifact, rrfScore, {
         db,
         artifactId,
         relevance: Math.min(1, relevance),
         weights,
         multiplierFlags: options.multiplierFlags,
+        isEpisodicHit: isEpisodicHitAsync,
       });
 
       // Three-factor reported in score_breakdown for debugging.
