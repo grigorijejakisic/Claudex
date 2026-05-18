@@ -233,6 +233,42 @@ export async function promoteSessionToCompleted(
     ).run(endedAt, sessionId);
   }
 
+  // Phase 14-09 follow-up (2026-05-18 fresh-agent gate): boundary-detector
+  // was marking sessions completed WITHOUT writing a session_termination row.
+  // 3 hooks (session-end, stop-failure, pre-compact) had been the ONLY
+  // writers — but the heartbeat-driven boundary path is how *most* sessions
+  // actually end, so session_termination had ~2 rows total across the entire
+  // substrate. Inferred crashes never landed because inferCrashedSessions
+  // looks for `status='active'` candidates and the boundary path silently
+  // promoted them to `completed` first.
+  //
+  // Fix: write a termination row here too, mapping the local 3-value
+  // SessionEndReason to the canonical 5-value enum from session-termination.ts.
+  // Idempotent via INSERT OR REPLACE — if a hook already wrote one, the
+  // hook's reason wins (the actionsFired guard above means we won't reach
+  // this on a session that already ran end-of-session actions).
+  try {
+    const sessRow = db.prepare(
+      `SELECT project FROM sessions WHERE session_id = ?`,
+    ).get(sessionId) as { project?: string } | undefined;
+    if (sessRow?.project) {
+      const canonicalReason: CanonicalSessionEndReason =
+        reason === 'idle_terminated' ? 'idle_close'
+        : reason === 'crash_recovered' ? 'crash'
+        : reason === 'explicit_close' ? 'endsession'
+        : 'unknown';
+      const lastTurns = readLastTurnTexts(db, sessionId);
+      recordSessionTermination(db, {
+        session_id: sessionId,
+        project: sessRow.project,
+        end_reason: canonicalReason,
+        ended_at_epoch_ms: endedAt,
+        last_user_directive: lastTurns.last_user_directive,
+        last_assistant_text: lastTurns.last_assistant_text,
+      });
+    }
+  } catch { /* non-blocking — failure here must not abort end-of-session actions */ }
+
   await fireEndOfSessionActions(db, sessionId, endedAt, reason);
 }
 
