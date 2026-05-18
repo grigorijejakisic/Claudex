@@ -1,48 +1,52 @@
 ---
 status: active
-phase: "14-07 v7.0.0 SHIPPED — tag + push complete on both remotes"
-summary: v7.0.0 shipped 2026-05-17 12:12 +0200. Wave 0 (foundations) + Wave 1 (V17 unified substrate, V37) + Wave 2 (knowledge graph, V38) + Wave 3 (session-start coherence including LSS + CHR, V39) all landed. Binding ship gate (Vesna SC#1) 28/28 100% — exceeds v6.6.0 baseline (27/28). Data integrity gates PASS (artifact_id_map 100%, re-vectorize 99.96%). Cutover read-only flip applied to 10,722 legacy artifact rows. Cutover gate redesigned per `feedback_benchmarks_are_sanity_not_gates.md` — binding on Vesna + data integrity; LongMemEval/LoCoMo/cross-project moved to informational. Tag `v7.0.0` annotated and pushed to origin (Corleanus dev) + public (grigorijejakisic). 12 substrate plans shipped (w0d + 14-07a/b/c + LINKS-SCHEMA + 07d/e/f/g + 07h/i/j/k/l). LSS (14-07k) + CHR (14-07l) added to v7 scope mid-run per operator authorization 2026-05-17 02:47.
-topic: 2026-05-17-v7-shipped
-created_at_epoch_ms: 1779012720000
+phase: "post-v7 substrate hardening — 2026-05-18 round"
+summary: Continuation of v7.0.0 (shipped 2026-05-17). Today (2026-05-18) hardened the substrate end-to-end across three layered rounds — the six prior-session residuals, the operator's "honest weakness" follow-up, and the fresh-agent gate test's three exposed bugs. Heartbeat is now reliably ticking (PID 88964 at last restart) with parallelized extractDirectives (4.6x speedup measured against a 79-turn real session — 416s → 89.9s). Ollama llama-server removed from Angel boot path; backend=claude is honest about what's running. session_termination grew from 2 → 1094 rows after backfill + new write-time discipline in boundary-detector. MCP recall-server now survives unhandledRejection / uncaughtException — closes the "MCP just dropped mid-investigation" failure mode the fresh agent exposed. Episodic-recall pipeline shipped end-to-end (channel + multiplier + materialization + regex coverage) with a probe-set gate. Vesna binding gate 100% throughout.
+topic: 2026-05-18-substrate-hardening
+created_at_epoch_ms: 1779113700000
 ---
 
-# 2026-05-17 — v7.0.0 SHIPPED
+# 2026-05-18 — Post-v7 substrate hardening
 
-**What we found:** The autonomous overnight run executed end-to-end per the operator's "deploy V7" mandate. Two cutover-gate iterations: first attempt refused (LongMemEval/LoCoMo timing out as binding gates — architectural mismatch between SOTA benchmarks and schema-correctness gates); operator-confirmed Q2 critique morning of 2026-05-17 ("Why did you even consider mixing any benchmarks into validations for what we are doing?") drove the gate redesign per the durable `feedback_benchmarks_are_sanity_not_gates.md` preference; second cutover attempt with binding-only mode passed cleanly (Vesna 28/28 binding ✓, all data-integrity ✓).
+**What we found:** The fresh-agent test we set up at the end of v7.0.0 became this morning's gate — and it failed in three real ways the unit tests didn't catch: `claudex_recent_sessions` returned `[]` because Phase 13.1 heartbeat hadn't been writing terminations, the kernel's RRF didn't reach `session_events.user_framing` at all (literal "PC crashed" text was 0.017-score noise), and the V43 migration was retry-looping forever because its `UPDATE artifacts SET timestamp_epoch_ms = ...` collided with the cutover read-only trigger. Three different shapes of breakage, all surfaced by one real-world episodic question. Today closed all three plus the residuals stack the prior session named on close.
 
 **What we decided:**
 
-1. **v7 qualitative ship gate gets a concrete mechanism, not just a vibe check.** LSS (14-07k) + CHR (14-07l) added to v7 scope mid-run as Wave 3 K + L. Together they close the "remembered not read" gap: LSS synthesizes the prior session's decision arc; CHR keeps the handoff refreshed per decision-boundary event so PC-death-mid-pivot can no longer leave a stale snapshot.
+1. **The episodic gap closes via a kernel channel, not by re-routing agents.** Added `searchEpisodicChannel` + `isEpisodicQuery` in `src/core/hybrid-retrieval.ts` so `claudex_search` natively indexes `session_events.user_framing` + `sessions.session_summary`. The prior session had named this as the next-phase task; it's now shipped. Counter-probes confirm conceptual queries don't get inappropriately episodic-boosted.
 
-2. **Cutover gate design redesigned.** Binding gates measure schema-migration correctness only: Vesna SC#1 (canonical behavioral), `artifact_id_map` completeness (Phase A.2), re-vectorization success rate (Phase B). LongMemEval, LoCoMo, cross-project hit-rate moved to informational sanity (operator-runnable via `bun run wave1:benchmarks --full`). Reflects `feedback_benchmarks_are_sanity_not_gates.md`.
+2. **session_summary materialization is the right shape; user_framing materialization is not.** Per-session summaries are legitimate first-class memories (one row per session, real provenance, real confidence). User prompts are markers, not memories — kind-confusion concern documented in `saveSessionSummary` + the episodic multiplier comment. The 2.5x multiplier in `computeArtifactScore` compensates for the synth-row asymmetry until/unless we revisit.
 
-3. **/team pattern with worktree-isolated workers proven across 3 waves.** 12+ workers spawned across Wave 0 (w0d) + Wave 1 (14-07a + 5×14-07b + 14-07c + cross-project script + vesna-fix) + Wave 2 (LINKS-SCHEMA + 4 parallel) + Wave 3 (5 parallel). All landed on master via worktree merges + auto-commit hooks. No catastrophic conflicts.
+3. **session_termination is now load-bearing.** Boundary-detector writes a termination row on every session close (mapping its local 3-value reason to the canonical 5-value enum). Backfill recovered 1092 historical sessions as `end_reason='unknown'` (honest about uncertainty). Derived rows from `getDerivedTerminations` now return `end_reason='unknown'` + `derived: true` provenance flag — the deterministic surface no longer fabricates `endsession` for sessions we don't actually know how ended.
 
-4. **Production-quality posture confirmed durable** — `feedback_production_not_versioning_or_mvp.md`. Every worker briefing pinned the production-quality discipline; the gate-redesign moment is exactly when MVP shortcuts would have been tempting (force-bypass via `--skip-benchmarks`). Held; redesigned instead.
+4. **MEMORY.md is invariants only.** State (open issues, current phase, last shipped) belongs in the substrate where it has freshness + decay + queryability. Phase 13.1 "Open substrate work" section was the canonical example of state-in-prose going stale — all three items shipped today, so the section was evicted. Sentinel comment added pointing future writers at the substrate for state.
 
-**What's next:** Operator-runnable post-ship items (none blocking):
+**What's next:** Operator-runnable post-round:
 
-- Enable `CLAUDEX_HARD_LINK_PROPOSER` after reviewing UX simulation in `14-07-WAVE2-STATUS.md`
-- Run `migrate-lesson-trigger.ts --apply` to backfill `trigger:` field in existing lesson files
-- Backfill LSS for prior sessions via `bun src/scripts/backfill-session-synthesis.ts`
-- Enable `CLAUDEX_LINK_DISTANCE_BOOST=1` for link-aware retrieval ranking (opt-in)
-- Run full sanity benchmarks: `bun src/scripts/run-wave1-benchmarks.ts` (LongMemEval + LoCoMo + cross-project)
-- Cross-family review: `/codex-review v7.0.0` or `/gemini-review v7.0.0`
-- AC-12 live smoke for LSS, AC-11 live smoke for CHR (require Ollama + real CC session)
+- Run a fresh-agent test against the latest substrate (Angel PID 88964 has all fixes; MCP killed so fresh CC will spawn a clean one).
+- Validate `claudex_recent_sessions` now returns 1094 rows with `derived: true` flags on the inferred ones.
+- Confirm `claudex_search "why did production stop"` surfaces episodic content as top-3 via `match_kind='episodic'`.
+- Cross-family review of today's diff (`/codex-review` or `/gemini-review`) on the round.
+- Re-tag if the round warrants it (no v7.1 needed yet — this is post-v7 hardening, not new feature surface).
 
-**Where to look:** `.planning/phases/14-substrate-coherence/14-07-SHIP-REPORT.md` (full ship report with gate results + post-ship items); `.planning/phases/14-substrate-coherence/14-07-WAVE1-STATUS.md` (cutover trail); `.planning/phases/14-substrate-coherence/14-07-WAVE2-STATUS.md` (hard-link UX sim output); `.planning/phases/14-substrate-coherence/14-07-WAVE1-GATE-RESULTS.md` (cutover gate run logs). Tag `v7.0.0` at commit `c9e85b9` on both remotes.
+**Where to look:**
 
-## Operator Gates (carry-forward / post-ship)
+- `src/core/hybrid-retrieval.ts` — episodic channel + `isEpisodicQuery` regex + 2.5x multiplier
+- `src/core/session-termination.ts` — derived-row honesty + open_blockers wiring
+- `src/core/migration-steps.ts` — V44 (open_blockers) + V43 read-only trigger fix
+- `src/core/session-events.ts` — `saveSessionSummary` materialization
+- `src/angel/boundary/boundary-detector.ts` — termination write on close
+- `src/angel/highlights-extractor.ts` — parse-tolerance + 180s subprocess timeout
+- `src/intelligence/directive-detector.ts` — parallelized confirmation phase
+- `src/angel/index.ts` + `src/angel/heartbeat.ts` — Ollama supervisor gate + PHASE2 timeout 60s→180s
+- `src/mcp/recall-server.ts` — uncaughtException + unhandledRejection survival, open_blockers + derived surface
+- `scripts/backfill-session-terminations.cjs` + `scripts/backfill-degraded-highlights.cjs` + `scripts/run-v43-on-live-db.cjs` — one-shot recovery scripts
 
-- **Hard-link proposer flag** (`CLAUDEX_HARD_LINK_PROPOSER`): operator reviews UX simulation in `14-07-WAVE2-STATUS.md` before enabling. Per Good Child hybrid policy, hard-link proposer stays OFF until reviewed.
-- **migrate-lesson-trigger.ts live run**: dry-run shipped; live run on real lesson files when operator ready.
-- **LSS + CHR live verification**: AC-12 (LSS round-trip) + AC-11 (CHR boundary → ACTIVE.md refresh) require real session smoke; agent can't simulate operator's felt experience.
-- **Cross-family v7.0.0 review**: operator runs `/codex-review` or `/gemini-review` against the tag for second-eye review.
+## Operator Gates (carry-forward / post-round)
 
-## v6.6.0 carry-forward (still pending post-v7-ship)
-
-- **v6.6.0 public push** at tag `a3b3a42`: operator-gated. Now superseded by v7.0.0 on public remote.
-- **v6.0.0 public push** from prior cycle (Phase 13's retag): operator-gated. Likewise superseded.
+- **Fresh-agent re-test** — Angel + MCP restarted with all fixes; awaiting operator-driven validation that the gate now passes cleanly. The probe set in `src/tests/integration/episodic-recall-gate.test.ts` covers the structural half; the behavioral half (does the agent reach for the right tool first) requires a real fresh CC session.
+- **Cross-family review** — `/codex-review` or `/gemini-review` against the round's diff for second-eye review on the 2.5x multiplier magic number, the V43 trigger-drop-and-reinstall pattern, and the derived-row provenance flag.
+- **Hard-link proposer flag** (`CLAUDEX_HARD_LINK_PROPOSER`) — operator-gated post-v7 (unchanged from prior).
+- **Run full informational benchmarks** (`bun src/scripts/run-wave1-benchmarks.ts`) — LongMemEval + LoCoMo + cross-project — unchanged from prior.
 
 ## Schema versions
 
@@ -50,4 +54,9 @@ created_at_epoch_ms: 1779012720000
 - V37 (Wave 1 — V17 unified artifact)
 - V38 (Wave 2 — knowledge graph)
 - V39 (Wave 3 — handoff_refresh_state for CHR)
-- `TARGET_USER_VERSION = 39`
+- V40 (Phase 13.1 — DDL DEFAULT scaling fix for 7 tables × 8 columns)
+- V41 (Phase 14-08 — chr_pending_classifications queue)
+- V42 (Phase 14-09 — session_termination)
+- V43 (Phase 14-09b — legacy _epoch → _epoch_ms across 24 columns × 16 tables)
+- V44 (2026-05-18 — open_blockers column on session_termination)
+- `TARGET_USER_VERSION = 44`
