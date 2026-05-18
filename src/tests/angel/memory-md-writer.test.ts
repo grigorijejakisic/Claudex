@@ -552,7 +552,7 @@ describe('curateMemoryMd — cold start + dir presence', () => {
 });
 
 describe('curateMemoryMd — size cap', () => {
-  it('oversized inputs trim to ≤ 25KB and ≤ 200 lines, preserving all 5 section headers', () => {
+  it('oversized inputs trim to ≤ 25KB and ≤ 200 lines, preserving all section headers', () => {
     ensureMemoryDir();
     // Seed 30 entities, 20 projects (edits), and 20 threads.
     const longSummary = 'x'.repeat(200);
