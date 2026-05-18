@@ -21,7 +21,7 @@ export interface CrossSessionActivity {
   recent_tools: string[];
   topic: string | null;
   observation_count: number;
-  last_activity_epoch: number;
+  last_activity_epoch_ms: number;
 }
 
 // ---------------------------------------------------------------------------
