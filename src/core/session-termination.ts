@@ -126,7 +126,16 @@ export function inferCrashedSessions(
 ): number {
   const stale = opts.staleThresholdMs ?? 30 * 60 * 1000;
   try {
-    const cutoff = Date.now() - stale;
+    // Phase 14-09 — UNIT NOTE (codex review fix):
+    // `last_heartbeat_ts` and `last_jsonl_write_ts` are stored as SECONDS
+    // (matches the boundary-detector + thresholds convention — see
+    // src/angel/boundary/composition-rule.ts and thresholds.ts).
+    // `created_at_epoch_ms` is stored as MILLISECONDS.
+    // We normalize all three to a single ms-shaped "last activity" value
+    // and take the MAX (latest, not first non-null) before comparing
+    // against the cutoff.
+    const nowMs = Date.now();
+    const cutoffMs = nowMs - stale;
     type Row = {
       session_id: string;
       project: string;
@@ -134,28 +143,46 @@ export function inferCrashedSessions(
       last_jsonl_write_ts: number | null;
       created_at_epoch_ms: number;
     };
-    const orphaned = cachedPrepare(
+    const candidates = cachedPrepare(
       db,
       `SELECT s.session_id, s.project, s.last_heartbeat_ts, s.last_jsonl_write_ts, s.created_at_epoch_ms
        FROM sessions s
        LEFT JOIN session_termination t ON t.session_id = s.session_id
        WHERE s.status = 'active'
          AND s.session_id != ?
-         AND t.session_id IS NULL
-         AND COALESCE(s.last_heartbeat_ts, s.last_jsonl_write_ts, s.created_at_epoch_ms) < ?`,
-    ).all(opts.excludeSessionId, cutoff) as Row[];
+         AND t.session_id IS NULL`,
+    ).all(opts.excludeSessionId) as Row[];
+
+    const markCompleted = cachedPrepare(
+      db,
+      `UPDATE sessions
+         SET status = 'completed', ended_at_epoch_ms = ?
+       WHERE session_id = ? AND status = 'active'`,
+    );
 
     let inferred = 0;
-    for (const o of orphaned) {
-      const endedAt =
-        o.last_jsonl_write_ts ?? o.last_heartbeat_ts ?? o.created_at_epoch_ms;
+    for (const o of candidates) {
+      // Normalize each non-null timestamp to ms, take MAX (latest activity).
+      const heartbeatMs = o.last_heartbeat_ts != null ? o.last_heartbeat_ts * 1000 : 0;
+      const jsonlMs = o.last_jsonl_write_ts != null ? o.last_jsonl_write_ts * 1000 : 0;
+      const createdMs = o.created_at_epoch_ms;
+      const latestMs = Math.max(heartbeatMs, jsonlMs, createdMs);
+
+      if (latestMs >= cutoffMs) continue; // Recently active — not a crash.
+
       const ok = recordSessionTermination(db, {
         session_id: o.session_id,
         project: o.project,
         end_reason: 'crash',
-        ended_at_epoch_ms: endedAt,
+        ended_at_epoch_ms: latestMs,
       });
-      if (ok) inferred++;
+      if (ok) {
+        // Codex review fix: don't leave inferred-crashed sessions in
+        // status='active' — active-session queries would keep surfacing
+        // them. Mark them terminated now that we have a termination row.
+        try { markCompleted.run(latestMs, o.session_id); } catch { /* non-fatal */ }
+        inferred++;
+      }
     }
     return inferred;
   } catch {
