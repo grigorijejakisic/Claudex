@@ -233,37 +233,177 @@ export function getRecentTerminations(
   } = {},
 ): SessionTerminationRow[] {
   const limit = opts.limit ?? 10;
+  let primary: SessionTerminationRow[] = [];
   try {
     if (opts.project && opts.excludeSessionId) {
-      return cachedPrepare(
+      primary = cachedPrepare(
         db,
         `SELECT * FROM session_termination
          WHERE project = ? AND session_id != ?
          ORDER BY ended_at_epoch_ms DESC LIMIT ?`,
       ).all(opts.project, opts.excludeSessionId, limit) as SessionTerminationRow[];
-    }
-    if (opts.project) {
-      return cachedPrepare(
+    } else if (opts.project) {
+      primary = cachedPrepare(
         db,
         `SELECT * FROM session_termination
          WHERE project = ?
          ORDER BY ended_at_epoch_ms DESC LIMIT ?`,
       ).all(opts.project, limit) as SessionTerminationRow[];
-    }
-    if (opts.excludeSessionId) {
-      return cachedPrepare(
+    } else if (opts.excludeSessionId) {
+      primary = cachedPrepare(
         db,
         `SELECT * FROM session_termination
          WHERE session_id != ?
          ORDER BY ended_at_epoch_ms DESC LIMIT ?`,
       ).all(opts.excludeSessionId, limit) as SessionTerminationRow[];
+    } else {
+      primary = cachedPrepare(
+        db,
+        `SELECT * FROM session_termination
+         ORDER BY ended_at_epoch_ms DESC LIMIT ?`,
+      ).all(limit) as SessionTerminationRow[];
     }
-    return cachedPrepare(
-      db,
-      `SELECT * FROM session_termination
-       ORDER BY ended_at_epoch_ms DESC LIMIT ?`,
-    ).all(limit) as SessionTerminationRow[];
   } catch {
-    return [];
+    primary = [];
   }
+
+  // Top up with derived rows from the `sessions` table when we couldn't fill
+  // the requested limit from session_termination.
+  //
+  // Why this exists: Phase 13.1's heartbeat hang plus the fact that the V42
+  // termination table is only written by the session-end / stop-failure /
+  // pre-compact hooks meant the fresh-session gate test (2026-05-18) hit an
+  // empty array — even though sessions.ended_at_epoch_ms had plenty of
+  // signal. Without the fallback, the tool's most valuable shape ("the last
+  // N sessions, why each ended") is unreachable until the heartbeat-driven
+  // crash inference catches up. Derived rows give episodic answers from
+  // available data while still preferring explicit session_termination rows
+  // when they exist.
+  if (primary.length >= limit) return primary;
+
+  try {
+    const fallback = getDerivedTerminations(db, {
+      limit: limit - primary.length,
+      project: opts.project,
+      excludeSessionId: opts.excludeSessionId,
+      excludeSessionIds: new Set(primary.map(r => r.session_id)),
+    });
+    return [...primary, ...fallback]
+      .sort((a, b) => b.ended_at_epoch_ms - a.ended_at_epoch_ms)
+      .slice(0, limit);
+  } catch {
+    return primary;
+  }
+}
+
+/**
+ * Fallback derivation: synthesize SessionTerminationRow shapes from the
+ * `sessions` table for any session that has ended (ended_at_epoch_ms IS NOT
+ * NULL) but doesn't have a session_termination row. Enriches with the last
+ * user_framing event as `last_user_directive`. `last_assistant_text` is left
+ * null — no clean derivable source.
+ *
+ * end_reason mapping from sessions.status (best-effort, derived):
+ *   'completed'  → 'endsession'  (closed cleanly)
+ *   'active'     → 'crash'       (orphaned, heartbeat-inference hasn't run)
+ *   anything else / null         → 'unknown'
+ *
+ * Exported so the recall surface can use it directly when it wants the
+ * derived view only (e.g., debugging).
+ */
+export function getDerivedTerminations(
+  db: Database,
+  opts: {
+    limit: number;
+    project?: string;
+    excludeSessionId?: string;
+    excludeSessionIds?: Set<string>;
+  },
+): SessionTerminationRow[] {
+  const limit = Math.max(1, opts.limit);
+  const params: unknown[] = [];
+  const filters: string[] = [];
+
+  if (opts.project) { filters.push('s.project = ?'); params.push(opts.project); }
+  if (opts.excludeSessionId) { filters.push('s.session_id != ?'); params.push(opts.excludeSessionId); }
+  filters.push('s.ended_at_epoch_ms IS NOT NULL');
+  filters.push('NOT EXISTS (SELECT 1 FROM session_termination t WHERE t.session_id = s.session_id)');
+  // Derived rows are best when there's actual closure signal; treat
+  // ended_at_epoch_ms = 0 / NULL as "not really ended" and skip.
+  filters.push('s.ended_at_epoch_ms > 0');
+
+  const sql = `
+    SELECT
+      s.session_id,
+      s.project,
+      s.ended_at_epoch_ms,
+      s.status,
+      s.observation_count,
+      s.session_summary
+    FROM sessions s
+    WHERE ${filters.join(' AND ')}
+    ORDER BY s.ended_at_epoch_ms DESC
+    LIMIT ?
+  `;
+  params.push(limit * 2); // overfetch in case excludeSessionIds drops some
+  type SRow = {
+    session_id: string;
+    project: string;
+    ended_at_epoch_ms: number;
+    status: string | null;
+    observation_count: number | null;
+    session_summary: string | null;
+  };
+  const rows = (() => {
+    try { return cachedPrepare(db, sql).all(...params) as SRow[]; }
+    catch { return []; }
+  })();
+
+  // Detect timestamp column for user_framing fallback (V42 vs V43+).
+  const tsCol = (() => {
+    try {
+      const cols = db.prepare('PRAGMA table_info(session_events)').all() as Array<{ name: string }>;
+      return cols.some(c => c.name === 'timestamp_epoch_ms') ? 'timestamp_epoch_ms' : 'timestamp_epoch';
+    } catch { return 'timestamp_epoch_ms'; }
+  })();
+  const lastFramingStmt = (() => {
+    try {
+      return cachedPrepare(
+        db,
+        `SELECT detail FROM session_events
+           WHERE session_id = ? AND event_type = 'user_framing'
+           ORDER BY ${tsCol} DESC LIMIT 1`,
+      );
+    } catch { return null; }
+  })();
+
+  const out: SessionTerminationRow[] = [];
+  for (const r of rows) {
+    if (out.length >= limit) break;
+    if (opts.excludeSessionIds?.has(r.session_id)) continue;
+
+    let lastUser: string | null = null;
+    try {
+      const f = lastFramingStmt?.get(r.session_id) as { detail?: string | null } | undefined;
+      lastUser = f?.detail ?? null;
+    } catch { /* skip */ }
+
+    let endReason: SessionEndReason = 'unknown';
+    if (r.status === 'completed') endReason = 'endsession';
+    else if (r.status === 'active') endReason = 'crash';
+
+    out.push({
+      session_id: r.session_id,
+      project: r.project,
+      ended_at_epoch_ms: r.ended_at_epoch_ms,
+      end_reason: endReason,
+      last_user_directive: lastUser,
+      // No clean derivable source — leave null.
+      last_assistant_text: null,
+      observation_count: r.observation_count ?? 0,
+      // Synthesized derivation, not a real recorded write. Use the same ms.
+      recorded_at_epoch_ms: r.ended_at_epoch_ms,
+    });
+  }
+  return out;
 }
