@@ -125,13 +125,21 @@ function buildClaudexInstructions(): string {
   return `Claudex is active on this machine — a persistent memory system giving you context continuity across sessions.
 
 ## When to Use Claudex Tools
-- claudex_search: FIRST CHOICE for any question about past work, decisions, learnings, experience patterns, or project knowledge. Also use when the user asks "do you remember..." — experience patterns (past corrections and lessons) are searchable here.
-- claudex_events: Session history — what happened, what was built, timeline of recent work.
-- claudex_recall: Retrieve a specific artifact by ID or file path when you have an exact reference.
+- claudex_recent_sessions: FIRST CHOICE for **episodic questions** about the last N sessions — "why did the last session stop?", "what was I working on?", "did we crash or close cleanly?", "what was the last thing I told you to do?". Deterministic structured data — no LLM, no semantic flake. Reads session_termination (V42) joined with thread_state for topic. Use this BEFORE claudex_search for any "what happened to us" / "where did we stop" / "last user directive" question.
+- claudex_search: First choice for **conceptual / semantic** questions — decisions, learnings, project knowledge, "what did we decide about auth", experience patterns ("do you remember when…"). Ranks with RRF fusion over FTS5 + sqlite-vec + recency on the **artifacts** corpus. KNOWN GAP: does NOT index session_events.user_framing (the operator's first prompt at each session) or session.session_summary directly — for those episodic surfaces, use claudex_recent_sessions or claudex_events instead.
+- claudex_events: Current-session event timeline — what tools fired, what was built, what tasks ran in THIS session. Use for "what did I just do" questions about the live session.
+- claudex_recall: Retrieve a specific artifact. PREFER artifact_id (V17 TEXT id from claudex_search results) over numeric id. Use when you have an exact reference.
 - claudex_store: Persist a decision or learning for future sessions after key decisions or user directives.
 - claudex_message: Send messages to other active sessions (cross-session coordination).
 - claudex_session: Session management — name sessions, list active sessions, create/clear signals.
 - claudex_curated_context: Manage Project Curated Context — mental models, workspace maps, shipped components, constraints, preferences. Use at /endsession to curate what the next session sees.
+
+## Routing decision tree
+- "why/how did [last/prior/recent] session(s) [stop/end/close/crash]?" → claudex_recent_sessions
+- "what was I working on?" / "what was the last directive?" → claudex_recent_sessions
+- "what did we decide about X?" / "remember when…" → claudex_search
+- "what tools did I just run?" / "current session timeline" → claudex_events
+- "get artifact X" / "show me the handoff at path Y" → claudex_recall
 
 ## Navigation Rule
 Query Claudex before exploring the filesystem for context. Only read code files when you need to MODIFY them.
