@@ -324,12 +324,17 @@ export async function heartbeatTick(ctx: HeartbeatContext): Promise<TickResult> 
     //
     // 2026-05-18 (fresh-session gate test): bumped 60s → 180s after extract-
     // Directives via claude-subprocess (Sonnet/Haiku — Phase 14-08) routinely
-    // exceeded the 60s budget on real transcripts. Claude subprocess's own
-    // DEFAULT_TIMEOUT_MS is 90s per call, and extractDirectivesFromSession
-    // makes multiple sequential generate() calls per session (one confirm +
-    // one dedup per candidate). 180s sits between "single Claude call +
-    // queue/cold-start" and the 5min tick watchdog. MAX_PHASE2_RETRIES=3
-    // still gives up on permanently-stuck sessions.
+    // exceeded the 60s budget on real transcripts.
+    //
+    // Sizing math, post-parallelization:
+    // extractDirectivesFromSession was refactored same day to fan out the
+    // per-candidate confirmation call (the bulk of the work) via Promise.all,
+    // bounded by claude-subprocess's MAX_CONCURRENT_CALLS=4 semaphore.
+    // Measurement on 79-turn / 17-candidate claudex-v3 session 523e018e:
+    //   - Serial loop:    416.5s  → would always blow 180s
+    //   - Parallel fan-out: 89.9s → fits 180s with headroom for outliers
+    // 180s sits between "median observed (~90s)" and the 5min tick watchdog,
+    // giving 2x headroom. MAX_PHASE2_RETRIES=3 still gives up on stuck sessions.
     const PHASE2_AWAIT_TIMEOUT_MS = 180_000;
     function withTimeout<T>(p: Promise<T>, label: string): Promise<T> {
       return Promise.race([
