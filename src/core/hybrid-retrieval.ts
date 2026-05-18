@@ -652,7 +652,11 @@ function searchLikeFallback(
  */
 export function isEpisodicQuery(query: string): boolean {
   if (!query) return false;
-  return /\b(why did|why didn't|why was|what happened|what stopped|when did|when was|how did we|where did we|production stopped|production stop|session.{0,20}stop|last session|previous session|last time we|crashed|got cut off|pc crash)\b/i.test(query);
+  // Patterns grouped by intent shape. Live-DB test 2026-05-18 surfaced two
+  // gaps in the original regex: "remember where we stopped" and "what was
+  // the last thing I told you to do" — clearly episodic in plain English
+  // but missed by the original "why/when/where did" pattern set.
+  return /\b(why did|why didn't|why was|what happened|what stopped|when did|when was|how did we|where did we|production stopped|production stop|session.{0,20}stop|last session|previous session|last time we|crashed|got cut off|pc crash|remember (where|when|what|how) we|where we (stopped|left off|got)|pick(ing)? up where|what was (the |my )?last|what'?s the last|last directive|last thing|prior session|left off)\b/i.test(query);
 }
 
 /**
