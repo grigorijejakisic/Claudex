@@ -5,23 +5,27 @@ const Database = require('better-sqlite3');
 const dbPath = path.join(os.homedir(), '.claudex', 'db', 'claudex.db');
 const db = new Database(dbPath, { readonly: true });
 
-const total = db.prepare("SELECT COUNT(*) AS c FROM session_termination").get();
-console.log('total rows:', total.c);
+const tables = db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND (name LIKE '%session%' OR name LIKE '%termination%' OR name LIKE '%heartbeat%' OR name LIKE '%highlight%') ORDER BY name").all();
+console.log('relevant tables:');
+for (const t of tables) {
+  try {
+    const c = db.prepare(`SELECT COUNT(*) AS c FROM "${t.name}"`).get();
+    console.log('  ', t.name, '->', c.c, 'rows');
+  } catch (e) {
+    console.log('  ', t.name, '-> err', e.message);
+  }
+}
 
-const projects = db.prepare("SELECT project, COUNT(*) AS c FROM session_termination GROUP BY project ORDER BY c DESC").all();
-console.log('by project:', projects);
-
-const rows = db.prepare(`
-  SELECT session_id, project, ended_at_epoch_ms, end_reason, last_user_directive
-  FROM session_termination
-  ORDER BY ended_at_epoch_ms DESC
-  LIMIT 10
-`).all();
-
-for (const r of rows) {
-  const when = new Date(r.ended_at_epoch_ms).toISOString();
-  console.log('---');
-  console.log('session_id:', r.session_id, '| project:', r.project);
-  console.log('end:', when, '|', r.end_reason);
-  console.log('last_user_directive:', (r.last_user_directive || '').slice(0, 300).replace(/\s+/g, ' '));
+console.log('\n--- Recent sessions in claudex-v3 ---');
+try {
+  const cols = db.prepare("PRAGMA table_info(sessions)").all().map(c => c.name);
+  console.log('sessions cols:', cols.join(','));
+  const rows = db.prepare(`
+    SELECT * FROM sessions
+    WHERE project = 'claudex-v3'
+    ORDER BY rowid DESC LIMIT 8
+  `).all();
+  for (const r of rows) console.log(JSON.stringify(r).slice(0, 500));
+} catch (e) {
+  console.log('sessions err:', e.message);
 }
