@@ -630,6 +630,20 @@ const EPISODIC_EVENT_ID_OFFSET = -1_000_000_000;
 const EPISODIC_SUMMARY_ID_OFFSET = -2_000_000_000;
 
 /**
+ * Detects which timestamp column session_events uses. V43 (Phase 14-09b)
+ * renamed `timestamp_epoch` → `timestamp_epoch_ms`, but live DBs that
+ * haven't yet upgraded still expose the old name. The channel handles both.
+ */
+function sessionEventsTimestampCol(db: Database): string {
+  try {
+    const cols = db.prepare('PRAGMA table_info(session_events)').all() as Array<{ name: string }>;
+    return cols.some(c => c.name === 'timestamp_epoch_ms') ? 'timestamp_epoch_ms' : 'timestamp_epoch';
+  } catch {
+    return 'timestamp_epoch_ms';
+  }
+}
+
+/**
  * Episodic channel — keyword search over session_events (event_type='user_framing')
  * and sessions.session_summary. Returns synthesized ArtifactRow-shaped results so
  * the downstream RRF + scoring + reranker pipeline works unchanged.
