@@ -622,11 +622,10 @@ describe('helpers', () => {
     expect(p.endsWith(path.join('.claude', 'projects', toSlug(PROJECT), 'memory', 'MEMORY.md'))).toBe(true);
   });
 
-  it('HOW_TO_QUERY_STATIC is stable and contains tool pointers', () => {
-    expect(HOW_TO_QUERY_STATIC).toContain('claudex_search');
-    expect(HOW_TO_QUERY_STATIC).toContain('claudex_events');
-    expect(HOW_TO_QUERY_STATIC).toContain('claudex_recall');
-    expect(HOW_TO_QUERY_STATIC).toContain('~/.claude/CLAUDE.md');
+  // 2026-05-18: HOW_TO_QUERY_STATIC retired — duplicated MCP instructions
+  // which are the authoritative tool surface. Now an empty string.
+  it('HOW_TO_QUERY_STATIC is empty (deprecated 2026-05-18)', () => {
+    expect(HOW_TO_QUERY_STATIC).toBe('');
   });
 });
 
