@@ -184,17 +184,22 @@ export async function extractHighlightsForSession(params: ExtractHighlightsParam
     try {
       const fallbackFn = fallbackCallableForTest ?? callLocalFallback;
       result = await fallbackFn(prompt, config.localModel ?? '');
-    } catch {
-      // Local-as-primary failed. Surface explicitly so substrate health
-      // can flag the situation (no Opus to fall back to here).
+    } catch (err) {
+      // Local-as-primary failed. Preserve the real failure reason — the
+      // 2026-05-18 backfill audit found `local_llm_failed` was being
+      // hard-coded for every failure shape (timeout, parse, transport),
+      // hiding the distinction between "subprocess timed out on a big
+      // transcript" and "model returned malformed JSON". The classifier
+      // below maps the inner error back to one of the bucket reasons so
+      // the degraded surface tells the operator what to actually fix.
       degraded = true;
-      degradedReason = 'local_llm_failed';
+      degradedReason = classifyOpusError(err);
       degradedModel = config.localModel ?? 'none';
       try {
         recordFrameExtractionFallback(db, {
           session_id: sessionId,
           project,
-          reason: 'local_llm_failed',
+          reason: degradedReason,
           fallback_model: config.localModel ?? 'none',
         });
       } catch { /* non-fatal */ }
