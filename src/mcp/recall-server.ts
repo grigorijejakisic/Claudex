@@ -1395,6 +1395,26 @@ server.connect(transport).catch((err) => {
   process.exit(1);
 });
 
+// Survive unhandled async errors. Without these handlers, any tool path that
+// rejects unhandled (dynamic import failure, downstream throw inside a
+// non-awaited promise, schema-mismatch SQL error not caught by the handler's
+// try/catch) crashes the entire MCP process — agent sees "MCP dropped"
+// mid-session and falls back to direct SQL.
+//
+// 2026-05-18 fresh-agent test exposed this: the agent reported "MCP recall
+// server just dropped" mid-investigation. The MCP process had been spawned
+// healthy at session-start, served several tool calls, then exited silently
+// on an unhandled rejection (root path unknown without these guards).
+// Logging-and-surviving is the right shape — an MCP process whose memory
+// surface vanishes mid-session is exactly the failure mode this substrate
+// is supposed to *prevent*.
+process.on('uncaughtException', (err) => {
+  process.stderr.write(`claudex-recall: uncaught exception (surviving): ${err instanceof Error ? err.stack ?? err.message : String(err)}\n`);
+});
+process.on('unhandledRejection', (reason) => {
+  process.stderr.write(`claudex-recall: unhandled rejection (surviving): ${reason instanceof Error ? reason.stack ?? reason.message : String(reason)}\n`);
+});
+
 process.on('SIGTERM', () => {
   if (db) { try { db.close(); } catch { /* */ } }
   process.exit(0);
