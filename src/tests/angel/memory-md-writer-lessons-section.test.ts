@@ -189,7 +189,8 @@ describe('memory-md-writer ## Lessons section (Phase 4.1 CUR-09/CUR-10)', () => 
       expect(content).toContain('## Lessons');
     });
 
-    it('produces ## Lessons after Active Projects, before Handoff and How to Query', () => {
+    // 2026-05-18: ## How to Query removed — duplicated MCP instructions.
+    it('produces ## Lessons after Active Projects, before Handoff', () => {
       ensureMemoryDir();
       curateMemoryMd(db, project);
       const memoryMdPath = computeMemoryMdPath(project);
@@ -197,13 +198,13 @@ describe('memory-md-writer ## Lessons section (Phase 4.1 CUR-09/CUR-10)', () => 
 
       const idxLessons = content.indexOf('## Lessons');
       const idxHandoff = content.indexOf('## Handoff');
-      const idxHowTo = content.indexOf('## How to Query');
 
       expect(idxLessons).toBeGreaterThan(0);
       // Active Projects might be empty (rendered as just header) for an
-      // empty DB — verify Lessons appears before Handoff and How to Query.
+      // empty DB — verify Lessons appears before Handoff.
       expect(idxHandoff).toBeGreaterThan(idxLessons);
-      expect(idxHowTo).toBeGreaterThan(idxHandoff);
+      // How to Query must NOT appear — section retired.
+      expect(content).not.toContain('## How to Query');
     });
   });
 });
