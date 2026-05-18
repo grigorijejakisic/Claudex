@@ -788,11 +788,14 @@ function searchEpisodicChannel(
       LIMIT ?
     `;
     let eventRows: ArtifactRow[] = [];
-    try {
-      eventRows = cachedPrepare(db, eventSql).all(
-        ...likeParams, ...projectParams, limit
-      ) as ArtifactRow[];
-    } catch { /* table missing or query error — skip */ }
+    // Skip user_framing entirely for event-shape queries (see comment above).
+    if (!eventShape) {
+      try {
+        eventRows = cachedPrepare(db, eventSql).all(
+          ...likeParams, ...projectParams, limit
+        ) as ArtifactRow[];
+      } catch { /* table missing or query error — skip */ }
+    }
 
     // session_summary on sessions table — auto-generated topic summary per session
     const summarySql = `
