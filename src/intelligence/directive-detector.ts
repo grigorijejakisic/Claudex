@@ -773,8 +773,38 @@ export async function extractDirectivesFromSession(
   }
   result.candidates = candidates.length;
 
-  // 2. Per-candidate pipeline ---------------------------------------------
-  for (const { turn, families } of candidates) {
+  // 2. LLM confirmation phase — PARALLEL fan-out.
+  //
+  // 2026-05-18 (post-fresh-session test): measure-extract-directives.cjs
+  // recorded 416s end-to-end against a 79-turn claudex-v3 session that
+  // produced 17 candidates of which 16 got rejected_confirm. The serial
+  // loop's bottleneck was per-candidate Haiku confirmation (~24s each via
+  // claude-subprocess). The candidates are independent — confirmation
+  // depends only on the candidate's own text + its ±2 context window.
+  // Fanning out lets the claude-subprocess wrapper's MAX_CONCURRENT_CALLS=4
+  // semaphore serialize at the system limit. Expected speedup: ~4x against
+  // wide-candidate sessions; identical behavior for ≤4-candidate sessions.
+  // Sequential phase 3 below still runs dedup + write candidate-by-candidate
+  // because those have DB-side ordering effects.
+  const confirmations: Array<{
+    turn: TurnRow;
+    families: string[];
+    contextBlock: string;
+    confirmation: ConfirmationResult | null;
+  }> = await Promise.all(
+    candidates.map(async ({ turn, families }) => {
+      const window = fetchContextWindow(db, sessionId, turn.turn_number, 2);
+      const contextBlock = formatContextForLLM(window, turn.turn_number);
+      let confirmation: ConfirmationResult | null = null;
+      try {
+        confirmation = await confirmCandidate(cfg, turn.user_text ?? '', contextBlock);
+      } catch { /* preserve as null — phase 3 treats as rejected_confirm */ }
+      return { turn, families, contextBlock, confirmation };
+    }),
+  );
+
+  // 3. Per-candidate pipeline (dedup + write, sequential) ----------------
+  for (const { turn, families, confirmation } of confirmations) {
     const record: DetectionRecord = {
       session_id: sessionId,
       turn_idx: turn.turn_number,
