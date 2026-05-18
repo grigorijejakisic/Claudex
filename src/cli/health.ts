@@ -204,7 +204,7 @@ const EXPECTED_TABLES: Record<string, ColumnDef[]> = {
     { name: 'target_id', notNull: true },
     { name: 'link_type', notNull: true },
     { name: 'strength', notNull: true, hasDefault: true },
-    { name: 'created_at_epoch', notNull: true, hasDefault: true },
+    { name: 'created_at_epoch_ms', notNull: true, hasDefault: true },
   ],
   // V17 unified artifact kernel — Phase 14-07b: migrated from legacy artifacts
   artifact: [
