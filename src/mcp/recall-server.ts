@@ -1341,6 +1341,16 @@ server.registerTool(
           const t = topicStmt.get(r.session_id) as { topic?: string } | undefined;
           topic = t?.topic ?? null;
         } catch { /* thread_state may be missing on very old DBs */ }
+        // V44 — parse open_blockers JSON into a structured array for the
+        // tool consumer (an LLM agent reading "what was unfinished").
+        // Null + parse failure both collapse to an empty array.
+        let openBlockers: Array<{ signal_type: string; target: string; detail: string | null }> = [];
+        if (r.open_blockers) {
+          try {
+            const parsed = JSON.parse(r.open_blockers);
+            if (Array.isArray(parsed)) openBlockers = parsed;
+          } catch { /* invalid JSON — drop */ }
+        }
         return {
           session_id: r.session_id,
           project: r.project,
@@ -1351,6 +1361,7 @@ server.registerTool(
           last_assistant_text: r.last_assistant_text,
           observation_count: r.observation_count,
           topic,
+          open_blockers: openBlockers,
         };
       });
 
