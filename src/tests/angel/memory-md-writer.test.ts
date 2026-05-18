@@ -449,12 +449,13 @@ describe('curateMemoryMd — happy path + idempotency', () => {
     const fileBytes = fs.readFileSync(memoryMdPathFor(), 'utf8');
     expect(fileBytes.startsWith('<!-- CLAUDEX-MANAGED:')).toBe(true);
     // Phase 4.1 CUR-09: ## Entities and ## Recent Threads dropped; ## Lessons added.
+    // 2026-05-18: ## How to Query also dropped — duplicated MCP instructions.
     expect(fileBytes).not.toContain('## Entities');
     expect(fileBytes).not.toContain('## Recent Threads');
+    expect(fileBytes).not.toContain('## How to Query');
     expect(fileBytes).toContain('## Active Projects');
     expect(fileBytes).toContain('## Lessons');
     expect(fileBytes).toContain('## Handoff');
-    expect(fileBytes).toContain('## How to Query');
     expect(fileBytes).toContain('<!-- USER EDITABLE -->');
     expect(fileBytes).toContain('## User Notes');
 
