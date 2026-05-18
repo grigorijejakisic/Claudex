@@ -697,9 +697,10 @@ const main = wrapHook('Stop', async (input, ctx) => {
   // classification. Angel's heartbeat drains the queue out-of-band using the
   // Claude subprocess backend (Haiku, ~10-15s/call). The 60s throttle on
   // handoff_refresh_state still applies — within-throttle drains are no-ops.
-  // Synchronous classification (the v7.0.0 design) is preserved behind
-  // CLAUDEX_CHR_SYNC=1 for operators who want per-turn freshness AND accept
-  // the latency cost.
+  // No sync escape hatch — the async path is the production design. If a
+  // future need for per-turn sync emerges, add a CLAUDEX_CHR_SYNC=1 branch
+  // here; the prior aspirational note about that env var was removed because
+  // the wiring never existed (codex review finding 2026-05-18).
   try {
     const turnUuid = `${input.session_id}-${Date.now()}`;
     enqueueChrClassification({
