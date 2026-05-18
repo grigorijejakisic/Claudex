@@ -76,8 +76,10 @@ describe('reconcileTerminationClassifications', () => {
       Math.floor((nowMs - 1800_000) / 1000),
     );
 
-    const promoted = reconcileTerminationClassifications(db);
-    expect(promoted).toBe(1);
+    const r = reconcileTerminationClassifications(db);
+    expect(r.promoted).toBe(1);
+    expect(r.by_classifier['crash-from-recovery-framing']).toBe(1);
+    expect(r.by_new_reason['crash']).toBe(1);
 
     const row = db.prepare(`SELECT end_reason FROM session_termination WHERE session_id = 'crashed-sess'`).get() as { end_reason: string };
     expect(row.end_reason).toBe('crash');
