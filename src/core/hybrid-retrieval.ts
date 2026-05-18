@@ -952,6 +952,12 @@ export function hybridSearchSync(
     // Channel 3: Recency
     const recencyResults = searchRecencyChannel(db, project, limit, globalScope, excludeSuperseded, substantiveOnly);
 
+    // Channel 6: Episodic (sync) — user_framing + session_summary
+    let episodicResults: ArtifactRow[] = [];
+    try {
+      episodicResults = searchEpisodicChannel(db, project, query, limit * 2, globalScope);
+    } catch { /* episodic channel failure — skip */ }
+
     // Convert to channel results for RRF
     const fts5Channel: ChannelResult[] = fts5Results.map((a, i) => ({
       artifactId: a.id,
@@ -965,19 +971,33 @@ export function hybridSearchSync(
       artifact: a,
     }));
 
-    // RRF merge
-    const rrfScores = rrfMerge([fts5Channel, recencyChannel]);
+    const episodicChannelSync: ChannelResult[] = episodicResults.map((a, i) => ({
+      artifactId: a.id,
+      rank: i + 1,
+      artifact: a,
+    }));
+
+    // RRF merge — episodic added twice when query is episodic-shape (boost)
+    const syncChannels = [fts5Channel, recencyChannel];
+    if (episodicChannelSync.length > 0) {
+      syncChannels.push(episodicChannelSync);
+      if (isEpisodicQuery(query)) syncChannels.push(episodicChannelSync);
+    }
+    const rrfScores = rrfMerge(syncChannels);
 
     // Build artifact map for hydration
     const artifactMap = new Map<number, ArtifactRow>();
     for (const a of fts5Results) artifactMap.set(a.id, a);
     for (const a of recencyResults) artifactMap.set(a.id, a);
+    for (const a of episodicResults) artifactMap.set(a.id, a);
 
     // Build RRF breakdown per artifact
     const fts5RankMap = new Map<number, number>();
     const recencyRankMap = new Map<number, number>();
+    const episodicRankMapSync = new Map<number, number>();
     for (const r of fts5Channel) fts5RankMap.set(r.artifactId, r.rank);
     for (const r of recencyChannel) recencyRankMap.set(r.artifactId, r.rank);
+    for (const r of episodicChannelSync) episodicRankMapSync.set(r.artifactId, r.rank);
 
     // Score and rank
     const scored: ScoredArtifact[] = [];
