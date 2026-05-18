@@ -11,7 +11,9 @@ const os = require('os');
 
 // Bundle the migrations entry point on the fly so we use the same TS code path
 // (including my fix) without needing a permanent dist export.
-const tmpOut = path.join(os.tmpdir(), 'claudex-v43-runner.cjs');
+// Output inside project so the bundled CJS can resolve `better-sqlite3` via
+// the project's node_modules.
+const tmpOut = path.join(__dirname, '..', '.tmp-v43-runner.cjs');
 execSync(
   `npx esbuild src/core/migrations.ts --bundle --platform=node --format=cjs --outfile=${tmpOut} --external:better-sqlite3`,
   { cwd: path.join(__dirname, '..'), stdio: 'inherit' },
