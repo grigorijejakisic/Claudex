@@ -130,7 +130,7 @@ function buildClaudexInstructions(): string {
 - claudex_events: Current-session event timeline — what tools fired, what was built, what tasks ran in THIS session. Use for "what did I just do" questions about the live session.
 - claudex_recall: Retrieve a specific artifact. PREFER artifact_id (V17 TEXT id from claudex_search results) over numeric id. Use when you have an exact reference.
 - claudex_store: Persist a decision or learning for future sessions after key decisions or user directives.
-- claudex_message: Send messages to other active sessions (cross-session coordination).
+- claudex_message: Send messages to other sessions (cross-session coordination). Three types: \`request\` (expects a response — use for proposals, reviews, questions to a sibling session), \`notify\` (FYI, no response expected), \`transfer\` (full SBAR handoff). **Cross-session proposals MUST use \`claudex_message type=request\` — not file drops in .planning/research/**. A markdown research artifact can ride alongside the message (linked in content), but the request itself goes through this tool so the recipient's session-start surface knows to surface it. If the target session is closed, the message persists in session_messages — durable, retrievable, addressable.
 - claudex_session: Session management — name sessions, list active sessions, create/clear signals.
 - claudex_curated_context: Manage Project Curated Context — mental models, workspace maps, shipped components, constraints, preferences. Use at /endsession to curate what the next session sees.
 
