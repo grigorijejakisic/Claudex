@@ -114,12 +114,13 @@ export async function generate(opts: {
   subsystem?: string;
 }): Promise<string> {
   const backend = resolveBackend();
+  const normalizedModel = normalizeModelForBackend(opts.model, backend);
 
   if (backend === 'claude') {
     return callClaudeSubprocessText({
       prompt: opts.prompt,
       system: opts.system,
-      model: opts.model,
+      model: normalizedModel,
       timeoutMs: opts.timeoutMs,
       db: opts.db,
       subsystem: opts.subsystem,
@@ -130,7 +131,7 @@ export async function generate(opts: {
   const ollamaOpts: LocalLLMCallOptions = {
     prompt: opts.prompt,
     system: opts.system,
-    model: opts.model,
+    model: normalizedModel,
     maxTokens: opts.maxTokens,
     timeoutMs: opts.timeoutMs,
     temperature: opts.temperature,
