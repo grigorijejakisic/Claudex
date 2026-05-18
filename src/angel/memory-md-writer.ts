@@ -57,15 +57,17 @@ const POINTER_LINE_MAX_CHARS = 140;
 /** Active-projects activity window: 7 days in seconds. */
 const ACTIVE_WINDOW_SECONDS = 7 * 86_400;
 
-/** Static footer body — this block is byte-stable and drives idempotency. */
-export const HOW_TO_QUERY_STATIC = `## How to Query
-
-- claudex_search("topic") — decisions, learnings, prior sessions
-- claudex_events — latest session history
-- claudex_recall(id|path) — fetch a specific artifact
-
-See ~/.claude/CLAUDE.md for Claudex tool reference.
-`;
+/**
+ * @deprecated 2026-05-18 — `## How to Query` removed from MEMORY.md per the
+ * invariants-only doctrine. The authoritative tool surface lives in the MCP
+ * server's `buildClaudexInstructions()` (recall-server.ts), which injects
+ * the full tool list + routing tree at session-start. Duplicating it here
+ * created drift (3 tools listed vs 8+ registered) without an automatic
+ * refresh path. Export retained as an empty string until callers migrate
+ * to avoid a hard break in third-party consumers; the writer no longer
+ * renders it.
+ */
+export const HOW_TO_QUERY_STATIC = '';
 
 /** Cold-start user-tail template. */
 export const USER_TAIL_DEFAULT = '<!-- USER EDITABLE -->\n\n## User Notes\n\n';
