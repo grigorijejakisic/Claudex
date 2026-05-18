@@ -272,15 +272,26 @@ async function main(): Promise<void> {
   await llamaServerSupervisor.start();
   const llamaHealthy = await checkLlamaServerHealth();
 
-  // Log startup
+  // Log startup. Report the ACTUAL generation backend in play. Pre-2026-05-18
+  // the startup log only described the llama-server health check, which is
+  // about the Ollama-revert path. Post Phase-14-08 the production default is
+  // 'claude' (subprocess via MAX OAuth) — surface that honestly so the line
+  // matches what generate() actually does. Llama-server health is kept as a
+  // secondary line for the rollback path.
   const intervalMin = Math.round(config.heartbeatIntervalMs / 60000);
+  const backend = resolveBackend();
+  const generationLine = backend === 'claude'
+    ? 'Claude subprocess via MAX OAuth (sonnet/haiku per subsystem)'
+    : llamaHealthy
+        ? (isCloudModel(LLAMA_MODEL_ALIAS)
+            ? `Ollama Cloud via daemon (${LLAMA_MODEL_ALIAS}) at ${LLAMA_SERVER_URL}`
+            : `local llama-server (${LLAMA_MODEL_ALIAS}) at ${LLAMA_SERVER_URL}`)
+        : 'ollama backend unavailable — tasks will retry';
   log('info', `Angel started`, {
     pid: process.pid,
-    llm: llamaHealthy
-      ? (isCloudModel(LLAMA_MODEL_ALIAS)
-          ? `Ollama Cloud via daemon (${LLAMA_MODEL_ALIAS}) at ${LLAMA_SERVER_URL}`
-          : `local llama-server (${LLAMA_MODEL_ALIAS}) at ${LLAMA_SERVER_URL}`)
-      : 'generation backend unavailable — tasks will retry',
+    backend,
+    generation: generationLine,
+    llama_server_healthy: llamaHealthy,
     interval_minutes: intervalMin,
     idle_threshold_minutes: Math.round(config.idleThresholdSeconds / 60),
   });
