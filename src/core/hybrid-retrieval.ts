@@ -1031,21 +1031,37 @@ export function hybridSearchSync(
       const threeFactor = computeThreeFactorScore(artifact, Math.min(1, relevance), weights, innerFlags);
 
       // 14-07i: retrieval metadata — attach match_query + match_kind for the
-      // channel that contributed to this candidate's score. FTS5 wins over
-      // recency (recency has no query affinity). Truncate to 200 chars.
+      // channel that contributed to this candidate's score. Episodic wins
+      // when its RRF score is the highest; otherwise FTS5 wins over recency
+      // (recency has no query affinity). Truncate to 200 chars.
       const hasFts5 = fts5RankMap.has(artifactId);
       const truncatedQuery = query.length > 200 ? query.substring(0, 200) : query;
+      const epRankSync = episodicRankMapSync.get(artifactId);
+      const epRrfScoreSync = epRankSync != null ? 1 / (RRF_K + epRankSync) : 0;
+      const ftsRrfScoreSync = fts5RankMap.has(artifactId)
+        ? 1 / (RRF_K + (fts5RankMap.get(artifactId) ?? RRF_K))
+        : 0;
+      let syncMatchKind: 'fts' | 'episodic' | undefined;
+      let syncMatchQuery: string | undefined;
+      if (epRrfScoreSync > 0 && epRrfScoreSync >= ftsRrfScoreSync) {
+        syncMatchKind = 'episodic';
+        syncMatchQuery = truncatedQuery;
+      } else if (hasFts5) {
+        syncMatchKind = 'fts';
+        syncMatchQuery = truncatedQuery;
+      }
 
       scored.push({
         ...artifact,
         hybrid_score: hybridScore,
         score_breakdown: {
-          rrf_fts5: fts5RankMap.has(artifactId) ? 1 / (RRF_K + (fts5RankMap.get(artifactId) ?? RRF_K)) : 0,
+          rrf_fts5: ftsRrfScoreSync,
           rrf_vector: 0,
           rrf_recency: recencyRankMap.has(artifactId) ? 1 / (RRF_K + (recencyRankMap.get(artifactId) ?? RRF_K)) : 0,
+          ...(epRrfScoreSync > 0 ? { rrf_episodic: epRrfScoreSync } : {}),
           three_factor: threeFactor,
         },
-        ...(hasFts5 ? { match_query: truncatedQuery, match_kind: 'fts' as const } : {}),
+        ...(syncMatchKind ? { match_query: syncMatchQuery, match_kind: syncMatchKind } : {}),
       });
     }
 
