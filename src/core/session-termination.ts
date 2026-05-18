@@ -525,6 +525,7 @@ export function getDerivedTerminations(
       // Synthesized derivation, not a real recorded write. Use the same ms.
       recorded_at_epoch_ms: r.ended_at_epoch_ms,
       open_blockers: derivedBlockers,
+      derived: true,
     });
   }
   return out;
