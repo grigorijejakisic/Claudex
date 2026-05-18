@@ -298,15 +298,154 @@ export function inferCrashedSessions(
  * Conservative regex for "operator-reported crash" markers in user_framing
  * text. Tuned against 6 known historical crash framings + sample seed of
  * recovery-prompt language. Must mention crash/died explicitly — not just
- * any failure. Centralized so reconcileTerminationClassifications +
- * any future writers share one definition.
+ * any failure.
  */
 const CRASH_MARKER_RE = /\b(pc (cra(s|c)hed|died|crahsed)|pc (died|crashed) (over\s?night|mid|in the middle)|session (died|cra(s|c)hed|abrubptly died)|crashed (in the middle|over\s?night|mid)|killed our|got cut off|our worst fear happened|previous session died|session abrubptly died)\b/i;
 
+// ---------------------------------------------------------------------------
+// Reclassifier plugin shape
+// ---------------------------------------------------------------------------
+
 /**
- * Continuous reclassification pass: promote `end_reason='unknown'` rows to
- * `'crash'` when there's direct evidence in the NEXT session's first
- * user_framing event ("PC crashed", "session died", etc.).
+ * Context handed to every Reclassifier. Carries the row's current state +
+ * the DB so each classifier can run its own evidence queries.
+ */
+export interface ReclassifierContext {
+  db: Database;
+  session_id: string;
+  project: string;
+  ended_at_epoch_ms: number;
+  current_reason: SessionEndReason;
+  /** Detected timestamp column on session_events. */
+  events_ts_col: string;
+}
+
+/**
+ * What a classifier returns when it finds promotion evidence. Null means
+ * no promotion — try the next classifier in the registry.
+ */
+export interface ReclassifierResult {
+  new_reason: SessionEndReason;
+  /** Short human-readable evidence string for telemetry / debugging. */
+  evidence: string;
+}
+
+export interface Reclassifier {
+  /** Identifier used in telemetry counts and tests. */
+  name: string;
+  /** Which `end_reason` values this classifier can transition FROM. */
+  applies_to: SessionEndReason[];
+  /** Examine the row's surrounding evidence; return promotion or null. */
+  classify(ctx: ReclassifierContext): ReclassifierResult | null;
+}
+
+/**
+ * Classifier 1: `unknown` → `crash` when the next session's first
+ * user_framing event contains explicit operator-reported crash markers.
+ * The canonical signal — the operator's recovery prompt is the most
+ * reliable crash attestation in the substrate.
+ */
+const crashFromRecoveryFraming: Reclassifier = {
+  name: 'crash-from-recovery-framing',
+  applies_to: ['unknown'],
+  classify(ctx): ReclassifierResult | null {
+    const next = cachedPrepare(
+      ctx.db,
+      `SELECT session_id FROM sessions
+        WHERE project = ? AND created_at_epoch_ms > ?
+        ORDER BY created_at_epoch_ms ASC LIMIT 1`,
+    ).get(ctx.project, ctx.ended_at_epoch_ms) as { session_id?: string } | undefined;
+    if (!next?.session_id) return null;
+
+    const framing = cachedPrepare(
+      ctx.db,
+      `SELECT detail FROM session_events
+        WHERE session_id = ? AND event_type = 'user_framing'
+        ORDER BY ${ctx.events_ts_col} ASC LIMIT 1`,
+    ).get(next.session_id) as { detail?: string | null } | undefined;
+    const detail = framing?.detail;
+    if (!detail) return null;
+    if (!CRASH_MARKER_RE.test(detail)) return null;
+
+    return {
+      new_reason: 'crash',
+      evidence: `next-session-framing: "${detail.slice(0, 80).replace(/\s+/g, ' ')}"`,
+    };
+  },
+};
+
+/**
+ * Classifier 2: `unknown` → `endsession` when there's a `session_end_action`
+ * telemetry row for the session. That row is only written by the
+ * session-end hook (or the boundary detector's fireEndOfSessionActions
+ * with reason='explicit_close'), so its presence is deterministic evidence
+ * that /endsession actually ran.
+ *
+ * Earns the plugin shape: same dispatcher, different evidence source —
+ * shows the design is not crash-specific.
+ */
+const endsessionFromSessionEndAction: Reclassifier = {
+  name: 'endsession-from-session-end-action',
+  applies_to: ['unknown'],
+  classify(ctx): ReclassifierResult | null {
+    const row = cachedPrepare(
+      ctx.db,
+      `SELECT 1 AS hit FROM telemetry
+        WHERE session_id = ?
+          AND event_kind = 'session_end_action'
+        LIMIT 1`,
+    ).get(ctx.session_id) as { hit?: number } | undefined;
+    if (!row?.hit) return null;
+    return {
+      new_reason: 'endsession',
+      evidence: 'telemetry.session_end_action present',
+    };
+  },
+};
+
+/**
+ * Reclassifier registry. Order matters — first match wins. Crash signal
+ * is stronger than endsession-action presence (e.g., session-end might
+ * have fired AFTER a partial crash recovery), so crash classifier runs first.
+ *
+ * Adding a classifier later: implement the interface, append to this array,
+ * write a vitest. The dispatcher loop handles cursor + telemetry uniformly.
+ */
+const RECLASSIFIERS: Reclassifier[] = [
+  crashFromRecoveryFraming,
+  endsessionFromSessionEndAction,
+];
+
+/**
+ * Result of one reconciliation pass. Surfaces per-classifier counts so the
+ * telemetry row preserves attribution.
+ */
+export interface ReconcileResult {
+  /** Total rows examined this pass (post-cursor filter). */
+  scanned: number;
+  /** Total rows promoted to a new reason. */
+  promoted: number;
+  /** Per-classifier promotion counts: { 'crash-from-recovery-framing': 3, ... } */
+  by_classifier: Record<string, number>;
+  /** Per-target-reason counts: { 'crash': 2, 'endsession': 1 } */
+  by_new_reason: Record<string, number>;
+}
+
+/**
+ * Continuous reclassification pass. Scans `session_termination` rows where
+ * each registered Reclassifier's `applies_to` includes the row's current
+ * end_reason, applies the first-matching classifier's promotion, updates
+ * `last_reconciliation_attempt_ms` on every examined row.
+ *
+ * Cursor optimization (V45): rows that have a non-null
+ * `last_reconciliation_attempt_ms` AND have no session created since that
+ * timestamp in the same project are skipped — no new evidence to consider.
+ *
+ * Telemetry: when promotions > 0, writes one `reconcile_pass` telemetry row
+ * with structured counts so post-hoc dashboards can spot the mechanism's
+ * activity.
+ *
+ * Non-throwing. Returns a zero-counts result on any failure.
  *
  * Why this exists as a mechanism instead of a one-shot:
  * classification happens at WRITE time, based on whatever signal was
@@ -316,79 +455,141 @@ const CRASH_MARKER_RE = /\b(pc (cra(s|c)hed|died|crahsed)|pc (died|crashed) (ove
  * recovery session starts. A one-shot backfill catches everything at one
  * moment; a continuous mechanism catches every future crash as soon as
  * the next session writes its first user_framing.
- *
- * Call from session-start hook (after inferCrashedSessions) so every
- * fresh CC session reconciles the substrate's classifications before the
- * agent starts retrieving from them.
- *
- * Returns count promoted. Non-throwing.
- *
- * Performance: bounded by the count of `unknown` rows. After this round's
- * backfill the count is ~1079; each row is one SELECT-next-session + one
- * SELECT-first-framing + maybe one UPDATE. With prepared-statement caching
- * total runtime is sub-second on the live DB. Subsequent calls only see
- * NEW unknown rows (most stay unchanged), so cost amortizes.
  */
-export function reconcileTerminationClassifications(db: Database): number {
+export function reconcileTerminationClassifications(db: Database): ReconcileResult {
+  const result: ReconcileResult = {
+    scanned: 0,
+    promoted: 0,
+    by_classifier: {},
+    by_new_reason: {},
+  };
   try {
     // Detect timestamp column shape (V42 had timestamp_epoch; V43+ uses _ms).
-    const cols = (() => {
+    const evCols = (() => {
       try { return db.prepare('PRAGMA table_info(session_events)').all() as Array<{ name: string }>; }
       catch { return []; }
     })();
-    const tsCol = cols.some(c => c.name === 'timestamp_epoch_ms') ? 'timestamp_epoch_ms' : 'timestamp_epoch';
+    const eventsTsCol = evCols.some(c => c.name === 'timestamp_epoch_ms') ? 'timestamp_epoch_ms' : 'timestamp_epoch';
 
-    const unknowns = cachedPrepare(
-      db,
-      `SELECT session_id, project, ended_at_epoch_ms
-         FROM session_termination
-        WHERE end_reason = 'unknown'
-        ORDER BY ended_at_epoch_ms ASC`,
-    ).all() as Array<{ session_id: string; project: string; ended_at_epoch_ms: number }>;
+    // V45 cursor: row is "stale" (worth examining) if either
+    //   (a) it's never been examined, OR
+    //   (b) a session was created in the same project after the last attempt.
+    // Without V45 cursor column, fall back to scanning everything (compat).
+    const tCols = (() => {
+      try { return db.prepare('PRAGMA table_info(session_termination)').all() as Array<{ name: string }>; }
+      catch { return []; }
+    })();
+    const hasCursor = tCols.some(c => c.name === 'last_reconciliation_attempt_ms');
 
-    if (unknowns.length === 0) return 0;
+    // Build the set of from-reasons across all classifiers (dedupe).
+    const fromReasons = new Set<string>();
+    for (const r of RECLASSIFIERS) for (const reason of r.applies_to) fromReasons.add(reason);
+    if (fromReasons.size === 0) return result;
+    const reasonPlaceholders = Array.from(fromReasons).map(() => '?').join(',');
 
-    const findNextSession = cachedPrepare(
-      db,
-      `SELECT session_id
-         FROM sessions
-        WHERE project = ?
-          AND created_at_epoch_ms > ?
-        ORDER BY created_at_epoch_ms ASC LIMIT 1`,
-    );
+    const candidatesSql = hasCursor
+      ? `SELECT session_id, project, ended_at_epoch_ms, end_reason, last_reconciliation_attempt_ms
+           FROM session_termination t
+          WHERE end_reason IN (${reasonPlaceholders})
+            AND (
+              last_reconciliation_attempt_ms IS NULL
+              OR EXISTS (
+                SELECT 1 FROM sessions s
+                 WHERE s.project = t.project
+                   AND s.created_at_epoch_ms > t.last_reconciliation_attempt_ms
+              )
+            )
+          ORDER BY ended_at_epoch_ms ASC`
+      : `SELECT session_id, project, ended_at_epoch_ms, end_reason
+           FROM session_termination
+          WHERE end_reason IN (${reasonPlaceholders})
+          ORDER BY ended_at_epoch_ms ASC`;
 
-    const findFirstFraming = cachedPrepare(
-      db,
-      `SELECT detail
-         FROM session_events
-        WHERE session_id = ?
-          AND event_type = 'user_framing'
-        ORDER BY ${tsCol} ASC LIMIT 1`,
-    );
+    const candidates = cachedPrepare(db, candidatesSql)
+      .all(...fromReasons) as Array<{
+        session_id: string;
+        project: string;
+        ended_at_epoch_ms: number;
+        end_reason: SessionEndReason;
+      }>;
+
+    if (candidates.length === 0) return result;
+    result.scanned = candidates.length;
 
     const promote = cachedPrepare(
       db,
       `UPDATE session_termination
-          SET end_reason = 'crash'
+          SET end_reason = ?
         WHERE session_id = ?
-          AND end_reason = 'unknown'`,
+          AND end_reason = ?`,
     );
+    const stampAttempt = hasCursor
+      ? cachedPrepare(
+          db,
+          `UPDATE session_termination
+              SET last_reconciliation_attempt_ms = ?
+            WHERE session_id = ?`,
+        )
+      : null;
 
-    let promoted = 0;
-    for (const u of unknowns) {
-      const next = findNextSession.get(u.project, u.ended_at_epoch_ms) as { session_id?: string } | undefined;
-      if (!next?.session_id) continue;
-      const framing = findFirstFraming.get(next.session_id) as { detail?: string | null } | undefined;
-      const detail = framing?.detail;
-      if (!detail) continue;
-      if (CRASH_MARKER_RE.test(detail)) {
-        const r = promote.run(u.session_id);
-        if (r.changes > 0) promoted++;
+    const nowMs = Date.now();
+    for (const c of candidates) {
+      const ctx: ReclassifierContext = {
+        db,
+        session_id: c.session_id,
+        project: c.project,
+        ended_at_epoch_ms: c.ended_at_epoch_ms,
+        current_reason: c.end_reason,
+        events_ts_col: eventsTsCol,
+      };
+
+      for (const classifier of RECLASSIFIERS) {
+        if (!classifier.applies_to.includes(c.end_reason)) continue;
+        let outcome: ReclassifierResult | null = null;
+        try {
+          outcome = classifier.classify(ctx);
+        } catch { /* one classifier's failure must not break the pass */ }
+        if (outcome) {
+          const r = promote.run(outcome.new_reason, c.session_id, c.end_reason);
+          if (r.changes > 0) {
+            result.promoted++;
+            result.by_classifier[classifier.name] = (result.by_classifier[classifier.name] ?? 0) + 1;
+            result.by_new_reason[outcome.new_reason] = (result.by_new_reason[outcome.new_reason] ?? 0) + 1;
+          }
+          break; // first matching classifier wins
+        }
+      }
+      // Stamp attempt regardless of whether we promoted — examined rows
+      // shouldn't be re-scanned until new evidence emerges.
+      if (stampAttempt) {
+        try { stampAttempt.run(nowMs, c.session_id); } catch { /* non-fatal */ }
       }
     }
-    return promoted;
+
+    // Telemetry: only on promotions to keep noise low. Scans without
+    // promotions are silently OK (steady-state behavior).
+    if (result.promoted > 0) {
+      try {
+        db.prepare(
+          `INSERT INTO telemetry (session_id, event_kind, detail, adapter)
+           VALUES (?, ?, ?, ?)`,
+        ).run(
+          'system-reconcile',
+          'reconcile_pass',
+          JSON.stringify({
+            scanned: result.scanned,
+            promoted: result.promoted,
+            by_classifier: result.by_classifier,
+            by_new_reason: result.by_new_reason,
+          }),
+          'session-termination',
+        );
+      } catch { /* telemetry never escalates */ }
+    }
+
+    return result;
   } catch {
-    return 0;
+    return result;
   }
 }
 
