@@ -73,8 +73,9 @@ describe('searchEpisodicChannel — kind filter for event-shape queries', () => 
       cwd: 'C:/test',
       source: 'test',
     });
+    // session_summary contains the literal "crashes" token so LIKE %crashes% matches.
     db.prepare(
-      `UPDATE sessions SET session_summary = 'crashed during V7 cutover deployment' WHERE session_id = 'sess-with-summary'`,
+      `UPDATE sessions SET session_summary = 'multiple crashes during V7 cutover deployment' WHERE session_id = 'sess-with-summary'`,
     ).run();
     createSession(db, {
       session_id: 'sess-with-framing',
@@ -82,14 +83,16 @@ describe('searchEpisodicChannel — kind filter for event-shape queries', () => 
       cwd: 'C:/test',
       source: 'test',
     });
-    seedUserFraming(db, 'sess-with-framing', project, 'PC crashed again, please recover', now);
+    // user_framing also contains "crashes" — exact same keyword so the
+    // contrast is purely about kind-filtering, not text-mismatch.
+    seedUserFraming(db, 'sess-with-framing', project, 'multiple PC crashes happened, please recover', now);
   });
 
   afterEach(() => { db.close(); });
 
   it('event-shape query: user_framing rows are EXCLUDED, summary surfaces', () => {
     const results = hybridSearchSync(db, 'find me past crashes', project, { limit: 5 });
-    // User_framing 'PC crashed again' must NOT appear via match_kind='episodic'
+    // User_framing 'PC crashes' must NOT appear via match_kind='episodic'
     const userFramingHit = results.find(r =>
       r.match_kind === 'episodic' && r.artifact_type === 'user_framing',
     );
@@ -102,7 +105,14 @@ describe('searchEpisodicChannel — kind filter for event-shape queries', () => 
   });
 
   it('narrative-shape query: user_framing rows ARE surfaced as before', () => {
-    // Use a narrative episodic query (isEpisodicQuery=true, isEventQuery=false)
+    // Re-seed both rows with content matching a narrative query's keywords.
+    db.prepare(
+      `UPDATE sessions SET session_summary = 'production stopped at deployment gate' WHERE session_id = 'sess-with-summary'`,
+    ).run();
+    // Wipe + reseed framing to match the narrative query terms.
+    db.prepare(`DELETE FROM session_events WHERE session_id = 'sess-with-framing'`).run();
+    seedUserFraming(db, 'sess-with-framing', project, 'why did production stop last night', now);
+
     const results = hybridSearchSync(db, 'why did production stop', project, { limit: 5 });
     // For narrative queries, user_framing is still valid signal.
     // Either user_framing or session_summary can match — both are episodic.
