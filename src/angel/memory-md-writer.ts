@@ -596,14 +596,14 @@ function recordRefusal(db: Database, project: string, filePath: string, reason: 
  */
 function enforceSizeCap(
   body: string,
-  sections: { preamble: string; projects: string; lessons: string; handoff: string; howTo: string },
+  sections: { preamble: string; projects: string; lessons: string; handoff: string },
 ): string {
   const fits = (s: string): boolean =>
     Buffer.byteLength(s, 'utf8') <= MAX_BYTES && s.split('\n').length <= MAX_LINES;
 
   const rebuild = (): string =>
     normalize(
-      [sections.preamble, sections.projects, sections.lessons, sections.handoff, sections.howTo]
+      [sections.preamble, sections.projects, sections.lessons, sections.handoff]
         .filter(Boolean)
         .join('\n'),
     );
