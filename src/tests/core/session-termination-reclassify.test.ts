@@ -316,11 +316,17 @@ describe('reconcileTerminationClassifications', () => {
 
     reconcileTerminationClassifications(db);
 
+    // event_kind='enrichment' + detail.subsystem='reconcile_pass' per
+    // schema CHECK constraint (the codebase convention from claude-subprocess.ts).
     const tel = db.prepare(
-      `SELECT detail FROM telemetry WHERE event_kind = 'reconcile_pass' ORDER BY id DESC LIMIT 1`,
+      `SELECT detail FROM telemetry
+        WHERE event_kind = 'enrichment'
+          AND session_id = 'system-reconcile'
+        ORDER BY id DESC LIMIT 1`,
     ).get() as { detail: string } | undefined;
     expect(tel).toBeDefined();
     const parsed = JSON.parse(tel!.detail);
+    expect(parsed.subsystem).toBe('reconcile_pass');
     expect(parsed.promoted).toBe(1);
     expect(parsed.by_classifier['crash-from-recovery-framing']).toBe(1);
     expect(parsed.scanned).toBeGreaterThanOrEqual(1);
@@ -337,9 +343,13 @@ describe('reconcileTerminationClassifications', () => {
     });
     seedUserFraming(db, 'tel-skip-next', project, 'no crash here', Math.floor((nowMs - 1800_000) / 1000));
 
-    const before = db.prepare(`SELECT COUNT(*) AS n FROM telemetry WHERE event_kind = 'reconcile_pass'`).get() as { n: number };
+    const before = db.prepare(
+      `SELECT COUNT(*) AS n FROM telemetry WHERE event_kind = 'enrichment' AND session_id = 'system-reconcile'`,
+    ).get() as { n: number };
     reconcileTerminationClassifications(db);
-    const after = db.prepare(`SELECT COUNT(*) AS n FROM telemetry WHERE event_kind = 'reconcile_pass'`).get() as { n: number };
+    const after = db.prepare(
+      `SELECT COUNT(*) AS n FROM telemetry WHERE event_kind = 'enrichment' AND session_id = 'system-reconcile'`,
+    ).get() as { n: number };
     expect(after.n).toBe(before.n);
   });
 });
