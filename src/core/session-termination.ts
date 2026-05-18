@@ -34,6 +34,15 @@ export type SessionEndReason =
   | 'idle_close'
   | 'unknown';
 
+export interface OpenBlocker {
+  /** wip | danger | failure (subset of session_signals.signal_type values). */
+  signal_type: 'wip' | 'danger' | 'failure';
+  /** File path / target string the signal pinned. */
+  target: string;
+  /** Free-text detail captured when the signal was raised, or null. */
+  detail: string | null;
+}
+
 export interface SessionTerminationRow {
   session_id: string;
   project: string;
@@ -43,6 +52,12 @@ export interface SessionTerminationRow {
   last_assistant_text: string | null;
   observation_count: number;
   recorded_at_epoch_ms: number;
+  /**
+   * JSON-encoded array of unresolved signals at session-close time.
+   * NULL on pre-V44 rows and on rows where no unresolved wip/danger/failure
+   * signals existed at write time.
+   */
+  open_blockers: string | null;
 }
 
 export interface RecordTerminationOpts {
@@ -53,6 +68,44 @@ export interface RecordTerminationOpts {
   last_assistant_text?: string | null;
   /** Override ended_at; defaults to Date.now(). */
   ended_at_epoch_ms?: number;
+  /**
+   * Explicit override for open_blockers JSON. When omitted (default),
+   * `recordSessionTermination` queries `session_signals` for unresolved
+   * wip/danger/failure signals for this session and serializes them.
+   * Pass `null` to skip auto-derivation entirely.
+   */
+  open_blockers?: OpenBlocker[] | null;
+}
+
+/**
+ * Query session_signals for unresolved wip/danger/failure signals attached
+ * to a session. Used by recordSessionTermination to capture "what was
+ * unfinished" at close time. Non-throwing.
+ */
+export function deriveOpenBlockers(db: Database, sessionId: string): OpenBlocker[] {
+  try {
+    const rows = cachedPrepare(
+      db,
+      `SELECT signal_type, target, detail
+         FROM session_signals
+        WHERE session_id = ?
+          AND signal_type IN ('wip', 'danger', 'failure')
+          AND cleared_at_epoch_ms IS NULL
+          AND (expires_at_epoch_ms IS NULL OR expires_at_epoch_ms > ?)
+        ORDER BY created_at_epoch_ms ASC`,
+    ).all(sessionId, Date.now()) as Array<{
+      signal_type: 'wip' | 'danger' | 'failure';
+      target: string;
+      detail: string | null;
+    }>;
+    return rows.map(r => ({
+      signal_type: r.signal_type,
+      target: r.target,
+      detail: r.detail,
+    }));
+  } catch {
+    return [];
+  }
 }
 
 /**
