@@ -492,9 +492,17 @@ export function getDerivedTerminations(
       lastUser = f?.detail ?? null;
     } catch { /* skip */ }
 
+    // Derived end_reason: be honest. `sessions.status='completed'` does NOT
+    // mean operator ran /endsession — it means "no longer active." Without
+    // a real termination record we don't know if it was endsession,
+    // idle_close, crash, or compact. Mark `unknown` and let the `derived`
+    // provenance flag tell the consumer "this is inferred, not recorded."
+    //
+    // The one exception: `status='active'` + we're deriving (meaning
+    // inferCrashedSessions hasn't caught it) — that's most-likely-crash by
+    // process of elimination. Still emit `crash` for that signal.
     let endReason: SessionEndReason = 'unknown';
-    if (r.status === 'completed') endReason = 'endsession';
-    else if (r.status === 'active') endReason = 'crash';
+    if (r.status === 'active') endReason = 'crash';
 
     // open_blockers — derive from session_signals at read time for
     // derived rows too. Sessions that ended without a session_termination
