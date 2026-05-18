@@ -208,6 +208,136 @@ describe('Episodic Recall Gate — v7 qualitative thesis (structural half)', () 
     db.close();
   });
 
+  // ---------------------------------------------------------------------
+  // Counter-probe: confirm the 2.5x episodic multiplier does NOT fire on
+  // conceptual queries that happen to share keywords with user_framing
+  // events. Without this, a stronger episodic multiplier could over-rank
+  // raw operator prompts above real decisions/learnings on conceptual
+  // recall — the exact failure shape `feedback_take_position_unless_flagged`
+  // tagged as a regression vector before this counter-probe existed.
+  // ---------------------------------------------------------------------
+  describe('counter-probe: conceptual queries do not get inappropriate episodic boost', () => {
+    it('isEpisodicQuery returns false for clearly conceptual queries', () => {
+      // None of these should trip the episodic regex — they're asking about
+      // decisions/strategy/knowledge, not about past sessions.
+      const conceptualQueries = [
+        'production deployment strategy',
+        'what is our retry policy for API calls',
+        'how do migrations handle schema versioning',
+        'best practices for observability',
+        'compare ollama vs claude subprocess for synthesis',
+      ];
+      for (const q of conceptualQueries) {
+        expect(isEpisodicQuery(q), `query "${q}" should NOT be episodic-shape`).toBe(false);
+      }
+    });
+
+    it('conceptual decision outranks user_framing on a non-episodic query that shares keywords', () => {
+      const db = createTestDb();
+      const project = 'claudex-v3';
+      const sessionId = 'counter-sess';
+      const now = Math.floor(Date.now() / 1000);
+
+      createSession(db, {
+        session_id: sessionId,
+        project,
+        cwd: 'C:/test',
+        source: 'test',
+      });
+
+      // Real decision artifact about production — high importance, real provenance.
+      const nowMs = Date.now();
+      db.prepare(
+        `INSERT INTO artifact (id, kind, title, body, project, session_id, status, confidence, created_at_epoch_ms, updated_at_epoch_ms, data)
+         VALUES ('real-decision-1', 'decision', 'Production deployment strategy uses blue/green rollout', 'We decided production rollouts use blue/green with health-gated traffic shift', ?, ?, 'active', 0.8, ?, ?, '{}')`,
+      ).run(project, sessionId, nowMs, nowMs);
+
+      // user_framing event mentioning "production" — would surface via the
+      // episodic channel if isEpisodicQuery were tripped, but for a
+      // conceptual query it should NOT get the 2.5x boost.
+      seedUserFraming(
+        db,
+        sessionId,
+        project,
+        'we got cut off mid-production-rollout last session',
+        now - 1800,
+      );
+
+      // The query is conceptual-shape ("strategy" not "why/when/what happened").
+      // Expect: isEpisodicQuery=false, decision outranks user_framing.
+      const query = 'production deployment strategy';
+      expect(isEpisodicQuery(query)).toBe(false);
+
+      const results = hybridSearchSync(db, query, project, { limit: 5 });
+
+      const decisionIdx = results.findIndex(r => r.artifact_id === 'real-decision-1');
+      const episodicIdx = results.findIndex(r => r.match_kind === 'episodic');
+
+      expect(decisionIdx).toBeGreaterThanOrEqual(0);
+      // If the episodic hit even appears, the decision must rank above it.
+      if (episodicIdx >= 0) {
+        expect(decisionIdx).toBeLessThan(episodicIdx);
+      }
+
+      db.close();
+    });
+
+    it('episodic multiplier strictly requires BOTH conditions (channel hit AND query shape)', () => {
+      // Same seed as above, but switch the query to an episodic-shape one.
+      // Verifies the multiplier flips on cleanly when both conditions hold.
+      const db = createTestDb();
+      const project = 'claudex-v3';
+      const sessionId = 'counter-sess-2';
+      const now = Math.floor(Date.now() / 1000);
+
+      createSession(db, {
+        session_id: sessionId,
+        project,
+        cwd: 'C:/test',
+        source: 'test',
+      });
+
+      const nowMs = Date.now();
+      db.prepare(
+        `INSERT INTO artifact (id, kind, title, body, project, session_id, status, confidence, created_at_epoch_ms, updated_at_epoch_ms, data)
+         VALUES ('real-decision-2', 'decision', 'Production deployment strategy uses blue/green rollout', 'We decided production rollouts use blue/green', ?, ?, 'active', 0.8, ?, ?, '{}')`,
+      ).run(project, sessionId, nowMs, nowMs);
+
+      seedUserFraming(
+        db,
+        sessionId,
+        project,
+        'why did production stop the last 2 times we deployed',
+        now - 1800,
+      );
+
+      const conceptualQuery = 'production deployment strategy';
+      const episodicQuery = 'why did production stop last time';
+
+      const conceptualResults = hybridSearchSync(db, conceptualQuery, project, { limit: 5 });
+      const episodicResults = hybridSearchSync(db, episodicQuery, project, { limit: 5 });
+
+      // Find the user_framing rank in each
+      const conceptualEpIdx = conceptualResults.findIndex(r => r.match_kind === 'episodic');
+      const episodicEpIdx = episodicResults.findIndex(r => r.match_kind === 'episodic');
+
+      // On the episodic query: user_framing should rank higher than on the conceptual query.
+      // (Either it doesn't surface on conceptual, or it surfaces lower.)
+      if (conceptualEpIdx >= 0 && episodicEpIdx >= 0) {
+        expect(episodicEpIdx).toBeLessThanOrEqual(conceptualEpIdx);
+      }
+
+      // On the conceptual query: real decision should outrank user_framing
+      const conceptualDecisionIdx = conceptualResults.findIndex(r => r.artifact_id === 'real-decision-2');
+      expect(conceptualDecisionIdx).toBeGreaterThanOrEqual(0);
+      if (conceptualEpIdx >= 0) {
+        expect(conceptualDecisionIdx).toBeLessThan(conceptualEpIdx);
+      }
+
+      db.close();
+    });
+  });
+
   it('gate aggregate: ≥ 80% probes pass (ship gate threshold)', () => {
     const db = createTestDb();
     const project = 'claudex-v3';

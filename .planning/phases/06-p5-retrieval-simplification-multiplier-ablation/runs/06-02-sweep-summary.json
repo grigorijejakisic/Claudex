@@ -1,9 +1,5 @@
 {
-<<<<<<< Updated upstream
-  "captured_at": "2026-05-17T10:08:53.565Z",
-=======
-  "captured_at": "2026-05-08T19:33:46.970Z",
->>>>>>> Stashed changes
+  "captured_at": "2026-05-18T13:30:38.395Z",
   "probe_count": 11,
   "baseline": {
     "passRate": 0,
