@@ -1362,6 +1362,10 @@ server.registerTool(
           observation_count: r.observation_count,
           topic,
           open_blockers: openBlockers,
+          // Provenance: true when the row was inferred at read time from
+          // sessions.status because no real session_termination existed.
+          // Agents should treat `end_reason` from derived rows as low-confidence.
+          ...(r.derived ? { derived: true } : {}),
         };
       });
 
