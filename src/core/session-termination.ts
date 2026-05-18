@@ -138,22 +138,61 @@ export function recordSessionTermination(
       return s.length <= n ? s : s.slice(0, n);
     };
 
-    cachedPrepare(
-      db,
-      `INSERT OR REPLACE INTO session_termination
-         (session_id, project, ended_at_epoch_ms, end_reason,
-          last_user_directive, last_assistant_text, observation_count, recorded_at_epoch_ms)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-    ).run(
-      opts.session_id,
-      opts.project,
-      endedAt,
-      opts.end_reason,
-      truncate(opts.last_user_directive, 4000),
-      truncate(opts.last_assistant_text, 4000),
-      obsCount,
-      Date.now(),
-    );
+    // Derive open_blockers from active session_signals unless the caller
+    // explicitly passed one (including `null` to skip).
+    let blockersJson: string | null = null;
+    if (opts.open_blockers === undefined) {
+      const derived = deriveOpenBlockers(db, opts.session_id);
+      blockersJson = derived.length > 0 ? JSON.stringify(derived) : null;
+    } else if (opts.open_blockers !== null) {
+      blockersJson = opts.open_blockers.length > 0 ? JSON.stringify(opts.open_blockers) : null;
+    }
+
+    // Detect V44 column presence — if the upgrade hasn't run on this DB,
+    // fall back to the V43 INSERT shape so older DBs still get terminations.
+    let hasOpenBlockers = false;
+    try {
+      const cols = db.prepare("PRAGMA table_info(session_termination)").all() as Array<{ name: string }>;
+      hasOpenBlockers = cols.some(c => c.name === 'open_blockers');
+    } catch { /* keep false */ }
+
+    if (hasOpenBlockers) {
+      cachedPrepare(
+        db,
+        `INSERT OR REPLACE INTO session_termination
+           (session_id, project, ended_at_epoch_ms, end_reason,
+            last_user_directive, last_assistant_text, observation_count, recorded_at_epoch_ms,
+            open_blockers)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      ).run(
+        opts.session_id,
+        opts.project,
+        endedAt,
+        opts.end_reason,
+        truncate(opts.last_user_directive, 4000),
+        truncate(opts.last_assistant_text, 4000),
+        obsCount,
+        Date.now(),
+        blockersJson,
+      );
+    } else {
+      cachedPrepare(
+        db,
+        `INSERT OR REPLACE INTO session_termination
+           (session_id, project, ended_at_epoch_ms, end_reason,
+            last_user_directive, last_assistant_text, observation_count, recorded_at_epoch_ms)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      ).run(
+        opts.session_id,
+        opts.project,
+        endedAt,
+        opts.end_reason,
+        truncate(opts.last_user_directive, 4000),
+        truncate(opts.last_assistant_text, 4000),
+        obsCount,
+        Date.now(),
+      );
+    }
     return true;
   } catch {
     return false;
