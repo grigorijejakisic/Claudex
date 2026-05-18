@@ -200,7 +200,143 @@ describe('reconcileTerminationClassifications', () => {
     });
     seedUserFraming(db, 'recovery-once', project, 'PC crashed', Math.floor((nowMs - 1800_000) / 1000));
 
-    expect(reconcileTerminationClassifications(db)).toBe(1);
-    expect(reconcileTerminationClassifications(db)).toBe(0);
+    expect(reconcileTerminationClassifications(db).promoted).toBe(1);
+    expect(reconcileTerminationClassifications(db).promoted).toBe(0);
+  });
+
+  // 2026-05-18: V45 cursor optimization — rows already examined with no new
+  // evidence shouldn't be re-scanned. After a pass examines them, subsequent
+  // passes skip via last_reconciliation_attempt_ms unless a NEW session
+  // appears in the same project.
+  it('cursor: second pass scans 0 rows when no new evidence', () => {
+    seedSession({ sessionId: 'idle-cursor', createdAtMs: nowMs - 7200_000, endedAtMs: nowMs - 3600_000 });
+    seedSession({ sessionId: 'next-cursor', createdAtMs: nowMs - 1800_000, endedAtMs: nowMs - 600_000 });
+    recordSessionTermination(db, {
+      session_id: 'idle-cursor',
+      project,
+      end_reason: 'unknown',
+      ended_at_epoch_ms: nowMs - 3600_000,
+    });
+    seedUserFraming(db, 'next-cursor', project, 'unrelated conceptual question', Math.floor((nowMs - 1800_000) / 1000));
+
+    const r1 = reconcileTerminationClassifications(db);
+    expect(r1.scanned).toBe(1);
+    expect(r1.promoted).toBe(0);
+
+    // No new session created → cursor skips on second pass
+    const r2 = reconcileTerminationClassifications(db);
+    expect(r2.scanned).toBe(0);
+  });
+
+  it('cursor: second pass DOES rescan when a new session is created in the same project', () => {
+    seedSession({ sessionId: 'idle-rescan', createdAtMs: nowMs - 7200_000, endedAtMs: nowMs - 3600_000 });
+    seedSession({ sessionId: 'unrelated-mid', createdAtMs: nowMs - 1800_000, endedAtMs: nowMs - 600_000 });
+    recordSessionTermination(db, {
+      session_id: 'idle-rescan',
+      project,
+      end_reason: 'unknown',
+      ended_at_epoch_ms: nowMs - 3600_000,
+    });
+    seedUserFraming(db, 'unrelated-mid', project, 'normal continuation prompt', Math.floor((nowMs - 1800_000) / 1000));
+
+    const r1 = reconcileTerminationClassifications(db);
+    expect(r1.scanned).toBe(1);
+
+    // New session appears AFTER reconciliation cursor → must rescan
+    seedSession({ sessionId: 'recovery-late', createdAtMs: nowMs + 60_000, endedAtMs: nowMs + 120_000 });
+    seedUserFraming(db, 'recovery-late', project, 'PC crashed — recover please', Math.floor((nowMs + 60_000) / 1000));
+
+    const r2 = reconcileTerminationClassifications(db);
+    expect(r2.scanned).toBeGreaterThan(0);
+    expect(r2.promoted).toBe(1);
+  });
+
+  // 2026-05-18: second classifier — endsessionFromSessionEndAction
+  it('promotes unknown → endsession when telemetry has session_end_action row', () => {
+    seedSession({ sessionId: 'cleanly-closed', createdAtMs: nowMs - 7200_000, endedAtMs: nowMs - 3600_000 });
+    recordSessionTermination(db, {
+      session_id: 'cleanly-closed',
+      project,
+      end_reason: 'unknown',
+      ended_at_epoch_ms: nowMs - 3600_000,
+    });
+    // Seed the deterministic /endsession evidence — boundary-detector's
+    // fireEndOfSessionActions writes session_end_action telemetry rows.
+    db.prepare(
+      `INSERT INTO telemetry (session_id, event_kind, detail, adapter)
+       VALUES ('cleanly-closed', 'session_end_action', '{}', 'test')`,
+    ).run();
+
+    const r = reconcileTerminationClassifications(db);
+    expect(r.promoted).toBe(1);
+    expect(r.by_classifier['endsession-from-session-end-action']).toBe(1);
+    expect(r.by_new_reason['endsession']).toBe(1);
+
+    const row = db.prepare(`SELECT end_reason FROM session_termination WHERE session_id = 'cleanly-closed'`).get() as { end_reason: string };
+    expect(row.end_reason).toBe('endsession');
+  });
+
+  // 2026-05-18: first matching classifier wins — crash detection runs first.
+  it('crash classifier wins over endsession when both apply', () => {
+    seedSession({ sessionId: 'crash-and-endsession', createdAtMs: nowMs - 7200_000, endedAtMs: nowMs - 3600_000 });
+    seedSession({ sessionId: 'recovery-mixed', createdAtMs: nowMs - 1800_000, endedAtMs: nowMs - 600_000 });
+    recordSessionTermination(db, {
+      session_id: 'crash-and-endsession',
+      project,
+      end_reason: 'unknown',
+      ended_at_epoch_ms: nowMs - 3600_000,
+    });
+    // Both signals present
+    db.prepare(
+      `INSERT INTO telemetry (session_id, event_kind, detail, adapter)
+       VALUES ('crash-and-endsession', 'session_end_action', '{}', 'test')`,
+    ).run();
+    seedUserFraming(db, 'recovery-mixed', project, 'PC crashed last night', Math.floor((nowMs - 1800_000) / 1000));
+
+    const r = reconcileTerminationClassifications(db);
+    expect(r.promoted).toBe(1);
+    expect(r.by_classifier['crash-from-recovery-framing']).toBe(1);
+    expect(r.by_classifier['endsession-from-session-end-action']).toBeUndefined();
+  });
+
+  // 2026-05-18: telemetry write
+  it('writes a reconcile_pass telemetry row when promotions occur', () => {
+    seedSession({ sessionId: 'tel-crash', createdAtMs: nowMs - 7200_000, endedAtMs: nowMs - 3600_000 });
+    seedSession({ sessionId: 'tel-recovery', createdAtMs: nowMs - 1800_000, endedAtMs: nowMs - 600_000 });
+    recordSessionTermination(db, {
+      session_id: 'tel-crash',
+      project,
+      end_reason: 'unknown',
+      ended_at_epoch_ms: nowMs - 3600_000,
+    });
+    seedUserFraming(db, 'tel-recovery', project, 'PC crashed!', Math.floor((nowMs - 1800_000) / 1000));
+
+    reconcileTerminationClassifications(db);
+
+    const tel = db.prepare(
+      `SELECT detail FROM telemetry WHERE event_kind = 'reconcile_pass' ORDER BY id DESC LIMIT 1`,
+    ).get() as { detail: string } | undefined;
+    expect(tel).toBeDefined();
+    const parsed = JSON.parse(tel!.detail);
+    expect(parsed.promoted).toBe(1);
+    expect(parsed.by_classifier['crash-from-recovery-framing']).toBe(1);
+    expect(parsed.scanned).toBeGreaterThanOrEqual(1);
+  });
+
+  it('does NOT write reconcile_pass telemetry when zero promotions', () => {
+    seedSession({ sessionId: 'tel-skip', createdAtMs: nowMs - 7200_000, endedAtMs: nowMs - 3600_000 });
+    seedSession({ sessionId: 'tel-skip-next', createdAtMs: nowMs - 1800_000, endedAtMs: nowMs - 600_000 });
+    recordSessionTermination(db, {
+      session_id: 'tel-skip',
+      project,
+      end_reason: 'unknown',
+      ended_at_epoch_ms: nowMs - 3600_000,
+    });
+    seedUserFraming(db, 'tel-skip-next', project, 'no crash here', Math.floor((nowMs - 1800_000) / 1000));
+
+    const before = db.prepare(`SELECT COUNT(*) AS n FROM telemetry WHERE event_kind = 'reconcile_pass'`).get() as { n: number };
+    reconcileTerminationClassifications(db);
+    const after = db.prepare(`SELECT COUNT(*) AS n FROM telemetry WHERE event_kind = 'reconcile_pass'`).get() as { n: number };
+    expect(after.n).toBe(before.n);
   });
 });
