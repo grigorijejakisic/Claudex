@@ -4436,3 +4436,86 @@ export function migrateV43toV42(db: Database): void {
     db.exec(`INSERT OR IGNORE INTO schema_versions(version) VALUES (42)`);
   } catch { /* non-critical */ }
 }
+
+/**
+ * V43 → V44: add `open_blockers` to session_termination.
+ *
+ * Background: V42 (Phase 14-09) introduced session_termination so the next
+ * session's session-start hook could render a "Last Session" block with
+ * end_reason + last_user_directive. The shape was: session_id, project,
+ * ended_at_epoch_ms, end_reason, last_user_directive, last_assistant_text,
+ * observation_count, recorded_at_epoch_ms.
+ *
+ * What was missing: `open_blockers` — a JSON array of unresolved
+ * session_signals (signal_type IN ('wip','danger','failure')) captured at
+ * close time. Without it, a fresh agent reading "why did the last session
+ * stop?" knows the end_reason but doesn't know "what was unfinished" — and
+ * that's often the more valuable framing for "where do I pick up?".
+ *
+ * Punt confessed in session d2237451 turn 213: "open_blockers field NOT
+ * included — I punted that as a v1 design choice without telling you."
+ * V44 closes that.
+ *
+ * Schema:
+ *   open_blockers TEXT  -- nullable JSON array of { signal_type, target, detail }
+ *
+ * Backfill: leave NULL on existing rows. New writes from session-end /
+ * stop-failure / pre-compact hooks populate from active signals.
+ */
+export function migrateV43toV44(db: Database): void {
+  if (!hasTable(db, 'session_termination')) {
+    // Defensive: caller should have run V42 first. Create the table so V44
+    // can be re-run safely after the prerequisite lands. Idempotent.
+    return;
+  }
+  if (!hasColumn(db, 'session_termination', 'open_blockers')) {
+    db.exec(`ALTER TABLE session_termination ADD COLUMN open_blockers TEXT`);
+  }
+  db.pragma('user_version = 44');
+  try {
+    db.exec(`INSERT OR IGNORE INTO schema_versions(version) VALUES (44)`);
+  } catch { /* non-critical */ }
+}
+
+/**
+ * Reverse: V44 → V43. SQLite < 3.35 has no DROP COLUMN; we use the
+ * dump-and-rebuild pattern via `BEGIN;` + `CREATE TABLE ... AS SELECT`.
+ * Acceptable for emergency rollback only — operator should be aware that
+ * any open_blockers data populated since V44 will be lost.
+ */
+export function migrateV44toV43(db: Database): void {
+  if (!hasTable(db, 'session_termination') || !hasColumn(db, 'session_termination', 'open_blockers')) {
+    db.pragma('user_version = 43');
+    return;
+  }
+  const tx = db.transaction(() => {
+    db.exec(`
+      CREATE TABLE session_termination_v43_rebuild (
+        session_id              TEXT PRIMARY KEY,
+        project                 TEXT NOT NULL,
+        ended_at_epoch_ms       INTEGER NOT NULL DEFAULT (unixepoch() * 1000),
+        end_reason              TEXT NOT NULL
+          CHECK (end_reason IN ('endsession', 'crash', 'compact', 'idle_close', 'unknown')),
+        last_user_directive     TEXT,
+        last_assistant_text     TEXT,
+        observation_count       INTEGER NOT NULL DEFAULT 0,
+        recorded_at_epoch_ms    INTEGER NOT NULL DEFAULT (unixepoch() * 1000)
+      );
+      INSERT INTO session_termination_v43_rebuild
+        (session_id, project, ended_at_epoch_ms, end_reason,
+         last_user_directive, last_assistant_text, observation_count, recorded_at_epoch_ms)
+      SELECT session_id, project, ended_at_epoch_ms, end_reason,
+             last_user_directive, last_assistant_text, observation_count, recorded_at_epoch_ms
+        FROM session_termination;
+      DROP TABLE session_termination;
+      ALTER TABLE session_termination_v43_rebuild RENAME TO session_termination;
+      CREATE INDEX IF NOT EXISTS idx_session_termination_recent
+        ON session_termination(ended_at_epoch_ms DESC);
+      CREATE INDEX IF NOT EXISTS idx_session_termination_project_recent
+        ON session_termination(project, ended_at_epoch_ms DESC);
+    `);
+    db.pragma('user_version = 43');
+    try { db.exec(`INSERT OR IGNORE INTO schema_versions(version) VALUES (43)`); } catch { /* non-critical */ }
+  });
+  tx();
+}
