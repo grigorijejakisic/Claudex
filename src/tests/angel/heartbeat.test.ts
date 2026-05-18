@@ -326,7 +326,8 @@ describe('Angel heartbeat — Phase 5b Session-completion artifact curation', ()
       expect(body).toContain('## Active Projects');
       expect(body).toContain('## Lessons');
       expect(body).toContain('## Handoff');
-      expect(body).toContain('## How to Query');
+      // 2026-05-18: ## How to Query retired — duplicated MCP instructions.
+      expect(body).not.toContain('## How to Query');
     }
 
     // Each consumed pending row produced one memory_curation_done row.
