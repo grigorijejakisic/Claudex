@@ -321,7 +321,16 @@ export async function heartbeatTick(ctx: HeartbeatContext): Promise<TickResult> 
     // phases (curated extraction, sessions-indexer, highlights). The tick
     // watchdog at startHeartbeat is the catch-all; this is the proper fix
     // at the precise layer where the hang originates.
-    const PHASE2_AWAIT_TIMEOUT_MS = 60_000;
+    //
+    // 2026-05-18 (fresh-session gate test): bumped 60s → 180s after extract-
+    // Directives via claude-subprocess (Sonnet/Haiku — Phase 14-08) routinely
+    // exceeded the 60s budget on real transcripts. Claude subprocess's own
+    // DEFAULT_TIMEOUT_MS is 90s per call, and extractDirectivesFromSession
+    // makes multiple sequential generate() calls per session (one confirm +
+    // one dedup per candidate). 180s sits between "single Claude call +
+    // queue/cold-start" and the 5min tick watchdog. MAX_PHASE2_RETRIES=3
+    // still gives up on permanently-stuck sessions.
+    const PHASE2_AWAIT_TIMEOUT_MS = 180_000;
     function withTimeout<T>(p: Promise<T>, label: string): Promise<T> {
       return Promise.race([
         p,
