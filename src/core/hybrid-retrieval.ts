@@ -660,6 +660,32 @@ export function isEpisodicQuery(query: string): boolean {
 }
 
 /**
+ * Event-shape detector — narrower than isEpisodicQuery. Returns true for
+ * questions asking about discrete EVENTS (with timestamps + records)
+ * rather than past-session narratives. Examples:
+ *   - "find me the last 2 crashes"       → true (events)
+ *   - "when did we crash last month"     → true (events)
+ *   - "list all PC crashes"              → true (events)
+ *   - "remember where we stopped"        → false (narrative)
+ *   - "why did production stop"          → false (narrative)
+ *
+ * 2026-05-18 fresh-agent test (round 3) exposed the recursive-corpus
+ * problem: for event-shape queries, the episodic channel was surfacing
+ * user_framing rows (operator complaints about crashes) ahead of
+ * session_summary rows (which describe what each session was about).
+ * The operator's complaint "PC crashed!" is NOT the crash event — the
+ * session_termination row IS. So for event-shape queries, exclude
+ * user_framing from the episodic channel and prefer session_summary.
+ * (The MCP routing tree should ideally divert event-shape queries to
+ * claudex_recent_sessions before they reach claudex_search at all — but
+ * when they do reach search, this filter prevents the worst case.)
+ */
+export function isEventQuery(query: string): boolean {
+  if (!query) return false;
+  return /\b(find (me )?(the |my )?(last |past |recent |all )?(\d+|few)?\s*(crash|crashes|errors|sessions|terminations|events)|list (of |all |the )?(crash|crashes|errors|sessions|events)|when (did|do|have) (the |our |we |my )?(crash|crashes|session|sessions|deploys?|builds?)|how many (crash|crashes|sessions|errors|events|times)|all the (crash|crashes|times we)|times we (crash|crashed|got|hit))\b/i.test(query);
+}
+
+/**
  * Synthetic ID offsets to keep episodic-derived rows from colliding with real
  * artifact rowids. Negative + large magnitude. Decoder is `artifact_id` text.
  */
