@@ -102,8 +102,8 @@ describe('reconcileTerminationClassifications', () => {
       Math.floor((nowMs - 1800_000) / 1000),
     );
 
-    const promoted = reconcileTerminationClassifications(db);
-    expect(promoted).toBe(0);
+    const r = reconcileTerminationClassifications(db);
+    expect(r.promoted).toBe(0);
 
     const row = db.prepare(`SELECT end_reason FROM session_termination WHERE session_id = 'idle-sess'`).get() as { end_reason: string };
     expect(row.end_reason).toBe('unknown');
@@ -184,8 +184,8 @@ describe('reconcileTerminationClassifications', () => {
       Math.floor((nowMs - 1800_000) / 1000),
     );
 
-    const promoted = reconcileTerminationClassifications(db);
-    expect(promoted).toBe(0);
+    const r = reconcileTerminationClassifications(db);
+    expect(r.promoted).toBe(0);
   });
 
   it('is idempotent — running twice on the same data yields zero on the second call', () => {
