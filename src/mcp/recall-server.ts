@@ -1384,17 +1384,23 @@ server.registerTool(
 server.registerTool(
   'claudex_recent_sessions',
   {
-    description: 'Recent session terminations with end reasons (endsession | crash | compact | idle_close | unknown) and the last user directive that preceded the close. Use for "why did the last session stop?", "what was I working on?", "did the prior session crash or close cleanly?". Deterministic structured data — no LLM. Reads session_termination (V42) written by session-end / stop-failure / pre-compact hooks. Crash inference at session-start back-fills any orphaned active session with stale heartbeat.',
+    description: 'Recent session terminations with end reasons (endsession | crash | compact | idle_close | unknown) and the last user directive that preceded the close. Use for "why did the last session stop?", "what was I working on?", "did the prior session crash or close cleanly?". Deterministic structured data — no LLM. Reads session_termination (V42) written by session-end / stop-failure / pre-compact hooks. Crash inference at session-start back-fills any orphaned active session with stale heartbeat. Default returns top 5 with compact fields; pass verbose=true to also receive full last_assistant_text + untrimmed last_user_directive.',
     inputSchema: {
-      limit: z.number().optional().describe('How many recent terminations to return (default 10).'),
+      limit: z.number().optional().describe('How many recent terminations to return (default 5; bounded to avoid output-budget overruns).'),
       project: z.string().optional().describe('Filter to a specific project (default: all projects).'),
       exclude_session_id: z.string().optional().describe('Exclude a session_id from results — usually the current session.'),
+      verbose: z.boolean().optional().describe('When true, include last_assistant_text and the FULL last_user_directive. Default false — directive is truncated to 240 chars and last_assistant_text is omitted to keep output well under tool budget.'),
     },
   },
-  async ({ limit, project, exclude_session_id }) => {
+  async ({ limit, project, exclude_session_id, verbose }) => {
     try {
+      // 2026-05-18 fresh-agent test: default limit was 10 and full
+      // last_assistant_text included — 5 rows × full text was overflowing
+      // the tool-output budget (63KB → tempfile detour). Default trimmed
+      // to 5 + compact fields; verbose=true restores the old shape.
+      const isVerbose = verbose === true;
       const rows = getRecentTerminations(getDb(), {
-        limit: limit ?? 10,
+        limit: limit ?? 5,
         project,
         excludeSessionId: exclude_session_id,
       });
@@ -1407,6 +1413,10 @@ server.registerTool(
       const topicStmt = db.prepare(
         `SELECT topic FROM thread_state WHERE session_id = ? LIMIT 1`,
       );
+      const truncate = (s: string | null, n: number): string | null => {
+        if (s === null || s === undefined) return null;
+        return s.length <= n ? s : s.slice(0, n) + '…';
+      };
       const enriched = rows.map((r) => {
         let topic: string | null = null;
         try {
@@ -1423,14 +1433,13 @@ server.registerTool(
             if (Array.isArray(parsed)) openBlockers = parsed;
           } catch { /* invalid JSON — drop */ }
         }
-        return {
+        const base = {
           session_id: r.session_id,
           project: r.project,
           ended_at: new Date(r.ended_at_epoch_ms).toISOString(),
           ended_at_epoch_ms: r.ended_at_epoch_ms,
           end_reason: r.end_reason,
-          last_user_directive: r.last_user_directive,
-          last_assistant_text: r.last_assistant_text,
+          last_user_directive: isVerbose ? r.last_user_directive : truncate(r.last_user_directive, 240),
           observation_count: r.observation_count,
           topic,
           open_blockers: openBlockers,
@@ -1439,6 +1448,10 @@ server.registerTool(
           // Agents should treat `end_reason` from derived rows as low-confidence.
           ...(r.derived ? { derived: true } : {}),
         };
+        // last_assistant_text can be multi-KB per row — only include when verbose.
+        return isVerbose
+          ? { ...base, last_assistant_text: r.last_assistant_text }
+          : base;
       });
 
       return {
