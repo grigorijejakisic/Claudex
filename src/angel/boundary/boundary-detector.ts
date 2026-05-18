@@ -29,6 +29,11 @@ import { classifySession, type SessionLivenessRow } from './composition-rule.js'
 import { commitBoundaryTick, resetCursor, loadCursor } from './cursor.js';
 import type { BoundaryThresholds } from './thresholds.js';
 import { recordSessionEndAction } from '../../observability/telemetry.js';
+import {
+  recordSessionTermination,
+  readLastTurnTexts,
+  type SessionEndReason as CanonicalSessionEndReason,
+} from '../../core/session-termination.js';
 
 const DEFAULT_SWEEP_LIMIT = 25;
 
