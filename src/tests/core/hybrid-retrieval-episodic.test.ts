@@ -42,6 +42,17 @@ describe('isEpisodicQuery', () => {
     expect(isEpisodicQuery('we got cut off mid-phase')).toBe(true);
   });
 
+  // 2026-05-18 live-DB test surfaced these were missed by the original regex
+  it('matches "remember/last/picked up" episodic shapes', () => {
+    expect(isEpisodicQuery('remember where we stopped')).toBe(true);
+    expect(isEpisodicQuery('remember what we decided last session')).toBe(true);
+    expect(isEpisodicQuery('what was the last thing I told you to do')).toBe(true);
+    expect(isEpisodicQuery("what's the last directive you remember")).toBe(true);
+    expect(isEpisodicQuery('picking up where we left off')).toBe(true);
+    expect(isEpisodicQuery('where we left off last time')).toBe(true);
+    expect(isEpisodicQuery('what was the last thing we discussed')).toBe(true);
+  });
+
   it('does not match conceptual queries', () => {
     expect(isEpisodicQuery('what is the schema for artifact_links')).toBe(false);
     expect(isEpisodicQuery('how do I implement a new MCP tool')).toBe(false);
