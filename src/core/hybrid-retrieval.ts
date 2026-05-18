@@ -1178,18 +1178,27 @@ export async function hybridSearchAsync(
     } catch { /* Graph walk failure — fall back to 3-channel RRF */ }
 
     // RRF merge (all available channels, including graph walk as 4th)
+    // Episodic channel is added twice when query is episodic-shape — cheap
+    // boost that mirrors the prior session's "boost recency-weight for
+    // episodic-shape queries" direction without needing to plumb a weight
+    // override through rrfMerge.
     const channels = [fts5Channel, recencyChannel];
     if (vectorChannel.length > 0) channels.push(vectorChannel);
     if (graphChannel.length > 0) channels.push(graphChannel);
     if (temporalChannel.length > 0) channels.push(temporalChannel);
+    if (episodicChannel.length > 0) {
+      channels.push(episodicChannel);
+      if (isEpisodicQuery(query)) channels.push(episodicChannel);
+    }
     const rrfScores = rrfMerge(channels);
 
-    // Build artifact map (include graph walk hydrated artifacts)
+    // Build artifact map (include graph walk hydrated artifacts + episodic)
     const artifactMap = new Map<number, ArtifactRow>();
     for (const a of fts5Results) artifactMap.set(a.id, a);
     for (const r of vectorResults) artifactMap.set(r.artifact.id, r.artifact);
     for (const a of recencyResults) artifactMap.set(a.id, a);
     for (const a of temporalResults) artifactMap.set(a.id, a);
+    for (const a of episodicResults) artifactMap.set(a.id, a);
     for (const g of graphChannel) {
       if (g.artifact) artifactMap.set(g.artifactId, g.artifact);
     }
@@ -1199,6 +1208,7 @@ export async function hybridSearchAsync(
     const vectorScoreMap = new Map(vectorResults.map(r => [r.artifact.id, r.score]));
     const vectorRankMap = new Map(vectorChannel.map(r => [r.artifactId, r.rank]));
     const recencyRankMap = new Map(recencyChannel.map(r => [r.artifactId, r.rank]));
+    const episodicRankMap = new Map(episodicChannel.map(r => [r.artifactId, r.rank]));
 
     const scored: ScoredArtifact[] = [];
     for (const [artifactId, rrfScore] of rrfScores) {
