@@ -1135,6 +1135,7 @@ export async function hybridSearchAsync(
     const vectorChannel: ChannelResult[] = vectorResults.map((r, i) => ({ artifactId: r.artifact.id, rank: i + 1, artifact: r.artifact }));
     const recencyChannel: ChannelResult[] = recencyResults.map((a, i) => ({ artifactId: a.id, rank: i + 1, artifact: a }));
     const temporalChannel: ChannelResult[] = temporalResults.map((a, i) => ({ artifactId: a.id, rank: i + 1, artifact: a }));
+    const episodicChannel: ChannelResult[] = episodicResults.map((a, i) => ({ artifactId: a.id, rank: i + 1, artifact: a }));
 
     // Channel 4: Graph walk — discover related artifacts via artifact_links (Phase 17)
     // Uses top-K seeds from initial 3-channel results, non-throwing
