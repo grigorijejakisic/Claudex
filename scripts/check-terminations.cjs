@@ -5,44 +5,34 @@ const Database = require('better-sqlite3');
 const dbPath = path.join(os.homedir(), '.claudex', 'db', 'claudex.db');
 const db = new Database(dbPath, { readonly: true });
 
-console.log('=== Long-running interactive sessions in claudex-v3 (>5min duration) ===');
-const longSessions = db.prepare(`
-  SELECT session_id, name, status,
-         created_at_epoch_ms, ended_at_epoch_ms,
-         (ended_at_epoch_ms - created_at_epoch_ms) AS duration_ms,
-         observation_count, session_summary
-  FROM sessions
-  WHERE project = 'claudex-v3'
-    AND (ended_at_epoch_ms - created_at_epoch_ms) > 300000
-  ORDER BY created_at_epoch_ms DESC
-  LIMIT 10
-`).all();
+console.log('=== session_journal FTS search: cutover refused/halt/stop/blocked ===');
+const cols = db.prepare("PRAGMA table_info(session_journal)").all().map(c => c.name);
+console.log('session_journal cols:', cols.join(','));
 
-for (const s of longSessions) {
-  const created = new Date(s.created_at_epoch_ms).toISOString();
-  const ended = s.ended_at_epoch_ms ? new Date(s.ended_at_epoch_ms).toISOString() : 'NULL';
-  const durMin = (s.duration_ms / 60000).toFixed(1);
-  console.log('---');
-  console.log('id:', s.session_id, '| name:', s.name);
-  console.log('status:', s.status, '| dur:', durMin, 'min');
-  console.log('start:', created);
-  console.log('end:  ', ended);
-  console.log('observations:', s.observation_count);
-  console.log('summary:', (s.session_summary || '').slice(0, 240).replace(/\s+/g, ' '));
-}
+const queries = [
+  'cutover AND (refused OR halt OR halted OR stop OR stopped OR blocked OR aborted)',
+  'gate AND (failed OR refused OR halt)',
+  '"cutover refused"',
+  'v7 AND (refused OR aborted OR rolled back)'
+];
 
-console.log('\n=== Sessions with status != completed (active/crashed/etc) ===');
-const oddStatus = db.prepare(`
-  SELECT session_id, name, status, created_at_epoch_ms, ended_at_epoch_ms,
-         observation_count, session_summary
-  FROM sessions
-  WHERE project = 'claudex-v3' AND status != 'completed'
-  ORDER BY created_at_epoch_ms DESC LIMIT 10
-`).all();
-for (const s of oddStatus) {
-  console.log('---');
-  console.log('id:', s.session_id, '| name:', s.name, '| status:', s.status);
-  console.log('start:', new Date(s.created_at_epoch_ms).toISOString());
-  console.log('end:  ', s.ended_at_epoch_ms ? new Date(s.ended_at_epoch_ms).toISOString() : 'NULL');
-  console.log('summary:', (s.session_summary || '').slice(0, 240).replace(/\s+/g, ' '));
+for (const q of queries) {
+  console.log('\n--- query:', q);
+  try {
+    const rows = db.prepare(`
+      SELECT j.session_id, j.recorded_at_epoch_ms,
+             substr(j.body, 1, 240) AS snip
+      FROM session_journal_fts f
+      JOIN session_journal j ON j.rowid = f.rowid
+      WHERE session_journal_fts MATCH ?
+      ORDER BY j.recorded_at_epoch_ms DESC
+      LIMIT 5
+    `).all(q);
+    for (const r of rows) {
+      console.log('  ', new Date(r.recorded_at_epoch_ms).toISOString(), '|', r.session_id.slice(0, 8));
+      console.log('    ', (r.snip || '').replace(/\s+/g, ' '));
+    }
+  } catch (e) {
+    console.log('  err:', e.message);
+  }
 }
