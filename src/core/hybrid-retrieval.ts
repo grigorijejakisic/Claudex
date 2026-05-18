@@ -462,9 +462,18 @@ export function computeArtifactScore(
   const activationFactor = enabled('activation')
     ? computeActivationFactor(artifact)
     : 1.0;
+  // Episodic multiplier — boosts hits from the episodic channel when the
+  // query was episodic-shape. 1.6x chosen to overcome the importance-stage
+  // flip (synth confidence 0.6 → importance 3.0 vs real artifact 0.7+ →
+  // importance 3.5; ratio ~1.17, so 1.6x gives comfortable margin without
+  // being so aggressive it drowns conceptual signals on mixed queries).
+  // Applies only when both the query is episodic-shape AND this candidate
+  // came via the episodic channel — non-episodic candidates on episodic
+  // queries get 1.0 (no penalty), so cross-shape mixing remains balanced.
+  const episodicMultiplier = enabled('episodic') && ctx.isEpisodicHit ? 1.6 : 1.0;
 
   const baseScore = rrfScore * (1 + threeFactor);
-  return baseScore * retrievalMultiplier * noveltyMultiplier * activationFactor;
+  return baseScore * retrievalMultiplier * noveltyMultiplier * activationFactor * episodicMultiplier;
 }
 
 // ---------------------------------------------------------------------------
