@@ -229,26 +229,29 @@ describe('reconcileTerminationClassifications', () => {
   });
 
   it('cursor: second pass DOES rescan when a new session is created in the same project', () => {
+    // Set up: a crashed session with NO next session yet — first pass scans
+    // it but classifier returns null (no recovery session exists).
     seedSession({ sessionId: 'idle-rescan', createdAtMs: nowMs - 7200_000, endedAtMs: nowMs - 3600_000 });
-    seedSession({ sessionId: 'unrelated-mid', createdAtMs: nowMs - 1800_000, endedAtMs: nowMs - 600_000 });
     recordSessionTermination(db, {
       session_id: 'idle-rescan',
       project,
       end_reason: 'unknown',
       ended_at_epoch_ms: nowMs - 3600_000,
     });
-    seedUserFraming(db, 'unrelated-mid', project, 'normal continuation prompt', Math.floor((nowMs - 1800_000) / 1000));
 
     const r1 = reconcileTerminationClassifications(db);
     expect(r1.scanned).toBe(1);
+    expect(r1.promoted).toBe(0);
 
-    // New session appears AFTER reconciliation cursor → must rescan
+    // New session appears AFTER reconciliation cursor → must rescan.
+    // It becomes the immediate next session for idle-rescan (the only one).
     seedSession({ sessionId: 'recovery-late', createdAtMs: nowMs + 60_000, endedAtMs: nowMs + 120_000 });
     seedUserFraming(db, 'recovery-late', project, 'PC crashed — recover please', Math.floor((nowMs + 60_000) / 1000));
 
     const r2 = reconcileTerminationClassifications(db);
     expect(r2.scanned).toBeGreaterThan(0);
     expect(r2.promoted).toBe(1);
+    expect(r2.by_classifier['crash-from-recovery-framing']).toBe(1);
   });
 
   // 2026-05-18: second classifier — endsessionFromSessionEndAction
