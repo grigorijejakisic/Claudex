@@ -682,7 +682,12 @@ export function isEpisodicQuery(query: string): boolean {
  */
 export function isEventQuery(query: string): boolean {
   if (!query) return false;
-  return /\b(find (me )?(the |my )?(last |past |recent |all )?(\d+|few)?\s*(crash|crashes|errors|sessions|terminations|events)|list (of |all |the )?(crash|crashes|errors|sessions|events)|when (did|do|have) (the |our |we |my )?(crash|crashes|session|sessions|deploys?|builds?)|how many (crash|crashes|sessions|errors|events|times)|all the (crash|crashes|times we)|times we (crash|crashed|got|hit))\b/i.test(query);
+  // Simpler shape: a "looking for past records" head verb/phrase, followed
+  // (within ~40 chars) by an event-shaped noun. Permissive interior so
+  // "find me past PC crashes" / "when did the last crash happen" /
+  // "all the times we hit this" all match without the regex needing to
+  // know about every adjective/qualifier between head and noun.
+  return /\b(find|list|search for|how many|when (did|do|have)|times we|all the times)\b[\s\S]{0,40}\b(crash(es|ed)?|error|errors|session|sessions|deploy|deploys|build|builds|termination|terminations|event|events|hit this)\b/i.test(query);
 }
 
 /**
