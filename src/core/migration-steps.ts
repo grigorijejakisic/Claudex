@@ -4519,3 +4519,74 @@ export function migrateV44toV43(db: Database): void {
   });
   tx();
 }
+
+/**
+ * V44 → V45: add `last_reconciliation_attempt_ms` to session_termination.
+ *
+ * Cursor column for the continuous reclassification mechanism
+ * (`reconcileTerminationClassifications` in session-termination.ts).
+ * Each reconcile pass sets this to Date.now() on rows it examined; subsequent
+ * passes can skip rows where this column is non-null AND no newer session has
+ * been created in the same project (no fresh evidence to reconsider).
+ *
+ * Why a cursor: without it, every session-start scans all ~1000 'unknown'
+ * rows even though most never have new evidence emerge. The cursor turns
+ * the steady-state cost from O(unknowns) to O(unknowns-with-new-evidence).
+ *
+ * Schema:
+ *   last_reconciliation_attempt_ms INTEGER  -- nullable; epoch_ms of last attempt
+ */
+export function migrateV44toV45(db: Database): void {
+  if (!hasTable(db, 'session_termination')) {
+    return;
+  }
+  if (!hasColumn(db, 'session_termination', 'last_reconciliation_attempt_ms')) {
+    db.exec(`ALTER TABLE session_termination ADD COLUMN last_reconciliation_attempt_ms INTEGER`);
+  }
+  db.pragma('user_version = 45');
+  try {
+    db.exec(`INSERT OR IGNORE INTO schema_versions(version) VALUES (45)`);
+  } catch { /* non-critical */ }
+}
+
+/**
+ * Reverse: V45 → V44. Drops the cursor column via rebuild (SQLite < 3.35
+ * has no DROP COLUMN). Lossy for cursor data, acceptable for rollback.
+ */
+export function migrateV45toV44(db: Database): void {
+  if (!hasTable(db, 'session_termination') || !hasColumn(db, 'session_termination', 'last_reconciliation_attempt_ms')) {
+    db.pragma('user_version = 44');
+    return;
+  }
+  const tx = db.transaction(() => {
+    db.exec(`
+      CREATE TABLE session_termination_v44_rebuild (
+        session_id              TEXT PRIMARY KEY,
+        project                 TEXT NOT NULL,
+        ended_at_epoch_ms       INTEGER NOT NULL DEFAULT (unixepoch() * 1000),
+        end_reason              TEXT NOT NULL
+          CHECK (end_reason IN ('endsession', 'crash', 'compact', 'idle_close', 'unknown')),
+        last_user_directive     TEXT,
+        last_assistant_text     TEXT,
+        observation_count       INTEGER NOT NULL DEFAULT 0,
+        recorded_at_epoch_ms    INTEGER NOT NULL DEFAULT (unixepoch() * 1000),
+        open_blockers           TEXT
+      );
+      INSERT INTO session_termination_v44_rebuild
+        (session_id, project, ended_at_epoch_ms, end_reason,
+         last_user_directive, last_assistant_text, observation_count, recorded_at_epoch_ms, open_blockers)
+      SELECT session_id, project, ended_at_epoch_ms, end_reason,
+             last_user_directive, last_assistant_text, observation_count, recorded_at_epoch_ms, open_blockers
+        FROM session_termination;
+      DROP TABLE session_termination;
+      ALTER TABLE session_termination_v44_rebuild RENAME TO session_termination;
+      CREATE INDEX IF NOT EXISTS idx_session_termination_recent
+        ON session_termination(ended_at_epoch_ms DESC);
+      CREATE INDEX IF NOT EXISTS idx_session_termination_project_recent
+        ON session_termination(project, ended_at_epoch_ms DESC);
+    `);
+    db.pragma('user_version = 44');
+    try { db.exec(`INSERT OR IGNORE INTO schema_versions(version) VALUES (44)`); } catch { /* non-critical */ }
+  });
+  tx();
+}
