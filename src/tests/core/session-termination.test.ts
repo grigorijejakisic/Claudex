@@ -160,15 +160,65 @@ describe('Phase 14-09: session_termination', () => {
 
   it('7. inferCrashedSessions marks stale active sessions as crash', () => {
     const db = freshDb();
-    const oldMs = Date.now() - 60 * 60 * 1000; // 1h ago
-    seedSession(db, 'stale-sess', 'p1', { status: 'active', lastHeartbeat: oldMs, createdAt: oldMs });
+    const oldSec = Math.floor(Date.now() / 1000) - 60 * 60; // 1h ago in SECONDS (heartbeat unit)
+    const oldMs = oldSec * 1000;
+    seedSession(db, 'stale-sess', 'p1', { status: 'active', lastHeartbeat: oldSec, createdAt: oldMs });
 
     const n = inferCrashedSessions(db, { excludeSessionId: 'current-sess' });
     expect(n).toBe(1);
 
     const row = db.prepare("SELECT end_reason, ended_at_epoch_ms FROM session_termination WHERE session_id='stale-sess'").get() as { end_reason: string; ended_at_epoch_ms: number };
     expect(row.end_reason).toBe('crash');
+    // latestMs is MAX of (heartbeat_sec * 1000, jsonl_sec * 1000, created_ms) — all equal here.
     expect(row.ended_at_epoch_ms).toBe(oldMs);
+
+    // Codex finding: status must transition off 'active' so active-session queries
+    // stop surfacing the crashed session.
+    const statusRow = db.prepare("SELECT status FROM sessions WHERE session_id='stale-sess'").get() as { status: string };
+    expect(statusRow.status).toBe('completed');
+    db.close();
+  });
+
+  it('7b. inferCrashedSessions takes MAX of activity timestamps (codex COALESCE bug fix)', () => {
+    // Stale heartbeat + FRESH jsonl_write → must NOT be marked crashed.
+    const db = freshDb();
+    const oldHeartbeatSec = Math.floor(Date.now() / 1000) - 60 * 60; // 1h ago
+    const freshJsonlSec = Math.floor(Date.now() / 1000) - 30;        // 30s ago
+
+    db.prepare(
+      `INSERT OR REPLACE INTO sessions
+         (session_id, scope, project, cwd, source, status,
+          observation_count, created_at_epoch_ms, last_heartbeat_ts, last_jsonl_write_ts)
+       VALUES (?, 'main', 'p', '/tmp', 'test', 'active', 0, ?, ?, ?)`,
+    ).run('fresh-jsonl-sess', Date.now() - 60 * 60 * 1000, oldHeartbeatSec, freshJsonlSec);
+
+    const n = inferCrashedSessions(db, { excludeSessionId: 'current-sess' });
+    expect(n).toBe(0); // jsonl is fresh — session is alive, not crashed
+
+    const term = db.prepare("SELECT * FROM session_termination WHERE session_id='fresh-jsonl-sess'").get();
+    expect(term).toBeUndefined();
+    db.close();
+  });
+
+  it('7c. inferCrashedSessions ignores unit mismatch (codex sec-vs-ms bug fix)', () => {
+    // Heartbeat written 30s ago in SECONDS (the production convention).
+    // Pre-fix bug would compare seconds-value against ms-cutoff, classifying it as ancient.
+    // After fix: we scale heartbeat_sec * 1000 before comparing, so a recent heartbeat
+    // correctly classifies the session as alive.
+    const db = freshDb();
+    const recentHeartbeatSec = Math.floor(Date.now() / 1000) - 30;
+    db.prepare(
+      `INSERT OR REPLACE INTO sessions
+         (session_id, scope, project, cwd, source, status,
+          observation_count, created_at_epoch_ms, last_heartbeat_ts)
+       VALUES (?, 'main', 'p', '/tmp', 'test', 'active', 0, ?, ?)`,
+    ).run('recent-hb-sess', Date.now() - 60 * 60 * 1000, recentHeartbeatSec);
+
+    const n = inferCrashedSessions(db, { excludeSessionId: 'current-sess' });
+    expect(n).toBe(0); // recent heartbeat = alive
+
+    const statusRow = db.prepare("SELECT status FROM sessions WHERE session_id='recent-hb-sess'").get() as { status: string };
+    expect(statusRow.status).toBe('active');
     db.close();
   });
 
