@@ -190,7 +190,7 @@ export function formatCrossSessionAwareness(
         ? ` editing: ${a.files_editing.slice(0, 3).join(', ')}`
         : '';
       const topicStr = a.topic ? ` (${a.topic})` : '';
-      const ago = Math.floor((Date.now() / 1000 - a.last_activity_epoch) / 60);
+      const ago = Math.floor((Date.now() - a.last_activity_epoch_ms) / 60_000);
       const label = a.name ?? `session-${a.session_id.substring(0, 8)}`;
       parts.push(`- **${label}**${topicStr}${filesStr} — ${ago}m ago`);
     }
