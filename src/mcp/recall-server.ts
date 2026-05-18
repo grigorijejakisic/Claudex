@@ -135,11 +135,23 @@ function buildClaudexInstructions(): string {
 - claudex_curated_context: Manage Project Curated Context — mental models, workspace maps, shipped components, constraints, preferences. Use at /endsession to curate what the next session sees.
 
 ## Routing decision tree
-- "why/how did [last/prior/recent] session(s) [stop/end/close/crash]?" → claudex_recent_sessions
-- "what was I working on?" / "what was the last directive?" → claudex_recent_sessions
-- "what did we decide about X?" / "remember when…" → claudex_search
-- "what tools did I just run?" / "current session timeline" → claudex_events
-- "get artifact X" / "show me the handoff at path Y" → claudex_recall
+
+**STOP before \`claudex_search\` and ask: am I asking about EVENTS or CONCEPTS?**
+
+EVENTS (timestamps + records — "WHEN did X happen?"):
+- "find me the last N crashes/errors/events" → **claudex_recent_sessions** (filter end_reason on the consumer side)
+- "when did the last session stop?" / "why did production stop?" → **claudex_recent_sessions**
+- "what was the last directive?" / "what was I working on?" → **claudex_recent_sessions**
+- "what tools did I just run?" / "current session timeline" → **claudex_events**
+
+CONCEPTS (decisions, learnings, mental models — "WHAT did we decide?"):
+- "what did we decide about X?" / "remember when we worked on Y" → **claudex_search**
+- "do you remember our policy on Z?" → **claudex_search**
+
+ID LOOKUP:
+- "get artifact:abc123" / "show me the handoff at path Y" → **claudex_recall**
+
+**Failure mode to avoid:** Reaching for \`claudex_search\` on an event-shape question. The episodic channel surfaces user_framing rows (operator complaints) which look like answers but are NARRATIVES, not EVENT RECORDS. The event records live in \`session_termination\` and are read deterministically by \`claudex_recent_sessions\`. **If you find yourself searching for "when did X happen" via \`claudex_search\`, you're using the wrong tool.**
 
 ## Navigation Rule
 Query Claudex before exploring the filesystem for context. Only read code files when you need to MODIFY them.
