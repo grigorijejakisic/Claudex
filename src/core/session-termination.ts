@@ -295,6 +295,104 @@ export function inferCrashedSessions(
 }
 
 /**
+ * Conservative regex for "operator-reported crash" markers in user_framing
+ * text. Tuned against 6 known historical crash framings + sample seed of
+ * recovery-prompt language. Must mention crash/died explicitly — not just
+ * any failure. Centralized so reconcileTerminationClassifications +
+ * any future writers share one definition.
+ */
+const CRASH_MARKER_RE = /\b(pc (cra(s|c)hed|died|crahsed)|pc (died|crashed) (over\s?night|mid|in the middle)|session (died|cra(s|c)hed|abrubptly died)|crashed (in the middle|over\s?night|mid)|killed our|got cut off|our worst fear happened|previous session died|session abrubptly died)\b/i;
+
+/**
+ * Continuous reclassification pass: promote `end_reason='unknown'` rows to
+ * `'crash'` when there's direct evidence in the NEXT session's first
+ * user_framing event ("PC crashed", "session died", etc.).
+ *
+ * Why this exists as a mechanism instead of a one-shot:
+ * classification happens at WRITE time, based on whatever signal was
+ * available then. But signals about a prior session emerge LATER — the
+ * operator's first prompt in the recovery session is the canonical
+ * deterministic crash signal, and that signal only exists AFTER the
+ * recovery session starts. A one-shot backfill catches everything at one
+ * moment; a continuous mechanism catches every future crash as soon as
+ * the next session writes its first user_framing.
+ *
+ * Call from session-start hook (after inferCrashedSessions) so every
+ * fresh CC session reconciles the substrate's classifications before the
+ * agent starts retrieving from them.
+ *
+ * Returns count promoted. Non-throwing.
+ *
+ * Performance: bounded by the count of `unknown` rows. After this round's
+ * backfill the count is ~1079; each row is one SELECT-next-session + one
+ * SELECT-first-framing + maybe one UPDATE. With prepared-statement caching
+ * total runtime is sub-second on the live DB. Subsequent calls only see
+ * NEW unknown rows (most stay unchanged), so cost amortizes.
+ */
+export function reconcileTerminationClassifications(db: Database): number {
+  try {
+    // Detect timestamp column shape (V42 had timestamp_epoch; V43+ uses _ms).
+    const cols = (() => {
+      try { return db.prepare('PRAGMA table_info(session_events)').all() as Array<{ name: string }>; }
+      catch { return []; }
+    })();
+    const tsCol = cols.some(c => c.name === 'timestamp_epoch_ms') ? 'timestamp_epoch_ms' : 'timestamp_epoch';
+
+    const unknowns = cachedPrepare(
+      db,
+      `SELECT session_id, project, ended_at_epoch_ms
+         FROM session_termination
+        WHERE end_reason = 'unknown'
+        ORDER BY ended_at_epoch_ms ASC`,
+    ).all() as Array<{ session_id: string; project: string; ended_at_epoch_ms: number }>;
+
+    if (unknowns.length === 0) return 0;
+
+    const findNextSession = cachedPrepare(
+      db,
+      `SELECT session_id
+         FROM sessions
+        WHERE project = ?
+          AND created_at_epoch_ms > ?
+        ORDER BY created_at_epoch_ms ASC LIMIT 1`,
+    );
+
+    const findFirstFraming = cachedPrepare(
+      db,
+      `SELECT detail
+         FROM session_events
+        WHERE session_id = ?
+          AND event_type = 'user_framing'
+        ORDER BY ${tsCol} ASC LIMIT 1`,
+    );
+
+    const promote = cachedPrepare(
+      db,
+      `UPDATE session_termination
+          SET end_reason = 'crash'
+        WHERE session_id = ?
+          AND end_reason = 'unknown'`,
+    );
+
+    let promoted = 0;
+    for (const u of unknowns) {
+      const next = findNextSession.get(u.project, u.ended_at_epoch_ms) as { session_id?: string } | undefined;
+      if (!next?.session_id) continue;
+      const framing = findFirstFraming.get(next.session_id) as { detail?: string | null } | undefined;
+      const detail = framing?.detail;
+      if (!detail) continue;
+      if (CRASH_MARKER_RE.test(detail)) {
+        const r = promote.run(u.session_id);
+        if (r.changes > 0) promoted++;
+      }
+    }
+    return promoted;
+  } catch {
+    return 0;
+  }
+}
+
+/**
  * Read the last user message + last assistant message from conversation_turns
  * for a session. Used by hook writers to populate session_termination without
  * each hook duplicating the query.
