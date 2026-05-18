@@ -166,9 +166,11 @@ describe('getRecentTerminations — empty session_termination fallback', () => {
     // sess-a is the REAL row with end_reason='compact' (not derived)
     expect(rows[1].end_reason).toBe('compact');
     expect(rows[1].last_user_directive).toBe('compact directive');
+    expect(rows[1].derived).toBeFalsy();
 
-    // sess-b is the DERIVED row
-    expect(rows[0].end_reason).toBe('endsession');
+    // sess-b is the DERIVED row — honestly marked as 'unknown' + derived
+    expect(rows[0].end_reason).toBe('unknown');
+    expect(rows[0].derived).toBe(true);
   });
 
   it('respects excludeSessionId across both primary and derived', () => {
