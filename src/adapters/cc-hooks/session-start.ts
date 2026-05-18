@@ -130,6 +130,19 @@ const main = wrapHook('SessionStart', async (input, ctx) => {
     inferCrashedSessions(ctx.db, { excludeSessionId: input.session_id });
   } catch { /* non-blocking */ }
 
+  // 2026-05-18: continuous reclassification of `end_reason='unknown'` rows.
+  // Once a recovery session starts, its first user_framing event becomes
+  // available — if it says "PC crashed" / "session died" / etc., promote
+  // the prior session's termination from 'unknown' to 'crash'. Runs every
+  // session-start so emergent evidence (the current operator's recovery
+  // prompt, if any) reclassifies stale rows automatically. Replaces the
+  // one-shot promote-crash-terminations.cjs which only ran when invoked
+  // manually. Bounded — only scans 'unknown' rows, which is a small
+  // working set once steady state is reached.
+  try {
+    reconcileTerminationClassifications(ctx.db);
+  } catch { /* non-blocking */ }
+
   // Phase 13.1 defensive indexer: scan Sessions/ folders for new/modified
   // markdown and re-index via the same upsertChunk pipeline Angel uses.
   // Wrapped with a 3s budget so a slow scan doesn't block session-start.
