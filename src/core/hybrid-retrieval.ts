@@ -1102,6 +1102,14 @@ export async function hybridSearchAsync(
     // Channel 3: Recency (sync)
     const recencyResults = searchRecencyChannel(db, project, limit, globalScope, excludeSuperseded, substantiveOnly);
 
+    // Channel 6: Episodic (sync) — user_framing events + session_summary text.
+    // Closes the "claudex_search whiffs on PC-crash-shape questions" gap
+    // diagnosed in d2237451 turn 215. Recency-boosted when query is episodic-shape.
+    let episodicResults: ArtifactRow[] = [];
+    try {
+      episodicResults = searchEpisodicChannel(db, project, query, limit * 2, globalScope);
+    } catch { /* episodic channel failure — skip */ }
+
     // Channel 5: Temporal (sync) — time-range search when query contains temporal expressions
     let temporalResults: ArtifactRow[] = [];
     try {
