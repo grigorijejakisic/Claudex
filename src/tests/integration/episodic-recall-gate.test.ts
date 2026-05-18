@@ -162,9 +162,10 @@ describe('Episodic Recall Gate — v7 qualitative thesis (structural half)', () 
 
     // Optional conceptual decoy
     if (probe.decoy_artifact) {
+      const nowMs = Date.now();
       db.prepare(
-        `INSERT INTO artifact (id, kind, title, body, project, session_id, status, confidence, created_at_epoch_ms, data)
-         VALUES (?, ?, ?, ?, ?, ?, 'active', 0.7, ?, '{}')`,
+        `INSERT INTO artifact (id, kind, title, body, project, session_id, status, confidence, created_at_epoch_ms, updated_at_epoch_ms, data)
+         VALUES (?, ?, ?, ?, ?, ?, 'active', 0.7, ?, ?, '{}')`,
       ).run(
         `decoy-${probe.id}`,
         probe.decoy_artifact.kind,
@@ -172,7 +173,8 @@ describe('Episodic Recall Gate — v7 qualitative thesis (structural half)', () 
         probe.decoy_artifact.body,
         project,
         probe.framings[0]?.session_id ?? 'probe-sess-e',
-        Date.now(),
+        nowMs,
+        nowMs,
       );
     }
 
