@@ -1253,16 +1253,16 @@ export async function hybridSearchAsync(
         ? 1 / (RRF_K + (fts5RankMap.get(artifactId) ?? RRF_K))
         : 0;
       const vecRrfScore = vRank != null ? 1 / (RRF_K + vRank) : 0;
+      const epRank = episodicRankMap.get(artifactId);
+      const epRrfScore = epRank != null ? 1 / (RRF_K + epRank) : 0;
       let matchQuery: string | undefined;
-      let matchKind: 'fts' | 'vector' | undefined;
-      if (ftsRrfScore > 0 || vecRrfScore > 0) {
-        if (vecRrfScore >= ftsRrfScore && vecRrfScore > 0) {
-          matchQuery = truncatedQueryAsync;
-          matchKind = 'vector';
-        } else {
-          matchQuery = truncatedQueryAsync;
-          matchKind = 'fts';
-        }
+      let matchKind: 'fts' | 'vector' | 'episodic' | undefined;
+      const bestRrf = Math.max(ftsRrfScore, vecRrfScore, epRrfScore);
+      if (bestRrf > 0) {
+        matchQuery = truncatedQueryAsync;
+        if (epRrfScore === bestRrf && epRrfScore > 0) matchKind = 'episodic';
+        else if (vecRrfScore === bestRrf && vecRrfScore > 0) matchKind = 'vector';
+        else matchKind = 'fts';
       }
 
       scored.push({
@@ -1272,6 +1272,7 @@ export async function hybridSearchAsync(
           rrf_fts5: fts5RankMap.has(artifactId) ? 1 / (RRF_K + (fts5RankMap.get(artifactId) ?? RRF_K)) : 0,
           rrf_vector: vRank != null ? 1 / (RRF_K + vRank) : 0,
           rrf_recency: rRank != null ? 1 / (RRF_K + rRank) : 0,
+          ...(epRrfScore > 0 ? { rrf_episodic: epRrfScore } : {}),
           three_factor: threeFactor,
         },
         ...(matchKind !== undefined ? { match_query: matchQuery, match_kind: matchKind } : {}),
