@@ -155,8 +155,9 @@ describe('reconcileTerminationClassifications', () => {
       seedUserFraming(db, recoverySid, project, fixtures[i].framing, Math.floor((baseMs - 300_000) / 1000));
     }
 
-    const promoted = reconcileTerminationClassifications(db);
-    expect(promoted).toBe(5);
+    const r = reconcileTerminationClassifications(db);
+    expect(r.promoted).toBe(5);
+    expect(r.by_classifier['crash-from-recovery-framing']).toBe(5);
   });
 
   it('is project-scoped — next session in a different project does not promote', () => {
