@@ -602,6 +602,151 @@ function searchLikeFallback(
 }
 
 // ---------------------------------------------------------------------------
+// Channel 6: Episodic — session_events.user_framing + sessions.session_summary
+// ---------------------------------------------------------------------------
+
+/**
+ * Episodic-shape detector. Returns true for "what happened in our past sessions"
+ * questions where the answer lives in session_events.user_framing or
+ * sessions.session_summary rather than in artifact decisions/learnings.
+ *
+ * Closes the gap diagnosed in session d2237451 (2026-05-17 turn 215):
+ * `claudex_search("v7 production stopped")` returned junk (top score 0.017)
+ * because RRF over FTS5+vector+recency doesn't reach the literal English in
+ * `session_events.detail` where the operator's prompt was stored.
+ */
+export function isEpisodicQuery(query: string): boolean {
+  if (!query) return false;
+  return /\b(why did|why didn't|why was|what happened|what stopped|when did|when was|how did we|where did we|production stopped|production stop|session.{0,20}stop|last session|previous session|last time we|crashed|got cut off|pc crash)\b/i.test(query);
+}
+
+/**
+ * Synthetic ID offsets to keep episodic-derived rows from colliding with real
+ * artifact rowids. Negative + large magnitude. Decoder is `artifact_id` text.
+ */
+const EPISODIC_EVENT_ID_OFFSET = -1_000_000_000;
+const EPISODIC_SUMMARY_ID_OFFSET = -2_000_000_000;
+
+/**
+ * Episodic channel — keyword search over session_events (event_type='user_framing')
+ * and sessions.session_summary. Returns synthesized ArtifactRow-shaped results so
+ * the downstream RRF + scoring + reranker pipeline works unchanged.
+ *
+ * Per the prior session's "next-phase task" (d2237451 turn 222 close): adds
+ * `user_framing` + `session_summary` as new ranked channels so `claudex_search`
+ * can reach episodic content without the agent needing to know which deterministic
+ * tool routes to which substrate.
+ *
+ * Synthetic IDs are negative + large magnitude. `artifact_id` text prefixes
+ * (`episodic:event:N` / `episodic:summary:SID`) let `claudex_recall` route these
+ * back to source.
+ *
+ * Non-throwing — returns empty on error.
+ */
+function searchEpisodicChannel(
+  db: Database,
+  project: string,
+  query: string,
+  limit: number,
+  globalScope: boolean,
+): ArtifactRow[] {
+  try {
+    const keywords = tokenizeQuery(query, 5);
+    if (keywords.length === 0) return [];
+
+    const eventConds = keywords.map(() => 'LOWER(detail) LIKE ?').join(' OR ');
+    const summaryConds = keywords.map(() => 'LOWER(session_summary) LIKE ?').join(' OR ');
+    const likeParams = keywords.map(k => `%${k.toLowerCase()}%`);
+    const projectFilter = globalScope ? '' : 'AND project = ?';
+    const projectParams: string[] = globalScope ? [] : [project];
+
+    // user_framing events — operator's literal prompt at each turn
+    const eventSql = `
+      SELECT
+        (${EPISODIC_EVENT_ID_OFFSET} - id) AS id,
+        ('episodic:event:' || id) AS artifact_id,
+        'user_framing' AS artifact_type,
+        NULL AS artifact_ref,
+        ('User: ' || substr(detail, 1, 80)) AS summary,
+        detail AS content,
+        'fresh' AS state,
+        project,
+        session_id,
+        CASE
+          WHEN timestamp_epoch < 20000000000 THEN timestamp_epoch * 1000
+          ELSE timestamp_epoch
+        END AS timestamp_epoch_ms,
+        CASE
+          WHEN timestamp_epoch < 20000000000 THEN timestamp_epoch * 1000
+          ELSE timestamp_epoch
+        END AS last_materialized_epoch_ms,
+        3.0 AS importance,
+        1.0 AS retrieval_score,
+        1.0 AS activation_score,
+        0.5 AS novelty_score,
+        3 AS ttl,
+        0.6 AS confidence,
+        NULL AS superseded_by,
+        NULL AS valid_until,
+        NULL AS embedding
+      FROM session_events
+      WHERE event_type = 'user_framing'
+        AND (${eventConds})
+        ${projectFilter}
+      ORDER BY timestamp_epoch DESC
+      LIMIT ?
+    `;
+    let eventRows: ArtifactRow[] = [];
+    try {
+      eventRows = cachedPrepare(db, eventSql).all(
+        ...likeParams, ...projectParams, limit
+      ) as ArtifactRow[];
+    } catch { /* table missing or query error — skip */ }
+
+    // session_summary on sessions table — auto-generated topic summary per session
+    const summarySql = `
+      SELECT
+        (${EPISODIC_SUMMARY_ID_OFFSET} - rowid) AS id,
+        ('episodic:summary:' || session_id) AS artifact_id,
+        'session_summary' AS artifact_type,
+        NULL AS artifact_ref,
+        (COALESCE(name, session_id) || ' — ' || substr(session_summary, 1, 80)) AS summary,
+        session_summary AS content,
+        'fresh' AS state,
+        project,
+        session_id,
+        COALESCE(ended_at_epoch_ms, created_at_epoch_ms) AS timestamp_epoch_ms,
+        COALESCE(ended_at_epoch_ms, created_at_epoch_ms) AS last_materialized_epoch_ms,
+        2.5 AS importance,
+        1.0 AS retrieval_score,
+        1.0 AS activation_score,
+        0.5 AS novelty_score,
+        3 AS ttl,
+        0.5 AS confidence,
+        NULL AS superseded_by,
+        NULL AS valid_until,
+        NULL AS embedding
+      FROM sessions
+      WHERE session_summary IS NOT NULL
+        AND (${summaryConds})
+        ${projectFilter}
+      ORDER BY COALESCE(ended_at_epoch_ms, created_at_epoch_ms) DESC
+      LIMIT ?
+    `;
+    let summaryRows: ArtifactRow[] = [];
+    try {
+      summaryRows = cachedPrepare(db, summarySql).all(
+        ...likeParams, ...projectParams, limit
+      ) as ArtifactRow[];
+    } catch { /* table missing or query error — skip */ }
+
+    return [...eventRows, ...summaryRows].slice(0, limit);
+  } catch {
+    return [];
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Channel 2: Vector KNN (Qdrant)
 // ---------------------------------------------------------------------------
 
