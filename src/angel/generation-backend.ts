@@ -150,9 +150,10 @@ export async function generateRich(
   opts: ClaudeSubprocessCallOptions,
 ): Promise<ClaudeSubprocessResult> {
   const backend = resolveBackend();
+  const normalizedModel = normalizeModelForBackend(opts.model, backend);
 
   if (backend === 'claude') {
-    return callClaudeSubprocess(opts);
+    return callClaudeSubprocess({ ...opts, model: normalizedModel });
   }
 
   // Ollama fallback — synthesize a minimal rich result. No cost, no usage
@@ -162,7 +163,7 @@ export async function generateRich(
   const text = await callLocalLLM({
     prompt: opts.prompt,
     system: opts.system,
-    model: opts.model,
+    model: normalizedModel,
     timeoutMs: opts.timeoutMs,
     temperature: opts.temperature,
   });
