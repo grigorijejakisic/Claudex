@@ -463,14 +463,21 @@ export function computeArtifactScore(
     ? computeActivationFactor(artifact)
     : 1.0;
   // Episodic multiplier — boosts hits from the episodic channel when the
-  // query was episodic-shape. 1.6x chosen to overcome the importance-stage
-  // flip (synth confidence 0.6 → importance 3.0 vs real artifact 0.7+ →
-  // importance 3.5; ratio ~1.17, so 1.6x gives comfortable margin without
-  // being so aggressive it drowns conceptual signals on mixed queries).
-  // Applies only when both the query is episodic-shape AND this candidate
-  // came via the episodic channel — non-episodic candidates on episodic
-  // queries get 1.0 (no penalty), so cross-shape mixing remains balanced.
-  const episodicMultiplier = enabled('episodic') && ctx.isEpisodicHit ? 1.6 : 1.0;
+  // query was episodic-shape. 2.5x is sized empirically (see episodic-recall
+  // gate probe #4): the synth episodic row participates in 1 channel
+  // (episodic, doubled via the isEpisodicQuery channel-twice boost), while
+  // a real-artifact decoy participates in 2-3 channels (fts5 + recency +
+  // sometimes vector). Synth also can't claim the recency-channel rank
+  // boost by design — synth rows don't live in the artifact table, and
+  // searchRecencyChannel only ranks artifacts. 2.5x closes that asymmetric
+  // gap so episodic outranks decoys on its home turf without drowning
+  // conceptual signals on cross-shape queries (which get 1.0).
+  //
+  // Future durable replacement: when session_summary is materialized at
+  // write-time (already shipped) and user_framing follows (deferred per
+  // the kind-confusion concern), real episodic artifacts get all channels
+  // naturally and the multiplier can be retired or tuned down.
+  const episodicMultiplier = enabled('episodic') && ctx.isEpisodicHit ? 2.5 : 1.0;
 
   const baseScore = rrfScore * (1 + threeFactor);
   return baseScore * retrievalMultiplier * noveltyMultiplier * activationFactor * episodicMultiplier;
