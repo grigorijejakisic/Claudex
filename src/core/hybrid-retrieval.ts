@@ -159,7 +159,8 @@ export type MultiplierName =
   | 'relevance'
   | 'retrieval'
   | 'novelty'
-  | 'activation';
+  | 'activation'
+  | 'episodic';
 
 export interface HybridSearchOptions {
   /** Maximum results to return. Default: 10 */
