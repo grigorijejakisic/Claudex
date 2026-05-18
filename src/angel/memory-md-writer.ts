@@ -7,11 +7,12 @@
  *   <sentinel hash>
  *   <preamble: universal user memories, ≤5 lines>
  *
- *   ## Entities         (≤15 from legacy `artifacts.entity_summary`)
  *   ## Active Projects  (≤5 over 7-day V17 activity window)
- *   ## Recent Threads   (≤5 deduped transcript_chunk topic_labels)
+ *   ## Lessons          (pointer-line index of memory/*.md files)
  *   ## Handoff          (one-line status summary + pointer to ACTIVE.md)
- *   ## How to Query     (static stock text)
+ *
+ *   (## How to Query removed 2026-05-18 — duplicated MCP instructions which
+ *    are the authoritative tool surface and always-current via recall-server.ts)
  *
  *   <!-- USER EDITABLE -->
  *
