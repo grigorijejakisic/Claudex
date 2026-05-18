@@ -12,7 +12,7 @@ const rows = db.prepare(`
   SELECT *
   FROM session_termination
   WHERE project = 'claudex-v3'
-  ORDER BY end_epoch_ms DESC
+  ORDER BY ended_at_epoch_ms DESC
   LIMIT 8
 `).all();
 
