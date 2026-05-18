@@ -326,7 +326,7 @@ async function main(): Promise<void> {
     log('info', `${signal} received — shutting down`);
     heartbeat.stop();
     rerankerSupervisor.stop();
-    llamaServerSupervisor.stop();
+    if (llamaServerSupervisor) llamaServerSupervisor.stop();
     if (jsonlWatcher) {
       try { await jsonlWatcher.close(); } catch { /* swallow */ }
     }
