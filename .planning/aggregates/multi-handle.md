@@ -10,8 +10,13 @@
 
 | Phase | Date | Labeler | n | Δp@5 (Wilson CI) | Δr@10 (Wilson CI) | latency p99 ratio | intra-project share | Verdict | Conditions |
 |-------|------|---------|---|------------------|-------------------|-------------------|---------------------|---------|------------|
+<<<<<<< Updated upstream
 | 2.1-strict | 1970-01-01 | strict_3frame | 60 | 0.0667 [-0.0968, 0.2353] | 0.0333 [-0.0874, 0.1534] | 1.6713 | 0.0000 | KILL | see results files |
 | 2.1-relaxed | 1970-01-01 | relaxed_2frame | 60 | 0.0667 [-0.0968, 0.2353] | 0.0333 [-0.0874, 0.1534] | 2.3794 | 0.0000 | KILL | see results files |
+=======
+| 2.1-strict | 1970-01-01 | strict_3frame | 60 | 0.0667 [-0.0968, 0.2353] | 0.0333 [-0.0874, 0.1534] | 0.6304 | 0.0000 | KILL | see results files |
+| 2.1-relaxed | 1970-01-01 | relaxed_2frame | 60 | 0.0667 [-0.0968, 0.2353] | 0.0333 [-0.0874, 0.1534] | 1.3833 | 0.0000 | KILL | see results files |
+>>>>>>> Stashed changes
 
 (rows added at the bottom by future empirical phases; never modified.)
 
@@ -146,6 +151,7 @@ Total bound experiences: 2.
 
 (Each phase that closes prepends a new dated section. Prior content is preserved byte-identical per CONTEXT.md decision 4c rule 3.)
 
+<<<<<<< Updated upstream
 
 (Each phase that closes prepends a new dated section. Prior content is preserved byte-identical per CONTEXT.md decision 4c rule 3.)
 
@@ -2000,6 +2006,8 @@ Total bound experiences: 2.
 
 (Each phase that closes prepends a new dated section. Prior content is preserved byte-identical per CONTEXT.md decision 4c rule 3.)
 
+=======
+>>>>>>> Stashed changes
 ### 1970-01-01 — phase 2.1 close
 
 At phase 2.1 close, the aggregator contains 2 bound experiences (2 KILL). Phase 2.1 contributed: 2.1-strict=KILL, 2.1-relaxed=KILL. Density at this evidence level is consistent failure across conditions. More measurements may be needed before any milestone-level claim is warranted; emerging density of consistent KILL is much stronger evidence to escalate at milestone level than any single measurement.
