@@ -401,6 +401,22 @@ export interface ArtifactScoringContext {
   weights?: Required<ScoringWeights>;
   /** Per-multiplier ablation flags (undefined = all enabled). */
   multiplierFlags?: Partial<Record<MultiplierName, boolean>>;
+  /**
+   * Whether this artifact was surfaced via the episodic channel
+   * (`searchEpisodicChannel`) AND the query was detected as episodic-shape
+   * (`isEpisodicQuery`). Both must hold to apply the `episodic` multiplier.
+   * Set by the pipeline; undefined defaults to false.
+   *
+   * Closes the post-RRF rank-flip described in 2026-05-18 episodic-recall-gate
+   * test #4 ("episodic-wins-over-conceptual-decoy"): synth episodic rows had
+   * confidence=0.6 (importance 3.0) while real decoy artifacts had
+   * confidence=0.7+ (importance 3.5+), so the importance multiplier flipped
+   * the order despite the RRF stage giving episodic a 2× channel boost.
+   * The episodic multiplier here applies AFTER RRF + after the three-factor,
+   * giving the episodic signal a final-stage say in ranking when the query
+   * shape calls for it.
+   */
+  isEpisodicHit?: boolean;
 }
 
 /**
