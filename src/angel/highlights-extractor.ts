@@ -380,22 +380,75 @@ async function callLocalFallback(prompt: string, model: string): Promise<Extract
   // Phase 14-08: route via generation-backend. Default backend is Claude
   // subprocess with Sonnet — quality jump over llama3.1 for synthesis. The
   // `model` arg threads through but Sonnet wins when backend=claude regardless.
+  //
+  // 2026-05-18: bumped timeoutMs to 180s for highlights specifically. The
+  // backfill audit found 3 sessions (10326d3b/6ec39ce7/0b1b9b3c) hit the
+  // default 90s subprocess timeout on real claudex-v3 transcripts at the
+  // 50KB cap. Highlights is one of two synthesis surfaces (LSS being the
+  // other) that get full session transcripts as input — both need more
+  // headroom than the default Haiku/Sonnet classification budget.
   const response = await generate({
     prompt,
     model: model || 'sonnet',
     maxTokens: 2048,
     subsystem: 'highlights',
+    timeoutMs: 180_000,
   });
   return parseExtractResult(response, 'opus_parse_failed');
 }
 
+/**
+ * Tolerant JSON extraction. Sonnet/Haiku occasionally wrap a clean JSON object
+ * in extra prose ("Here's the JSON:") or emit fenced blocks anywhere in the
+ * response, not just at the boundaries. We try three strategies in order:
+ *   1. Strip the prefix/suffix code fence then parse.
+ *   2. Pull the first balanced {…} block via brace-counting and parse that.
+ *   3. Pull a fenced ```json block from anywhere in the body.
+ * Only throws if all three fail.
+ */
 function parseExtractResult(raw: string, reasonOnFail: DegradedReason): ExtractResult {
-  const cleaned = raw.replace(/^```(?:json)?\s*/im, '').replace(/```\s*$/im, '').trim();
+  // Strategy 1: existing strip-edge-fences approach
   try {
+    const cleaned = raw.replace(/^```(?:json)?\s*/im, '').replace(/```\s*$/im, '').trim();
     return JSON.parse(cleaned) as ExtractResult;
-  } catch {
-    throw Object.assign(new Error('Inner JSON parse failure'), { degradedReason: reasonOnFail });
+  } catch { /* fall through */ }
+
+  // Strategy 2: first balanced { … } block via brace counting
+  const firstBrace = raw.indexOf('{');
+  if (firstBrace !== -1) {
+    let depth = 0;
+    let inStr = false;
+    let esc = false;
+    for (let i = firstBrace; i < raw.length; i++) {
+      const ch = raw[i];
+      if (inStr) {
+        if (esc) { esc = false; continue; }
+        if (ch === '\\') { esc = true; continue; }
+        if (ch === '"') inStr = false;
+        continue;
+      }
+      if (ch === '"') { inStr = true; continue; }
+      if (ch === '{') depth++;
+      else if (ch === '}') {
+        depth--;
+        if (depth === 0) {
+          const candidate = raw.slice(firstBrace, i + 1);
+          try { return JSON.parse(candidate) as ExtractResult; }
+          catch { /* fall through to strategy 3 */ }
+          break;
+        }
+      }
+    }
   }
+
+  // Strategy 3: ```json … ``` block anywhere in the body
+  const fenced = /```(?:json)?\s*([\s\S]*?)\s*```/.exec(raw);
+  if (fenced && fenced[1]) {
+    try { return JSON.parse(fenced[1]) as ExtractResult; }
+    catch { /* fall through */ }
+  }
+
+  throw Object.assign(new Error('Inner JSON parse failure'), { degradedReason: reasonOnFail });
 }
 
 function classifyOpusError(err: unknown): DegradedReason {
