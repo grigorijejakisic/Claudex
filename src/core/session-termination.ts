@@ -568,6 +568,9 @@ export function reconcileTerminationClassifications(db: Database): ReconcileResu
 
     // Telemetry: only on promotions to keep noise low. Scans without
     // promotions are silently OK (steady-state behavior).
+    // Uses event_kind='enrichment' per the codebase convention (see
+    // claude-subprocess.ts) — the CHECK constraint pins event_kind to a
+    // closed set. detail.subsystem='reconcile_pass' is the query handle.
     if (result.promoted > 0) {
       try {
         db.prepare(
@@ -575,8 +578,9 @@ export function reconcileTerminationClassifications(db: Database): ReconcileResu
            VALUES (?, ?, ?, ?)`,
         ).run(
           'system-reconcile',
-          'reconcile_pass',
+          'enrichment',
           JSON.stringify({
+            subsystem: 'reconcile_pass',
             scanned: result.scanned,
             promoted: result.promoted,
             by_classifier: result.by_classifier,
