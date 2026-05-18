@@ -1053,12 +1053,14 @@ export function hybridSearchSync(
 
       // Phase 6 consolidation: single canonical scoring function for both
       // sync and async paths. See computeArtifactScore + 06-03-CONSOLIDATION-NOTE.md.
+      const isEpisodicHitSync = episodicRankMapSync.has(artifactId) && isEpisodicQuery(query);
       const hybridScore = computeArtifactScore(artifact, rrfScore, {
         db,
         artifactId,
         relevance: Math.min(1, relevance),
         weights,
         multiplierFlags: options.multiplierFlags,
+        isEpisodicHit: isEpisodicHitSync,
       });
 
       // Three-factor reported in score_breakdown for debugging — recompute
