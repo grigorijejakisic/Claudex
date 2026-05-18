@@ -212,10 +212,22 @@ export function synthesizeSessionSummary(events: SessionEvent[]): string | null 
 }
 
 /**
- * Saves a pre-computed session summary to the sessions table.
- * Non-throwing.
+ * Saves a pre-computed session summary to the sessions table AND materializes
+ * it as a V17 `kind='session_summary'` artifact so the episodic content is
+ * indexed first-class by FTS5 + vector + recency naturally (no synth-row hack).
+ *
+ * Why the dual write: V17 artifacts have real confidence (0.7), real embedding
+ * (the Angel embed-pipeline picks them up on next sweep), and real artifact_ids
+ * that `claudex_recall` can resolve. The query-time `searchEpisodicChannel`
+ * keeps the user_framing role (markers, not memories — see the hybrid-design
+ * note in hybrid-retrieval.ts) and the session_summary half becomes
+ * redundant once this materialization runs in production.
+ *
+ * Non-throwing — both writes individually wrapped so a downstream failure in
+ * one doesn't dark the other.
  */
 export function saveSessionSummary(db: Database, sessionId: string, summary: string): void {
+  // 1. Canonical: update sessions.session_summary (existing contract).
   try {
     cachedPrepare(db,
       `UPDATE sessions SET session_summary = ? WHERE session_id = ?`
@@ -223,6 +235,81 @@ export function saveSessionSummary(db: Database, sessionId: string, summary: str
   } catch {
     // Non-throwing
   }
+
+  // 2. New (2026-05-18): materialize the summary as a V17 artifact so the
+  // corpus indexes it like any other memory. The artifact body holds the
+  // summary text directly; title is a short prefix for UI surfaces.
+  try {
+    materializeSessionSummaryArtifact(db, sessionId, summary);
+  } catch {
+    // Non-throwing — write-time materialization is best-effort. The query-time
+    // episodic channel still surfaces the same content from sessions.session_summary
+    // via searchEpisodicChannel until the artifact lands.
+  }
+}
+
+/**
+ * Idempotent: INSERT OR REPLACE keyed on artifact id `session_summary:{sessionId}`.
+ * Subsequent saveSessionSummary calls on the same session refresh the body +
+ * updated_at_epoch_ms — useful because session summaries get incrementally
+ * refined as a session progresses (more topics, more commands).
+ *
+ * Confidence 0.7 mirrors the importance level of a real `decision` artifact —
+ * a session summary is a legitimate atomic memory unit (this happened, here's
+ * what it was about), not the second-tier synth shape the query-time channel
+ * uses.
+ */
+function materializeSessionSummaryArtifact(
+  db: Database,
+  sessionId: string,
+  summary: string,
+): void {
+  if (!summary || summary.trim().length === 0) return;
+
+  // Look up project from sessions — required for V17 scoping.
+  let project: string | null = null;
+  try {
+    const row = cachedPrepare(db,
+      `SELECT project FROM sessions WHERE session_id = ?`,
+    ).get(sessionId) as { project?: string } | undefined;
+    project = row?.project ?? null;
+  } catch { /* fall through */ }
+  if (!project) return;
+
+  // Detect artifact table column shape (V34+ 'project' vs V33- 'project_id').
+  const cols = (() => {
+    try { return db.prepare('PRAGMA table_info(artifact)').all() as Array<{ name: string }>; }
+    catch { return []; }
+  })();
+  if (cols.length === 0) return; // V17 artifact table not present — skip
+  const projectCol = cols.some(c => c.name === 'project') ? 'project' : 'project_id';
+  const hasUpdatedMs = cols.some(c => c.name === 'updated_at_epoch_ms');
+
+  const artifactId = `session_summary:${sessionId}`;
+  const title = summary.slice(0, 80);
+  const body = summary;
+  const nowMs = Date.now();
+
+  const sql = hasUpdatedMs
+    ? `INSERT INTO artifact (id, kind, ${projectCol}, title, body, scope, status, confidence,
+                              created_at_epoch_ms, updated_at_epoch_ms, session_id, data)
+        VALUES (?, 'session_summary', ?, ?, ?, 'project', 'active', 0.7, ?, ?, ?, '{}')
+        ON CONFLICT(id) DO UPDATE SET
+          body = excluded.body,
+          title = excluded.title,
+          updated_at_epoch_ms = excluded.updated_at_epoch_ms`
+    : `INSERT INTO artifact (id, kind, ${projectCol}, title, body, scope, status, confidence,
+                              created_at_epoch_ms, session_id, data)
+        VALUES (?, 'session_summary', ?, ?, ?, 'project', 'active', 0.7, ?, ?, '{}')
+        ON CONFLICT(id) DO UPDATE SET
+          body = excluded.body,
+          title = excluded.title`;
+
+  const params: unknown[] = hasUpdatedMs
+    ? [artifactId, project, title, body, nowMs, nowMs, sessionId]
+    : [artifactId, project, title, body, nowMs, sessionId];
+
+  db.prepare(sql).run(...params);
 }
 
 /**
