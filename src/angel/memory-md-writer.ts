@@ -665,11 +665,10 @@ export function curateMemoryMd(db: Database, project: string): CurationResult {
       projects: renderActiveProjects(db),
       lessons: renderLessons(project),
       handoff: renderHandoff(project),
-      howTo: HOW_TO_QUERY_STATIC,
     };
 
     let body = normalize(
-      [sections.preamble, sections.projects, sections.lessons, sections.handoff, sections.howTo]
+      [sections.preamble, sections.projects, sections.lessons, sections.handoff]
         .filter(Boolean)
         .join('\n'),
     );
