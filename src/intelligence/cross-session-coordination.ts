@@ -103,7 +103,7 @@ export function getCrossSessionActivity(
       recent_tools: (toolsMap.get(s.session_id) ?? []).slice(0, 10),
       topic: s.topic,
       observation_count: s.observation_count,
-      last_activity_epoch: s.last_activity_epoch,
+      last_activity_epoch_ms: s.last_activity_epoch_ms,
     }));
   } catch {
     return [];
