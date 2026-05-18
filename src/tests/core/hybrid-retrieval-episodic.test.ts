@@ -20,10 +20,17 @@ function seedUserFramingEvent(
   detail: string,
   timestampSec: number,
 ): void {
+  // Schema detection: V43+ test fixtures have `timestamp_epoch_ms`; older
+  // (live, pre-V43) DBs still expose `timestamp_epoch`. Same channel-detect
+  // approach as searchEpisodicChannel.
+  const cols = db.prepare("PRAGMA table_info(session_events)").all() as Array<{ name: string }>;
+  const hasMs = cols.some(c => c.name === 'timestamp_epoch_ms');
+  const tsCol = hasMs ? 'timestamp_epoch_ms' : 'timestamp_epoch';
+  const tsValue = hasMs ? timestampSec * 1000 : timestampSec;
   db.prepare(
-    `INSERT INTO session_events (session_id, project, event_type, entity, action, detail, timestamp_epoch)
+    `INSERT INTO session_events (session_id, project, event_type, entity, action, detail, ${tsCol})
      VALUES (?, ?, 'user_framing', 'prompt', 'framed', ?, ?)`,
-  ).run(sessionId, project, detail, timestampSec);
+  ).run(sessionId, project, detail, tsValue);
 }
 
 describe('isEpisodicQuery', () => {
