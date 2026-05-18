@@ -733,6 +733,16 @@ function searchEpisodicChannel(
     const keywords = tokenizeQuery(query, 5);
     if (keywords.length === 0) return [];
 
+    // 2026-05-18 (round 3, fresh-agent gate): when the query is event-shape
+    // ("find me past crashes" / "when did we crash"), the operator's
+    // user_framing complaints are NOISE — they're metadata about the events,
+    // not the events themselves. session_termination is the canonical
+    // surface for events. Skip user_framing rows in event-shape queries so
+    // session_summary surfaces alone, and the agent doesn't get the
+    // recursive-corpus confusion (recovery prompts surfaced ahead of
+    // actual event records).
+    const eventShape = isEventQuery(query);
+
     const eventConds = keywords.map(() => 'LOWER(detail) LIKE ?').join(' OR ');
     const summaryConds = keywords.map(() => 'LOWER(session_summary) LIKE ?').join(' OR ');
     const likeParams = keywords.map(k => `%${k.toLowerCase()}%`);
