@@ -676,7 +676,9 @@ function searchEpisodicChannel(
     const projectFilter = globalScope ? '' : 'AND project = ?';
     const projectParams: string[] = globalScope ? [] : [project];
 
-    // user_framing events — operator's literal prompt at each turn
+    // user_framing events — operator's literal prompt at each turn.
+    // tsCol handles V42 (`timestamp_epoch`, seconds) and V43+ (`timestamp_epoch_ms`).
+    const tsCol = sessionEventsTimestampCol(db);
     const eventSql = `
       SELECT
         (${EPISODIC_EVENT_ID_OFFSET} - id) AS id,
@@ -689,12 +691,12 @@ function searchEpisodicChannel(
         project,
         session_id,
         CASE
-          WHEN timestamp_epoch < 20000000000 THEN timestamp_epoch * 1000
-          ELSE timestamp_epoch
+          WHEN ${tsCol} < 20000000000 THEN ${tsCol} * 1000
+          ELSE ${tsCol}
         END AS timestamp_epoch_ms,
         CASE
-          WHEN timestamp_epoch < 20000000000 THEN timestamp_epoch * 1000
-          ELSE timestamp_epoch
+          WHEN ${tsCol} < 20000000000 THEN ${tsCol} * 1000
+          ELSE ${tsCol}
         END AS last_materialized_epoch_ms,
         3.0 AS importance,
         1.0 AS retrieval_score,
@@ -709,7 +711,7 @@ function searchEpisodicChannel(
       WHERE event_type = 'user_framing'
         AND (${eventConds})
         ${projectFilter}
-      ORDER BY timestamp_epoch DESC
+      ORDER BY ${tsCol} DESC
       LIMIT ?
     `;
     let eventRows: ArtifactRow[] = [];
