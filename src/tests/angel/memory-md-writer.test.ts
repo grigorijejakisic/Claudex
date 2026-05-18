@@ -576,11 +576,13 @@ describe('curateMemoryMd — size cap', () => {
     expect(content.split('\n').length).toBeLessThanOrEqual(MAX_LINES);
 
     // Phase 4.1 CUR-09: ## Entities and ## Recent Threads dropped; ## Lessons added.
-    for (const header of ['## Active Projects', '## Lessons', '## Handoff', '## How to Query']) {
+    // 2026-05-18: ## How to Query dropped — duplicated MCP instructions.
+    for (const header of ['## Active Projects', '## Lessons', '## Handoff']) {
       expect(content).toContain(header);
     }
     expect(content).not.toContain('## Entities');
     expect(content).not.toContain('## Recent Threads');
+    expect(content).not.toContain('## How to Query');
   });
 });
 
