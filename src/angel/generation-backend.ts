@@ -55,6 +55,42 @@ export function resolveBackend(): GenerationBackend {
 }
 
 /**
+ * Phase 14-09 (codex review fix): callers pass a model string that's meaningful
+ * for the DEFAULT backend (Claude — `haiku`, `sonnet`, `opus`). When the active
+ * backend is Ollama, that string is meaningless — Ollama doesn't know `haiku`.
+ * Symmetrically, the legacy Ollama tag `glm-5.1:cloud` is meaningless to Claude.
+ *
+ * Normalize the model to a value valid on the active backend.
+ * Returns undefined when the input model isn't recognized for the target
+ * backend — caller's downstream client uses its own default.
+ */
+const CLAUDE_ALIASES = new Set(['haiku', 'sonnet', 'opus']);
+const OLLAMA_TAG_RE = /^[a-z0-9._-]+:[a-z0-9._-]+$/i; // e.g. "glm-5.1:cloud", "llama3.1:8b"
+
+function normalizeModelForBackend(
+  model: string | undefined,
+  backend: GenerationBackend,
+): string | undefined {
+  if (!model) return undefined;
+  if (backend === 'claude') {
+    // Pass Claude aliases (haiku/sonnet/opus) and full Anthropic model IDs through.
+    // Ollama tags (contain ':') → not valid for Claude, return undefined so the
+    // subprocess wrapper uses its DEFAULT_MODEL (haiku).
+    if (CLAUDE_ALIASES.has(model)) return model;
+    if (model.startsWith('claude-')) return model;
+    if (OLLAMA_TAG_RE.test(model)) return undefined; // wrong backend's model
+    return model; // unknown shape — let CLI decide
+  }
+  // backend === 'ollama'
+  // Pass Ollama tags (foo:bar) and known local model names through.
+  // Claude aliases (haiku/sonnet/opus) → not valid for Ollama, return undefined
+  // so callLocalLLM uses its DEFAULT_MODEL (glm-5.1:cloud).
+  if (CLAUDE_ALIASES.has(model)) return undefined; // wrong backend's model
+  if (model.startsWith('claude-')) return undefined;
+  return model;
+}
+
+/**
  * Unified generation call — text return.
  *
  * Most existing call sites use the text shape (parse JSON from response
