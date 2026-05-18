@@ -674,6 +674,78 @@ server.registerTool(
 
     let v17Row: V17ArtifactRow | undefined;
 
+    // 2026-05-18: handle synthesized episodic artifact_ids that come back
+    // from claudex_search via the searchEpisodicChannel. These rows are
+    // synthesized at query time from session_events / sessions tables —
+    // they don't live in the V17 artifact table, so a normal id lookup
+    // returns nothing. Fresh-agent test exposed this as a load-bearing
+    // trust failure: search returns id X, recall(X) returns not-found.
+    // Route the prefix back to its source table and return a normalized
+    // artifact-shaped response.
+    if (validArtifactId && validArtifactId.startsWith('episodic:event:')) {
+      const rawId = validArtifactId.slice('episodic:event:'.length);
+      const eventId = Number(rawId);
+      if (Number.isFinite(eventId)) {
+        // Detect timestamp column (V42 had _epoch, V43+ uses _epoch_ms)
+        const evCols = (() => {
+          try { return getDb().prepare('PRAGMA table_info(session_events)').all() as Array<{ name: string }>; }
+          catch { return []; }
+        })();
+        const tsCol = evCols.some(c => c.name === 'timestamp_epoch_ms') ? 'timestamp_epoch_ms' : 'timestamp_epoch';
+        const evRow = cachedPrepare(getDb(),
+          `SELECT id, session_id, project, event_type, entity, action, detail, ${tsCol} AS ts
+             FROM session_events WHERE id = ? AND event_type = 'user_framing'`,
+        ).get(eventId) as {
+          id: number; session_id: string; project: string;
+          event_type: string; entity: string; action: string;
+          detail: string | null; ts: number;
+        } | undefined;
+        if (evRow) {
+          const tsMs = evRow.ts < 20_000_000_000 ? evRow.ts * 1000 : evRow.ts;
+          const responseText = JSON.stringify({
+            artifact_id: validArtifactId,
+            type: 'user_framing',
+            summary: `User: ${(evRow.detail ?? '').slice(0, 80)}`,
+            content: evRow.detail,
+            provenance: `session:${evRow.session_id}/event:${evRow.id}`,
+            project: evRow.project,
+            session_id: evRow.session_id,
+            timestamp_epoch_ms: tsMs,
+            source: 'session_events',
+          }, null, 2);
+          return { content: [{ type: 'text', text: responseText }] };
+        }
+      }
+    }
+    if (validArtifactId && validArtifactId.startsWith('episodic:summary:')) {
+      const sid = validArtifactId.slice('episodic:summary:'.length);
+      const sRow = cachedPrepare(getDb(),
+        `SELECT session_id, project, name, session_summary,
+                created_at_epoch_ms, ended_at_epoch_ms, observation_count
+           FROM sessions WHERE session_id = ?`,
+      ).get(sid) as {
+        session_id: string; project: string; name: string | null;
+        session_summary: string | null; created_at_epoch_ms: number;
+        ended_at_epoch_ms: number | null; observation_count: number;
+      } | undefined;
+      if (sRow && sRow.session_summary) {
+        const responseText = JSON.stringify({
+          artifact_id: validArtifactId,
+          type: 'session_summary',
+          summary: `${sRow.name ?? sRow.session_id} — ${sRow.session_summary.slice(0, 80)}`,
+          content: sRow.session_summary,
+          provenance: `session:${sRow.session_id}`,
+          project: sRow.project,
+          session_id: sRow.session_id,
+          created_at_epoch_ms: sRow.created_at_epoch_ms,
+          ended_at_epoch_ms: sRow.ended_at_epoch_ms,
+          observation_count: sRow.observation_count,
+          source: 'sessions',
+        }, null, 2);
+        return { content: [{ type: 'text', text: responseText }] };
+      }
+    }
+
     // Phase 14-09: preferred path — direct V17 TEXT id lookup. Round-trips
     // from claudex_search's `artifact_id` field. Stable across rebuilds.
     if (validArtifactId) {
