@@ -47,18 +47,18 @@ export function getCrossSessionActivity(
     const sessions = cachedPrepare(db,
       `SELECT s.session_id, s.name, s.observation_count,
               t.topic,
-              MAX(o.timestamp_epoch_ms) AS last_activity_epoch
+              MAX(o.timestamp_epoch_ms) AS last_activity_epoch_ms
        FROM sessions s
        JOIN observations o ON o.session_id = s.session_id
        LEFT JOIN thread_state t ON t.session_id = s.session_id
        WHERE s.project = ? AND s.session_id != ? AND s.status = 'active'
          AND o.timestamp_epoch_ms > ?
        GROUP BY s.session_id
-       ORDER BY last_activity_epoch DESC
+       ORDER BY last_activity_epoch_ms DESC
        LIMIT 5`
     ).all(project, currentSessionId, oneHourAgoMs) as Array<{
       session_id: string; name: string | null; observation_count: number;
-      topic: string | null; last_activity_epoch: number;
+      topic: string | null; last_activity_epoch_ms: number;
     }>;
 
     if (sessions.length === 0) return [];
