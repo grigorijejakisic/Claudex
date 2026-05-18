@@ -484,6 +484,15 @@ export function getDerivedTerminations(
     if (r.status === 'completed') endReason = 'endsession';
     else if (r.status === 'active') endReason = 'crash';
 
+    // open_blockers — derive from session_signals at read time for
+    // derived rows too. Sessions that ended without a session_termination
+    // row may still have unresolved signals attached.
+    let derivedBlockers: string | null = null;
+    try {
+      const blockers = deriveOpenBlockers(db, r.session_id);
+      derivedBlockers = blockers.length > 0 ? JSON.stringify(blockers) : null;
+    } catch { /* leave null */ }
+
     out.push({
       session_id: r.session_id,
       project: r.project,
@@ -495,6 +504,7 @@ export function getDerivedTerminations(
       observation_count: r.observation_count ?? 0,
       // Synthesized derivation, not a real recorded write. Use the same ms.
       recorded_at_epoch_ms: r.ended_at_epoch_ms,
+      open_blockers: derivedBlockers,
     });
   }
   return out;
