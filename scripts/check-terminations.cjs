@@ -17,7 +17,7 @@ const rows = db.prepare(`
 `).all();
 
 for (const r of rows) {
-  const when = new Date(r.end_epoch_ms).toISOString();
+  const when = new Date(r.ended_at_epoch_ms).toISOString();
   console.log('---');
   console.log('session_id:', r.session_id);
   console.log('end:', when, '|', r.end_reason);
